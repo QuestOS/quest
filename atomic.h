@@ -12,7 +12,7 @@ static inline void atomic_store_dword(DWORD *addr, DWORD x) {
 }
 
 static inline DWORD atomic_xchg_dword(DWORD *addr, DWORD x) {
-  asm volatile("xchgl %1, (%0)" : "=r"(addr), "=ir"(x) : "ir"(x), "r"(addr));
+  asm volatile("xchgl %1,(%0)" : "=r"(addr), "=ir"(x) : "0"(addr), "1"(x));
   return x;
 }
 
