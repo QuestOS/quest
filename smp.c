@@ -49,7 +49,7 @@ static BYTE checksum(BYTE *, int);
 static int send_ipi(DWORD, DWORD);
 static int process_mp_fp(struct mp_fp *);
 static int process_mp_config(struct mp_config *);
-static void add_processor(struct mp_config_processor_entry *);
+static int add_processor(struct mp_config_processor_entry *);
 static int boot_cpu(struct mp_config_processor_entry *);
 static struct mp_fp *probe_mp_fp(DWORD, DWORD);
 
@@ -184,9 +184,10 @@ static int process_mp_config(struct mp_config *cfg) {
         print (" (disabled)");
       if (entry->processor.flags & 2)
         print (" (bootstrap)");
-      print ("\n");
       ptr += sizeof(struct mp_config_processor_entry);
-      add_processor(&entry->processor);
+      if(add_processor(&entry->processor)) 
+        print(" (booted)");
+      print ("\n");
       break;
     case MP_CFG_TYPE_BUS:
       print ("Bus entry id: ");
@@ -321,14 +322,18 @@ static int boot_cpu(struct mp_config_processor_entry *proc) {
     asm volatile("pause");
   }
   if (to >= LOOPS_TO_WAIT) {
+#if 0
     print("Processor ");
     putx(apic_id);
     print(" not responding.\n");
+#endif
     success = 0;
   } else {
+#if 0
     print("Processor ");
     putx(apic_id);
     print(" BOOTED!\n");
+#endif
   }
 
   /* cleanup */
@@ -343,22 +348,29 @@ static int boot_cpu(struct mp_config_processor_entry *proc) {
   return success;
 }
 
-static void add_processor(struct mp_config_processor_entry *proc) {
+static int add_processor(struct mp_config_processor_entry *proc) {
   BYTE apic_id = proc->APIC_id;
 
-  if(!(proc->flags & 1)) return; /* disabled processor */
-  if(proc->flags & 2) return;    /* bootstrap processor */
+  if(!(proc->flags & 1)) return 0; /* disabled processor */
+  if(proc->flags & 2) return 0;    /* bootstrap processor */
   
   if(boot_cpu(proc)) {
     CPU_to_APIC[mp_num_cpus] = apic_id;
     APIC_to_CPU[apic_id] = mp_num_cpus;
     mp_num_cpus++;
-  }
+    return 1;
+  } else return 0;
 }
 
 /* ************************************************** */
 
 void ap_init(void) {
+  /* Wait for all processors to come online, and the system to enter
+   * MP mode. */
+  while (!(volatile int)mp_enabled) 
+    asm volatile("pause");
+
+  /* With nothing else to do, just spin-wait */
   for(;;) {
     asm volatile("pause");
   }
