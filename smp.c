@@ -229,6 +229,7 @@ static int send_ipi(DWORD dest, DWORD v) {
 
 extern BYTE patch_code_start[];
 extern BYTE patch_code_end[];
+extern BYTE status_code[];
 extern BYTE initial_gdt[];
 
 static int boot_cpu(struct mp_config_processor_entry *proc) {
@@ -237,10 +238,9 @@ static int boot_cpu(struct mp_config_processor_entry *proc) {
   volatile int to;
   DWORD bootaddr, accept_status;
   DWORD bios_reset_vector = BIOS_RESET_VECTOR; /* identity mapped */
-  DWORD bootgdt = 0x00070200uL;
 
   /* Set up the boot code for the APs */
-#define TEST_BOOTED(x) (*((volatile DWORD *)(0X0006FFFBuL)))
+#define TEST_BOOTED(x) (*((volatile DWORD *)(x+status_code-patch_code_start)))
 
   bootaddr = 0x00070000uL;           /* identity mapped */
   TEST_BOOTED(bootaddr) = 0;

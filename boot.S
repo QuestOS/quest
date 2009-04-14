@@ -329,38 +329,41 @@ int_table:
 	.long interrupt
 	.long interrupt
 
+        .align 0x10
         .code16
-        .text
-/*        .section .ap_startup */
+
+        /* This code gets loaded by smp.c into address 0x70000
+         * for the application processor to start. */
+
+        /* These symbols are linked at segment 0x10100 but will be later
+         * placed at segment 0x7000, so some care has to be taken with
+         * addresses */
         .globl patch_code_start
         .globl patch_code_end
+        .globl status_code
 patch_code_start:
-/*
-        movw %cs, %ax
-        movw %ax, %ds
-        movw %ax, %es
-        movw %ax, %ss
-        */
-        
+        jmp 1f
+
+status_code:    
+        .long 0                /* status indicator */
+
+1: 
         /* Write 'A' to screen */
         movw $0x0741, %ax
         movw $0xB800, %dx
         movw %dx, %ds
         xorw %dx, %dx
+
         /* Write 1 to status indicator */
         movw %ax, %ds:(%edx) 
         movw $0x1, %ax
-        movw $0x6FFF, %dx
+        movw %cs, %dx
         movw %dx, %ds
-        movw $0x000B, %dx
+        movw $status_code - patch_code_start, %dx
         movw %ax, %ds:(%edx)
 
-        movw $0x7000, %dx
-        movw %dx, %ds
+        /* %ds = 0x7000 */
         
-/*        movl $0x70200, %eax
-        lgdt gdt_ptr - patch_code_start */
-
         lgdtl patch_gdt_ptr - patch_code_start /* ds segment */
 
         xorw %dx, %dx
@@ -374,13 +377,14 @@ patch_code_start:
 	movl %eax, %cr3
 	movl %cr0, %eax /* need to set bit 31 of CR0 - see 3-18 in Manual vol 3 */
 	orl $0x80000001, %eax
-	movl %eax, %cr0 /* and enter protected mode */
+	movl %eax, %cr0 /* and enter protected mode as well */
 
         /* flush icache */
-        ljmpl $0x08, $0x70051   /* ugh, hardcoded for now */
+        ljmpl $0x08, $ap_pmode - patch_code_start + 0x70000
 
+        .align 0x10
         .code32
-pmode:  
+ap_pmode:  
 	movw $0x10, %ax /* Set DS-SS to refer to KERNEL DS */
 	movw %ax, %ds
 	movw %ax, %es
@@ -391,10 +395,12 @@ pmode:
 	xorw %ax, %ax
 	lldt %ax        
 
+        /* Write 'B' to screen */
         movw $0x0742, %ax
         movl $0xB8002, %edx
         movw %ax, (%edx)
-        
+
+        /* halt for now */
         cli
 1:      hlt
         jmp 1b
