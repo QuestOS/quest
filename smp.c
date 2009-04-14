@@ -6,6 +6,7 @@
 #include "kernel.h"
 #include "smp.h"
 #include "apic.h"
+#include "spinlock.h"
                     
 /* CMOS write */
 static inline void cmos_write(BYTE i, BYTE v) {
@@ -367,8 +368,10 @@ static int add_processor(struct mp_config_processor_entry *proc) {
 void ap_init(void) {
   /* Wait for all processors to come online, and the system to enter
    * MP mode. */
-  while (!(volatile int)mp_enabled) 
+  while (!mp_enabled) 
     asm volatile("pause");
+
+  print("HELLO WORLD\n");
 
   /* With nothing else to do, just spin-wait */
   for(;;) {
