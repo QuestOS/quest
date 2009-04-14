@@ -12,6 +12,8 @@ $ make clean quest && sudo make install
 # Run QEMU with GDB-stub support
 $ qemu -s -smp 4 -soundhw sb16 c.img
 
+# Run BOCHS
+$ bochs -q -f bochsrc-smp
 
 Inside QuestOS:
 ~~~~~~~~~~~~~~~
