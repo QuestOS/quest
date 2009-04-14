@@ -1,0 +1,20 @@
+Compile and Install:
+~~~~~~~~~~~~~~~~~~~~
+
+$ sudo mkdir /mnt/quest
+
+# Mount the disk image:
+$ sudo mount -t ext2 -o loop,offset=32256 c.img /mnt/quest
+
+# Clean, compile, and install into the disk image:
+$ make clean quest && sudo make install
+
+# Run QEMU with GDB-stub support
+$ qemu -s -smp 4 -soundhw sb16 c.img
+
+
+Inside QuestOS:
+~~~~~~~~~~~~~~~
+
+# Play Pacman!
+> /boot/mame
