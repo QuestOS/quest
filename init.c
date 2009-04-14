@@ -242,17 +242,6 @@ void init( multiboot* pmb ) {
 	pchVideo[ i * 2 + 1 ] = 7;
   }
 
-  num_cpus = smp_init(); 
-  if (num_cpus > 1) {
-    print("Multi-processing detected.  Number of CPUs: ");
-    putx(num_cpus);
-    putchar('\n');
-  } else {
-    print("Uni-processor mode.\n");
-  }
-
-  panic("stop");
-
   for (mmap = (memory_map_t *) pmb->mmap_addr;
        (unsigned long) mmap < pmb->mmap_addr + pmb->mmap_length;
        mmap = (memory_map_t *) ((unsigned long) mmap
@@ -316,6 +305,16 @@ void init( multiboot* pmb ) {
   /* Now safe to call AllocatePhysicalPage() as all free/allocated memory is 
    *  marked in the mm_table 
    */
+
+  /* Start up other processors, which may allocate pages for stacks */
+  num_cpus = smp_init(); 
+  if (num_cpus > 1) {
+    print("Multi-processing detected.  Number of CPUs: ");
+    putx(num_cpus);
+    putchar('\n');
+  } else {
+    print("Uni-processor mode.\n");
+  }
 
   /* Initialise the programmable interrupt controller (PIC) */
   initialise_pic ();

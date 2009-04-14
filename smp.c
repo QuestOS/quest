@@ -263,7 +263,7 @@ static int send_ipi(DWORD dest, DWORD v) {
 extern BYTE patch_code_start[];
 extern BYTE patch_code_end[];
 extern BYTE status_code[];
-extern BYTE initial_gdt[];
+extern BYTE ap_stack_ptr[];
 
 static int boot_cpu(struct mp_config_processor_entry *proc) {
   BYTE apic_id = proc->APIC_id;
@@ -272,12 +272,18 @@ static int boot_cpu(struct mp_config_processor_entry *proc) {
   DWORD bootaddr, accept_status;
   /* DWORD bios_reset_vector = BIOS_RESET_VECTOR; */ /* identity mapped */
 
+  /* Get a page for the AP's C stack */
+  unsigned long page_frame = (unsigned long) AllocatePhysicalPage();
+  DWORD *virt_addr = MapVirtualPage( page_frame | 3 );
+
   /* Set up the boot code for the APs */
 #define TEST_BOOTED(x) (*((volatile DWORD *)(x+status_code-patch_code_start)))
+#define STACK_PTR(x)   (*((volatile DWORD *)(x+ap_stack_ptr-patch_code_start)))
 
   bootaddr = MP_BOOTADDR;           /* identity mapped */
-  TEST_BOOTED(bootaddr) = 0;
   memcpy((BYTE *)bootaddr, patch_code_start, patch_code_end - patch_code_start);
+  TEST_BOOTED(bootaddr) = 0;
+  STACK_PTR(bootaddr) = (DWORD)virt_addr;
 
   /* CPU startup sequence */
   /******************************************************************************
@@ -350,3 +356,10 @@ static void add_processor(struct mp_config_processor_entry *proc) {
   }
 }
 
+/* ************************************************** */
+
+void ap_init(void) {
+  for(;;) {
+    asm volatile("pause");
+  }
+}

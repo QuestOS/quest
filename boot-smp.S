@@ -13,11 +13,14 @@
         .globl patch_code_start
         .globl patch_code_end
         .globl status_code
+        .globl ap_stack_ptr
 patch_code_start:
         jmp 1f
 
 status_code:    
         .long 0                /* status indicator */
+ap_stack_ptr:                  /* C stack for AP */
+        .long 0                
 
 1: 
         /* Write 'A' to screen */
@@ -26,15 +29,8 @@ status_code:
         movw %dx, %ds
         xorw %dx, %dx
 
-        /* Write 1 to status indicator */
-        movw %ax, %ds:(%edx) 
-        movw $0x1, %ax
         movw %cs, %dx
         movw %dx, %ds
-        movw $status_code - patch_code_start, %dx
-        movw %ax, %ds:(%edx)
-
-        /* %ds = %cs still */
         
         lgdtl patch_gdt_ptr - patch_code_start /* ds segment */
 
@@ -72,11 +68,20 @@ ap_pmode:
         movl $0xB8002, %edx
         movw %ax, (%edx)
 
-        /* halt for now */
-        cli
-1:      hlt
-        jmp 1b
 
+        /* setup our stack */
+        movl $ap_stack_ptr - patch_code_start + MP_BOOTADDR, %eax
+        movl (%eax), %eax
+        addl $0x1000, %eax
+        movl %eax, %esp
+
+        /* Write 1 to status indicator */
+        movl $status_code - patch_code_start + MP_BOOTADDR, %eax
+        movl $0x1, (%eax)
+        
+        /* call back into C */
+        lcall $0x8, $ap_init
+        
 patch_gdt_ptr:  
 	.short 0x7FF     /* length in bytes - 256 descriptors */
 	.long  KERN_GDT   /* linear address */
