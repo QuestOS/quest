@@ -227,7 +227,7 @@ void initialise_pit ( void ) {
 }
 
 
-void init( multiboot* pmb, void* mp_fp ) {
+void init( multiboot* pmb ) {
 
   int i, j, k, c, num_cpus;
   unsigned short tss[NR_MODS];
@@ -242,7 +242,7 @@ void init( multiboot* pmb, void* mp_fp ) {
 	pchVideo[ i * 2 + 1 ] = 7;
   }
 
-  num_cpus = process_mp_fp((struct mp_fp *)mp_fp);
+  num_cpus = smp_init(); 
   if (num_cpus > 1) {
     print("Multi-processing detected.  Number of CPUs: ");
     putx(num_cpus);

@@ -83,58 +83,9 @@ real_start:
 	movw $0x8A00, %dx
 	outw %ax, (%dx)
 	
-	
 	/* set up stack */
 	movl $stack+0x1000, %esp /* setup 4Kbyte stack */
-	
 
-        /* Intel Floating Pointer structure search */
-        /* For gaining info on multiple processors */
-
-        /* MP Signature is:  ('_' | ('M'<<8) | ('P'<<16) | ('_'<<24)) */
-
-        /*    = 0x5F504D5F */
-        movl $0x5F504D5F, %eax
-
-        /* Try end of lower memory */
-        /* Strictly, I should check CMOS to find bound */
-        /* 0x9F800 = 638kb */
-
-        movl $0x0009F800, %edi
-        movl $0x00000800, %ecx
-        shr $2, %ecx
-1:      scasl
-        je found_mb
-        loop 1b
-
-        /* Try Extended BIOS Data Area */
-        movl $0x0000040E, %edi /* read base addr */
-        movw (%edi), %di
-        shl $4, %edi 
-        movl $0x00000400, %ecx
-        shr $2, %ecx
-1:      scasl
-        je found_mb
-        loop 1b
-
-        /* Try BIOS ROM address space */
-        movl $0x000F0000, %edi
-        movl $0x00010000, %ecx
-        shr $2, %ecx
-1:      scasl
-        je found_mb
-        loop 1b
-
-        /* Not found - indicate uniprocessor */
-        xorl %edi, %edi
-        jmp mb_search_done
-
-found_mb:
-        addl $-4, %edi /* since scasl incremented */
-mb_search_done:
-
-        /* save MP floating pointer struct address */
-        pushl %edi
 	/* save multiboot parameter, for eventual call to C code */
 	pushl %ebx
 
@@ -142,11 +93,6 @@ mb_search_done:
 	pushl $2 /* Bit 1 always set to 1 in EFLAGS -- all other bits set to 0 */
 	popf     /* See 2-8 Manual vol 3 */
 
-        /* test APIC */
-/*        movl $0xFEE00280, %edi
-        xorl %eax, %eax
-        movl %eax, (%edi) */
-        
 	/* set up GDT */
 	movl $idt, %edi
 	addl $0x800, %edi /* 2KB offset of GDT from IDT */
@@ -328,84 +274,3 @@ int_table:
 	.long interrupt
 	.long interrupt
 	.long interrupt
-
-        .align 0x10
-        .code16
-
-        /* This code gets loaded by smp.c into address 0x70000
-         * for the application processor to start. */
-
-        /* These symbols are linked at segment 0x10100 but will be later
-         * placed at segment 0x7000, so some care has to be taken with
-         * addresses */
-        .globl patch_code_start
-        .globl patch_code_end
-        .globl status_code
-patch_code_start:
-        jmp 1f
-
-status_code:    
-        .long 0                /* status indicator */
-
-1: 
-        /* Write 'A' to screen */
-        movw $0x0741, %ax
-        movw $0xB800, %dx
-        movw %dx, %ds
-        xorw %dx, %dx
-
-        /* Write 1 to status indicator */
-        movw %ax, %ds:(%edx) 
-        movw $0x1, %ax
-        movw %cs, %dx
-        movw %dx, %ds
-        movw $status_code - patch_code_start, %dx
-        movw %ax, %ds:(%edx)
-
-        /* %ds = 0x7000 */
-        
-        lgdtl patch_gdt_ptr - patch_code_start /* ds segment */
-
-        xorw %dx, %dx
-        movw %dx, %ds
-
-	movl %cr4, %eax /* EAX is temporary for CR4 */
-	orl $0x10, %eax /* Set PSE bit of CR4 */
-	movl %eax, %cr4
-
-	movl $pgd, %eax
-	movl %eax, %cr3
-	movl %cr0, %eax /* need to set bit 31 of CR0 - see 3-18 in Manual vol 3 */
-	orl $0x80000001, %eax
-	movl %eax, %cr0 /* and enter protected mode as well */
-
-        /* flush icache */
-        ljmpl $0x08, $ap_pmode - patch_code_start + 0x70000
-
-        .align 0x10
-        .code32
-ap_pmode:  
-	movw $0x10, %ax /* Set DS-SS to refer to KERNEL DS */
-	movw %ax, %ds
-	movw %ax, %es
-	movw %ax, %fs
-	movw %ax, %gs
-	movw %ax, %ss
-                
-	xorw %ax, %ax
-	lldt %ax        
-
-        /* Write 'B' to screen */
-        movw $0x0742, %ax
-        movl $0xB8002, %edx
-        movw %ax, (%edx)
-
-        /* halt for now */
-        cli
-1:      hlt
-        jmp 1b
-
-patch_gdt_ptr:  
-	.short 0x7FF     /* length in bytes - 256 descriptors */
-	.long  KERN_GDT   /* linear address */
-patch_code_end: 

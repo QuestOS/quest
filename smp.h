@@ -12,6 +12,10 @@
 #define MP_CFG_TYPE_IO_INT    3
 #define MP_CFG_TYPE_LOCAL_INT 4
 
+#define MP_BOOTADDR 0x70000
+
+#ifndef __ASSEMBLER__
+
 struct mp_fp {
   DWORD signature;
   DWORD mpconfig_ptr;
@@ -90,6 +94,8 @@ struct mp_config {
 } PACKED;
 
 
-int process_mp_fp(struct mp_fp *);
+int smp_init(void);
+
+#endif  /* __ASSEMBLER__ */
 
 #endif

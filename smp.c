@@ -1,4 +1,7 @@
-/* Based on http://www.uruk.org/mps/, http://www.osdev.org/, and http://www.osdever.net/ */
+/* Based on:
+ * http://www.uruk.org/mps/, http://www.osdev.org/, http://www.osdever.net/ 
+ * and the Intel Multiprocessing Specification v1.4.
+ */
 #include "i386.h"
 #include "kernel.h"
 #include "smp.h"
@@ -38,14 +41,44 @@ DWORD mp_LAPIC_addr = LAPIC_ADDR_DEFAULT;
 #define MP_LAPIC_READ(x)   (*((volatile DWORD *) (mp_LAPIC_addr+(x))))
 #define MP_LAPIC_WRITE(x,y) (*((volatile DWORD *) (mp_LAPIC_addr+(x))) = (y))
 
+/* Mapping from CPU # to APIC ID */
 BYTE CPU_to_APIC[MAX_CPUS];
 BYTE APIC_to_CPU[MAX_CPUS];
 
 static BYTE checksum(BYTE *, int);
 static int send_ipi(DWORD, DWORD);
+static int process_mp_fp(struct mp_fp *);
 static int process_mp_config(struct mp_config *);
 static void add_processor(struct mp_config_processor_entry *);
 static int boot_cpu(struct mp_config_processor_entry *);
+static struct mp_fp *probe_mp_fp(DWORD, DWORD);
+
+/* Returns number of CPUs successfully booted. */
+int smp_init(void) {
+  struct mp_fp *ptr;
+  
+  if       ((ptr = probe_mp_fp(0x9F800, 0xA0000)));
+  else if  ((ptr = probe_mp_fp(0x0040E, 0x0140E)));
+  else if  ((ptr = probe_mp_fp(0xE0000, 0xFFFFF)));
+  else return 1;                /* assume uniprocessor */
+
+  mp_num_cpus = process_mp_fp (ptr);
+  if (mp_num_cpus > 1) mp_enabled = 1;
+  return mp_num_cpus;
+}
+
+static struct mp_fp *probe_mp_fp(DWORD start, DWORD end) {
+  DWORD i;
+  start &= ~0xF;                /* 16-byte aligned */
+  for (i=start;i<end;i+=0x10) {
+    if (*((volatile DWORD *) i) == MP_FP_SIGNATURE) {
+      /* found it */
+      return (struct mp_fp *)i;
+    }
+  }
+  return NULL;
+}
+
 
 int process_mp_fp (struct mp_fp *ptr) {
   struct mp_config *cfg;
@@ -237,12 +270,12 @@ static int boot_cpu(struct mp_config_processor_entry *proc) {
   int success = 1;
   volatile int to;
   DWORD bootaddr, accept_status;
-  DWORD bios_reset_vector = BIOS_RESET_VECTOR; /* identity mapped */
+  /* DWORD bios_reset_vector = BIOS_RESET_VECTOR; */ /* identity mapped */
 
   /* Set up the boot code for the APs */
 #define TEST_BOOTED(x) (*((volatile DWORD *)(x+status_code-patch_code_start)))
 
-  bootaddr = 0x00070000uL;           /* identity mapped */
+  bootaddr = MP_BOOTADDR;           /* identity mapped */
   TEST_BOOTED(bootaddr) = 0;
   memcpy((BYTE *)bootaddr, patch_code_start, patch_code_end - patch_code_start);
 
@@ -268,7 +301,7 @@ static int boot_cpu(struct mp_config_processor_entry *proc) {
     for (i=1; i <= 2; i++) {
       /* Bochs starts it @ INIT-IPI and the AP goes into p-mode which is
        * bad if I then deliver a STARTUP-IPI because that loads the CS
-       * register with 0x7000 which is of course invalid in p-mode.  So
+       * register with MP_BOOTADDR>>4 which is of course invalid in p-mode.  So
        * I added the test. */
       if (TEST_BOOTED(bootaddr)) break;
       send_ipi(apic_id, LAPIC_ICR_DM_SIPI | ((bootaddr >> 12) & 0xFF));
@@ -317,5 +350,3 @@ static void add_processor(struct mp_config_processor_entry *proc) {
   }
 }
 
-
-/* http://forum.osdev.org/viewtopic.php?f=1&t=18648&hilit=smp */
