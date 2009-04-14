@@ -247,8 +247,10 @@ static int boot_cpu(struct mp_config_processor_entry *proc) {
   memcpy((BYTE *)bootaddr, patch_code_start, patch_code_end - patch_code_start);
 
   /* CPU startup sequence */
-  CMOS_WRITE_BYTE(CMOS_RESET_CODE, CMOS_RESET_JUMP);
-  *((volatile unsigned *) bios_reset_vector) = ((bootaddr & 0xFF000) << 12);
+  /******************************************************************************
+   * CMOS_WRITE_BYTE(CMOS_RESET_CODE, CMOS_RESET_JUMP);                         *
+   * *((volatile unsigned *) bios_reset_vector) = ((bootaddr & 0xFF000) << 12); *
+   ******************************************************************************/
 
   /* clear APIC error register */
   MP_LAPIC_WRITE(LAPIC_ESR, 0);
@@ -261,13 +263,14 @@ static int boot_cpu(struct mp_config_processor_entry *proc) {
   send_ipi(apic_id, LAPIC_ICR_TM_LEVEL | LAPIC_ICR_DM_INIT);
 
   /* Send start-up IPIs if not old version */
-  if (proc->APIC_version >= APIC_VER_NEW && !TEST_BOOTED(bootaddr)) {
-    /* Bochs starts it @ INIT-IPI and the AP goes into p-mode which is
-     * bad if I then deliver a STARTUP-IPI because that loads the CS
-     * register with 0x7000 which is of course invalid in p-mode.  So
-     * I added the test. */
+  if (proc->APIC_version >= APIC_VER_NEW) {
     int i;
     for (i=1; i <= 2; i++) {
+      /* Bochs starts it @ INIT-IPI and the AP goes into p-mode which is
+       * bad if I then deliver a STARTUP-IPI because that loads the CS
+       * register with 0x7000 which is of course invalid in p-mode.  So
+       * I added the test. */
+      if (TEST_BOOTED(bootaddr)) break;
       send_ipi(apic_id, LAPIC_ICR_DM_SIPI | ((bootaddr >> 12) & 0xFF));
     }
   }
@@ -293,8 +296,10 @@ static int boot_cpu(struct mp_config_processor_entry *proc) {
   MP_LAPIC_WRITE(LAPIC_ESR, 0);
   accept_status = MP_LAPIC_READ(LAPIC_ESR);
 
-  CMOS_WRITE_BYTE(CMOS_RESET_CODE, 0);
-  *((volatile DWORD *) bios_reset_vector) = 0;
+  /************************************************
+   * CMOS_WRITE_BYTE(CMOS_RESET_CODE, 0);         *
+   * *((volatile DWORD *) bios_reset_vector) = 0; *
+   ************************************************/
   
   return success;
 }
