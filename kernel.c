@@ -78,9 +78,11 @@ int _putchar( int ch ) {
 }
 
 int putchar( int ch ) {
+  int x;
   spinlock_lock(&screen_lock);
-  _putchar (ch);
+  x = _putchar (ch);
   spinlock_unlock(&screen_lock);
+  return x;
 }
 
 int print( char *pch ) {
