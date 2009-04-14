@@ -28,6 +28,7 @@ ap_stack_ptr:                  /* C stack for AP */
         movw $0xB800, %dx
         movw %dx, %ds
         xorw %dx, %dx
+        movw %ax, %ds:(%edx)
 
         movw %cs, %dx
         movw %dx, %ds
