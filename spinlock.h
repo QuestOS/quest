@@ -6,7 +6,7 @@ struct spinlock {
   DWORD lock;
 };
 
-extern int mp_enabled;
+extern volatile int mp_enabled;
 
 static inline void spinlock_lock(struct spinlock *lock) {
   if (mp_enabled) {
