@@ -36,7 +36,7 @@ static inline void cmos_write(BYTE i, BYTE v) {
 #define CMOS_RESET_JUMP     0xA
 #define CMOS_BASE_MEMORY    0x15
 
-int mp_enabled=0, mp_num_cpus=1;
+volatile int mp_enabled=0, mp_num_cpus=1;
 
 DWORD mp_LAPIC_addr = LAPIC_ADDR_DEFAULT;
 #define MP_LAPIC_READ(x)   (*((volatile DWORD *) (mp_LAPIC_addr+(x))))
@@ -51,7 +51,7 @@ static int send_ipi(DWORD, DWORD);
 static int process_mp_fp(struct mp_fp *);
 static int process_mp_config(struct mp_config *);
 static int add_processor(struct mp_config_processor_entry *);
-static int boot_cpu(struct mp_config_processor_entry *);
+int boot_cpu(struct mp_config_processor_entry *);
 static struct mp_fp *probe_mp_fp(DWORD, DWORD);
 
 /* Returns number of CPUs successfully booted. */
@@ -267,7 +267,9 @@ extern BYTE patch_code_end[];
 extern BYTE status_code[];
 extern BYTE ap_stack_ptr[];
 
-static int boot_cpu(struct mp_config_processor_entry *proc) {
+/* For some reason, if this function is 'static', and -O is on, then
+ * qemu fails. */
+int boot_cpu(struct mp_config_processor_entry *proc) {
   BYTE apic_id = proc->APIC_id;
   int success = 1;
   volatile int to;
@@ -372,6 +374,8 @@ void ap_init(void) {
     asm volatile("pause");
 
   print("HELLO WORLD\n");
+
+  //  asm volatile("sti");
 
   /* With nothing else to do, just spin-wait */
   for(;;) {
