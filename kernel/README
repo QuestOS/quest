@@ -1,6 +1,10 @@
 Compile and Install:
 ~~~~~~~~~~~~~~~~~~~~
 
+# Compile libc
+$ make -C ../libc
+
+# Make a mount point
 $ sudo mkdir /mnt/quest
 
 # Mount the disk image:
