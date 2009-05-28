@@ -24,3 +24,16 @@ Inside QuestOS:
 
 # Play Pacman!
 > /boot/mame
+
+Using GDB-stub support
+~~~~~~~~~~~~~~~~~~~~~~
+
+If you are using QEMU or BOCHS with GDB-stub support then you can run gdb and
+invoke commands
+
+(gdb) file quest
+(gdb) target remote localhost:1234
+
+where localhost:1234 is the default listening port of GDB-stub.  If you put
+these commands in a file .gdbinit in the current directory then gdb will run
+these commands automatically when it starts.
