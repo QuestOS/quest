@@ -42,6 +42,10 @@ DWORD mp_LAPIC_addr = LAPIC_ADDR_DEFAULT;
 #define MP_LAPIC_READ(x)   (*((volatile DWORD *) (mp_LAPIC_addr+(x))))
 #define MP_LAPIC_WRITE(x,y) (*((volatile DWORD *) (mp_LAPIC_addr+(x))) = (y))
 
+DWORD mp_IOAPIC_addr = IOAPIC_ADDR_DEFAULT;
+#define MP_IOAPIC_READ(x)   (*((volatile DWORD *) (mp_IOAPIC_addr+(x))))
+#define MP_IOAPIC_WRITE(x,y) (*((volatile DWORD *) (mp_IOAPIC_addr+(x))) = (y))
+
 /* Mapping from CPU # to APIC ID */
 BYTE CPU_to_APIC[MAX_CPUS];
 BYTE APIC_to_CPU[MAX_CPUS];
@@ -204,7 +208,7 @@ static int process_mp_config(struct mp_config *cfg) {
       print (" version: ");
       putx (entry->IO_APIC.version);
       if (entry->IO_APIC.flags & 1) 
-        ;
+        mp_IOAPIC_addr = entry->IO_APIC.address;
       else
         print (" (disabled)");
       print (" address: ");
