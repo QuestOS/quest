@@ -37,3 +37,9 @@ invoke commands
 where localhost:1234 is the default listening port of GDB-stub.  If you put
 these commands in a file .gdbinit in the current directory then gdb will run
 these commands automatically when it starts.
+
+Currently, BOCHS does not support GDB-stub AND SMP at the same time.  It has an
+internal debugger that can be enabled with SMP however.  There is an
+undocumented command: "set $cpu <n>" which allows you to switch processors in
+the BOCHS debugger.
+
