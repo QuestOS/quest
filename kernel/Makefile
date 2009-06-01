@@ -2,7 +2,7 @@ CC = gcc
 CFLAGS = -m32 -fno-builtin -nostdinc -I. -I../libc/include -g -Wall 
 CPPFLAGS = -Wa,--32 -MMD 
 OBJS = boot.o init.o boot-smp.o smp.o interrupt.o interrupt_handler.o \
-	kernel.o diskio.o \
+	kernel.o diskio.o cpuid.o \
 	fsys_ext2fs.o sched.o sound.o
 MNT_POINT=/mnt/quest
 PROGS = quest terminal_server shell exec race test
