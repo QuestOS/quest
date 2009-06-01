@@ -1,5 +1,6 @@
 #include "multiboot.h"
 #include "i386.h"
+#include "cpuid.h"
 #include "kernel.h"
 #include "filesys.h"
 #include "smp.h"
@@ -235,12 +236,18 @@ void init( multiboot* pmb ) {
   unsigned long limit; 
   Elf32_Phdr *pph;
   Elf32_Ehdr *pe;
-    
+  char brandstring[I386_CPUID_BRAND_STRING_LENGTH];
+  
   /* clear screen */
   for( i = 0; i < 80 * 25; i++ ) {
 	pchVideo[ i * 2 ] = ' ';
 	pchVideo[ i * 2 + 1 ] = 7;
   }
+
+  cpuid_get_brand_string(brandstring, I386_CPUID_BRAND_STRING_LENGTH);
+  print("CPUID reports: "); print(brandstring);
+  putchar('\n');
+  if (cpuid_vmx_support()) print("VMX support detected\n");
 
   for (mmap = (memory_map_t *) pmb->mmap_addr;
        (unsigned long) mmap < pmb->mmap_addr + pmb->mmap_length;
