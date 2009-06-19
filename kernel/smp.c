@@ -372,12 +372,38 @@ static int add_processor(struct mp_config_processor_entry *proc) {
 /* ************************************************** */
 
 void ap_init(void) {
+  int phys_id, log_dest;
+  /* Setup the LAPIC */
+
+  MP_LAPIC_WRITE(LAPIC_TPR, 0x20); /* inhibit softint delivery */
+  MP_LAPIC_WRITE(LAPIC_LVTT, 0x10000); /* disable timer int */
+  MP_LAPIC_WRITE(LAPIC_LVTPC, 0x10000); /* disable perf ctr int */
+  MP_LAPIC_WRITE(LAPIC_LVT0, 0x08700);  /* enable normal external ints */
+  MP_LAPIC_WRITE(LAPIC_LVT1, 0x00400);  /* enable NMI */
+  MP_LAPIC_WRITE(LAPIC_LVTE, 0x10000);  /* disable error ints */
+  MP_LAPIC_WRITE(LAPIC_SPIV, 0x0010F);  /* enable APIC: spurious vector = 0xF */
+
+  /* be sure: */
+  MP_LAPIC_WRITE(LAPIC_LVT1, 0x00400);  /* enable NMI */
+  MP_LAPIC_WRITE(LAPIC_LVTE, 0x10000);  /* disable error ints */
+
+  phys_id = (MP_LAPIC_READ(LAPIC_ID) >> 0x18) & 0xF;
+
+  /* setup a logical destination address */
+  log_dest = 0x01000000 << phys_id;
+  MP_LAPIC_WRITE(LAPIC_LDR, log_dest); /* write to logical destination reg */
+  MP_LAPIC_WRITE(LAPIC_DFR, -1);       /* use 'flat model' destination format */
+
   /* Wait for all processors to come online, and the system to enter
    * MP mode. */
   while (!mp_enabled) 
     asm volatile("pause");
 
-  print("HELLO WORLD\n");
+  print("HELLO WORLD from Physical LAPIC ID: ");
+  putx(phys_id);
+  print(" logical mask: ");
+  putx(log_dest);
+  print("\n");
 
   //  asm volatile("sti");
 
