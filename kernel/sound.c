@@ -119,7 +119,7 @@ BOOL sb_dsp_write (BYTE value) {
 	return (SB_NOT_INITIALIZED);
 
     // Read the DSP's BUFFER_STATUS port until bit 7 = 0
-    while (inb (dsp_base_address + SB_DSP_WRITE_BUFFER_STATUS) && 0x80);
+    while (inb (dsp_base_address + SB_DSP_WRITE_BUFFER_STATUS) & 0x80);
 
     // Write the value to the WRITE command/data port
     outb (value, dsp_base_address + SB_DSP_WRITE);
