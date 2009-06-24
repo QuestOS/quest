@@ -95,6 +95,7 @@ struct mp_config {
 
 
 int smp_init(void);
+void smp_enable(void);
 
 #endif  /* __ASSEMBLER__ */
 

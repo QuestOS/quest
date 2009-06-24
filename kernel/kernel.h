@@ -1,5 +1,6 @@
 #define PIT_FREQ 1193181	/* in Hz */
 #define HZ 100 
+#define MAX_CPUS 8
 
 /* Define some constants for virtual addresses */
 #define KERN_STK 0xFF800000	/* Kernel stack */
@@ -111,9 +112,9 @@ extern unsigned kl_stack[][1024] __attribute__ ((aligned (4096)));
 /* Declare space for a page table mappings for kernel stacks */
 extern unsigned kls_pg_table[][1024] __attribute__ ((aligned (4096)));
 
-extern tss dummyTSS;
+extern tss dummyTSS[MAX_CPUS];
 
-extern unsigned short dummyTSS_selector;
+extern unsigned short dummyTSS_selector[MAX_CPUS];
 
 typedef unsigned int pid_t;
 

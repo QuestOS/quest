@@ -25,10 +25,10 @@ unsigned kls_pg_table[NR_MODS][1024] __attribute__ ((aligned (4096)));
 
 /* Declare space for a dummy TSS -- used for kernel switch_to/jmp_gate
    semantics */
-tss dummyTSS;
+tss dummyTSS[MAX_CPUS];
 
 /* This is a global index into the GDT for a dummyTSS */
-unsigned short dummyTSS_selector;
+unsigned short dummyTSS_selector[MAX_CPUS];
 
 /* Declare space for bitmap (physical) memory usage table.
  * PHYS_INDEX_MAX entries of 32-bit integers each for a 4K page => 

@@ -124,7 +124,7 @@ char *exception_messages[] = {
 extern void HandleInterrupt( unsigned long fs_gs, unsigned long ds_es, 
 			     unsigned long ulInt, unsigned long ulCode ) {
 
-    unsigned long eax, ebx, ecx, edx, esi, edi, eflags, eip, esp, ebp;
+    unsigned long eax, ebx, ecx, edx, esi, edi, eflags, eip, esp, ebp, cr2;
 
     asm volatile(
 	"movl %%eax, %0\n"
@@ -140,9 +140,12 @@ extern void HandleInterrupt( unsigned long fs_gs, unsigned long ds_es,
 	"movl 0x20(%%ebp),%%eax\n"
 	"movl %%eax, %8\n"
 	"movl 0x24(%%ebp),%%eax\n"
-	"movl %%eax, %9\n" : "=m" (eax), "=m" (ebx), "=m" (ecx), "=m" (edx),
+	"movl %%eax, %9\n"
+        "movl %%cr2, %%eax\n"
+        "movl %%eax, %10\n"
+        : "=m" (eax), "=m" (ebx), "=m" (ecx), "=m" (edx),
 	"=m" (esi), "=m" (edi), "=m" (ebp), "=m" (eip), "=m" (eflags),
-	"=m" (esp) : );
+	"=m" (esp), "=m" (cr2) : );
 	
     putchar( 'I' );
     putx( ulInt );

@@ -15,7 +15,7 @@ extern void initialise_sound(void);
 /* We use this function to create a dummy TSS so that when we issue a
    switch_to/jmp_gate e.g. at the end of init() or __exit(), we have a
    valid previous TSS for the processor to store state info */
-static unsigned short CreateDummyTSS( void ) {
+static unsigned short CreateDummyTSS( int n ) {
 
   int i;
   descriptor *ad = (idt + 256); /* Get address of GDT from IDT address */
@@ -30,9 +30,9 @@ static unsigned short CreateDummyTSS( void ) {
 
     ad[ i ].uLimit0 = sizeof( tss );
     ad[ i ].uLimit1 = 0;
-    ad[ i ].pBase0 = (unsigned long)&dummyTSS & 0xFFFF;
-    ad[ i ].pBase1 = ( (unsigned long)&dummyTSS >> 16 ) & 0xFF;
-    ad[ i ].pBase2 = (unsigned long)&dummyTSS >> 24;
+    ad[ i ].pBase0 = (unsigned long)&dummyTSS[n] & 0xFFFF;
+    ad[ i ].pBase1 = ( (unsigned long)&dummyTSS[n] >> 16 ) & 0xFF;
+    ad[ i ].pBase2 = (unsigned long)&dummyTSS[n] >> 24;
     ad[ i ].uType = 0x09;
     ad[ i ].uDPL = 0;		/* Only let kernel perform task-switching */
     ad[ i ].fPresent = 1;
@@ -379,11 +379,18 @@ void init( multiboot* pmb ) {
   }
 #endif
 
-  dummyTSS_selector = CreateDummyTSS();
+  { 
+    int n;
+    for (n=0; n < num_cpus; n++) {
+      dummyTSS_selector[n] = CreateDummyTSS(n);
+    }
+  } 
 
-  ltr( dummyTSS_selector );
+  ltr( dummyTSS_selector[0] );
 
   runqueue_append( LookupTSS( tss[ 0 ] )->priority, tss[ 0 ] );	/* Shell module */
-  
+
+  smp_enable();
+
   schedule();
 }

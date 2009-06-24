@@ -58,6 +58,7 @@ gdt_ptr:
 	.short 0x7FF     /* length in bytes - 256 descriptors */
 	.long KERN_GDT   /* linear address */
 
+        .globl idt_ptr
 idt_ptr:
 	.short 0x1FF     /* length - 64 descriptors */
 	.long KERN_IDT   /* linear address */

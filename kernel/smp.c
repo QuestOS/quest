@@ -68,8 +68,12 @@ int smp_init(void) {
   else return 1;                /* assume uniprocessor */
 
   mp_num_cpus = process_mp_fp (ptr);
-  if (mp_num_cpus > 1) mp_enabled = 1;
+
   return mp_num_cpus;
+}
+
+void smp_enable(void) {
+  if (mp_num_cpus > 1) mp_enabled = 1;
 }
 
 static struct mp_fp *probe_mp_fp(DWORD start, DWORD end) {
@@ -371,8 +375,10 @@ static int add_processor(struct mp_config_processor_entry *proc) {
 
 /* ************************************************** */
 
+extern BYTE idt_ptr[];
+
 void ap_init(void) {
-  int phys_id, log_dest;
+  int phys_id, log_dest, i=0;
   /* Setup the LAPIC */
 
   MP_LAPIC_WRITE(LAPIC_TPR, 0x20); /* inhibit softint delivery */
@@ -399,16 +405,26 @@ void ap_init(void) {
   while (!mp_enabled) 
     asm volatile("pause");
 
-  print("HELLO WORLD from Physical LAPIC ID: ");
-  putx(phys_id);
-  print(" logical mask: ");
-  putx(log_dest);
-  print("\n");
+  ltr( dummyTSS_selector[phys_id] );
 
-  //  asm volatile("sti");
+  /**************************************************
+   * print("HELLO WORLD from Physical LAPIC ID: "); *
+   * putx(phys_id);                                 *
+   * print(" logical mask: ");                      *
+   * putx(log_dest);                                *
+   * print("\n");                                   *
+   **************************************************/
+
+  asm volatile("lidt idt_ptr");
+
+  asm volatile("sti");
 
   /* With nothing else to do, just spin-wait */
   for(;;) {
+    /* count from 0 to 9 in the upper-left corner of the screen - for fun */
+    pchVideo [ phys_id * 2 ] = i + '0';
+    pchVideo [ phys_id * 2 + 1 ] = 7;
+    i = (i + 1) % 10;
     asm volatile("pause");
   }
 }
