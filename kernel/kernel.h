@@ -76,6 +76,10 @@ extern char *pchVideo;
 extern int putchar( int ch );
 extern int print( char *pch );
 extern void putx( unsigned long l );
+/* unlocked: */
+extern int _putchar( int ch );
+extern int _print( char *pch );
+extern void _putx( unsigned long l );
 
 extern void runqueue_append( unsigned int prio, unsigned short selector );
 extern void queue_append( unsigned short *queue, unsigned short selector );

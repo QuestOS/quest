@@ -4,6 +4,7 @@
 #define BYTE unsigned char
 #define WORD unsigned short int
 #define DWORD unsigned int
+#define QWORD unsigned long long
 #define BOOL signed char
 #define TRUE 1
 #define FALSE 0

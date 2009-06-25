@@ -226,37 +226,37 @@ int_table:
 	.long interrupt11
 	.long interrupt12
 	.long interrupt13
-	.long interrupt
-	.long interrupt
-	.long interrupt
-	.long interrupt
-	.long interrupt
-	.long interrupt
-	.long interrupt
-	.long interrupt
-	.long interrupt
-	.long interrupt
-	.long interrupt
-	.long interrupt
+	.long interrupt14
+	.long interrupt15
+	.long interrupt16
+	.long interrupt17
+	.long interrupt18
+	.long interrupt19
+	.long interrupt1a
+	.long interrupt1b
+	.long interrupt1c
+	.long interrupt1d
+	.long interrupt1e
+	.long interrupt1f
 
 	/* interrupts 0x20-0x2F - PIC/IRQ interrupt requests */	
 	.long timer		/* PIT */
-	.long interrupt
-	.long interrupt
-	.long interrupt
-	.long interrupt
+	.long interruptIGN
+	.long interruptIGN
+	.long interrupt23
+	.long interrupt24
 	.long soundcard		/* soundcard --??-- in future, 
 				   don't hardcode IRQ of soundcard */
-	.long interrupt
-	.long interrupt
-	.long interrupt
-	.long interrupt
-	.long interrupt
-	.long interrupt
-	.long interrupt
-	.long interrupt
-	.long interrupt
-	.long interrupt
+	.long interrupt26
+	.long interrupt27
+	.long interrupt28
+	.long interrupt29
+	.long interrupt2a
+	.long interrupt2b
+	.long interrupt2c
+	.long interrupt2d
+	.long interrupt2e
+	.long interrupt2f
 
 	/* interrupts 0x30-0x3F - system calls */
 	.long syscall0		/* putchar style call to video server */
@@ -272,6 +272,6 @@ int_table:
 	.long syscalla		/* _exit */
 	.long syscallb		/* waitpid */
 	.long syscallc		/* sched_setparam -- not totally POSIX compliant */
-	.long interrupt
-	.long interrupt
-	.long interrupt
+	.long interrupt3d
+	.long interrupt3e
+	.long interrupt3f

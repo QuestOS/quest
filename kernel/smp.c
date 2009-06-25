@@ -69,10 +69,39 @@ int smp_init(void) {
 
   mp_num_cpus = process_mp_fp (ptr);
 
+  if (mp_num_cpus > 1) {
+    int phys_id, log_dest;
+    MP_LAPIC_WRITE(LAPIC_TPR, 0x20); /* inhibit softint delivery */
+    MP_LAPIC_WRITE(LAPIC_LVTT, 0x10000); /* disable timer int */
+    MP_LAPIC_WRITE(LAPIC_LVTPC, 0x10000); /* disable perf ctr int */
+    MP_LAPIC_WRITE(LAPIC_LVT0, 0x08700);  /* enable normal external ints */
+    MP_LAPIC_WRITE(LAPIC_LVT1, 0x00400);  /* enable NMI */
+    MP_LAPIC_WRITE(LAPIC_LVTE, 0x10000);  /* disable error ints */
+    MP_LAPIC_WRITE(LAPIC_SPIV, 0x0010F);  /* enable APIC: spurious vector = 0xF */
+
+    /* be sure: */
+    MP_LAPIC_WRITE(LAPIC_LVT1, 0x00400);  /* enable NMI */
+    MP_LAPIC_WRITE(LAPIC_LVTE, 0x10000);  /* disable error ints */
+
+    phys_id = (MP_LAPIC_READ(LAPIC_ID) >> 0x18) & 0xF;
+
+    /* setup a logical destination address */
+    log_dest = 0x01000000 << phys_id;
+    MP_LAPIC_WRITE(LAPIC_LDR, log_dest); /* write to logical destination reg */
+    MP_LAPIC_WRITE(LAPIC_DFR, -1);       /* use 'flat model' destination format */
+  }
+
   return mp_num_cpus;
 }
 
 void smp_enable(void) {
+  int i;
+  for(i = 0; i < 24; i++) {
+    IOAPIC_write64(IOAPIC_REDIR + (i * 2), (0xFF00000000000800 | (0x20 + i)));
+  }
+  outb(0x22, 0x70);         /* disable PIC */
+  outb(0x23, 0x01);
+
   if (mp_num_cpus > 1) mp_enabled = 1;
 }
 
@@ -372,6 +401,26 @@ static int add_processor(struct mp_config_processor_entry *proc) {
     return 1;
   } else return 0;
 }
+
+QWORD IOAPIC_read64(BYTE reg) {
+  DWORD high, low;
+  QWORD retval;
+  MP_IOAPIC_WRITE(IOAPIC_REGSEL, reg);
+  high = MP_IOAPIC_READ(IOAPIC_RW);
+  MP_IOAPIC_WRITE(IOAPIC_REGSEL, reg+1);
+  low = MP_IOAPIC_READ(IOAPIC_RW);
+  retval = (QWORD)high << 32;
+  retval |= (QWORD)low;
+  return retval;
+}
+
+void IOAPIC_write64(BYTE reg, QWORD v) {
+  MP_IOAPIC_WRITE(IOAPIC_REGSEL, reg+1);
+  MP_IOAPIC_WRITE(IOAPIC_RW, (DWORD)(v >> 32));
+  MP_IOAPIC_WRITE(IOAPIC_REGSEL, reg);
+  MP_IOAPIC_WRITE(IOAPIC_RW, (DWORD)(v & 0xFFFFFFFF));
+}
+
 
 /* ************************************************** */
 

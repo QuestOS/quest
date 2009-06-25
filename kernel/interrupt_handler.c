@@ -146,46 +146,48 @@ extern void HandleInterrupt( unsigned long fs_gs, unsigned long ds_es,
         : "=m" (eax), "=m" (ebx), "=m" (ecx), "=m" (edx),
 	"=m" (esi), "=m" (edi), "=m" (ebp), "=m" (eip), "=m" (eflags),
 	"=m" (esp), "=m" (cr2) : );
-	
-    putchar( 'I' );
-    putx( ulInt );
-    putchar( ' ' );
-    putchar( 'c' );
-    putx( ulCode );
-    putchar( ' ' );
-    print( exception_messages[ulInt] );
-    putchar( '\n' );
 
-    putchar( 'A' );
-    putx( eax );
-    putchar( '\n' );
-    putchar( 'B' );
-    putx( ebx );
-    putchar( '\n' );
-    putchar( 'C' );
-    putx( ecx );
-    putchar( '\n' );
-    putchar( 'D' );
-    putx( edx );
-    putchar( '\n' );
-    putchar( 'S' );
-    putx( esi );
-    putchar( '\n' );
-    putchar( 'D' );
-    putx( edi );
-    putchar( '\n' );
-    putchar( 'B' );
-    putx( ebp ); 
-    putchar( '\n' );
-    putchar( 'S' );
-    putx( esp );   
-    putchar( '\n' );
-    putchar( 'I' );
-    putx( eip );
-    putchar( '\n' );
-    putchar( 'F' );
-    putx( eflags );
-    putchar( '\n' );
+    spinlock_lock(&screen_lock);
+    _putchar( 'I' );
+    _putx( ulInt );
+    _putchar( ' ' );
+    _putchar( 'c' );
+    _putx( ulCode );
+    _putchar( ' ' );
+    if (ulInt < 32) _print( exception_messages[ulInt] );
+    _putchar( '\n' );
+    
+    _putchar( 'A' );
+    _putx( eax );
+    _putchar( '\n' );
+    _putchar( 'B' );
+    _putx( ebx );
+    _putchar( '\n' );
+    _putchar( 'C' );
+    _putx( ecx );
+    _putchar( '\n' );
+    _putchar( 'D' );
+    _putx( edx );
+    _putchar( '\n' );
+    _putchar( 'S' );
+    _putx( esi );
+    _putchar( '\n' );
+    _putchar( 'D' );
+    _putx( edi );
+    _putchar( '\n' );
+    _putchar( 'B' );
+    _putx( ebp ); 
+    _putchar( '\n' );
+    _putchar( 'S' );
+    _putx( esp );   
+    _putchar( '\n' );
+    _putchar( 'I' );
+    _putx( eip );
+    _putchar( '\n' );
+    _putchar( 'F' );
+    _putx( eflags );
+    _putchar( '\n' );
+    spinlock_unlock(&screen_lock);
     
     if( ulInt < 0x20 )
 	/* unhandled exception - die */

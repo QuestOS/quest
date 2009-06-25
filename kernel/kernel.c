@@ -107,6 +107,25 @@ void putx( unsigned long l ) {
     spinlock_unlock(&screen_lock);
 }
 
+int _print( char *pch ) {
+    while( *pch )
+	_putchar( *pch++ );
+    return 0;
+}
+
+
+void _putx( unsigned long l ) {
+
+    int i, li;
+
+    for( i = 7; i >= 0; i-- )
+	if( ( li = ( l >> ( i << 2 ) ) & 0x0F ) > 9 )
+	    _putchar( 'A' + li - 0x0A );
+	else
+	    _putchar( '0' + li );
+}
+
+
 /* Find free page in mm_table 
  *
  * Returns physical address rather than virtual, since we

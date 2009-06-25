@@ -439,3 +439,64 @@ interrupt:
 	REGS_RESTORE
 	addl $8, %esp
 	iret
+
+        .globl interruptIGN
+interruptIGN:
+	iret
+
+        
+#define INT(n)                \
+        .globl interrupt##n;  \
+interrupt##n:                 \
+	pushl $0;             \
+	pushl $0x##n;         \
+	SREGS_SAVE;           \
+	call HandleInterrupt; \
+	REGS_RESTORE;         \
+	addl $8, %esp;        \
+	iret
+
+INT(14)
+INT(15)
+INT(16)
+INT(17)
+INT(18)
+INT(19)
+INT(1a)
+INT(1b)
+INT(1c)
+INT(1d)
+INT(1e)
+INT(1f)
+INT(20)
+INT(21)
+INT(22)
+INT(23)
+INT(24)
+INT(25)
+INT(26)
+INT(27)
+INT(28)
+INT(29)
+INT(2a)
+INT(2b)
+INT(2c)
+INT(2d)
+INT(2e)
+INT(2f)
+INT(30)
+INT(31)
+INT(32)
+INT(33)
+INT(34)
+INT(35)
+INT(36)
+INT(37)
+INT(38)
+INT(39)
+INT(3a)
+INT(3b)
+INT(3c)
+INT(3d)
+INT(3e)
+INT(3f)

@@ -96,6 +96,8 @@ struct mp_config {
 
 int smp_init(void);
 void smp_enable(void);
+QWORD IOAPIC_read64(BYTE);
+void IOAPIC_write64(BYTE, QWORD);
 
 #endif  /* __ASSEMBLER__ */
 
