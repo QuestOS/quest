@@ -2,6 +2,7 @@
 #include "sound.h"
 #include "kernel.h"
 #include "filesys.h"
+#include "smp.h"
 
 PRIVATE	WORD dsp_version; // Version of the Digital Sound Processor
 
@@ -303,9 +304,12 @@ void _soundcard (void) {
     play_sample();
     
     /* Acknowledge the interrupt */
-    if (dsp_irq_number == 10) 
-	outb (0x20, SB_PIC2_EOI);
-    outb (0x20, SB_PIC1_EOI);
+    /****************************************
+     * if (dsp_irq_number == 10)            *
+     *     outb (0x20, SB_PIC2_EOI);        *
+     * outb (0x20, SB_PIC1_EOI);            *
+     ****************************************/
+    send_eoi ();
 }
 
 

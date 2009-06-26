@@ -98,6 +98,8 @@ int smp_init(void);
 void smp_enable(void);
 QWORD IOAPIC_read64(BYTE);
 void IOAPIC_write64(BYTE, QWORD);
+BYTE LAPIC_get_physical_ID(void);
+void send_eoi(void);
 
 #endif  /* __ASSEMBLER__ */
 

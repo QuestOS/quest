@@ -8,6 +8,7 @@
 #include "kernel.h"
 #include "elf.h"
 #include "filesys.h"
+#include "smp.h"
 
 static char kernel_ver[] = "0.1a";
 char *kernel_version = kernel_ver;
@@ -194,8 +195,11 @@ extern void HandleInterrupt( unsigned long fs_gs, unsigned long ds_es,
 	/* asm volatile( "xorl %eax, %eax; movl %eax, %cr0" ); */
       while (1);
     
-    asm volatile( "movb $0x20, %al; out %al, $0xA0" );
-    asm volatile( "movb $0x20, %al; out %al, $0x20" );
+    send_eoi ();
+    /******************************************************
+     * asm volatile( "movb $0x20, %al; out %al, $0xA0" ); *
+     * asm volatile( "movb $0x20, %al; out %al, $0x20" ); *
+     ******************************************************/
 }
 
 
@@ -384,7 +388,7 @@ int _exec( char *filename, char *argv[], unsigned *curr_stack ) {
    *
    * Reuse page directory
    */
-  for( i = 0; i < 1022; i++ ) {	/* Skip freeing kernel pg table mapping and
+  for( i = 0; i < 1019; i++ ) {	/* Skip freeing kernel pg table mapping and
 				   kernel stack space. */
     if( plPageDirectory[i] ) {	/* Present in currrent address space */
       tmp_page = MapVirtualPage( plPageDirectory[i] | 3 );
@@ -621,8 +625,7 @@ void _timer( void ) {
   
   /* Need to issue an EOI "end of interrupt" to be ready for further
      interrupts */
-  outb( 0x60, 0x20 );		/* 8259 (OCW2 master) - send specific EOI
-				   for IRQ0 */
+  send_eoi ();
 
   runqueue_append( LookupTSS( str() )->priority, str() ); /* add the current task to the back of the run queue */
   schedule(); /* find a task to execute */
@@ -677,7 +680,7 @@ void __exit( int status ) {
        been able to check the status of the child... */
 
     tss = str();
-    ltr( dummyTSS_selector );
+    ltr( dummyTSS_selector [LAPIC_get_physical_ID()] );
 
     /* Remove space for tss -- but first we need to construct the linear
        address of where it is in memory from the TSS descriptor */

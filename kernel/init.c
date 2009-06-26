@@ -114,6 +114,8 @@ static unsigned short LoadModule( multiboot_module *pmm, int mod_num ) {
 
   /* Populate ring 3 page directory with kernel mappings */
   memcpy( &plPageDirectory[1023], (void *)(((unsigned)get_pdbr())+4092), 4 );
+  /* LAPIC/IOAPIC mappings */
+  memcpy( &plPageDirectory[1019], (void *)(((unsigned)get_pdbr())+4076), 4 );
 
   /* Populate ring 3 page directory with entries for its private address
      space */

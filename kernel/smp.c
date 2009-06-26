@@ -22,7 +22,7 @@ static inline void cmos_write(BYTE i, BYTE v) {
 #define DEBUG_SMP 1
 
 #define APIC_BROADCAST_ID 0xFF
-#define MAX_CPUS          APIC_BROADCAST_ID
+//#define MAX_CPUS          APIC_BROADCAST_ID
 
 #define MP_READ(x)    (*((volatile DWORD *) (x)))
 #define MP_WRITE(x,y) (*((volatile DWORD *) (x)) = (y))
@@ -71,7 +71,7 @@ int smp_init(void) {
 
   if (mp_num_cpus > 1) {
     int phys_id, log_dest;
-    MP_LAPIC_WRITE(LAPIC_TPR, 0x20); /* inhibit softint delivery */
+    MP_LAPIC_WRITE(LAPIC_TPR, 0x00);
     MP_LAPIC_WRITE(LAPIC_LVTT, 0x10000); /* disable timer int */
     MP_LAPIC_WRITE(LAPIC_LVTPC, 0x10000); /* disable perf ctr int */
     MP_LAPIC_WRITE(LAPIC_LVT0, 0x08700);  /* enable normal external ints */
@@ -96,11 +96,24 @@ int smp_init(void) {
 
 void smp_enable(void) {
   int i;
+
+  outb( 0xFF, 0x21 );           /* Mask interrupts in Master/Slave 8259A PIC */
+  outb( 0xFF, 0xA1 );
+
+  /* starting at 0x10, 0x12, 0x14, ... write the redirection table entries */
   for(i = 0; i < 24; i++) {
-    IOAPIC_write64(IOAPIC_REDIR + (i * 2), (0xFF00000000000800 | (0x20 + i)));
+    /* using logical destination mode, mask: 0xFF (all CPUs) */
+    IOAPIC_write64(IOAPIC_REDIR + (i * 2), (0xFF00000000000800LL | (0x20 + i)));
+
+    /* using logical destination mode, mask: 0x01 (CPU0 only) */
+    //IOAPIC_write64(IOAPIC_REDIR + (i * 2), (0x0100000000000800LL | (0x20 + i)));
   }
-  outb(0x22, 0x70);         /* disable PIC */
-  outb(0x23, 0x01);
+
+  /* disable IRQ2 */
+  IOAPIC_write64(IOAPIC_REDIR + 0x04, (0x0000000000010000LL));
+
+  outb(0x70, 0x22);             /* Re-direct IMCR to use IO-APIC */
+  outb(0x01, 0x23);             /* (for some motherboards) */
 
   if (mp_num_cpus > 1) mp_enabled = 1;
 }
@@ -405,9 +418,9 @@ static int add_processor(struct mp_config_processor_entry *proc) {
 QWORD IOAPIC_read64(BYTE reg) {
   DWORD high, low;
   QWORD retval;
-  MP_IOAPIC_WRITE(IOAPIC_REGSEL, reg);
-  high = MP_IOAPIC_READ(IOAPIC_RW);
   MP_IOAPIC_WRITE(IOAPIC_REGSEL, reg+1);
+  high = MP_IOAPIC_READ(IOAPIC_RW);
+  MP_IOAPIC_WRITE(IOAPIC_REGSEL, reg);
   low = MP_IOAPIC_READ(IOAPIC_RW);
   retval = (QWORD)high << 32;
   retval |= (QWORD)low;
@@ -415,12 +428,26 @@ QWORD IOAPIC_read64(BYTE reg) {
 }
 
 void IOAPIC_write64(BYTE reg, QWORD v) {
+  MP_IOAPIC_WRITE(IOAPIC_REGSEL, reg);
+  MP_IOAPIC_WRITE(IOAPIC_RW, 0x10000);
   MP_IOAPIC_WRITE(IOAPIC_REGSEL, reg+1);
   MP_IOAPIC_WRITE(IOAPIC_RW, (DWORD)(v >> 32));
   MP_IOAPIC_WRITE(IOAPIC_REGSEL, reg);
   MP_IOAPIC_WRITE(IOAPIC_RW, (DWORD)(v & 0xFFFFFFFF));
 }
 
+
+BYTE LAPIC_get_physical_ID(void) {
+  return (MP_LAPIC_READ(LAPIC_ID) >> 0x18) & 0xF;
+}
+
+void send_eoi (void) {
+  if (mp_num_cpus > 1) {
+    MP_LAPIC_WRITE(LAPIC_EOI, 0); /* send to LAPIC */
+  } else {
+    outb( 0x60, 0x20 );         /* send to 8259A PIC */
+  }
+}
 
 /* ************************************************** */
 

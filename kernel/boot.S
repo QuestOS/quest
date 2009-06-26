@@ -241,8 +241,8 @@ int_table:
 
 	/* interrupts 0x20-0x2F - PIC/IRQ interrupt requests */	
 	.long timer		/* PIT */
-	.long interruptIGN
-	.long interruptIGN
+	.long interrupt21
+	.long interrupt22
 	.long interrupt23
 	.long interrupt24
 	.long soundcard		/* soundcard --??-- in future, 
