@@ -202,6 +202,16 @@ extern void HandleInterrupt( unsigned long fs_gs, unsigned long ds_es,
      ******************************************************/
 }
 
+extern void _interrupt3f(void) {
+  BYTE phys_id = LAPIC_get_physical_ID();
+  spinlock_lock(&screen_lock);
+  _print ("CPU ");
+  _putx (phys_id);
+  _print (" received IPI vector=0x3f\n");
+  spinlock_unlock(&screen_lock);
+  send_eoi();
+}
+
 
 void HandleSyscall0 (int eax, int ebx) {
 

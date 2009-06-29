@@ -444,6 +444,12 @@ interrupt:
 interruptIGN:
 	iret
 
+        .global interrupt3f
+interrupt3f:
+	SREGS_SAVE
+	call _interrupt3f
+	SREGS_RESTORE
+        
         
 #define INT(n)                \
         .globl interrupt##n;  \
@@ -499,4 +505,3 @@ INT(3b)
 INT(3c)
 INT(3d)
 INT(3e)
-INT(3f)

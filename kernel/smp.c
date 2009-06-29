@@ -300,6 +300,9 @@ static BYTE checksum(BYTE *ptr, int length) {
 static int send_ipi(DWORD dest, DWORD v) {
   int to, send_status;
 
+  asm volatile ("pushfl");
+  asm volatile ("cli");
+
   MP_LAPIC_WRITE(LAPIC_ICR+0x10, dest << 24);
   MP_LAPIC_WRITE(LAPIC_ICR, v);
 
@@ -307,6 +310,8 @@ static int send_ipi(DWORD dest, DWORD v) {
   do {
     send_status = MP_LAPIC_READ(LAPIC_ICR) & LAPIC_ICR_STATUS_PEND;
   } while (send_status && (to++ < 1000));
+
+  asm volatile ("popfl");
 
   return (to < 1000);
 }
@@ -393,6 +398,7 @@ int boot_cpu(struct mp_config_processor_entry *proc) {
   MP_LAPIC_WRITE(LAPIC_ESR, 0);
   accept_status = MP_LAPIC_READ(LAPIC_ESR);
 
+  /* This seems to make more problems: */
   /************************************************
    * CMOS_WRITE_BYTE(CMOS_RESET_CODE, 0);         *
    * *((volatile DWORD *) bios_reset_vector) = 0; *
@@ -428,10 +434,13 @@ QWORD IOAPIC_read64(BYTE reg) {
 }
 
 void IOAPIC_write64(BYTE reg, QWORD v) {
+  /* First, disable the entry by setting the mask bit */
   MP_IOAPIC_WRITE(IOAPIC_REGSEL, reg);
   MP_IOAPIC_WRITE(IOAPIC_RW, 0x10000);
+  /* Write to the upper half */
   MP_IOAPIC_WRITE(IOAPIC_REGSEL, reg+1);
   MP_IOAPIC_WRITE(IOAPIC_RW, (DWORD)(v >> 32));
+  /* Write to the lower half */
   MP_IOAPIC_WRITE(IOAPIC_REGSEL, reg);
   MP_IOAPIC_WRITE(IOAPIC_RW, (DWORD)(v & 0xFFFFFFFF));
 }
@@ -454,7 +463,7 @@ void send_eoi (void) {
 extern BYTE idt_ptr[];
 
 void ap_init(void) {
-  int phys_id, log_dest, i=0;
+  int phys_id, log_dest, i=0,j=0;
   /* Setup the LAPIC */
 
   MP_LAPIC_WRITE(LAPIC_TPR, 0x20); /* inhibit softint delivery */
@@ -501,6 +510,17 @@ void ap_init(void) {
     pchVideo [ phys_id * 2 ] = i + '0';
     pchVideo [ phys_id * 2 + 1 ] = 7;
     i = (i + 1) % 10;
+    j++;
+
+    /* send an IPI for fun */
+    if (j == 1000 && phys_id == 1) {
+      send_ipi(0xFF,             /* everyone */
+               0x3F              /* vector 0x3F */
+               | LAPIC_ICR_LEVELASSERT /* always assert */
+               | LAPIC_ICR_DM_LOGICAL  /* logical destination */
+               | 0x0                   /* fixed delivery mode */
+               );
+    }
     asm volatile("pause");
   }
 }
