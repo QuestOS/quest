@@ -446,10 +446,12 @@ interruptIGN:
 
         .global interrupt3f
 interrupt3f:
+        pushal
 	SREGS_SAVE
 	call _interrupt3f
-	SREGS_RESTORE
-        
+	REGS_RESTORE
+        popal
+        iret
         
 #define INT(n)                \
         .globl interrupt##n;  \
