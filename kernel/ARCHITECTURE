@@ -1,0 +1,59 @@
+Assorted notes about Quest:
+~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+Boot:
+
+Multiboot-compliant bootloader.  Sets up the first 4 entries in GDT
+the usual way: kernel code, kernel data, user code, user data.
+Enables 4MB pages and uses that to map the first 4MB, and APICs @ 0xFEC.
+Writes entry for the kernel page-table at 0xFFC.
+
+Calls into init.c: init().  Uses the Multiboot structure to setup the
+free-frame bitmap.  Uses the "loadable module" Multiboot specification
+to load additional functionality.  Initializes SMP, sound, filesystem.
+Loads a dummy TSS and queues the shell module on the scheduler's
+runqueue.  Calls schedule().
+
+
+SMP:
+
+smp_init() probes for the Intel Multiprocessor Specification table and
+parses it.  Then it boots the Application Processors (AP) with the
+code in boot-smp.S and they enter ap_init() in smp.c.  They re-use the
+Bootstrap Processor's (BSP) GDT and IDT.  Local APICs are configured
+so that each processor has a logical destination address mask 0x1,
+0x2, 0x4, up to 0x80 (so MAX_CPUS = 8 for now).  
+
+smp_enable() will disable the 8529A and enable the IO-APIC with
+entries programmed such that IRQ0 maps to vector 0x20, IRQ1 to vector
+0x21, and so on.  Except that IRQ2 is disabled for now because it
+seems to be firing constantly for no reason.
+
+This is not ideal, the choice of vectors should use more priority
+levels.  CPUs assign priority to an interrupt vector based on the most
+significant 4-bits, so vector 0xE0 and 0xE4 have the same priority.  A
+website suggests mapping two IRQs per priority level.
+
+Each CPU can set the Task Priority Register (TPR) in its LAPIC to mask
+out interrupts.  Right now the BSP has TPR=0x0 and the APs have
+TPR=0x20.  So the BSP is receiving pretty much every interrupt
+exclusively.
+
+End-of-Interrupt (EOI) is now in a function send_eoi() which either
+prods the 8259A or the LAPIC depending on whether MP is enabled.
+
+Each CPU also gets its own DummyTSS entry, so it can save state.
+
+The IO-APIC and Local APIC registers are memory-mapped by default to
+0xFEC00000 and 0xFEE00000 so these regions need to be identity mapped
+in the page directory.  This is accomplished with a 4MB page @ entry
+0xFEC.  Whenever new page directories are created this needs to be
+setup along with the kernel page tables.  I modified exec and
+LoadModule accordingly.
+
+The Intel MP tables (or the ACPI tables) are supposed to specify the
+configuration of the IO-APIC(s) and this needs to be handled properly.
+Right now I just assume its the default, with no devices of interest.
+
+There's a rudimentary implementation of spinlocks in spinlock.h using
+atomic operations defined in atomic.h.
