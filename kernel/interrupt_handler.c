@@ -289,7 +289,9 @@ pid_t _fork ( unsigned ebp, unsigned *esp ) {
 
   for ( i = 0; i < 0x3FF; i++ ) { /* Walk user-level regions of pgd */
     
-    if ( virt_addr[i] ) {	/* Valid page table found */
+    if ( virt_addr[i] 	/* Valid page table found */
+         && i != 0x3FB  /* skip APIC mappings */
+         ) {
       child_page_table = MapVirtualPage( (tmp_page_table = AllocatePhysicalPage()) | 3 );
       parent_page_table = MapVirtualPage( (virt_addr[i] & 0xFFFFF000) | 3 );
       
@@ -328,6 +330,7 @@ pid_t _fork ( unsigned ebp, unsigned *esp ) {
 
   /* Copy kernel mappings into child's page directory */
   child_directory[1023] = virt_addr[1023];
+  child_directory[1019] = virt_addr[1019];
 
   UnmapVirtualPage( virt_addr );
 
@@ -658,15 +661,12 @@ void __exit( int status ) {
        space.  We will pass the exit status to the parent process in the
        future. */
 
-    bochs_instr_trace();	/* --??-- */
-    bochs_regs_trace();		/* --??-- */
-
     phys_addr = get_pdbr();
     virt_addr = MapVirtualPage( (unsigned)phys_addr | 3 );
 
     /* Free user-level virtual address space */
     for( i = 0; i < 1023; i++ ) {
-      if( virt_addr[i] ) { 	/* Free page directory entry */
+      if( virt_addr[i] && i != 0x3FB ) { /* Free page directory entry if not APIC mapping */
 	tmp_page = MapVirtualPage( virt_addr[i] | 3 );
 	for( j = 0; j < 1024; j++ ) {
 	  if( tmp_page[j] ) { /* Free frame */
