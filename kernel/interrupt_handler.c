@@ -289,9 +289,8 @@ pid_t _fork ( unsigned ebp, unsigned *esp ) {
 
   for ( i = 0; i < 0x3FF; i++ ) { /* Walk user-level regions of pgd */
     
-    if ( virt_addr[i] 	/* Valid page table found */
-         && i != 0x3FB  /* skip APIC mappings */
-         ) {
+    if ( virt_addr[i] && /* Valid page table found, and */
+         !(virt_addr[i] & 0x80) ) { /* not 4MB page */
       child_page_table = MapVirtualPage( (tmp_page_table = AllocatePhysicalPage()) | 3 );
       parent_page_table = MapVirtualPage( (virt_addr[i] & 0xFFFFF000) | 3 );
       
@@ -666,7 +665,8 @@ void __exit( int status ) {
 
     /* Free user-level virtual address space */
     for( i = 0; i < 1023; i++ ) {
-      if( virt_addr[i] && i != 0x3FB ) { /* Free page directory entry if not APIC mapping */
+      if( virt_addr[i] &&       /* If valid entry, and */
+          !(virt_addr[i] & 0x80) ) { /* not 4MB page then */
 	tmp_page = MapVirtualPage( virt_addr[i] | 3 );
 	for( j = 0; j < 1024; j++ ) {
 	  if( tmp_page[j] ) { /* Free frame */
