@@ -19,7 +19,8 @@ extern unsigned ul_tss[][1024];
 /* Duplicate parent TSS -- used with fork */
 static unsigned short DuplicateTSS( unsigned ebp, 
 				    unsigned *esp,
-				    unsigned child_directory ) {
+				    unsigned child_directory, 
+                                    unsigned esp0 ) {
 
     int i;
     descriptor *ad = (descriptor *) KERN_GDT; 
@@ -81,7 +82,7 @@ static unsigned short DuplicateTSS( unsigned ebp,
     pTSS->usGS = 0x23;
     pTSS->usIOMap = 0xFFFF;
     pTSS->usSS0 = 0x10;		/* Kernel stack segment */
-    pTSS->ulESP0 = (unsigned)KERN_STK + 0x1000;
+    pTSS->ulESP0 = esp0;
 
     /* Return the index into the GDT for the segment */
     return i << 3;
@@ -260,13 +261,17 @@ void HandleSyscall0 (int eax, int ebx) {
 }
 
 
+/* so if I create a vfork call then I need to make sure
+ * page-directories are not necessarily freed on _exit because other
+ * processes can share them. */
+
 /* Used for handling fork calls
  *
  * esp argument used to find info about parent's eip and other registers
  * inherited by child
  */
-pid_t _fork ( unsigned ebp, unsigned *esp ) {
-
+pid_t _fork ( unsigned flag, unsigned ebp, unsigned *esp ) {  
+  /* flag == 1 means vfork(), ie, shared page directory with parent */
   unsigned short child_gdt_index;
   void *phys_addr;
   unsigned *virt_addr;
@@ -276,12 +281,22 @@ pid_t _fork ( unsigned ebp, unsigned *esp ) {
   unsigned tmp_dir, tmp_page, tmp_page_table;
   unsigned priority;
 
-  child_directory = MapVirtualPage( (tmp_dir = AllocatePhysicalPage()) | 3 );
+  if (flag == 0)
+    /* fork() */
+    child_directory = MapVirtualPage( (tmp_dir = AllocatePhysicalPage()) | 3 );
+  else
+    /* vfork() */
+    tmp_dir = get_pdbr();
 
-  child_gdt_index = DuplicateTSS( ebp, esp, tmp_dir );
+  child_gdt_index = DuplicateTSS( ebp, esp, tmp_dir, 
+                                  (unsigned)KERN_STK + 
+                                  /* hack */
+                                  (flag == 0 ? 0x1000 : 0x800) );
+
+  if (flag == 1) goto finish;
 
   /* Allocate physical memory for new address space 
-   *
+   * (only if fork())
    */
   phys_addr = get_pdbr();	/* Parent page dir base address */
 
@@ -327,17 +342,22 @@ pid_t _fork ( unsigned ebp, unsigned *esp ) {
     }
   }
 
-  /* Copy kernel mappings into child's page directory */
+  /* Copy kernel code and APIC mappings into child's page directory */
   child_directory[1023] = virt_addr[1023];
   child_directory[1019] = virt_addr[1019];
 
   UnmapVirtualPage( virt_addr );
 
+ finish:
+
   /* Inherit priority from parent */
   priority = LookupTSS( child_gdt_index )->priority = LookupTSS( str() )->priority;
 
   runqueue_append( priority, child_gdt_index );
-  
+
+  if (flag == 1)                /* vfork() */
+    _waitpid (child_gdt_index);
+
   /* --??-- Duplicate any other parent resources as necessary */
 
   return child_gdt_index;	/* Use this index for child ID for now */
@@ -655,33 +675,45 @@ void __exit( int status ) {
     unsigned *kern_page_table = (unsigned *) KERN_PGT;
     quest_tss *ptss;
     int waiter;
+    int pdb_refs = 0;
     
     /* For now, simply free up memory used by calling process address
        space.  We will pass the exit status to the parent process in the
        future. */
 
     phys_addr = get_pdbr();
-    virt_addr = MapVirtualPage( (unsigned)phys_addr | 3 );
 
-    /* Free user-level virtual address space */
-    for( i = 0; i < 1023; i++ ) {
-      if( virt_addr[i] &&       /* If valid entry, and */
-          !(virt_addr[i] & 0x80) ) { /* not 4MB page then */
-	tmp_page = MapVirtualPage( virt_addr[i] | 3 );
-	for( j = 0; j < 1024; j++ ) {
-	  if( tmp_page[j] ) { /* Free frame */
-	    if( (j < 0x200) || (j > 0x20F) || i ) {/* --??-- Skip releasing
-						      video memory */
-	      BITMAP_SET( mm_table, tmp_page[j] >> 12 );
-	    }
-	  }
-	}	    
-	UnmapVirtualPage( tmp_page );
-	BITMAP_SET( mm_table, virt_addr[i] >> 12 );
+    /* scan if any other tasks share our page directory */
+    for( i = 1; i < 256; i++ ) {
+      if(  ad[ i ].fPresent ) {
+        quest_tss *qtss = LookupTSS (i << 3);
+        if (qtss && qtss->tss.pCR3 == phys_addr) pdb_refs++;
       }
     }
-    BITMAP_SET( mm_table, (unsigned)phys_addr >> 12 ); /* Free up page for page directory */
-    UnmapVirtualPage( virt_addr );
+
+    if (pdb_refs < 2) {
+      virt_addr = MapVirtualPage( (unsigned)phys_addr | 3 );
+
+      /* Free user-level virtual address space */
+      for( i = 0; i < 1023; i++ ) {
+        if( virt_addr[i] &&       /* If valid entry, and */
+            !(virt_addr[i] & 0x80) ) { /* not 4MB page then */
+          tmp_page = MapVirtualPage( virt_addr[i] | 3 );
+          for( j = 0; j < 1024; j++ ) {
+            if( tmp_page[j] ) { /* Free frame */
+              if( (j < 0x200) || (j > 0x20F) || i ) {/* --??-- Skip releasing
+                                                        video memory */
+                BITMAP_SET( mm_table, tmp_page[j] >> 12 );
+              }
+            }
+          }	    
+          UnmapVirtualPage( tmp_page );
+          BITMAP_SET( mm_table, virt_addr[i] >> 12 );
+        }
+      }
+      BITMAP_SET( mm_table, (unsigned)phys_addr >> 12 ); /* Free up page for page directory */
+      UnmapVirtualPage( virt_addr );
+    }
 
     /* --??-- Need to release TSS used by exiting process. Here, we need a way
        to index GDT based on current PID returned from original fork call.

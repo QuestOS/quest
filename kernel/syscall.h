@@ -29,7 +29,16 @@ static inline int fork ( void ) {
 
   int retval;
 
-  asm volatile( "int $0x31\n" : "=a" (retval) : );
+  asm volatile( "int $0x31\n" : "=a" (retval) : "a" (0) );
+
+  return retval;
+}
+
+static inline int vfork ( void ) {
+
+  int retval;
+
+  asm volatile( "int $0x31\n" : "=a" (retval) : "a" (1) );
 
   return retval;
 }
