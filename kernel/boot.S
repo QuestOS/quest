@@ -221,7 +221,7 @@ int_table:
 	.long interruptc
 	.long interruptd
 	.long interrupte
-	.long interruptf
+	.long interruptIGN      /* spurious interrupt */
 	.long interrupt10
 	.long interrupt11
 	.long interrupt12
@@ -255,7 +255,7 @@ int_table:
 	.long interrupt2b
 	.long interrupt2c
 	.long interrupt2d
-	.long interrupt2e
+	.long interruptIGN      /* not sure why 2E gets triggered sometimes */
 	.long interrupt2f
 
 	/* interrupts 0x30-0x3F - system calls */
