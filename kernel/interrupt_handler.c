@@ -648,6 +648,10 @@ void _timer( void ) {
   schedule(); /* find a task to execute */
 }
 
+void _keyboard( void ) {
+  /* ignore for now */
+}
+
 
 void __exit( int status ) {
 

@@ -74,6 +74,7 @@
 	.globl syscallb
 	.globl syscallc
 	.globl timer
+        .globl keyboard
 	.globl soundcard
 	
 	/* FIXME these are temporary debugging aids... ultimately these
@@ -352,9 +353,10 @@ syscall7:
 syscall8:
 	SREGS_SAVE
 
+        pushl %edx
 	pushl %eax
 	call _meminfo
-	addl $4, %esp
+	addl $8, %esp
 	
 	SREGS_RESTORE
 
@@ -415,6 +417,18 @@ timer:
 
 	iret
 
+/* IRQ1 - keyboard (bochs behavior is different from qemu, atm) */
+keyboard:
+        pushal
+        SREGS_SAVE
+
+        call _keyboard
+
+        REGS_RESTORE
+        popal
+        iret
+        
+        
 /* IRQ5 - soundcard --??-- in future, don't hardcode to specific IRQ */
 soundcard:	
 	pushal
