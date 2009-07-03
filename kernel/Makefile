@@ -5,7 +5,7 @@ OBJS = boot.o init.o boot-smp.o smp.o interrupt.o interrupt_handler.o \
 	kernel.o diskio.o cpuid.o \
 	fsys_ext2fs.o sched.o sound.o
 MNT_POINT=/mnt/quest
-PROGS = quest terminal_server shell exec race test
+PROGS = quest terminal_server shell exec race test1 test2 test3
 
 all: $(PROGS)
 

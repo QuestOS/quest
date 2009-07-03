@@ -1,5 +1,5 @@
 # display_library: term
-display_library: x # , options="gui_debug"
+display_library: x , options="gui_debug"
 megs: 32
 boot: disk
 ata0-master: type=disk, mode=flat, path="c.img", cylinders=60, heads=16, spt=63
