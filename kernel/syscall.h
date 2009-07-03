@@ -99,7 +99,7 @@ static inline unsigned meminfo( void ) {
 
   unsigned c;
 
-  asm volatile( "int $0x38\n" : "=a" (c) : );
+  asm volatile( "int $0x38\n" : "=a" (c) : "a" (0) );
 
   return c;
 }

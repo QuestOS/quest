@@ -631,15 +631,18 @@ int _uname( char *name ) {
 }
 
 
-int _meminfo( void ) {
+unsigned _meminfo( unsigned eax ) {
 
   int i, j = 0;
 
-  for( i = 0; i < mm_limit; i++ )
-    if( BITMAP_TST( mm_table, i ))
-      j++;
-  
-  return j << 12;
+  switch(eax) {
+  case 0:
+    for( i = 0; i < mm_limit; i++ )
+      if( BITMAP_TST( mm_table, i ))
+        j++;
+    
+    return j << 12;
+  }
 }
 
 

@@ -353,7 +353,9 @@ syscall7:
 syscall8:
 	SREGS_SAVE
 
+	pushl %eax
 	call _meminfo
+	addl $4, %esp
 	
 	SREGS_RESTORE
 
