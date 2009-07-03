@@ -277,9 +277,8 @@ syscall1:
 	             */
 
 	pushl %ebp  /* Also needed to populate child TSS */
-        pushl %eax  /* fork or vfork */
 	call _fork
-	addl $12, %esp
+	addl $8, %esp
 	
 	SREGS_RESTORE
 

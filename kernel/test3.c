@@ -21,7 +21,7 @@ void _start() {
   int pid;
   int var = 0;
 
-  if ((pid=vfork ())) {         /* vfork really */
+  if ((pid=fork ())) { 
     if (waitpid(pid) < 0) {
       print("WAITPID ERROR\n");
     }
