@@ -95,6 +95,39 @@ static inline unsigned meminfo( void ) {
   return c;
 }
 
+static inline unsigned shared_mem_alloc( void ) {
+  unsigned c;
+
+  asm volatile( "int $0x38\n" : "=a" (c) : "a" (1) );
+
+  return c;
+}
+
+static inline void *shared_mem_attach( unsigned id ) {
+  unsigned c;
+
+  asm volatile( "int $0x38\n" : "=a" (c) : "a" (2), "d" (id) );
+
+  return (void *)c;
+}
+
+static inline unsigned shared_mem_detach( void *addr ) {
+  unsigned c;
+
+  asm volatile( "int $0x38\n" : "=a" (c) : "a" (3), "d" ((unsigned)addr) );
+
+  return c;
+}
+
+static inline unsigned shared_mem_free( unsigned id ) {
+  unsigned c;
+
+  asm volatile( "int $0x38\n" : "=a" (c) : "a" (4), "d" (id) );
+
+  return c;
+}
+
+
 
 static inline unsigned time( void ) {
 

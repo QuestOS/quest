@@ -611,17 +611,79 @@ int _uname( char *name ) {
 }
 
 
-unsigned _meminfo( unsigned eax ) {
+unsigned _meminfo( unsigned eax, unsigned edx ) {
 
   int i, j = 0;
 
+  unsigned frame;
+  unsigned pgd;
+  unsigned *pgd_virt, *ptab1_virt;
+  unsigned addr;
+
   switch(eax) {
   case 0:
-    for( i = 0; i < mm_limit; i++ )
-      if( BITMAP_TST( mm_table, i ))
+    for(i = 0; i < mm_limit; i++)
+      if(BITMAP_TST(mm_table, i))
         j++;
     
     return j << 12;
+  case 1: {
+    void *virt;
+    /* shared_mem_alloc() */
+    frame = AllocatePhysicalPage();
+    if (frame < 0) return -1;
+    /* use 'frame' as identifier of shared memory region
+     * obvious security flaw -- but its just for testing, atm */
+    virt = MapVirtualPage (frame | 3);
+    memset((void *)virt, 0, 0x1000);
+    UnmapVirtualPage (virt);
+    return frame;
+  }
+  case 2: {
+    /* shared_mem_attach() */
+    frame = edx;
+    if ((frame >> 12) >= mm_limit)
+      /* invalid frame */
+      return -1;
+    if (BITMAP_TST(mm_table, frame >> 12))
+      /* unallocated frame */
+      return -1;
+    /* Now find a userspace page to map to this frame */
+    pgd = (unsigned)get_pdbr();
+    pgd_virt = MapVirtualPage (pgd | 3);
+    ptab1_virt = MapVirtualPage (pgd_virt[0] | 3);
+    /* Going to assume I can just use the first page table for this */
+    addr = -1;
+    for (i = 1; i < 1024; i++) {
+      if ((ptab1_virt[i] & 0x1) == 0) {
+        /* found empty entry */
+        ptab1_virt[i] = frame | 7;
+        addr = i << 12;
+        break;
+      }
+    }
+    UnmapVirtualPage (ptab1_virt);
+    UnmapVirtualPage (pgd_virt);
+    return addr;
+  }
+  case 3: {
+    /* shared_mem_detach() */
+    i = (edx >> 12) & 0x3FF;    /* index into page table */
+    pgd = (unsigned)get_pdbr();
+    pgd_virt = MapVirtualPage (pgd | 3);
+    ptab1_virt = MapVirtualPage (pgd_virt[0] | 3);
+    ptab1_virt[i] = 0;
+    UnmapVirtualPage (ptab1_virt);
+    UnmapVirtualPage (pgd_virt);
+    return 0;
+  }
+  case 4: {
+    /* shared_mem_free() */
+    frame = edx;
+    /* again, this is insecure atm */
+    BITMAP_SET(mm_table, frame >> 12);
+    return 0;
+  }
   default:
     return -1;
   }

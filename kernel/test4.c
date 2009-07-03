@@ -22,6 +22,7 @@ void _start() {
   int info = meminfo ();
   unsigned shared_id;
   int *shared_mem;
+  int i;
 
   print("MEMINFO: ");
   putx(info);
@@ -35,13 +36,11 @@ void _start() {
   putx(shared_id);
   print("\n");
 
-  
-  
+  /* try to test a race condition */
+
+#define ITERATIONS 100000
   if ((pid=fork ())) { 
     /* PARENT */
-    if (waitpid(pid) < 0) {
-      print("WAITPID ERROR\n");
-    }
 
     shared_mem = shared_mem_attach(shared_id);
     if((unsigned)shared_mem == -1) {
@@ -52,11 +51,19 @@ void _start() {
     putx((unsigned)shared_mem);
     print("\n");
 
-    print("PARENT (");
+    for (i=0; i<ITERATIONS; i++)
+      (*shared_mem)--;
+    
+    if (waitpid(pid) < 0) {
+      print("WAITPID ERROR\n");
+    }
+
+    print("value = ");
     putx(*shared_mem);
-    print(")\n");
+    print("\n");
 
     shared_mem_detach(shared_mem);
+
     shared_mem_free (shared_id);
     _exit(0);
 
@@ -71,7 +78,8 @@ void _start() {
     putx((unsigned)shared_mem);
     print("\n");
 
-    *shared_mem = 1;
+    for (i=0;i<ITERATIONS;i++)
+      (*shared_mem)++;
 
     shared_mem_detach(shared_mem);
 
