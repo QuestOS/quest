@@ -229,6 +229,27 @@ void initialise_pit ( void ) {
   outb( ( PIT_FREQ / HZ ) >> 8, 0x40 ); /* counter 0 high byte */
 }
 
+void initialize_serial_port(void) {
+  char msg[] = "COM1 Initialized.\n", *ptr = msg;
+  outb(0, PORT1 + 1);   /* Turn off interrupts - Port1 */
+
+  /*         PORT 1 - Communication Settings         */
+
+  outb(0x80, PORT1 + 3);  /* SET DLAB ON */
+  outb(0x03, PORT1 + 0);  /* Set Baud rate - Divisor Latch Low Byte */
+                          /* Default 0x03 =  38,400 BPS */
+                          /*         0x01 = 115,200 BPS */
+                          /*         0x02 =  57,600 BPS */
+                          /*         0x06 =  19,200 BPS */
+                          /*         0x0C =   9,600 BPS */
+                          /*         0x18 =   4,800 BPS */
+                          /*         0x30 =   2,400 BPS */
+  outb(0x00, PORT1 + 1);  /* Set Baud rate - Divisor Latch High Byte */
+  outb(0x03, PORT1 + 3);  /* 8 Bits, No Parity, 1 Stop Bit */
+  outb(0xC7, PORT1 + 2);  /* FIFO Control Register */
+  outb(0x0B, PORT1 + 4);  /* Turn on DTR, RTS, and OUT2 */
+  for(; *ptr; ptr++) outb(*ptr, PORT1); 
+}
 
 void init( multiboot* pmb ) {
 
@@ -240,6 +261,11 @@ void init( multiboot* pmb ) {
   Elf32_Ehdr *pe;
   char brandstring[I386_CPUID_BRAND_STRING_LENGTH];
   
+  /* Initialize Bochs I/O debugging */
+  outw (0x8A00, 0x8A00);
+
+  initialize_serial_port();
+
   /* clear screen */
   for( i = 0; i < 80 * 25; i++ ) {
 	pchVideo[ i * 2 ] = ' ';

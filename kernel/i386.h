@@ -30,6 +30,8 @@
 #define PTE_AVAIL2 0x800
 #define PTE_FRAME 0xFFFFF000 /* page frame address */
 
+#define PORT1 0x03F8            /* COM1 */
+
 
 typedef struct _tss {
     /* 80386 hardware data */
