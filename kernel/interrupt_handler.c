@@ -20,12 +20,17 @@ extern unsigned ul_tss[][1024];
 /* Duplicate parent TSS -- used with fork */
 static unsigned short DuplicateTSS( unsigned ebp, 
 				    unsigned *esp,
+                                    unsigned child_eip,
+                                    unsigned child_ebp,
+                                    unsigned child_esp,
+                                    unsigned child_eflags,
 				    unsigned child_directory ) {
 
     int i;
     descriptor *ad = (descriptor *) KERN_GDT; 
     tss *pTSS;
     unsigned pa;
+
 
     pa = AllocatePhysicalPage(); /* --??-- For now, whole page per tss */
                                  /* --??-- Error checking in the future */
@@ -66,23 +71,21 @@ static unsigned short DuplicateTSS( unsigned ebp,
 
     pTSS->pCR3 = (void *) child_directory;
 
-    /* Inherit these fields from parent */
-    pTSS->ulEIP = esp[2]; /* See pp 5-15 IA-32 vol 3: This accesses the
-			   * parent's return address on the kernel stack
-			   * after entry via interrupt.S
-			   */
-    pTSS->ulEFlags = esp[4] & 0xFFFFBFFF; /* Disable NT flag */
-    pTSS->ulESP = esp[5];
-    pTSS->ulEBP = ebp;		/* Inherited from parent */
-    pTSS->usES = 0x23;		/* --??-- boot.S defaults for ES,DS,FS & GS */
-    pTSS->usCS = esp[3];
-    pTSS->usSS = esp[6];	
-    pTSS->usDS = 0x23;
-    pTSS->usFS = 0x23;
-    pTSS->usGS = 0x23;
+    /* The child will begin running at the specified EIP */
+    pTSS->ulEIP = child_eip;
+    pTSS->ulEFlags = child_eflags & 0xFFFFBFFF; /* Disable NT flag */
+    pTSS->ulESP = child_esp;
+    pTSS->ulEBP = child_ebp;
+    pTSS->usES = 0x10; 
+    pTSS->usCS = 0x08;
+    pTSS->usSS = 0x10;
+    pTSS->usDS = 0x10;
+    pTSS->usFS = 0x10;
+    pTSS->usGS = 0x10;
     pTSS->usIOMap = 0xFFFF;
     pTSS->usSS0 = 0x10;		/* Kernel stack segment */
     pTSS->ulESP0 = (unsigned)KERN_STK + 0x1000;
+
 
     /* Return the index into the GDT for the segment */
     return i << 3;
@@ -287,12 +290,45 @@ pid_t _fork ( unsigned ebp, unsigned *esp ) {
   void *child_page, *parent_page;
   unsigned tmp_dir, tmp_page, tmp_page_table;
   unsigned priority;
+  unsigned eflags, eip, this_esp, this_ebp;
 
   lock_kernel();
 
+  /* is this a leak? */
   child_directory = MapVirtualPage( (tmp_dir = AllocatePhysicalPage()) | 3 );
 
-  child_gdt_index = DuplicateTSS( ebp, esp, tmp_dir );
+  /* 
+   * This ugly bit of assembly is designed to obtain the value of EIP
+   * and allow the `call 1f' to return twice -- first for the parent to
+   * obtain EIP, and the second time for the child when it begins running.
+   *
+   */
+
+  asm volatile ("call 1f\n"
+                "movl $0, %0\n"
+                "jmp 2f\n"
+                "1:\n"
+                "movl (%%esp), %0\n"
+                "addl $4, %%esp\n"
+                "2:\n"
+                : "=r" (eip) :);
+
+  if (eip == 0) {
+    /* We are in the child process now */
+    unlock_kernel();
+    return 0; 
+  }
+
+  asm volatile ("movl %%ebp, %0\n"
+                "movl %%esp, %1\n"
+                "pushfl\n"
+                "pop %2\n"
+                : "=r" (this_ebp), "=r" (this_esp), "=r" (eflags) :);
+
+  /* Create a child task which is the same as this task except that it will
+   * begin running at the program point after `call 1f' in the above inline asm. */
+
+  child_gdt_index = DuplicateTSS( ebp, esp, eip, this_ebp, this_esp, eflags, tmp_dir );
 
   /* Allocate physical memory for new address space 
    *
@@ -315,7 +351,7 @@ pid_t _fork ( unsigned ebp, unsigned *esp ) {
 	  parent_page = MapVirtualPage( (parent_page_table[j] & 0xFFFFF000) | 3 );
 
 	  /* --??-- TODO: Copy-on-write style forking and support
-	   for physical page frame sharing */
+             for physical page frame sharing */
 	  memcpy( child_page, parent_page, 0x1000 );
 	  
 	  child_page_table[j] = tmp_page | 
@@ -744,7 +780,7 @@ void _timer( void ) {
      interrupts */
   send_eoi ();
 
-  send_ipi(0xFF, 
+  send_ipi(0x01, 
            0x3E              /* vector 0x3E */
            | LAPIC_ICR_LEVELASSERT /* always assert */
            | LAPIC_ICR_DM_LOGICAL  /* logical destination */

@@ -255,7 +255,19 @@ interrupt13:
 	REGS_RESTORE
 	addl $8, %esp
 	iret 			
+
 	
+    /* Handler's Stack: (Figure 5-4, Intel Manual vol. 3)
+     *
+     * esp[6]: SS
+     * esp[5]: ESP
+     * esp[4]: EFLAGS
+     * esp[3]: CS 
+     * esp[2]: EIP 
+     * esp[1]: ERROR CODE
+     *
+     */
+
 
 /* Need to setup syscall stubs */
 /* syscall0 is a putchar style call to a video server */ 
@@ -276,6 +288,7 @@ syscall1:
 	             * duplicate parent register values
 	             * See DuplicateTSS() for more info
 	             */
+        
 
 	pushl %ebp  /* Also needed to populate child TSS */
 	call _fork
@@ -539,4 +552,3 @@ INT(3a)
 INT(3b)
 INT(3c)
 INT(3d)
-

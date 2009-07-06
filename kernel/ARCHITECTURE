@@ -57,3 +57,17 @@ Right now I just assume its the default, with no devices of interest.
 
 There's a rudimentary implementation of spinlocks in spinlock.h using
 atomic operations defined in atomic.h.
+
+Assertion: whenever a process is put back on the runqueue, it has
+first grabbed the kernel lock.  Therefore, whenever it wakes up again,
+it should release the kernel lock.  Effectively, while one process
+grabs the lock, then a task switch happens, the new task will release
+the lock.
+
+I've adjusted _fork so that when it creates a new TSS, it starts off
+in kernel land instead of jumping directly to userspace.  It can test
+whether the child is the current task, in which case it just unlocks
+the kernel and then proceeds to IRET to userspace.
+
+Now, whenever the kernel invokes schedule() to sleep, whatever wakes
+up will unlock the kernel.

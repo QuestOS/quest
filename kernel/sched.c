@@ -78,6 +78,7 @@ extern void locked_schedule( void ) {
       return;
     }
 
+#if 0
     com1_puts("CPU "); com1_putx(LAPIC_get_physical_ID());
     com1_puts(" jmp_gate: "); com1_putx(next); 
     {                           /* print runqueue to com1 */
@@ -85,14 +86,15 @@ extern void locked_schedule( void ) {
       int sel = runqueue[prio];
       while(sel) {
         tssp = LookupTSS(sel);
-        com1_putx(sel); com1_putc(' ');
+        com1_putc(' '); com1_putx(sel);
         sel = tssp->next;
       }
     }
     com1_putc('\n');
+#endif
 
-    spinlock_unlock(&kernel_lock); 
     jmp_gate( next );
+    spinlock_unlock(&kernel_lock); 
   }
   else {			/* Replenish timeslices for expired
 				   tasks */

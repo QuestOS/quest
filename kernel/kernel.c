@@ -254,7 +254,6 @@ extern quest_tss *LookupTSS( unsigned short selector ) {
 
 void stacktrace(void) {
   unsigned esp,ebp;
-  int i;
   extern void com1_putc(char);
   extern void com1_puts(char *);
   extern void com1_putx(unsigned long);

@@ -415,9 +415,11 @@ void init( multiboot* pmb ) {
 
   ltr( dummyTSS_selector[0] );
 
-  runqueue_append( LookupTSS( tss[ 0 ] )->priority, tss[ 0 ] );	/* Shell module */
+  //  runqueue_append( LookupTSS( tss[ 0 ] )->priority, tss[ 0 ] );	/* Shell module */
 
   smp_enable();
 
-  schedule();
+  // schedule();
+  jmp_gate(tss[0]);             /* Just switch to the Shell module task right away */
+  /* And never come back. */
 }
