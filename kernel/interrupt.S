@@ -460,6 +460,24 @@ interrupt:
 interruptIGN:
 	iret
 
+        .global interrupt2e
+interrupt2e:
+        pushal
+	SREGS_SAVE
+	call send_eoi
+	REGS_RESTORE
+        popal
+        iret
+
+        .global interrupt3e
+interrupt3e:
+        pushal
+	SREGS_SAVE
+	call _interrupt3e
+	REGS_RESTORE
+        popal
+        iret
+
         .global interrupt3f
 interrupt3f:
         pushal
@@ -506,7 +524,6 @@ INT(2a)
 INT(2b)
 INT(2c)
 INT(2d)
-INT(2e)
 INT(2f)
 INT(30)
 INT(31)
@@ -522,4 +539,4 @@ INT(3a)
 INT(3b)
 INT(3c)
 INT(3d)
-INT(3e)
+

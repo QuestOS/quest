@@ -51,7 +51,6 @@ BYTE CPU_to_APIC[MAX_CPUS];
 BYTE APIC_to_CPU[MAX_CPUS];
 
 static BYTE checksum(BYTE *, int);
-static int send_ipi(DWORD, DWORD);
 static int process_mp_fp(struct mp_fp *);
 static int process_mp_config(struct mp_config *);
 static int add_processor(struct mp_config_processor_entry *);
@@ -297,7 +296,7 @@ static BYTE checksum(BYTE *ptr, int length) {
   return sum;
 }
 
-static int send_ipi(DWORD dest, DWORD v) {
+int send_ipi(DWORD dest, DWORD v) {
   int to, send_status;
 
   asm volatile ("pushfl");
@@ -466,7 +465,7 @@ void ap_init(void) {
   int phys_id, log_dest, i=0,j=0;
   /* Setup the LAPIC */
 
-  MP_LAPIC_WRITE(LAPIC_TPR, 0x20); /* inhibit softint delivery */
+  MP_LAPIC_WRITE(LAPIC_TPR, 0x20); 
   MP_LAPIC_WRITE(LAPIC_LVTT, 0x10000); /* disable timer int */
   MP_LAPIC_WRITE(LAPIC_LVTPC, 0x10000); /* disable perf ctr int */
   MP_LAPIC_WRITE(LAPIC_LVT0, 0x08700);  /* enable normal external ints */

@@ -9,6 +9,7 @@
 #include "elf.h"
 #include "filesys.h"
 #include "smp.h"
+#include "apic.h"
 
 static char kernel_ver[] = "0.1a";
 char *kernel_version = kernel_ver;
@@ -202,6 +203,7 @@ extern void HandleInterrupt( unsigned long fs_gs, unsigned long ds_es,
      ******************************************************/
 }
 
+
 extern void _interrupt3f(void) {
   BYTE phys_id = LAPIC_get_physical_ID();
   spinlock_lock(&screen_lock);
@@ -226,6 +228,8 @@ void HandleSyscall0 (int eax, int ebx) {
   /* NB: The code below relies on atomic execution.  Currently, that
      atomicity is guaranteed by assuming we are running on a
      uniprocessor with interrupts disabled. */
+  
+  lock_kernel();
 
   if( pTSS->busy ) {
       /* somebody else is already using the server; block */
@@ -233,19 +237,25 @@ void HandleSyscall0 (int eax, int ebx) {
 						  queue -- this operation
 						  must be atomic with the
 						  busy check above */
-      schedule();
+      locked_schedule();
       /* We can now safely assume that we have exclusive access to the
 	 server (since the only way we could possibly have woken up after
 	 the schedule() call is by the previous head task placing us on
 	 the run queue -- see below). */
+      lock_kernel();            /* I forgot to insert this call --
+                                 * could have been checked statically */
   } else
       pTSS->busy = 1; /* mark the server busy -- this set must be atomic
 			 with the test above */
 
   pTSS->tss.ulEBX = ebx; /* pass arg in EBX from client to server */
-	  	  
+
+  unlock_kernel();
+
   call_gate( 0x30 ); /* --??-- Hard-coded for the segment selector for
 			terminal server task */
+
+  lock_kernel();
 
   if( ( head = queue_remove_head( &pTSS->waitqueue ) ) )
       /* Somebody else is waiting for the server -- wake them up (and leave
@@ -257,6 +267,8 @@ void HandleSyscall0 (int eax, int ebx) {
 	 Clearing this flag must be atomic with the queue_remove_head()
 	 check. */
       pTSS->busy = 0;
+
+  unlock_kernel();
 }
 
 
@@ -275,6 +287,8 @@ pid_t _fork ( unsigned ebp, unsigned *esp ) {
   void *child_page, *parent_page;
   unsigned tmp_dir, tmp_page, tmp_page_table;
   unsigned priority;
+
+  lock_kernel();
 
   child_directory = MapVirtualPage( (tmp_dir = AllocatePhysicalPage()) | 3 );
 
@@ -340,6 +354,8 @@ pid_t _fork ( unsigned ebp, unsigned *esp ) {
   
   /* --??-- Duplicate any other parent resources as necessary */
 
+  unlock_kernel();
+
   return child_gdt_index;	/* Use this index for child ID for now */
 }
 
@@ -381,6 +397,8 @@ int _exec( char *filename, char *argv[], unsigned *curr_stack ) {
   int i, j, c;
   char command_args[80];
 
+  lock_kernel();
+
   /* --??-- Checks should be added here for valid argv[0] etc...
      Allocate space for argument vector passed via exec call.
      Right now, assume max size for prog name and arguments.
@@ -393,6 +411,7 @@ int _exec( char *filename, char *argv[], unsigned *curr_stack ) {
     BITMAP_SET( mm_table, phys_addr >> 12 );
     UnmapVirtualPage( plPageDirectory );
     UnmapVirtualPage( frame_ptr );
+    unlock_kernel();
     return -1;
   }
 
@@ -556,6 +575,7 @@ int _exec( char *filename, char *argv[], unsigned *curr_stack ) {
   curr_stack[5] = 0x400000 - 100; /* -100 after pushing command-line args */
   curr_stack[6] = 0x23;		/* ss selector */
 
+  unlock_kernel();
   return 0;
 }
 
@@ -696,6 +716,24 @@ unsigned _time( void ) {
 }
 
 
+extern void _interrupt3e(void) {
+  BYTE phys_id = LAPIC_get_physical_ID();
+  send_eoi();
+
+  if (str () == dummyTSS_selector[phys_id]) {
+    /* CPU was idling */
+    schedule ();
+    /* if returned, go back to idling */
+    return;
+  } else {
+    lock_kernel();
+    /* add the current task to the back of the run queue */
+    runqueue_append( LookupTSS( str() )->priority, str() ); 
+    /* with kernel locked, go ahead and schedule (and unlock kernel) */
+    locked_schedule (); 
+  }
+}
+
 /* IRQ0 system timer interrupt handler: simply updates the system clock
    tick for now */
 void _timer( void ) {
@@ -706,12 +744,24 @@ void _timer( void ) {
      interrupts */
   send_eoi ();
 
-  runqueue_append( LookupTSS( str() )->priority, str() ); /* add the current task to the back of the run queue */
-  schedule(); /* find a task to execute */
+  send_ipi(0xFF, 
+           0x3E              /* vector 0x3E */
+           | LAPIC_ICR_LEVELASSERT /* always assert */
+           | LAPIC_ICR_DM_LOGICAL  /* logical destination */
+           | 0x0                   /* fixed delivery mode */
+           );
+
+
+  /***********************************************************
+   * lock_kernel();                                          *
+   * runqueue_append( LookupTSS( str() )->priority, str() ); *
+   * locked_schedule();                                      *
+   ***********************************************************/
 }
 
 void _keyboard( void ) {
   /* ignore for now */
+  send_eoi ();
 }
 
 
@@ -726,6 +776,8 @@ void __exit( int status ) {
     unsigned *kern_page_table = (unsigned *) KERN_PGT;
     quest_tss *ptss;
     int waiter;
+
+    lock_kernel();
     
     /* For now, simply free up memory used by calling process address
        space.  We will pass the exit status to the parent process in the
@@ -778,25 +830,31 @@ void __exit( int status ) {
 
     UnmapVirtualPage( ptss );
 
-    schedule();
+    locked_schedule();
 }
 
 
 extern int _waitpid( int pid ) {
 
-    quest_tss *ptss = LookupTSS( pid );
+  quest_tss *ptss;
 
-    if( ptss ) {
-	/* Destination task exists.  Add ourselves to the queue of tasks
-	   waiting for it. */
-	queue_append( &ptss->waitqueue, str() );
-	/* We have to go to sleep now -- find another task. */
-	schedule();
-	/* We have been woken up (see __exit).  Return successfully. */
-	return 0;
-    } else
-	/* Destination task does not exist.  Return an error. */
-	return -1;
+  lock_kernel();
+
+  ptss = LookupTSS( pid );
+
+  if( ptss ) {
+    /* Destination task exists.  Add ourselves to the queue of tasks
+       waiting for it. */
+    queue_append( &ptss->waitqueue, str() );
+    /* We have to go to sleep now -- find another task. */
+    locked_schedule();
+    /* We have been woken up (see __exit).  Return successfully. */
+    return 0;
+  } else {
+    unlock_kernel();
+    /* Destination task does not exist.  Return an error. */
+    return -1;
+  }
 }
 
 

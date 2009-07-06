@@ -56,6 +56,7 @@ typedef struct _quest_tss {
   int busy; /* mutex for server: when busy, clients must add themselves to
 	       waitqueue above */
   unsigned int priority;
+  int waiting;
 } quest_tss;
 
 extern char *kernel_version;
@@ -81,10 +82,17 @@ extern int _putchar( int ch );
 extern int _print( char *pch );
 extern void _putx( unsigned long l );
 
+extern void com1_putc(char);
+extern void com1_puts(char *);
+extern void com1_putx(unsigned long);
+
 extern void runqueue_append( unsigned int prio, unsigned short selector );
 extern void queue_append( unsigned short *queue, unsigned short selector );
 extern unsigned short queue_remove_head( unsigned short *queue );
 extern void schedule( void );
+extern void locked_schedule( void );
+extern void lock_kernel( void );
+extern void unlock_kernel( void );
 
 static inline void *memset( void *p, int ch, unsigned long cb ) {
 

@@ -230,7 +230,6 @@ void initialise_pit ( void ) {
 }
 
 void initialize_serial_port(void) {
-  char msg[] = "COM1 Initialized.\n", *ptr = msg;
   outb(0, PORT1 + 1);   /* Turn off interrupts - Port1 */
 
   /*         PORT 1 - Communication Settings         */
@@ -248,7 +247,7 @@ void initialize_serial_port(void) {
   outb(0x03, PORT1 + 3);  /* 8 Bits, No Parity, 1 Stop Bit */
   outb(0xC7, PORT1 + 2);  /* FIFO Control Register */
   outb(0x0B, PORT1 + 4);  /* Turn on DTR, RTS, and OUT2 */
-  for(; *ptr; ptr++) outb(*ptr, PORT1); 
+  com1_puts("COM1 initialized.\n");
 }
 
 void init( multiboot* pmb ) {

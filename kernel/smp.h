@@ -100,6 +100,7 @@ QWORD IOAPIC_read64(BYTE);
 void IOAPIC_write64(BYTE, QWORD);
 BYTE LAPIC_get_physical_ID(void);
 void send_eoi(void);
+int send_ipi(DWORD, DWORD);
 
 #endif  /* __ASSEMBLER__ */
 

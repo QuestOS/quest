@@ -38,7 +38,7 @@ void _start() {
 
   /* try to test a race condition */
 
-#define ITERATIONS 100000
+#define ITERATIONS 1000000
   if ((pid=fork ())) { 
     /* PARENT */
 

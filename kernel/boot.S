@@ -255,7 +255,7 @@ int_table:
 	.long interrupt2b
 	.long interrupt2c
 	.long interrupt2d
-	.long interruptIGN      /* not sure why 2E gets triggered sometimes */
+	.long interrupt2e      /* not sure why 2E gets triggered sometimes */
 	.long interrupt2f
 
 	/* interrupts 0x30-0x3F - system calls */

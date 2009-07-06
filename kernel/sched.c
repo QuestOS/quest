@@ -1,10 +1,13 @@
 #include "i386.h"
 #include "kernel.h"
+#include "smp.h"
 
 unsigned short runqueue[MAX_PRIO_QUEUES];
 unsigned short waitqueue[MAX_PRIO_QUEUES]; /* For tasks having expired
 					      their current quanta */
 static unsigned int runq_bitmap[( MAX_PRIO_QUEUES + 31 ) / 32];
+
+static struct spinlock kernel_lock = SPINLOCK_INIT;
  
 extern void queue_append( unsigned short *queue, unsigned short selector ) {
 
@@ -12,7 +15,7 @@ extern void queue_append( unsigned short *queue, unsigned short selector ) {
 
     /* NB: This code assumes atomic execution, and therefore cannot be
        called with interrupts enabled. */
-    
+
     tssp = LookupTSS( selector );
 
     tssp->next = 0;
@@ -29,7 +32,6 @@ extern void queue_append( unsigned short *queue, unsigned short selector ) {
 
 
 extern void runqueue_append( unsigned int prio, unsigned short selector ) {
- 
   queue_append( &runqueue[prio], selector );
   
   BITMAP_SET( runq_bitmap, prio );
@@ -42,7 +44,7 @@ extern unsigned short queue_remove_head( unsigned short *queue ) {
     
     /* NB: This code assumes atomic execution, and therefore cannot be
        called with interrupts enabled. */
-    
+
     if( !( head = *queue ) )
 	return 0;
 
@@ -53,26 +55,55 @@ extern unsigned short queue_remove_head( unsigned short *queue ) {
     return head;
 }
 
+extern void schedule ( void ) {
+  spinlock_lock(&kernel_lock);
+  locked_schedule();
+}
 
 /* Pick from the highest priority non-empty queue */
-extern void schedule( void ) {
+extern void locked_schedule( void ) {
 
   unsigned short next;
   unsigned int prio;
-    
+
   if( ( prio = bitmap_find_first_set( runq_bitmap, MAX_PRIO_QUEUES ) ) != -1) { /* Got a task to execute */
     
     next = queue_remove_head( &runqueue[prio] );
     if( !runqueue[prio] )
       BITMAP_CLR( runq_bitmap, prio );
     
-    if( next == str() )
+    if( next == str() ) {
       /* no task switch required */
+      spinlock_unlock(&kernel_lock);
       return;
-      
+    }
+
+    com1_puts("CPU "); com1_putx(LAPIC_get_physical_ID());
+    com1_puts(" jmp_gate: "); com1_putx(next); 
+    {                           /* print runqueue to com1 */
+      quest_tss *tssp;
+      int sel = runqueue[prio];
+      while(sel) {
+        tssp = LookupTSS(sel);
+        com1_putx(sel); com1_putc(' ');
+        sel = tssp->next;
+      }
+    }
+    com1_putc('\n');
+
+    spinlock_unlock(&kernel_lock); 
     jmp_gate( next );
   }
   else {			/* Replenish timeslices for expired
 				   tasks */
+    spinlock_unlock(&kernel_lock);
   }
+}
+
+void lock_kernel(void) {
+  spinlock_lock(&kernel_lock);
+}
+
+void unlock_kernel(void) {
+  spinlock_unlock(&kernel_lock);
 }

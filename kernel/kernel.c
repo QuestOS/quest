@@ -125,6 +125,27 @@ void _putx( unsigned long l ) {
 	    _putchar( '0' + li );
 }
 
+void com1_putc(char c) {
+  while(!(inb(PORT1+5) & 0x20)); /* check line status register, empty transmitter bit */
+  outb(c, PORT1);
+}
+
+void com1_puts(char *p) {
+  while (*p) 
+    com1_putc(*p++);
+}
+
+void com1_putx(unsigned long l) {
+    int i, li;
+
+    for( i = 7; i >= 0; i-- )
+	if( ( li = ( l >> ( i << 2 ) ) & 0x0F ) > 9 )
+	    com1_putc( 'A' + li - 0x0A );
+	else
+	    com1_putc( '0' + li );
+}
+
+
 
 /* Find free page in mm_table 
  *
@@ -230,3 +251,18 @@ extern quest_tss *LookupTSS( unsigned short selector ) {
 			   ( ad[ selector >> 3 ].pBase1 << 16 ) |
 			   ( ad[ selector >> 3 ].pBase2 << 24 ));    
 }
+
+void stacktrace(void) {
+  unsigned esp,ebp;
+  int i;
+  extern void com1_putc(char);
+  extern void com1_puts(char *);
+  extern void com1_putx(unsigned long);
+  asm volatile("movl %%esp, %0" : "=r"(esp));
+  asm volatile("movl %%ebp, %0" : "=r"(ebp));
+  while(ebp >= KERN_STK && ebp <= KERN_STK+0x1000) {
+    com1_putx(*((unsigned *)(ebp+4))); com1_putc('\n');
+    ebp = *((unsigned *)ebp);
+  }
+}
+
