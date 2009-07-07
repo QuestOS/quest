@@ -50,6 +50,8 @@ DWORD mp_IOAPIC_addr = IOAPIC_ADDR_DEFAULT;
 BYTE CPU_to_APIC[MAX_CPUS];
 BYTE APIC_to_CPU[MAX_CPUS];
 
+static int mp_timer_IOAPIC_irq = 0;
+
 static BYTE checksum(BYTE *, int);
 static int process_mp_fp(struct mp_fp *);
 static int process_mp_config(struct mp_config *);
@@ -112,7 +114,14 @@ void smp_enable(void) {
   }
 
   /* disable IRQ2 */
-  IOAPIC_write64(IOAPIC_REDIR + 0x04, (0x0000000000010000LL));
+  //IOAPIC_write64(IOAPIC_REDIR + 0x04, (0x0000000000010000LL));
+  if (mp_timer_IOAPIC_irq != 0) {
+    /* some systems send the timer to another IRQ in APIC mode */
+    /* map the timer IRQ to vector 0x20 */
+    IOAPIC_write64(IOAPIC_REDIR + (mp_timer_IOAPIC_irq * 2), 0xFF00000000000820LL);
+    /* disable IRQ0 */
+    IOAPIC_write64(IOAPIC_REDIR + 0x00, (0x0000000000010000LL));
+  }
 
   outb(0x70, 0x22);             /* Re-direct IMCR to use IO-APIC */
   outb(0x01, 0x23);             /* (for some motherboards) */
@@ -177,6 +186,9 @@ int process_mp_fp (struct mp_fp *ptr) {
   return mp_num_cpus;
 }
 
+#define putx com1_putx
+#define print com1_puts
+#define putchar com1_putc
 static int process_mp_config(struct mp_config *cfg) {
   int i,j;
   BYTE *ptr;
@@ -265,19 +277,31 @@ static int process_mp_config(struct mp_config *cfg) {
       ptr += sizeof(struct mp_config_IO_APIC_entry);
       break;
     case MP_CFG_TYPE_IO_INT:
-#if 0
       print ("IO interrupt type: ");
-      putx (entry->IO_int.int_type);
+      putx (entry->IO_int.int_type); putchar (' ');
+      putx (entry->IO_int.flags); putchar (' ');
+      putx (entry->IO_int.source_bus_id); putchar (' ');
+      putx (entry->IO_int.source_bus_irq); putchar (' ');
+      putx (entry->IO_int.dest_APIC_id); putchar (' ');
+      putx (entry->IO_int.dest_APIC_intin); putchar (' ');
       print ("\n");
-#endif
+
+      if (entry->IO_int.int_type == 0 &&      /* vectored */
+          entry->IO_int.source_bus_id == 0 && /* ISA */
+          entry->IO_int.source_bus_irq == 0)  /* timer */
+        mp_timer_IOAPIC_irq = entry->IO_int.dest_APIC_intin;
+          
       ptr += sizeof(struct mp_config_interrupt_entry);
       break;
     case MP_CFG_TYPE_LOCAL_INT:
-#if 0
       print ("Local interrupt type: ");
-      putx (entry->local_int.int_type);
+      putx (entry->local_int.int_type); putchar (' ');
+      putx (entry->IO_int.flags); putchar (' ');
+      putx (entry->IO_int.source_bus_id); putchar (' ');
+      putx (entry->IO_int.source_bus_irq); putchar (' ');
+      putx (entry->IO_int.dest_APIC_id); putchar (' ');
+      putx (entry->IO_int.dest_APIC_intin); putchar (' ');
       print ("\n");
-#endif
       ptr += sizeof(struct mp_config_interrupt_entry);
       break;
     default:
@@ -292,6 +316,9 @@ static int process_mp_config(struct mp_config *cfg) {
 
   return mp_num_cpus;
 }
+#undef print
+#undef putchar
+#undef putx
 
 static BYTE checksum(BYTE *ptr, int length) {
   BYTE sum = 0;
