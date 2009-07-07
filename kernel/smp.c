@@ -56,6 +56,7 @@ static int process_mp_config(struct mp_config *);
 static int add_processor(struct mp_config_processor_entry *);
 int boot_cpu(struct mp_config_processor_entry *);
 static struct mp_fp *probe_mp_fp(DWORD, DWORD);
+static void smp_setup_LAPIC_timer(void);
 
 /* Returns number of CPUs successfully booted. */
 int smp_init(void) {
@@ -88,6 +89,8 @@ int smp_init(void) {
     log_dest = 0x01000000 << phys_id;
     MP_LAPIC_WRITE(LAPIC_LDR, log_dest); /* write to logical destination reg */
     MP_LAPIC_WRITE(LAPIC_DFR, -1);       /* use 'flat model' destination format */
+
+    smp_setup_LAPIC_timer();
   }
 
   return mp_num_cpus;
@@ -420,6 +423,64 @@ static int add_processor(struct mp_config_processor_entry *proc) {
   } else return 0;
 }
 
+extern volatile unsigned long tick;
+
+static void smp_setup_LAPIC_timer_int(void) {
+  tick++;
+  
+  outb( 0x60, 0x20 );           /* still using PIC */
+  
+  asm volatile("leave");
+  asm volatile("iret");
+}
+
+static void smp_LAPIC_timer_irq_handler(void) {
+  /* just EOI and ignore it */
+  MP_LAPIC_WRITE(LAPIC_EOI, 0); /* send to LAPIC -- this int came from LAPIC */
+  asm volatile("leave");
+  asm volatile("iret");
+}
+
+unsigned long cpu_bus_freq;
+
+/* Use the PIT to find how fast the LAPIC ticks (and correspondingly,
+ * the bus speed of the processor) */
+static void smp_setup_LAPIC_timer(void) {
+  idt_descriptor old_timer, old_3f;
+  unsigned long value, start, finish, count;
+  
+  disable_idt();
+  get_idt_descriptor(0x20, &old_timer);
+  get_idt_descriptor(0x3f, &old_3f);
+  set_idt_descriptor_by_addr(0x20, (void *)&smp_setup_LAPIC_timer_int, 0x3);
+  set_idt_descriptor_by_addr(0x3f, (void *)&smp_LAPIC_timer_irq_handler, 0x3);
+  
+  MP_LAPIC_WRITE(LAPIC_LVTT, 0x3f); /* enable LAPIC timer int: vector=0x3f */
+  MP_LAPIC_WRITE(LAPIC_TDCR, 0x0B); /* set LAPIC timer divisor to 1 */
+  
+  value = tick;
+  asm volatile("sti");
+  while(tick == value) asm volatile("pause");
+  start = tick;
+  MP_LAPIC_WRITE(LAPIC_TICR, 0xFFFFFFFF); /* write large value to Initial Count Reg. */
+  /* LAPIC begins counting down */
+  while(tick == start) asm volatile("pause");
+  finish = tick;
+  asm volatile("cli");
+  
+  MP_LAPIC_WRITE(LAPIC_LVTT, 0x10000); /* disable timer int */
+  count = MP_LAPIC_READ(LAPIC_TCCR);   /* read the remaining count */
+  set_idt_descriptor(0x20, &old_timer);
+  set_idt_descriptor(0x3f, &old_3f);
+  
+  cpu_bus_freq = (0xFFFFFFFF - count) * HZ;
+  print("CPU bus freq = ");
+  putx(cpu_bus_freq);
+  putchar('\n');
+  
+  enable_idt();
+}
+
 QWORD IOAPIC_read64(BYTE reg) {
   DWORD high, low;
   QWORD retval;
@@ -458,8 +519,6 @@ void send_eoi (void) {
 }
 
 /* ************************************************** */
-
-extern BYTE idt_ptr[];
 
 void ap_init(void) {
   int phys_id, log_dest;

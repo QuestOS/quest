@@ -389,6 +389,12 @@ void init( multiboot* pmb ) {
    *  marked in the mm_table 
    */
 
+  /* Initialise the programmable interrupt controller (PIC) */
+  initialise_pic ();
+
+  /* Initialise the programmable interval timer (PIT) */
+  initialise_pit ();
+
   /* Start up other processors, which may allocate pages for stacks */
   num_cpus = smp_init(); 
   if (num_cpus > 1) {
@@ -398,12 +404,6 @@ void init( multiboot* pmb ) {
   } else {
     print("Uni-processor mode.\n");
   }
-
-  /* Initialise the programmable interrupt controller (PIC) */
-  initialise_pic ();
-
-  /* Initialise the programmable interval timer (PIT) */
-  initialise_pit ();
 
   if( !pmb->mods_count )
     panic( "No modules available" );

@@ -74,6 +74,19 @@ typedef struct _descriptor {
     unsigned int pBase2 : 8; /* base (bits 24-31) */
 } descriptor;
 
+typedef struct _idt_descriptor {
+  unsigned int pBase0 : 16;     /* Offset (bits 0-15) */
+  unsigned int pSeg : 16;       /* Segment */
+  unsigned int fReserved : 5;   /* reserved */
+  unsigned int fZero0 : 3;      /* zeroed */
+  unsigned int fType : 3;       /* 0x6 = interrupt, 0x7 = trap */
+  unsigned int f32bit : 1;      /* 1 = 32 bit size of gate, 0 = 16 bit */
+  unsigned int fZero1 : 1;      /* zeroed */
+  unsigned int uDPL : 2;        /* Descriptor privilege level */
+  unsigned int fPresent : 1;    /* present bit */
+  unsigned int pBase1 : 16;     /* Offset (bits 16-31) */
+} idt_descriptor;
+  
 
 static inline void cli( void ) {
 

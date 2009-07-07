@@ -194,7 +194,7 @@ real_start:
 1:	
 	lodsl
 	movw %ax,%dx
-	movw $0xEE00,%ax 
+	movw $0xEE00,%ax /* DPL = 11 -- is that right? */
 	movl %edx,(%edi) /* Store bottom 32-bits of descriptor in EDX into IDT */
 	addl $4,%edi
 	stosl /* Store top 32-bits of descriptor held in EAX into IDT */

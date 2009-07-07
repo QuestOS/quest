@@ -94,6 +94,12 @@ extern void locked_schedule( void );
 extern void lock_kernel( void );
 extern void unlock_kernel( void );
 
+extern void disable_idt(void);
+extern void enable_idt(void);
+extern void set_idt_descriptor_by_addr(BYTE, void *, BYTE);
+extern void get_idt_descriptor(BYTE, idt_descriptor *);
+extern void set_idt_descriptor(BYTE, idt_descriptor *);
+
 static inline void *memset( void *p, int ch, unsigned long cb ) {
 
     asm volatile( "rep stosb" : : "D" (p), "a" (ch), "c" (cb) );
@@ -135,6 +141,8 @@ extern unsigned short idleTSS_selector[MAX_CPUS];
 typedef unsigned int pid_t;
 
 extern struct spinlock screen_lock;
+
+extern BYTE idt_ptr[];
 
 #endif
 

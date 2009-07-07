@@ -277,3 +277,64 @@ void idle_task(void) {
   }
 }
 
+void disable_idt(void) {
+  WORD len = *((WORD *)idt_ptr);
+  idt_descriptor *ptr = *((idt_descriptor **)(idt_ptr + 2));
+  WORD i;
+  
+  for (i=0;i<(len >> 3);i++) {
+    if(ptr[i].pBase0)
+      ptr[i].fPresent = 0;
+  }
+}
+
+void enable_idt(void) {
+  WORD len = *((WORD *)idt_ptr);
+  idt_descriptor *ptr = *((idt_descriptor **)(idt_ptr + 2));
+  WORD i;
+  
+  for (i=0;i<(len >> 3);i++) {
+    if(ptr[i].pBase0)
+      ptr[i].fPresent = 1;
+  }
+}
+
+void set_idt_descriptor_by_addr(BYTE n, void *addr, BYTE dpl) {
+  idt_descriptor *ptr = *((idt_descriptor **)(idt_ptr + 2));
+
+  ptr[n].fPresent = 0;          /* disable */
+  ptr[n].pBase1 = ((unsigned)addr & 0xFFFF0000) >> 16;
+  ptr[n].pBase0 = ((unsigned)addr & 0x0000FFFF);
+  ptr[n].pSeg = 0x08;
+  ptr[n].fZero0 = 0;
+  ptr[n].fZero1 = 0;
+  ptr[n].fReserved = 0;
+  ptr[n].fType = 0x6;
+  ptr[n].f32bit = 1;
+  ptr[n].uDPL = dpl;
+  ptr[n].fPresent = 1;          /* re-enable */
+}
+
+void get_idt_descriptor(BYTE n, idt_descriptor *d) {
+  idt_descriptor *ptr = *((idt_descriptor **)(idt_ptr + 2));
+
+  *d = ptr[n];
+#if 0
+  d->pBase1           = ptr[n].pBase1;
+  d->pBase0           = ptr[n].pBase0;
+  d->pSeg             = ptr[n].pSeg;
+  d->f0               = ptr[n].f0;
+  d->fReserved        = ptr[n].fReserved;
+  d->fType            = ptr[n].fType;
+  d->f32bit           = ptr[n].f32bit;
+  d->uDPL             = ptr[n].uDPL;
+  d->fPresent         = ptr[n].fPresent;
+#endif
+}
+
+
+void set_idt_descriptor(BYTE n, idt_descriptor *d) {
+  idt_descriptor *ptr = *((idt_descriptor **)(idt_ptr + 2));
+
+  ptr[n] = *d;
+}

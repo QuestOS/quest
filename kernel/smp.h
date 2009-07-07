@@ -93,6 +93,7 @@ struct mp_config {
   struct mp_config_entry entries[];
 } PACKED;
 
+extern unsigned long cpu_bus_freq;
 
 int smp_init(void);
 void smp_enable(void);
