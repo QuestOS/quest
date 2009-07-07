@@ -432,7 +432,7 @@ void init( multiboot* pmb ) {
     panic( "Filesystem mount failed" );
 
   /* Initialise soundcard, if one exists */
-  initialise_sound ();
+  //initialise_sound ();
 
 #if 0
   /* --??-- To be removed, just testing the disk IO in CHS mode */
