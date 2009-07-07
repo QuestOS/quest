@@ -756,7 +756,7 @@ extern void _interrupt3e(void) {
   BYTE phys_id = LAPIC_get_physical_ID();
   send_eoi();
 
-  if (str () == dummyTSS_selector[phys_id]) {
+  if (str () == idleTSS_selector[phys_id]) {
     /* CPU was idling */
     schedule ();
     /* if returned, go back to idling */
@@ -765,7 +765,7 @@ extern void _interrupt3e(void) {
     lock_kernel();
     /* add the current task to the back of the run queue */
     runqueue_append( LookupTSS( str() )->priority, str() ); 
-    /* with kernel locked, go ahead and schedule (and unlock kernel) */
+    /* with kernel locked, go ahead and schedule */
     locked_schedule (); 
   }
 }
@@ -773,14 +773,16 @@ extern void _interrupt3e(void) {
 /* IRQ0 system timer interrupt handler: simply updates the system clock
    tick for now */
 void _timer( void ) {
-  
+  extern volatile int mp_enabled, mp_num_cpus;
   tick++;
   
   /* Need to issue an EOI "end of interrupt" to be ready for further
      interrupts */
   send_eoi ();
 
-  send_ipi(0x01, 
+  if (!mp_enabled && mp_num_cpus > 1) mp_enabled = 1;
+
+  send_ipi(0xFF, 
            0x3E              /* vector 0x3E */
            | LAPIC_ICR_LEVELASSERT /* always assert */
            | LAPIC_ICR_DM_LOGICAL  /* logical destination */
@@ -849,7 +851,7 @@ void __exit( int status ) {
        been able to check the status of the child... */
 
     tss = str();
-    ltr( dummyTSS_selector [LAPIC_get_physical_ID()] );
+    ltr( dummyTSS_selector );
 
     /* Remove space for tss -- but first we need to construct the linear
        address of where it is in memory from the TSS descriptor */
@@ -866,6 +868,7 @@ void __exit( int status ) {
 
     UnmapVirtualPage( ptss );
 
+    // i need a real idle task, not the dummy ones.
     locked_schedule();
 }
 
@@ -896,7 +899,11 @@ extern int _waitpid( int pid ) {
 
 extern int _sched_setparam( int pid, const struct sched_param *p ) {
 
-  quest_tss *ptss = LookupTSS( pid );
+  quest_tss *ptss;
+  
+  lock_kernel();
+
+  ptss = LookupTSS( pid );
 
   if( ptss ) {
     if( p->sched_priority == -1 )  /* Assume window-constrained task */
@@ -905,11 +912,13 @@ extern int _sched_setparam( int pid, const struct sched_param *p ) {
       ptss->priority = p->sched_priority;
 
     runqueue_append( (LookupTSS( str() ))->priority, str() );
-    schedule();
+
+    locked_schedule();
     
     return 0;
     
   } else
+    unlock_kernel();
     /* Destination task does not exist.  Return an error. */
     return -1;
 }

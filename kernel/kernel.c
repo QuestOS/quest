@@ -25,10 +25,14 @@ unsigned kls_pg_table[NR_MODS][1024] __attribute__ ((aligned (4096)));
 
 /* Declare space for a dummy TSS -- used for kernel switch_to/jmp_gate
    semantics */
-tss dummyTSS[MAX_CPUS];
+tss dummyTSS;
 
 /* This is a global index into the GDT for a dummyTSS */
-unsigned short dummyTSS_selector[MAX_CPUS];
+unsigned short dummyTSS_selector;
+
+/* Each CPU gets an IDLE task -- something to do when nothing else */
+tss idleTSS[MAX_CPUS];
+unsigned short idleTSS_selector[MAX_CPUS];
 
 /* Declare space for bitmap (physical) memory usage table.
  * PHYS_INDEX_MAX entries of 32-bit integers each for a 4K page => 
@@ -262,6 +266,14 @@ void stacktrace(void) {
   while(ebp >= KERN_STK && ebp <= KERN_STK+0x1000) {
     com1_putx(*((unsigned *)(ebp+4))); com1_putc('\n');
     ebp = *((unsigned *)ebp);
+  }
+}
+
+void idle_task(void) {
+  unlock_kernel();
+  sti();
+  for(;;) {
+    asm volatile ("pause");
   }
 }
 

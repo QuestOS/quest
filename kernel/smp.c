@@ -114,7 +114,7 @@ void smp_enable(void) {
   outb(0x70, 0x22);             /* Re-direct IMCR to use IO-APIC */
   outb(0x01, 0x23);             /* (for some motherboards) */
 
-  if (mp_num_cpus > 1) mp_enabled = 1;
+  //if (mp_num_cpus > 1) mp_enabled = 1;
 }
 
 static struct mp_fp *probe_mp_fp(DWORD start, DWORD end) {
@@ -462,7 +462,7 @@ void send_eoi (void) {
 extern BYTE idt_ptr[];
 
 void ap_init(void) {
-  int phys_id, log_dest, i=0,j=0;
+  int phys_id, log_dest;
   /* Setup the LAPIC */
 
   MP_LAPIC_WRITE(LAPIC_TPR, 0x20); 
@@ -489,7 +489,9 @@ void ap_init(void) {
   while (!mp_enabled) 
     asm volatile("pause");
 
-  ltr( dummyTSS_selector[phys_id] );
+  lock_kernel();
+
+  ltr( dummyTSS_selector );
 
   /**************************************************
    * print("HELLO WORLD from Physical LAPIC ID: "); *
@@ -501,25 +503,7 @@ void ap_init(void) {
 
   asm volatile("lidt idt_ptr");
 
-  asm volatile("sti");
-
-  /* With nothing else to do, just spin-wait */
-  for(;;) {
-    /* count from 0 to 9 in the upper-left corner of the screen - for fun */
-    pchVideo [ phys_id * 2 ] = i + '0';
-    pchVideo [ phys_id * 2 + 1 ] = 7;
-    i = (i + 1) % 10;
-    j++;
-
-    /* send an IPI for fun */
-    if (j == 1000 && phys_id == 1) {
-      send_ipi(0xFF,             /* everyone */
-               0x3F              /* vector 0x3F */
-               | LAPIC_ICR_LEVELASSERT /* always assert */
-               | LAPIC_ICR_DM_LOGICAL  /* logical destination */
-               | 0x0                   /* fixed delivery mode */
-               );
-    }
-    asm volatile("pause");
-  }
+  jmp_gate(idleTSS_selector[phys_id]); /* begin in IDLE task */
+  
+  panic("AP: unreachable");
 }

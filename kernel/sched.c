@@ -98,6 +98,20 @@ extern void locked_schedule( void ) {
   }
   else {			/* Replenish timeslices for expired
 				   tasks */
+    /***************************************
+     * com1_putx(LAPIC_get_physical_ID()); *
+     * com1_puts(" is bored\n");           *
+     ***************************************/
+
+    /* 
+     * If a task calls schedule() and is selected from the runqueue,
+     * then it must be switched out.  Go to IDLE task if nothing else. 
+     */
+    unsigned short idle_sel = idleTSS_selector[LAPIC_get_physical_ID()];
+
+    /* Only switch tasks to IDLE if we are not already running IDLE. */
+    if(str() != idle_sel) jmp_gate(idle_sel);
+    
     spinlock_unlock(&kernel_lock);
   }
 }

@@ -124,9 +124,13 @@ extern unsigned kl_stack[][1024] __attribute__ ((aligned (4096)));
 /* Declare space for a page table mappings for kernel stacks */
 extern unsigned kls_pg_table[][1024] __attribute__ ((aligned (4096)));
 
-extern tss dummyTSS[MAX_CPUS];
+extern tss dummyTSS;
 
-extern unsigned short dummyTSS_selector[MAX_CPUS];
+extern unsigned short dummyTSS_selector;
+
+extern tss idleTSS[MAX_CPUS];
+
+extern unsigned short idleTSS_selector[MAX_CPUS];
 
 typedef unsigned int pid_t;
 

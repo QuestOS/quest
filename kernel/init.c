@@ -15,7 +15,7 @@ extern void initialise_sound(void);
 /* We use this function to create a dummy TSS so that when we issue a
    switch_to/jmp_gate e.g. at the end of init() or __exit(), we have a
    valid previous TSS for the processor to store state info */
-static unsigned short CreateDummyTSS( int n ) {
+static unsigned short CreateDummyTSS(void) {
 
   int i;
   descriptor *ad = (idt + 256); /* Get address of GDT from IDT address */
@@ -30,18 +30,67 @@ static unsigned short CreateDummyTSS( int n ) {
 
     ad[ i ].uLimit0 = sizeof( tss );
     ad[ i ].uLimit1 = 0;
-    ad[ i ].pBase0 = (unsigned long)&dummyTSS[n] & 0xFFFF;
-    ad[ i ].pBase1 = ( (unsigned long)&dummyTSS[n] >> 16 ) & 0xFF;
-    ad[ i ].pBase2 = (unsigned long)&dummyTSS[n] >> 24;
+    ad[ i ].pBase0 = (unsigned long)&dummyTSS & 0xFFFF;
+    ad[ i ].pBase1 = ( (unsigned long)&dummyTSS >> 16 ) & 0xFF;
+    ad[ i ].pBase2 = (unsigned long)&dummyTSS >> 24;
     ad[ i ].uType = 0x09;
     ad[ i ].uDPL = 0;		/* Only let kernel perform task-switching */
     ad[ i ].fPresent = 1;
     ad[ i ].f0 = 0;
     ad[ i ].fX = 0;
     ad[ i ].fGranularity = 0;	/* Set granularity of tss in bytes */
-    
+
     return i << 3;
 
+}
+
+static unsigned short AllocIdleTSS (int cpu_num) {
+  int i;
+  descriptor *ad = (idt + 256); /* Get address of GDT from IDT address */
+  tss *pTSS = (tss *)(&idleTSS[cpu_num]);
+  void idle_task(void);
+
+  /* Search 2KB GDT for first free entry */
+  for( i = 1; i < 256; i++ )
+    if( !( ad[ i ].fPresent ) )
+      break;
+
+  if( i == 256 )
+    panic( "No free selector for TSS" );
+
+  ad[ i ].uLimit0 = sizeof( idleTSS[cpu_num] ) - 1;
+  ad[ i ].uLimit1 = 0;
+  ad[ i ].pBase0 = (unsigned long) pTSS & 0xFFFF;
+  ad[ i ].pBase1 = ( (unsigned long) pTSS >> 16 ) & 0xFF;
+  ad[ i ].pBase2 = (unsigned long) pTSS >> 24;
+  ad[ i ].uType = 0x09;	/* 32-bit tss */
+  ad[ i ].uDPL = 0;		/* Only let kernel perform task-switching */
+  ad[ i ].fPresent = 1;
+  ad[ i ].f0 = 0;
+  ad[ i ].fX = 0;
+  ad[ i ].fGranularity = 0;	/* Set granularity of tss in bytes */
+
+  pTSS->pCR3 = get_pdbr();
+  pTSS->ulEIP = (unsigned long)&idle_task;
+
+  pTSS->ulEFlags = F_1 | F_IOPL0; 
+
+  pTSS->ulESP = (unsigned)MapVirtualPage(AllocatePhysicalPage() | 3);
+  pTSS->ulEBP = pTSS->ulESP;
+  pTSS->usCS = 0x08;		
+  pTSS->usES = 0x10;
+  pTSS->usSS = 0x10;		
+  pTSS->usDS = 0x10;
+  pTSS->usFS = 0x10;
+  pTSS->usGS = 0x10;
+  pTSS->usIOMap = 0xFFFF;
+  /***********************************************
+   * pTSS->usSS0 = 0x10;                         *
+   * pTSS->ulESP0 = (unsigned)KERN_STK + 0x1000; *
+   ***********************************************/
+
+  /* Return the index into the GDT for the segment */
+  return i << 3;
 }
 
 
@@ -409,17 +458,24 @@ void init( multiboot* pmb ) {
   { 
     int n;
     for (n=0; n < num_cpus; n++) {
-      dummyTSS_selector[n] = CreateDummyTSS(n);
+      idleTSS_selector[n] = AllocIdleTSS(n);
     }
   } 
 
-  ltr( dummyTSS_selector[0] );
+  dummyTSS_selector = CreateDummyTSS();
 
-  //  runqueue_append( LookupTSS( tss[ 0 ] )->priority, tss[ 0 ] );	/* Shell module */
+  lock_kernel();
+
+  ltr( dummyTSS_selector );
+
+  //runqueue_append( LookupTSS( tss[ 0 ] )->priority, tss[ 0 ] );	/* Shell module */
 
   smp_enable();
 
   // schedule();
   jmp_gate(tss[0]);             /* Just switch to the Shell module task right away */
-  /* And never come back. */
+  
+  //jmp_gate(idleTSS_selector[0]); /* Begin in IDLE task */
+
+  panic("BSP: unreachable");
 }
