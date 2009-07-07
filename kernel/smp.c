@@ -93,6 +93,11 @@ int smp_init(void) {
     MP_LAPIC_WRITE(LAPIC_DFR, -1);       /* use 'flat model' destination format */
 
     smp_setup_LAPIC_timer();
+
+    MP_LAPIC_WRITE(LAPIC_LVTT, 0x3e); /* enable LAPIC timer int: vector=0x3e 
+                                       * one-shot mode. */
+    MP_LAPIC_WRITE(LAPIC_TDCR, 0x0B); /* set LAPIC timer divisor to 1 */
+    MP_LAPIC_WRITE(LAPIC_TICR, cpu_bus_freq/100); /* 100Hz */
   }
 
   return mp_num_cpus;
@@ -545,6 +550,10 @@ void send_eoi (void) {
   }
 }
 
+void LAPIC_start_timer(unsigned long count) {
+  MP_LAPIC_WRITE(LAPIC_TICR, count); 
+}
+
 /* ************************************************** */
 
 void ap_init(void) {
@@ -574,6 +583,11 @@ void ap_init(void) {
    * MP mode. */
   while (!mp_enabled) 
     asm volatile("pause");
+
+  MP_LAPIC_WRITE(LAPIC_LVTT, 0x3e); /* enable LAPIC timer int: vector=0x3e 
+                                     * one-shot mode. */
+  MP_LAPIC_WRITE(LAPIC_TDCR, 0x0B); /* set LAPIC timer divisor to 1 */
+  MP_LAPIC_WRITE(LAPIC_TICR, cpu_bus_freq/100); /* 100Hz */
 
   lock_kernel();
 

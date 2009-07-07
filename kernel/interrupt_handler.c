@@ -755,6 +755,7 @@ unsigned _time( void ) {
 extern void _interrupt3e(void) {
   BYTE phys_id = LAPIC_get_physical_ID();
   send_eoi();
+  LAPIC_start_timer(cpu_bus_freq / 100); /* 100 Hz */
 
   if (str () == idleTSS_selector[phys_id]) {
     /* CPU was idling */
@@ -782,13 +783,14 @@ void _timer( void ) {
 
   if (!mp_enabled && mp_num_cpus > 1) mp_enabled = 1;
 
+#if 0
   send_ipi(0xFF, 
            0x3E              /* vector 0x3E */
            | LAPIC_ICR_LEVELASSERT /* always assert */
            | LAPIC_ICR_DM_LOGICAL  /* logical destination */
            | 0x0                   /* fixed delivery mode */
            );
-
+#endif
 
   /***********************************************************
    * lock_kernel();                                          *
