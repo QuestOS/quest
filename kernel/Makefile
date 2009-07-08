@@ -21,6 +21,10 @@ install: $(PROGS)
 	cp $(PROGS) $(MNT_POINT)/boot
 	sync
 
+vmware: install
+	qemu-img convert c.img -O vmdk c-img.vmdk
+	cp c-img.vmdk /mnt/hgfs/shared/quest
+
 clean:
 	-rm -f *.o *.d $(PROGS) *~
 
