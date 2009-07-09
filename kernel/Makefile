@@ -32,6 +32,8 @@ vmware: install
 clean:
 	-rm -f *.o *.d $(PROGS) *~
 
+cleanacpi:
+	-rm -f $(ACPI_OBJS)
 
 define ACPI_template
 $(1): $(patsubst %.o,%.c,$(1))
