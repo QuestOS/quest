@@ -277,13 +277,54 @@ AcpiOsReleaseMutex (
 
 #endif
 
-
 /*
  * Memory allocation and mapping
  */
 void *
 AcpiOsAllocate (
     ACPI_SIZE               Size) {
+  /* Simple and stupid scheme:
+   * 1. Allocate enough frames for Size + sizeof Header
+   * 2. Map them contiguously
+   * 3. Write a simple Header
+   * 4. Return a pointer to the byte after the header. 
+   * 5. ???
+   * 6. Profit.
+   */
+
+#define MAX_FRAMES_ALLOCATED 32 /* 128kb */
+  ACPI_SIZE num_frames = ((Size+4) >> 12) + 1;
+  ACPI_PHYSICAL_ADDRESS frames[MAX_FRAMES_ALLOCATED];
+  int i;
+  void *virt;
+
+  if(num_frames > MAX_FRAMES_ALLOCATED) return NULL;
+  
+  frames[0] = 0;
+
+  for(i=0;i<num_frames;i++) {
+    frames[i] = AllocatePhysicalPage() | 3;
+    if (frames[i] == -1) {
+      /* Not enough free frames */
+      frames[i] = 0;
+      goto abort;
+    }
+  }
+
+  virt = MapVirtualPages(frames, num_frames);
+  if (!virt) goto abort;
+
+  *((ACPI_SIZE*)virt) = num_frames;   /* Header */
+  
+  return virt+4;
+
+ abort:
+  for(i=0;i<num_frames;i++)
+    if (frames[i] == 0)
+      break;
+    else
+      FreePhysicalPage(frames[i]);
+  
   return NULL;
 }
 
@@ -291,6 +332,18 @@ AcpiOsAllocate (
 void
 AcpiOsFree (
     void *                  Memory) {
+  /* Read Header, unmap virtual memory, free frames */
+  ACPI_SIZE num_frames = *((ACPI_SIZE *)(Memory - 4)), i;
+  void *virt = (void *)((unsigned)Memory & (~0xFFF));
+  for(i=0; i<num_frames; i++) {
+    ACPI_PHYSICAL_ADDRESS frame = (ACPI_PHYSICAL_ADDRESS)get_phys_addr(virt);
+    if(!frame) return;
+    
+    UnmapVirtualPage(virt);
+    FreePhysicalPage(frame);
+
+    virt += 0x1000;
+  }
   return;
 }
 
