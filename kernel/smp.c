@@ -8,6 +8,7 @@
 #include "apic.h"
 #include "spinlock.h"
 #include "acpi/include/acpi.h"
+#include "printf.h"
                     
 /* CMOS write */
 static inline void cmos_write(BYTE i, BYTE v) {
@@ -182,6 +183,7 @@ int smp_init(void) {
 }
 
 void smp_enable(void) {
+  ACPI_STATUS Status;
   int i;
 
   outb( 0xFF, 0x21 );           /* Mask interrupts in Master/Slave 8259A PIC */
@@ -212,6 +214,12 @@ void smp_enable(void) {
   outb(0x70, 0x22);             /* Re-direct IMCR to use IO-APIC */
   outb(0x01, 0x23);             /* (for some motherboards) */
 
+  Status = AcpiInitializeSubsystem();
+  if(ACPI_FAILURE(Status)) {
+    com1_printf("Failed to initialize ACPI.\n");
+  }
+  
+  /* now mp_enabled = 1 is triggered in timer IRQ handler */
   //if (mp_num_cpus > 1) mp_enabled = 1;
 }
 
