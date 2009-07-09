@@ -1,16 +1,19 @@
 CC = gcc
-CFLAGS = -m32 -fno-builtin -nostdinc -I. -I../libc/include -g -Wall 
-CPPFLAGS = -Wa,--32 -MMD 
+CFLAGS = -m32 -fno-builtin -nostdinc -Iacpi/include -I. -I../libc/include -g -Wall 
+CPPFLAGS = -D_QUEST -Wa,--32 -MMD 
 OBJS = boot.o init.o boot-smp.o smp.o interrupt.o interrupt_handler.o \
 	kernel.o diskio.o cpuid.o \
-	fsys_ext2fs.o sched.o sound.o
+	fsys_ext2fs.o sched.o sound.o \
+	quest-acpica.o
+ACPI_SRCS = $(shell ls acpi/*.c)
+ACPI_OBJS = $(patsubst %.c,%.o,$(ACPI_SRCS))
 MNT_POINT=/mnt/quest
 PROGS = quest terminal_server shell exec race test1 test2 test3 test4 test5 test6
 
 all: $(PROGS)
 
-quest: $(OBJS)
-	$(LD) -T quest.ld -o $@ $^
+quest: $(OBJS) $(ACPI_OBJS)
+	$(LD) -T quest.ld -o $@ $^ 
 
 %: %.o
 	$(LD) -o $@ $< -T module.ld
@@ -23,5 +26,15 @@ install: $(PROGS)
 
 clean:
 	-rm -f *.o *.d $(PROGS) *~
+
+
+define ACPI_template
+$(1): $(patsubst %.o,%.c,$(1))
+	$(CC) $(CFLAGS) $(CPPFLAGS) -o $$@ -c $$^
+endef 
+
+$(foreach obj,$(ACPI_OBJS),$(eval $(call ACPI_template,$(obj))))
+
+
 
 -include *.d

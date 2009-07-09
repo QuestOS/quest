@@ -7,6 +7,7 @@
 #include "smp.h"
 #include "apic.h"
 #include "spinlock.h"
+#include "acpi/include/acpi.h"
                     
 /* CMOS write */
 static inline void cmos_write(BYTE i, BYTE v) {
@@ -60,9 +61,84 @@ int boot_cpu(struct mp_config_processor_entry *);
 static struct mp_fp *probe_mp_fp(DWORD, DWORD);
 static void smp_setup_LAPIC_timer(void);
 
+#define ACPI_MAX_INIT_TABLES 16
+static ACPI_TABLE_DESC TableArray[ACPI_MAX_INIT_TABLES];
+
 /* Returns number of CPUs successfully booted. */
 int smp_init(void) {
   struct mp_fp *ptr;
+  ACPI_STATUS status;
+  status = AcpiInitializeTables(TableArray, ACPI_MAX_INIT_TABLES, TRUE);
+  if (status == AE_OK) {
+    ACPI_TABLE_MADT *madt;
+    ACPI_TABLE_FADT *fadt;
+    com1_puts("AcpiInitializeTables OK\n");
+    if(AcpiGetTable(ACPI_SIG_MADT, 0, (ACPI_TABLE_HEADER **)&madt) == AE_OK) {
+      BYTE *ptr, *lim = (BYTE *)madt + madt->Header.Length;
+      com1_puts("madt=");
+      com1_putx((unsigned)madt);
+      com1_puts(" len=");
+      com1_putx(madt->Header.Length);
+      com1_puts(" LAPIC=");
+      com1_putx(madt->Address);
+      com1_putc('\n');
+      ptr = (BYTE *)madt + sizeof(ACPI_TABLE_MADT);
+      while (ptr < lim) {
+        switch(((ACPI_SUBTABLE_HEADER *)ptr)->Type) {
+        case ACPI_MADT_TYPE_LOCAL_APIC: {
+          ACPI_MADT_LOCAL_APIC *sub = (ACPI_MADT_LOCAL_APIC *)ptr;
+          com1_puts("Processor=");
+          com1_putx(sub->ProcessorId);
+          com1_puts(" APIC ID=");
+          com1_putx(sub->ProcessorId);
+          if(sub->LapicFlags) com1_puts(" (enabled)");
+          com1_putc('\n');
+          break;
+        }
+        case ACPI_MADT_TYPE_IO_APIC: {
+          ACPI_MADT_IO_APIC *sub = (ACPI_MADT_IO_APIC *)ptr;
+          com1_puts("IO_APIC ID=");
+          com1_putx(sub->Id);
+          com1_puts(" ADDR=");
+          com1_putx(sub->Address);
+          com1_puts(" IRQBASE=");
+          com1_putx(sub->GlobalIrqBase);
+          com1_putc('\n');
+          break;
+        }
+        case ACPI_MADT_TYPE_INTERRUPT_OVERRIDE: {
+          ACPI_MADT_INTERRUPT_OVERRIDE *sub = (ACPI_MADT_INTERRUPT_OVERRIDE *)ptr;
+          com1_puts("OVERRIDE: BUS=");
+          com1_putx(sub->Bus);
+          com1_puts(" SourceIRQ=");
+          com1_putx(sub->SourceIrq);
+          com1_puts(" GlobalIRQ=");
+          com1_putx(sub->GlobalIrq);
+          com1_putc('\n');
+          break;
+        }
+        default:
+          break;
+        }
+        ptr += ((ACPI_SUBTABLE_HEADER *)ptr)->Length;
+      } 
+    } else com1_puts("AcpiGetTable MADT FAILED\n");
+    if(AcpiGetTable(ACPI_SIG_FADT, 0, (ACPI_TABLE_HEADER **)&fadt) == AE_OK) {
+      com1_puts("FADT: ");
+      com1_putx((unsigned)fadt);
+      com1_putc(' ');
+      com1_putx(fadt->BootFlags);
+      if(fadt->BootFlags & ACPI_FADT_LEGACY_DEVICES)
+        com1_puts(" HAS_LEGACY_DEVICES");
+      if(fadt->BootFlags & ACPI_FADT_8042)
+        com1_puts(" HAS_KBD_8042");
+      if(fadt->BootFlags & ACPI_FADT_NO_VGA)
+        com1_puts(" NO_VGA_PROBING");
+      com1_putc('\n');
+    } else com1_puts("AcpiGetTable FADT FAILED\n");
+  } else 
+    com1_puts("AcpiInitializeTables FAILED\n");
+  
   
   if       ((ptr = probe_mp_fp(0x9F800, 0xA0000)));
   else if  ((ptr = probe_mp_fp(0x0040E, 0x0140E)));
