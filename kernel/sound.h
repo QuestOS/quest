@@ -76,10 +76,10 @@
 #define	SB_DMA_CLEAR_16 0xD8 // 16-bit DMA clear byte ptr
 
 typedef struct {
-    char riffsign[4] PACKED;   // The RIFF signature (should be 'RIFF')
+    char riffsign[4] /*PACKED*/;   // The RIFF signature (should be 'RIFF')
     int  length PACKED;        // The length of the data in the next chunk
-    char wavesign[4] PACKED;   // The WAVE signature (should be 'WAVE')
-    char ftmsign[4] PACKED;    // Contains the characters 'fmt'
+    char wavesign[4] /*PACKED*/;   // The WAVE signature (should be 'WAVE')
+    char ftmsign[4] /*PACKED*/;    // Contains the characters 'fmt'
     int  formatlength PACKED;  // Length of the data in the format chunk
     WORD waveformat PACKED;    // Wave Format
     WORD channels PACKED;      // Number of channels (1=mono, 2=stereo)
@@ -90,7 +90,7 @@ typedef struct {
 } WAVCHUNK;
 
 typedef struct {
-    char sign[4] PACKED;   // Contains the characters 'data'
+    char sign[4] /*PACKED*/;   // Contains the characters 'data'
     int  length PACKED;    // Data length
 } DATACHUNK;
 
