@@ -271,9 +271,9 @@ void stacktrace(void) {
 
 void idle_task(void) {
   unlock_kernel();
-  sti();
+  sti();                        /* when we initially jump here, IF=0 */
   for(;;) {
-    asm volatile ("pause");
+    asm volatile ("hlt");
   }
 }
 
