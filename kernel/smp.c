@@ -52,6 +52,8 @@ BYTE CPU_to_APIC[MAX_CPUS];
 BYTE APIC_to_CPU[MAX_CPUS];
 
 static int mp_timer_IOAPIC_irq = 0;
+static int mp_timer_IOAPIC_id = 0;
+static int mp_ISA_bus_id = 0;
 
 static BYTE checksum(BYTE *, int);
 static int process_mp_fp(struct mp_fp *);
@@ -194,14 +196,17 @@ void smp_enable(void) {
     //IOAPIC_write64(IOAPIC_REDIR + (i * 2), (0x0100000000000800LL | (0x20 + i)));
   }
 
-  /* disable IRQ2 */
-  //IOAPIC_write64(IOAPIC_REDIR + 0x04, (0x0000000000010000LL));
+  /* need to handle multiple IO-APICs */
+
   if (mp_timer_IOAPIC_irq != 0) {
     /* some systems send the timer to another IRQ in APIC mode */
     /* map the timer IRQ to vector 0x20 */
     IOAPIC_write64(IOAPIC_REDIR + (mp_timer_IOAPIC_irq * 2), 0xFF00000000000820LL);
     /* disable IRQ0 */
     IOAPIC_write64(IOAPIC_REDIR + 0x00, (0x0000000000010000LL));
+  } else {
+    /* disable IRQ2 */
+    IOAPIC_write64(IOAPIC_REDIR + 0x04, (0x0000000000010000LL));
   }
 
   outb(0x70, 0x22);             /* Re-direct IMCR to use IO-APIC */
@@ -341,6 +346,11 @@ static int process_mp_config(struct mp_config *cfg) {
       print (" type: ");
       for (j=0;j<6;j++) putchar(entry->bus.bus_type[j]);
       print ("\n");
+      if (entry->bus.bus_type[0] == 'I' &&
+          entry->bus.bus_type[1] == 'S' &&
+          entry->bus.bus_type[2] == 'A') {
+        mp_ISA_bus_id = entry->bus.id;
+      }
       ptr += sizeof(struct mp_config_bus_entry);
       break;
     case MP_CFG_TYPE_IO_APIC:
@@ -367,10 +377,11 @@ static int process_mp_config(struct mp_config *cfg) {
       putx (entry->IO_int.dest_APIC_intin); putchar (' ');
       print ("\n");
 
-      if (entry->IO_int.int_type == 0 &&      /* vectored */
-          entry->IO_int.source_bus_id == 0 && /* ISA */
-          entry->IO_int.source_bus_irq == 0)  /* timer */
+      if (entry->IO_int.source_bus_id == mp_ISA_bus_id && /* ISA */
+          entry->IO_int.source_bus_irq == 0)  { /* timer */
+        mp_timer_IOAPIC_id  = entry->IO_int.dest_APIC_id;
         mp_timer_IOAPIC_irq = entry->IO_int.dest_APIC_intin;
+      }
           
       ptr += sizeof(struct mp_config_interrupt_entry);
       break;
