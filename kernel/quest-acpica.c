@@ -119,6 +119,7 @@
 #include"spinlock.h"
 #include"kernel.h"
 #include"acpi.h"
+#include"printf.h"
 
 
 /*
@@ -563,9 +564,12 @@ AcpiOsSignal (
  */
 void ACPI_INTERNAL_VAR_XFACE
 AcpiOsPrintf (
-    const char              *Format,
+    const char              *Fmt,
     ...) {
-  return;
+  va_list Args;
+  va_start (Args, Fmt);
+  AcpiOsVprintf (Fmt, Args);
+  va_end (Args);
 }
 
 
@@ -573,7 +577,7 @@ void
 AcpiOsVprintf (
     const char              *Format,
     va_list                 Args) {
-  return;
+  fun_vprintf(com1_putc, Format, Args);
 }
 
 

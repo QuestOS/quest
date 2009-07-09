@@ -4,7 +4,7 @@ CPPFLAGS = -D_QUEST -Wa,--32 -MMD
 OBJS = boot.o init.o boot-smp.o smp.o interrupt.o interrupt_handler.o \
 	kernel.o diskio.o cpuid.o \
 	fsys_ext2fs.o sched.o sound.o \
-	quest-acpica.o
+	quest-acpica.o printf.o
 ACPI_SRCS = $(shell ls acpi/*.c)
 ACPI_OBJS = $(patsubst %.c,%.o,$(ACPI_SRCS))
 MNT_POINT=/mnt/quest
@@ -13,6 +13,7 @@ PROGS = quest terminal_server shell exec race test1 test2 test3 test4 test5 test
 all: $(PROGS)
 
 quest: $(OBJS) $(ACPI_OBJS)
+	rm -f quest
 	$(LD) -T quest.ld -o $@ $^ 
 
 %: %.o
