@@ -65,6 +65,7 @@ extern unsigned mm_limit;       /* Actual physical page limit */
 extern unsigned short runqueue[]; /* TSS of next runnable task; 0 if none */
 
 extern unsigned AllocatePhysicalPage( void );
+extern void FreePhysicalPage(unsigned);
 extern void *MapVirtualPage( unsigned phys_frame );
 extern void UnmapVirtualPage( void *virt_addr );
 extern void *MapVirtualPages(unsigned *phys_frames, unsigned count);

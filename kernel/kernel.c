@@ -169,6 +169,10 @@ unsigned AllocatePhysicalPage( void ) {
   return -1;			/* Error -- no free page? */
 }
 
+void FreePhysicalPage(unsigned frame) {
+  BITMAP_SET(mm_table, frame >> 12);
+}
+
 
 /* Find free virtual page and map it to a corresponding physical frame 
  *
