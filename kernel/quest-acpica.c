@@ -294,18 +294,19 @@ AcpiOsFree (
   return;
 }
 
+#define MAX_NUM_MAP_MEMORY_FRAMES 16
 
 void *
 AcpiOsMapMemory (
     ACPI_PHYSICAL_ADDRESS   Where,
     ACPI_SIZE               Length) {
-  if (Where + Length <= 0x100000)
-    return (void *)Where;         /* assume identity mapped, for now */
-  else if (Length <= 0x1000) {    /* only can handle a page, for now */
-    ACPI_PHYSICAL_ADDRESS frame = Where & (~0xFFF); /* mask out the offset */
-    void *virt = MapVirtualPage(frame | 3);
+  ACPI_PHYSICAL_ADDRESS start_frame = Where & (~0xFFF);
+  ACPI_PHYSICAL_ADDRESS end_frame = (Where + Length) & (~0xFFF);
+  ACPI_SIZE num_frames = ((end_frame - start_frame) >> 12) + 1;
+  void *virt = MapContiguousVirtualPages(start_frame | 3, num_frames);
+  if (virt)
     return (void *)((unsigned)virt | (Where & 0xFFF)); /* mask back in the offset */
-  } else return NULL;
+  else return NULL;
 }
 
 
@@ -313,10 +314,11 @@ void
 AcpiOsUnmapMemory (
     void                    *LogicalAddress,
     ACPI_SIZE               Size) {
-  if ((unsigned)LogicalAddress + Size <= 0x100000)
-    return;                  /* assume identity mapped, for now */
-  else if (Size <= 0x1000)    /* only can handle a page, for now */
-    return UnmapVirtualPage((void *)((unsigned)LogicalAddress & (~0xFFF)));
+  unsigned start_addr = (unsigned)LogicalAddress & (~0xFFF);
+  unsigned end_addr = ((unsigned)LogicalAddress + Size) & (~0xFFF);
+  ACPI_SIZE num_pages = ((end_addr - start_addr) >> 12) + 1;
+  
+  return UnmapVirtualPages((void *)start_addr, num_pages);
 }
 
 
@@ -330,6 +332,7 @@ AcpiOsGetPhysicalAddress (
 
 
 
+#if 0
 /*
  * Memory/Object Cache
  */
@@ -371,7 +374,7 @@ AcpiOsReleaseObject (
   return AE_NOT_IMPLEMENTED;
 }
 
-
+#endif
 
 /*
  * Interrupt handlers
