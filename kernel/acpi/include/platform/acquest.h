@@ -133,8 +133,9 @@
 #define strtoul                     simple_strtoul
 
 //struct spinlock { unsigned long lock; };
-struct cache { unsigned long foo; };
-#define ACPI_CACHE_T                struct cache
+//struct cache { unsigned long foo; };
+//#define ACPI_CACHE_T                struct cache
+#define ACPI_USE_LOCAL_CACHE
 #define ACPI_SPINLOCK               struct spinlock
 #define ACPI_CPU_FLAGS              unsigned long
 #define ACPI_THREAD_ID              unsigned short
