@@ -67,6 +67,9 @@ extern unsigned short runqueue[]; /* TSS of next runnable task; 0 if none */
 extern unsigned AllocatePhysicalPage( void );
 extern void *MapVirtualPage( unsigned phys_frame );
 extern void UnmapVirtualPage( void *virt_addr );
+extern void *MapVirtualPages(unsigned *phys_frames, unsigned count);
+extern void *MapContiguousVirtualPages(unsigned phys_frame, unsigned count);
+extern void UnmapVirtualPages(void *virt_addr, unsigned count);
 extern void *get_phys_addr (void *virt_addr);
 extern quest_tss *LookupTSS( unsigned short selector );
 extern int bitmap_find_first_set( unsigned int *table, unsigned int limit );

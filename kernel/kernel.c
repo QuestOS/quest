@@ -196,6 +196,82 @@ void *MapVirtualPage( unsigned phys_frame ) {
   return NULL;			/* Invalid address */
 }
 
+/* Map contiguous physical to virtual memory */
+void *MapContiguousVirtualPages(unsigned phys_frame, unsigned count) {
+  unsigned *page_table = (unsigned *) KERN_PGT;
+  int i,j;
+  void *va;
+
+  if(count == 0) return NULL;
+
+  for( i = 0; i < 0x400; i++ ) {
+    if( !page_table[ i ] ) {	/* Free page */
+      for(j=0; j<count; j++) {
+        if (page_table[i+j]) {
+          /* Not enough pages in this window */
+          i = j;
+          goto keep_searching;
+        }
+      }
+
+      for(j=0; j<count; j++) {
+        page_table[ i+j ] = phys_frame + j*0x1000;
+      }
+
+      va = (char *)&_kernelstart + (i << 12);
+
+      /* Invalidate page in case it was cached in the TLB */
+      for(j=0; j<count; j++) {
+        invalidate_page( va + j*0x1000 ); 
+      }
+
+      return va;
+    }
+  keep_searching:
+    ;
+  }
+
+  return NULL;			/* Invalid address */
+}
+
+/* Map non-contiguous physical memory to contiguous virtual memory */
+void *MapVirtualPages(unsigned *phys_frames, unsigned count) {
+  unsigned *page_table = (unsigned *) KERN_PGT;
+  int i,j;
+  void *va;
+
+  if(count == 0) return NULL;
+
+  for( i = 0; i < 0x400; i++ ) {
+    if( !page_table[ i ] ) {	/* Free page */
+      for(j=0; j<count; j++) {
+        if (page_table[i+j]) {
+          /* Not enough pages in this window */
+          i = j;
+          goto keep_searching;
+        }
+      }
+
+      for(j=0; j<count; j++) {
+        page_table[ i+j ] = phys_frames[j];
+      }
+
+      va = (char *)&_kernelstart + (i << 12);
+
+      /* Invalidate page in case it was cached in the TLB */
+      for(j=0; j<count; j++) {
+        invalidate_page( va + j*0x1000 ); 
+      }
+
+      return va;
+    }
+  keep_searching:
+    ;
+  }
+
+  return NULL;			/* Invalid address */
+}
+
 
 /* 
  * Release previously mapped virtual page 
@@ -208,6 +284,12 @@ void UnmapVirtualPage( void *virt_addr ) {
 
     /* Invalidate page in case it was cached in the TLB */
     invalidate_page( virt_addr ); 
+}
+
+void UnmapVirtualPages(void *virt_addr, unsigned count) {
+  int j;
+  for(j=0; j<count; j++)
+    UnmapVirtualPage(virt_addr + j*0x1000);
 }
 
 void *get_phys_addr( void *virt_addr ) {
