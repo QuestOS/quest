@@ -1,4 +1,5 @@
 #include"types.h"
+#include"kernel.h"
 #include"acpi.h"                /* Use ACPICA's va_* macros */
 
 void closure_vprintf(void putc_clo(void *,char), void *data, const char *fmt, va_list args) {
@@ -154,5 +155,25 @@ void fun_printf(void putc(char), const char *fmt, ...) {
   va_list args;
   va_start(args,fmt);
   fun_vprintf(putc,fmt,args);
+  va_end(args);
+}
+
+void com1_printf(const char *fmt, ...) {
+  va_list args;
+  va_start(args,fmt);
+  fun_vprintf(com1_putc, fmt, args);
+  va_end(args);
+}
+
+static void _putc(char c) {
+  _putchar(c);
+}
+
+void printf(const char *fmt, ...) {
+  va_list args;
+  va_start(args,fmt);
+  spinlock_lock(&screen_lock);
+  fun_vprintf(_putc, fmt, args);
+  spinlock_unlock(&screen_lock);
   va_end(args);
 }

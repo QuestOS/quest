@@ -24,6 +24,7 @@
 #include "kernel.h"
 #include "filesys.h"
 #include "i386.h"
+#include "printf.h"
 
 extern void ReadSector( void *offset, int cylinder, int head, int sector );
 extern void WriteSector( void *offset, int cylinder, int head, int sector );
@@ -251,7 +252,7 @@ struct ext2_dir_entry
 /* Convert the integer D to a string and save the string in BUF. If
    BASE is equal to 'd', interpret that D is decimal, and if BASE is
    equal to 'x', interpret that D is hexadecimal. */
-static void
+void
 itoa (char *buf, int base, int d)
 {
   char *p = buf;
@@ -298,6 +299,7 @@ itoa (char *buf, int base, int d)
 
 /* Format a string and print it on the screen, just like the libc
    function printf. */
+#if 0
 void
 printf (const char *format, ...) {
   char **arg = (char **) &format;
@@ -342,6 +344,7 @@ printf (const char *format, ...) {
 	}
     }
 }
+#endif
 
 
 int substring (const char *s1, const char *s2) {
