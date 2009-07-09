@@ -10,6 +10,8 @@ ACPI_OBJS = $(patsubst %.c,%.o,$(ACPI_SRCS))
 MNT_POINT=/mnt/quest
 PROGS = quest terminal_server shell exec race test1 test2 test3 test4 test5 test6
 
+.PHONY: all tags clean cleanacpi vmware
+
 all: $(PROGS)
 
 quest: $(OBJS) $(ACPI_OBJS)
@@ -28,6 +30,10 @@ install: $(PROGS)
 vmware: install
 	qemu-img convert c.img -O vmdk c-img.vmdk
 	cp c-img.vmdk /mnt/hgfs/shared/quest
+
+tags:
+	etags -o TAGS *.c acpi/*.c 
+	ctags -o tags *.c acpi/*.c
 
 clean:
 	-rm -f *.o *.d $(PROGS) *~
