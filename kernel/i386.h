@@ -185,6 +185,14 @@ static inline unsigned short inw( unsigned short usPort ) {
     return us;
 }
 
+static inline unsigned long inl( unsigned short usPort ) {
+
+    unsigned long ul;
+    
+    asm volatile( "inl %1,%0" : "=a" (ul) : "Nd" (usPort) );
+    return ul;
+}
+
 
 static inline void insw( unsigned short usPort, void *buf, int count ) {
 
@@ -207,6 +215,11 @@ static inline void outb( unsigned char uch, unsigned short usPort ) {
 static inline void outw( unsigned short us, unsigned short usPort ) {
 
     asm volatile( "outw %0,%1" : : "a" (us), "Nd" (usPort) );
+}
+
+static inline void outl( unsigned long ul, unsigned short usPort ) {
+
+    asm volatile( "outl %0,%1" : : "a" (ul), "Nd" (usPort) );
 }
 
 

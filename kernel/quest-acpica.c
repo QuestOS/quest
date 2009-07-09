@@ -177,7 +177,7 @@ AcpiOsTableOverride (
 ACPI_STATUS
 AcpiOsCreateLock (
     ACPI_SPINLOCK           *OutHandle) {
-  return AE_OK;
+  return AE_NOT_IMPLEMENTED;
 }
 
 
@@ -212,14 +212,14 @@ AcpiOsCreateSemaphore (
     UINT32                  MaxUnits,
     UINT32                  InitialUnits,
     ACPI_SEMAPHORE          *OutHandle) {
-  return AE_OK;
+  return AE_NOT_IMPLEMENTED;
 }
 
 
 ACPI_STATUS
 AcpiOsDeleteSemaphore (
     ACPI_SEMAPHORE          Handle) {
-  return AE_OK;
+  return AE_NOT_IMPLEMENTED;
 }
 
 
@@ -228,7 +228,7 @@ AcpiOsWaitSemaphore (
     ACPI_SEMAPHORE          Handle,
     UINT32                  Units,
     UINT16                  Timeout) {
-  return AE_OK;
+  return AE_NOT_IMPLEMENTED;
 }
 
 
@@ -236,7 +236,7 @@ ACPI_STATUS
 AcpiOsSignalSemaphore (
     ACPI_SEMAPHORE          Handle,
     UINT32                  Units) {
-  return AE_OK;
+  return AE_NOT_IMPLEMENTED;
 }
 
 
@@ -265,7 +265,7 @@ ACPI_STATUS
 AcpiOsAcquireMutex (
     ACPI_MUTEX              Handle,
     UINT16                  Timeout) {
-  return AE_OK;
+  return AE_NOT_IMPLEMENTED;
 }
 
 
@@ -324,6 +324,7 @@ ACPI_STATUS
 AcpiOsGetPhysicalAddress (
     void                    *LogicalAddress,
     ACPI_PHYSICAL_ADDRESS   *PhysicalAddress) {
+  *PhysicalAddress = (ACPI_PHYSICAL_ADDRESS)get_phys_addr(LogicalAddress);
   return AE_OK;
 }
 
@@ -338,28 +339,28 @@ AcpiOsCreateCache (
     UINT16                  ObjectSize,
     UINT16                  MaxDepth,
     ACPI_CACHE_T            **ReturnCache) {
-  return AE_OK;
+  return AE_NOT_IMPLEMENTED;
 }
 
 
 ACPI_STATUS
 AcpiOsDeleteCache (
     ACPI_CACHE_T            *Cache) {
-  return AE_OK;
+  return AE_NOT_IMPLEMENTED;
 }
 
 
 ACPI_STATUS
 AcpiOsPurgeCache (
     ACPI_CACHE_T            *Cache) {
-  return AE_OK;
+  return AE_NOT_IMPLEMENTED;
 }
 
 
 void *
 AcpiOsAcquireObject (
     ACPI_CACHE_T            *Cache) {
-  return AE_OK;
+  return NULL;
 }
 
 
@@ -367,7 +368,7 @@ ACPI_STATUS
 AcpiOsReleaseObject (
     ACPI_CACHE_T            *Cache,
     void                    *Object) {
-  return AE_OK;
+  return AE_NOT_IMPLEMENTED;
 }
 
 
@@ -380,7 +381,7 @@ AcpiOsInstallInterruptHandler (
     UINT32                  InterruptNumber,
     ACPI_OSD_HANDLER        ServiceRoutine,
     void                    *Context) {
-  return AE_OK;
+  return AE_NOT_IMPLEMENTED;
 }
 
 
@@ -388,7 +389,7 @@ ACPI_STATUS
 AcpiOsRemoveInterruptHandler (
     UINT32                  InterruptNumber,
     ACPI_OSD_HANDLER        ServiceRoutine) {
-  return AE_OK;
+  return AE_NOT_IMPLEMENTED;
 }
 
 
@@ -399,7 +400,7 @@ AcpiOsRemoveInterruptHandler (
 ACPI_THREAD_ID
 AcpiOsGetThreadId (
     void) {
-  return AE_OK;
+  return str();
 }
 
 
@@ -408,7 +409,7 @@ AcpiOsExecute (
     ACPI_EXECUTE_TYPE       Type,
     ACPI_OSD_EXEC_CALLBACK  Function,
     void                    *Context) {
-  return AE_OK;
+  return AE_NOT_IMPLEMENTED;
 }
 
 
@@ -442,6 +443,17 @@ AcpiOsReadPort (
     ACPI_IO_ADDRESS         Address,
     UINT32                  *Value,
     UINT32                  Width) {
+  switch(Width) {
+  case 8: 
+    *Value = inb(Address);
+    break;
+  case 16:
+    *Value = inw(Address);
+    break;
+  case 32:
+    *Value = inl(Address);
+    break;
+  }
   return AE_OK;
 }
 
@@ -451,6 +463,17 @@ AcpiOsWritePort (
     ACPI_IO_ADDRESS         Address,
     UINT32                  Value,
     UINT32                  Width) {
+  switch(Width) {
+  case 8: 
+    outb((UINT8)Value, Address);
+    break;
+  case 16:
+    outw((UINT16)Value, Address);
+    break;
+  case 32:
+    outl(Value, Address);
+    break;
+  }
   return AE_OK;
 }
 
@@ -464,7 +487,7 @@ AcpiOsReadMemory (
     ACPI_PHYSICAL_ADDRESS   Address,
     UINT32                  *Value,
     UINT32                  Width) {
-  return AE_OK;
+  return AE_NOT_IMPLEMENTED;
 }
 
 
@@ -473,7 +496,7 @@ AcpiOsWriteMemory (
     ACPI_PHYSICAL_ADDRESS   Address,
     UINT32                  Value,
     UINT32                  Width) {
-  return AE_OK;
+  return AE_NOT_IMPLEMENTED;
 }
 
 
@@ -489,7 +512,7 @@ AcpiOsReadPciConfiguration (
     UINT32                  Reg,
     void                    *Value,
     UINT32                  Width) {
-  return AE_OK;
+  return AE_NOT_IMPLEMENTED;
 }
 
 
@@ -499,7 +522,7 @@ AcpiOsWritePciConfiguration (
     UINT32                  Reg,
     ACPI_INTEGER            Value,
     UINT32                  Width) {
-  return AE_OK;
+  return AE_NOT_IMPLEMENTED;
 }
 
 
@@ -523,7 +546,7 @@ AcpiOsDerivePciId(
 ACPI_STATUS
 AcpiOsValidateInterface (
     char                    *Interface) {
-  return AE_OK;
+  return AE_NOT_IMPLEMENTED;
 }
 
 
@@ -531,7 +554,7 @@ BOOLEAN
 AcpiOsReadable (
     void                    *Pointer,
     ACPI_SIZE               Length) {
-  return AE_OK;
+  return AE_NOT_IMPLEMENTED;
 }
 
 
@@ -539,14 +562,14 @@ BOOLEAN
 AcpiOsWritable (
     void                    *Pointer,
     ACPI_SIZE               Length) {
-  return AE_OK;
+  return AE_NOT_IMPLEMENTED;
 }
 
 
 UINT64
 AcpiOsGetTimer (
     void) {
-  return AE_OK;
+  return AE_NOT_IMPLEMENTED;
 }
 
 
@@ -554,7 +577,7 @@ ACPI_STATUS
 AcpiOsSignal (
     UINT32                  Function,
     void                    *Info) {
-  return AE_OK;
+  return AE_NOT_IMPLEMENTED;
 }
 
 
@@ -608,13 +631,13 @@ AcpiOsOpenDirectory (
     char                    *Pathname,
     char                    *WildcardSpec,
     char                    RequestedFileType) {
-  return AE_OK;
+  return NULL;
 }
 
 char *
 AcpiOsGetNextFilename (
     void                    *DirHandle) {
-  return AE_OK;
+  return NULL;
 }
 
 
