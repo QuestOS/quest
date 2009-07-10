@@ -1,3 +1,5 @@
+#ifndef _KERNEL_H_
+#define _KERNEL_H_
 #define PIT_FREQ 1193181	/* in Hz */
 #define HZ 100 
 #define MAX_CPUS 8
@@ -94,7 +96,8 @@ extern void runqueue_append( unsigned int prio, unsigned short selector );
 extern void queue_append( unsigned short *queue, unsigned short selector );
 extern unsigned short queue_remove_head( unsigned short *queue );
 extern void schedule( void );
-extern void locked_schedule( void );
+extern void wakeup(unsigned short);
+extern void wakeup_list(unsigned short);
 extern void lock_kernel( void );
 extern void unlock_kernel( void );
 
@@ -148,6 +151,7 @@ extern struct spinlock screen_lock;
 
 extern BYTE idt_ptr[];
 
+#endif  /* __ASSEMBLER__ */
 #endif
 
 /*

@@ -55,13 +55,24 @@ extern unsigned short queue_remove_head( unsigned short *queue ) {
     return head;
 }
 
-extern void schedule ( void ) {
-  spinlock_lock(&kernel_lock);
-  locked_schedule();
+extern void wakeup(unsigned short selector) {
+  quest_tss *tssp;
+  tssp = LookupTSS(selector);
+  runqueue_append(tssp->priority, selector);
+}
+
+extern void wakeup_list(unsigned short selector) {
+  quest_tss *tssp;
+
+  while(selector) {
+    tssp = LookupTSS(selector);
+    runqueue_append(tssp->priority, selector);
+    selector = tssp->next;    
+  }
 }
 
 /* Pick from the highest priority non-empty queue */
-extern void locked_schedule( void ) {
+extern void schedule( void ) {
 
   unsigned short next;
   unsigned int prio;
@@ -74,7 +85,6 @@ extern void locked_schedule( void ) {
     
     if( next == str() ) {
       /* no task switch required */
-      spinlock_unlock(&kernel_lock);
       return;
     }
 
@@ -94,7 +104,6 @@ extern void locked_schedule( void ) {
 #endif
 
     jmp_gate( next );
-    spinlock_unlock(&kernel_lock); 
   }
   else {			/* Replenish timeslices for expired
 				   tasks */
@@ -111,8 +120,6 @@ extern void locked_schedule( void ) {
 
     /* Only switch tasks to IDLE if we are not already running IDLE. */
     if(str() != idle_sel) jmp_gate(idle_sel);
-    
-    spinlock_unlock(&kernel_lock);
   }
 }
 

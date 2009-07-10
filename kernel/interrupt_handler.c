@@ -240,13 +240,11 @@ void HandleSyscall0 (int eax, int ebx) {
 						  queue -- this operation
 						  must be atomic with the
 						  busy check above */
-      locked_schedule();
+      schedule();
       /* We can now safely assume that we have exclusive access to the
 	 server (since the only way we could possibly have woken up after
 	 the schedule() call is by the previous head task placing us on
 	 the run queue -- see below). */
-      lock_kernel();            /* I forgot to insert this call --
-                                 * could have been checked statically */
   } else
       pTSS->busy = 1; /* mark the server busy -- this set must be atomic
 			 with the test above */
@@ -761,13 +759,15 @@ extern void _interrupt3e(void) {
     /* CPU was idling */
     schedule ();
     /* if returned, go back to idling */
+    unlock_kernel();
     return;
   } else {
     lock_kernel();
     /* add the current task to the back of the run queue */
     runqueue_append( LookupTSS( str() )->priority, str() ); 
     /* with kernel locked, go ahead and schedule */
-    locked_schedule (); 
+    schedule (); 
+    unlock_kernel();
   }
 }
 
@@ -870,8 +870,8 @@ void __exit( int status ) {
 
     UnmapVirtualPage( ptss );
 
-    // i need a real idle task, not the dummy ones.
-    locked_schedule();
+    schedule();
+    unlock_kernel();
 }
 
 
@@ -888,7 +888,8 @@ extern int _waitpid( int pid ) {
        waiting for it. */
     queue_append( &ptss->waitqueue, str() );
     /* We have to go to sleep now -- find another task. */
-    locked_schedule();
+    schedule();
+    unlock_kernel();
     /* We have been woken up (see __exit).  Return successfully. */
     return 0;
   } else {
@@ -915,7 +916,8 @@ extern int _sched_setparam( int pid, const struct sched_param *p ) {
 
     runqueue_append( (LookupTSS( str() ))->priority, str() );
 
-    locked_schedule();
+    schedule();
+    unlock_kernel();
     
     return 0;
     
