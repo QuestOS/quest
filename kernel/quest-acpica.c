@@ -117,6 +117,7 @@
  *****************************************************************************/
 
 #include"spinlock.h"
+#include"semaphore.h"
 #include"kernel.h"
 #include"acpi.h"
 #include"printf.h"
@@ -158,7 +159,8 @@ ACPI_STATUS
 AcpiOsPredefinedOverride (
     const ACPI_PREDEFINED_NAMES *InitVal,
     ACPI_STRING                 *NewVal) {
-  return AE_NOT_IMPLEMENTED;
+  *NewVal = NULL;
+  return AE_OK;
 }
 
 
@@ -166,7 +168,8 @@ ACPI_STATUS
 AcpiOsTableOverride (
     ACPI_TABLE_HEADER       *ExistingTable,
     ACPI_TABLE_HEADER       **NewTable) {
-  return AE_NOT_IMPLEMENTED;
+  *NewTable = NULL;
+  return AE_OK;
 }
 
 
@@ -177,13 +180,16 @@ AcpiOsTableOverride (
 ACPI_STATUS
 AcpiOsCreateLock (
     ACPI_SPINLOCK           *OutHandle) {
-  return AE_NOT_IMPLEMENTED;
+  *OutHandle = AcpiOsAllocate(sizeof(struct spinlock));
+  spinlock_init(*OutHandle);
+  return AE_OK;
 }
 
 
 void
 AcpiOsDeleteLock (
     ACPI_SPINLOCK           Handle) {
+  AcpiOsFree(Handle);
   return;
 }
 
@@ -191,6 +197,7 @@ AcpiOsDeleteLock (
 ACPI_CPU_FLAGS
 AcpiOsAcquireLock (
     ACPI_SPINLOCK           Handle) {
+  spinlock_lock(Handle);
   return 0;
 }
 
@@ -199,6 +206,7 @@ void
 AcpiOsReleaseLock (
     ACPI_SPINLOCK           Handle,
     ACPI_CPU_FLAGS          Flags) {
+  spinlock_unlock(Handle);
   return;
 }
 
@@ -212,14 +220,18 @@ AcpiOsCreateSemaphore (
     UINT32                  MaxUnits,
     UINT32                  InitialUnits,
     ACPI_SEMAPHORE          *OutHandle) {
-  return AE_NOT_IMPLEMENTED;
+  *OutHandle = AcpiOsAllocate(sizeof(struct semaphore));
+  semaphore_init(*OutHandle, MaxUnits, InitialUnits);
+  return AE_OK;
 }
 
 
 ACPI_STATUS
 AcpiOsDeleteSemaphore (
     ACPI_SEMAPHORE          Handle) {
-  return AE_NOT_IMPLEMENTED;
+  semaphore_destroy(Handle);
+  AcpiOsFree(Handle);
+  return AE_OK;
 }
 
 
@@ -228,7 +240,8 @@ AcpiOsWaitSemaphore (
     ACPI_SEMAPHORE          Handle,
     UINT32                  Units,
     UINT16                  Timeout) {
-  return AE_NOT_IMPLEMENTED;
+  semaphore_wait(Handle, Units, Timeout);
+  return AE_OK;
 }
 
 
@@ -236,7 +249,10 @@ ACPI_STATUS
 AcpiOsSignalSemaphore (
     ACPI_SEMAPHORE          Handle,
     UINT32                  Units) {
-  return AE_NOT_IMPLEMENTED;
+  if(semaphore_signal(Handle, Units) == 0)
+    return AE_OK;
+  else
+    return AE_LIMIT;
 }
 
 
@@ -315,7 +331,9 @@ AcpiOsAllocate (
   if (!virt) goto abort;
 
   *((ACPI_SIZE*)virt) = num_frames;   /* Header */
-  
+
+  com1_printf("Allocated %d frames for %d bytes.\n", num_frames, Size);
+
   return virt+4;
 
  abort:
@@ -437,6 +455,7 @@ AcpiOsInstallInterruptHandler (
     UINT32                  InterruptNumber,
     ACPI_OSD_HANDLER        ServiceRoutine,
     void                    *Context) {
+  com1_printf("InterruptNumber = %X\n", InterruptNumber);
   return AE_NOT_IMPLEMENTED;
 }
 

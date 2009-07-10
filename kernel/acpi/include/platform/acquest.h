@@ -117,6 +117,7 @@
 #define __ACQUEST_H__
 
 #include"spinlock.h"
+#include"semaphore.h"
 
 /* Common (in-kernel/user-space) ACPICA configuration */
 
@@ -136,9 +137,10 @@
 //struct cache { unsigned long foo; };
 //#define ACPI_CACHE_T                struct cache
 #define ACPI_USE_LOCAL_CACHE
-#define ACPI_SPINLOCK               struct spinlock
+#define ACPI_SPINLOCK               struct spinlock *
 #define ACPI_CPU_FLAGS              unsigned long
 #define ACPI_THREAD_ID              unsigned short
+#define ACPI_SEMAPHORE              struct semaphore *
 
 // fixme
 #define ACPI_DIV_64_BY_32(n_hi, n_lo, d32, q32, r32) \

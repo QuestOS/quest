@@ -218,6 +218,23 @@ void smp_enable(void) {
   if(ACPI_FAILURE(Status)) {
     com1_printf("Failed to initialize ACPI.\n");
   }
+  Status = AcpiReallocateRootTable();
+  if(ACPI_FAILURE(Status)) {
+    com1_printf("Failed: AcpiReallocateRootTable.\n");
+  }
+  Status = AcpiLoadTables();
+  if(ACPI_FAILURE(Status)) {
+    com1_printf("Failed: AcpiLoadTables.\n");
+  }
+  Status = AcpiEnableSubsystem(ACPI_FULL_INITIALIZATION);
+  if(ACPI_FAILURE(Status)) {
+    com1_printf("Failed: AcpiEnableSubsystem.\n");
+  }
+  Status = AcpiInitializeObjects(ACPI_FULL_INITIALIZATION);
+  if(ACPI_FAILURE(Status)) {
+    com1_printf("Failed: AcpiInitializeObjects.\n");
+  }
+  
   
   /* now mp_enabled = 1 is triggered in timer IRQ handler */
   //if (mp_num_cpus > 1) mp_enabled = 1;
