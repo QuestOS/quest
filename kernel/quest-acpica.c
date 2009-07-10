@@ -119,6 +119,7 @@
 #include"spinlock.h"
 #include"semaphore.h"
 #include"kernel.h"
+#include"pci.h"
 #include"acpi.h"
 #include"printf.h"
 
@@ -293,6 +294,32 @@ AcpiOsReleaseMutex (
 
 #endif
 
+static void *mem_break = NULL;
+void *
+AcpiOsAllocate (
+    ACPI_SIZE               Size) {
+  /* even worse algorithm that simply increments a pointer,
+   * getting new pages as necessary */
+  void *ptr;
+  if(mem_break == NULL || 
+     /* check if overflows page: */
+     (((ACPI_SIZE)mem_break + Size) & (~0xFFF)) != 
+     ((ACPI_SIZE)mem_break & (~0xFFF)) ) {
+    mem_break = MapVirtualPage (AllocatePhysicalPage() | 3);
+  }
+  ptr = mem_break;
+  mem_break = (void *)((ACPI_SIZE)mem_break + Size);
+  return ptr;
+}
+
+void
+AcpiOsFree (
+    void *                  Memory) {
+  /* nop */
+}
+
+#if 0
+
 /*
  * Memory allocation and mapping
  */
@@ -365,7 +392,8 @@ AcpiOsFree (
   return;
 }
 
-#define MAX_NUM_MAP_MEMORY_FRAMES 16
+#endif
+
 
 void *
 AcpiOsMapMemory (
@@ -456,7 +484,7 @@ AcpiOsInstallInterruptHandler (
     ACPI_OSD_HANDLER        ServiceRoutine,
     void                    *Context) {
   com1_printf("InterruptNumber = %X\n", InterruptNumber);
-  return AE_NOT_IMPLEMENTED;
+  return AE_OK;
 }
 
 
@@ -587,7 +615,31 @@ AcpiOsReadPciConfiguration (
     UINT32                  Reg,
     void                    *Value,
     UINT32                  Width) {
-  return AE_NOT_IMPLEMENTED;
+  pci_config_addr a;
+  BYTE v8;
+  WORD v16;
+  DWORD v32;
+  com1_printf("AcpiOsReadPciConfiguration(%.4X:%.4X:%.4X:%.4X, %.8X, ..., %d)\n",
+              PciId->Segment, PciId->Bus, PciId->Device, PciId->Function, 
+              Reg, Width);
+  pci_config_addr_init(&a, PciId->Bus, PciId->Device, PciId->Function, Reg);
+  switch(Width) {
+  case 8:
+    pci_read_byte(&a, &v8);
+    *((ACPI_INTEGER *)Value) = (ACPI_INTEGER)v8;
+    break;
+  case 16:
+    pci_read_word(&a, &v16);
+    *((ACPI_INTEGER *)Value) = (ACPI_INTEGER)v16;
+    break;
+  case 32:
+    pci_read_dword(&a, &v32);
+    *((ACPI_INTEGER *)Value) = (ACPI_INTEGER)v32;
+    break;
+  default:
+    return AE_BAD_PARAMETER;
+  }
+  return AE_OK;
 }
 
 
@@ -597,7 +649,23 @@ AcpiOsWritePciConfiguration (
     UINT32                  Reg,
     ACPI_INTEGER            Value,
     UINT32                  Width) {
-  return AE_NOT_IMPLEMENTED;
+  pci_config_addr a;
+  com1_printf("AcpiOsWritePciConfiguration\n");
+  pci_config_addr_init(&a, PciId->Bus, PciId->Device, PciId->Function, Reg);
+  switch(Width) {
+  case 8:
+    pci_write_byte(&a, (BYTE)Value);
+    break;
+  case 16:
+    pci_write_word(&a, (WORD)Value);
+    break;
+  case 32:
+    pci_write_dword(&a, (DWORD)Value);
+    break;
+  default:
+    return AE_BAD_PARAMETER;
+  }
+  return AE_OK;
 }
 
 
@@ -610,6 +678,7 @@ AcpiOsDerivePciId(
     ACPI_HANDLE             Rhandle,
     ACPI_HANDLE             Chandle,
     ACPI_PCI_ID             **PciId) {
+  com1_printf("AcpiOsDerivePciId\n");
   return;
 }
 

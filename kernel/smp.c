@@ -8,6 +8,7 @@
 #include "apic.h"
 #include "spinlock.h"
 #include "acpi/include/acpi.h"
+#include "acpi/include/acmacros.h"
 #include "printf.h"
                     
 /* CMOS write */
@@ -182,6 +183,29 @@ int smp_init(void) {
   return mp_num_cpus;
 }
 
+ACPI_STATUS DisplayOneDevice(ACPI_HANDLE ObjHandle, UINT32 Level, void *Context, void **RetVal) {
+  ACPI_STATUS Status;
+  ACPI_DEVICE_INFO *Info;
+  ACPI_BUFFER Path;
+  char Buffer[256];
+
+  Path.Length = sizeof(Buffer);
+  Path.Pointer = Buffer;
+
+  Status = AcpiGetName(ObjHandle, ACPI_FULL_PATHNAME, &Path);
+  if (ACPI_SUCCESS(Status)) {
+    com1_printf("%s\n", Path.Pointer);
+  }
+  Status = AcpiGetObjectInfo(ObjHandle, &Info);
+  if (ACPI_SUCCESS(Status)) {
+    com1_printf ("    HID: %.8X, ADR: %.8X, Status: %x\n",
+                 Info->HardwareId, Info->Address, Info->CurrentStatus);
+    ACPI_FREE(Info);
+  }
+
+  return AE_OK;
+}
+
 void smp_enable(void) {
   ACPI_STATUS Status;
   int i;
@@ -235,6 +259,12 @@ void smp_enable(void) {
     com1_printf("Failed: AcpiInitializeObjects.\n");
   }
   
+  {
+    ACPI_HANDLE SysBusHandle;
+    AcpiGetHandle(ACPI_ROOT_OBJECT, ACPI_NS_SYSTEM_BUS, &SysBusHandle);
+    AcpiWalkNamespace(ACPI_TYPE_DEVICE, SysBusHandle, INT_MAX, 
+                      DisplayOneDevice, NULL, NULL);
+  }
   
   /* now mp_enabled = 1 is triggered in timer IRQ handler */
   //if (mp_num_cpus > 1) mp_enabled = 1;
