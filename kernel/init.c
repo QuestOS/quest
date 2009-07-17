@@ -464,7 +464,7 @@ void init( multiboot* pmb ) {
 
   dummyTSS_selector = CreateDummyTSS();
 
-  lock_kernel();
+  //lock_kernel();
 
   ltr( dummyTSS_selector );
 
