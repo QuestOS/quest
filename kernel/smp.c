@@ -38,6 +38,8 @@ DWORD mp_IOAPIC_addr = IOAPIC_ADDR_DEFAULT;
 BYTE CPU_to_APIC[MAX_CPUS];
 BYTE APIC_to_CPU[MAX_CPUS];
 
+static int mp_ACPI_enabled = 0;
+
 /* I hard-code a check for re-routing of the timer IRQ, but this
  * should probably be folded into a more general interrupt routing
  * system. */
@@ -45,12 +47,14 @@ static int mp_timer_IOAPIC_irq = 0;
 static int mp_timer_IOAPIC_id = 0;
 static int mp_ISA_bus_id = 0;
 
+static int process_acpi_tables(void);
+static int acpi_add_processor(ACPI_MADT_LOCAL_APIC *);
 static int process_mp_fp(struct mp_fp *);
 static int process_mp_config(struct mp_config *);
 static int add_processor(struct mp_config_processor_entry *);
 static struct mp_fp *probe_mp_fp(DWORD, DWORD);
 static void smp_setup_LAPIC_timer(void);
-int boot_cpu(struct mp_config_processor_entry *);
+int boot_cpu(BYTE, BYTE);
 
 /* ACPICA early initialization requires some static space be set aside
  * for ACPI tables -- and there is no dynamic memory allocation
@@ -64,85 +68,17 @@ static ACPI_TABLE_DESC TableArray[ACPI_MAX_INIT_TABLES];
 /* Returns number of CPUs successfully booted. */
 int smp_init(void) {
   struct mp_fp *ptr;
-  ACPI_STATUS status;
-  status = AcpiInitializeTables(TableArray, ACPI_MAX_INIT_TABLES, TRUE);
-  if (status == AE_OK) {
-    ACPI_TABLE_MADT *madt;
-    ACPI_TABLE_FADT *fadt;
-    com1_puts("AcpiInitializeTables OK\n");
-    if(AcpiGetTable(ACPI_SIG_MADT, 0, (ACPI_TABLE_HEADER **)&madt) == AE_OK) {
-      BYTE *ptr, *lim = (BYTE *)madt + madt->Header.Length;
-      com1_puts("madt=");
-      com1_putx((unsigned)madt);
-      com1_puts(" len=");
-      com1_putx(madt->Header.Length);
-      com1_puts(" LAPIC=");
-      com1_putx(madt->Address);
-      com1_putc('\n');
-      ptr = (BYTE *)madt + sizeof(ACPI_TABLE_MADT);
-      while (ptr < lim) {
-        switch(((ACPI_SUBTABLE_HEADER *)ptr)->Type) {
-        case ACPI_MADT_TYPE_LOCAL_APIC: {
-          ACPI_MADT_LOCAL_APIC *sub = (ACPI_MADT_LOCAL_APIC *)ptr;
-          com1_puts("Processor=");
-          com1_putx(sub->ProcessorId);
-          com1_puts(" APIC ID=");
-          com1_putx(sub->ProcessorId);
-          if(sub->LapicFlags) com1_puts(" (enabled)");
-          com1_putc('\n');
-          break;
-        }
-        case ACPI_MADT_TYPE_IO_APIC: {
-          ACPI_MADT_IO_APIC *sub = (ACPI_MADT_IO_APIC *)ptr;
-          com1_puts("IO_APIC ID=");
-          com1_putx(sub->Id);
-          com1_puts(" ADDR=");
-          com1_putx(sub->Address);
-          com1_puts(" IRQBASE=");
-          com1_putx(sub->GlobalIrqBase);
-          com1_putc('\n');
-          break;
-        }
-        case ACPI_MADT_TYPE_INTERRUPT_OVERRIDE: {
-          ACPI_MADT_INTERRUPT_OVERRIDE *sub = (ACPI_MADT_INTERRUPT_OVERRIDE *)ptr;
-          com1_puts("OVERRIDE: BUS=");
-          com1_putx(sub->Bus);
-          com1_puts(" SourceIRQ=");
-          com1_putx(sub->SourceIrq);
-          com1_puts(" GlobalIRQ=");
-          com1_putx(sub->GlobalIrq);
-          com1_putc('\n');
-          break;
-        }
-        default:
-          break;
-        }
-        ptr += ((ACPI_SUBTABLE_HEADER *)ptr)->Length;
-      } 
-    } else com1_puts("AcpiGetTable MADT FAILED\n");
-    if(AcpiGetTable(ACPI_SIG_FADT, 0, (ACPI_TABLE_HEADER **)&fadt) == AE_OK) {
-      com1_puts("FADT: ");
-      com1_putx((unsigned)fadt);
-      com1_putc(' ');
-      com1_putx(fadt->BootFlags);
-      if(fadt->BootFlags & ACPI_FADT_LEGACY_DEVICES)
-        com1_puts(" HAS_LEGACY_DEVICES");
-      if(fadt->BootFlags & ACPI_FADT_8042)
-        com1_puts(" HAS_KBD_8042");
-      if(fadt->BootFlags & ACPI_FADT_NO_VGA)
-        com1_puts(" NO_VGA_PROBING");
-      com1_putc('\n');
-    } else com1_puts("AcpiGetTable FADT FAILED\n");
-  } else 
-    com1_puts("AcpiInitializeTables FAILED\n");
   
+  if(process_acpi_tables() <= 1) {
+    /* ACPI failed to initialize, try Intel MPS */
   
-  if       ((ptr = probe_mp_fp(0x9F800, 0xA0000)));
-  else if  ((ptr = probe_mp_fp(0x0040E, 0x0140E)));
-  else if  ((ptr = probe_mp_fp(0xE0000, 0xFFFFF)));
-  else return 1;                /* assume uniprocessor */
+    if       ((ptr = probe_mp_fp(0x9F800, 0xA0000)));
+    else if  ((ptr = probe_mp_fp(0x0040E, 0x0140E)));
+    else if  ((ptr = probe_mp_fp(0xE0000, 0xFFFFF)));
+    else return 1;                /* assume uniprocessor */
 
-  mp_num_cpus = process_mp_fp (ptr);
+    mp_num_cpus = process_mp_fp (ptr);
+  }
 
   if (mp_num_cpus > 1) {
     int phys_id, log_dest;
@@ -219,7 +155,7 @@ DisplayOneDevice(ACPI_HANDLE ObjHandle, UINT32 Level, void *Context, void **RetV
                                    , ACPI_TYPE_STRING);
   if(ACPI_SUCCESS(Status)) {
     com1_printf(" DDN=%s", Obj.String.Pointer);
-  } //else com1_printf(" DDN=%s", AcpiGbl_ExceptionNames_Env[Status]);
+  }
 
   Result.Length = sizeof(Obj);
   Result.Pointer = &Obj;
@@ -227,7 +163,7 @@ DisplayOneDevice(ACPI_HANDLE ObjHandle, UINT32 Level, void *Context, void **RetV
                                    , ACPI_TYPE_STRING);
   if(ACPI_SUCCESS(Status)) {
     com1_printf(" STR=%s", Obj.String.Pointer);
-  } //else com1_printf(" STR=%s", AcpiGbl_ExceptionNames_Env[Status]);
+  }
 
   Result.Length = sizeof(Obj);
   Result.Pointer = &Obj;
@@ -235,7 +171,7 @@ DisplayOneDevice(ACPI_HANDLE ObjHandle, UINT32 Level, void *Context, void **RetV
                                    , ACPI_TYPE_STRING);
   if(ACPI_SUCCESS(Status)) {
     com1_printf(" MLS=%s", Obj.String.Pointer);
-  } //else com1_printf(" MLS=%s", AcpiGbl_ExceptionNames_Env[Status]);
+  }
 
   com1_printf("\n");
 
@@ -275,38 +211,150 @@ void smp_enable(void) {
   outb(0x70, 0x22);             /* Re-direct IMCR to use IO-APIC */
   outb(0x01, 0x23);             /* (for some motherboards) */
 
-  Status = AcpiInitializeSubsystem();
-  if(ACPI_FAILURE(Status)) {
-    com1_printf("Failed to initialize ACPI.\n");
-  }
-  Status = AcpiReallocateRootTable();
-  if(ACPI_FAILURE(Status)) {
-    com1_printf("Failed: AcpiReallocateRootTable.\n");
-  }
-  Status = AcpiLoadTables();
-  if(ACPI_FAILURE(Status)) {
-    com1_printf("Failed: AcpiLoadTables.\n");
-  }
-  Status = AcpiEnableSubsystem(ACPI_FULL_INITIALIZATION);
-  if(ACPI_FAILURE(Status)) {
-    com1_printf("Failed: AcpiEnableSubsystem.\n");
-  }
-  Status = AcpiInitializeObjects(ACPI_FULL_INITIALIZATION);
-  if(ACPI_FAILURE(Status)) {
-    com1_printf("Failed: AcpiInitializeObjects.\n");
-  }
+  /* Complete the ACPICA initialization sequence */
+  if(mp_ACPI_enabled) {
+    Status = AcpiInitializeSubsystem();
+    if(ACPI_FAILURE(Status)) {
+      com1_printf("Failed to initialize ACPI.\n");
+    }
+    Status = AcpiReallocateRootTable();
+    if(ACPI_FAILURE(Status)) {
+      com1_printf("Failed: AcpiReallocateRootTable.\n");
+    }
+    Status = AcpiLoadTables();
+    if(ACPI_FAILURE(Status)) {
+      com1_printf("Failed: AcpiLoadTables.\n");
+    }
+    Status = AcpiEnableSubsystem(ACPI_FULL_INITIALIZATION);
+    if(ACPI_FAILURE(Status)) {
+      com1_printf("Failed: AcpiEnableSubsystem.\n");
+    }
+    Status = AcpiInitializeObjects(ACPI_FULL_INITIALIZATION);
+    if(ACPI_FAILURE(Status)) {
+      com1_printf("Failed: AcpiInitializeObjects.\n");
+    }
   
-  {
-    ACPI_HANDLE SysBusHandle;
-    AcpiGetHandle(ACPI_ROOT_OBJECT, ACPI_NS_SYSTEM_BUS, &SysBusHandle);
-    AcpiWalkNamespace(ACPI_TYPE_DEVICE, SysBusHandle, INT_MAX, 
-                      DisplayOneDevice, NULL, NULL);
+    /* Walk the System Bus "\_SB_" and output info about each object
+     * found. */
+    {
+      ACPI_HANDLE SysBusHandle;
+      AcpiGetHandle(ACPI_ROOT_OBJECT, ACPI_NS_SYSTEM_BUS, &SysBusHandle);
+      AcpiWalkNamespace(ACPI_TYPE_DEVICE, SysBusHandle, INT_MAX, 
+                        DisplayOneDevice, NULL, NULL);
+    }
   }
-  
-  /* now mp_enabled = 1 is triggered in timer IRQ handler */
-  //if (mp_num_cpus > 1) mp_enabled = 1;
+
+  /* The global variable mp_enabled will be incremented in the PIT IRQ
+   * handler, this permits the Application Processors to go ahead and
+   * complete initialization after the kernel has entered a
+   * multi-processing safe state. */
 }
 
+/*******************************************************************
+ * Support for ACPI via ACPICA, the Intel Reference Implementation *
+ *******************************************************************/
+
+/* ACPICA supports the notion of "Early Initialization" the very
+ * purpose of which is to obtain the ACPI tables and begin the process
+ * of booting Application Processors when the rest of the operating
+ * system is not ready for normal operation.  This is intended to
+ * supersede the usage of the Intel Multiprocessing Specification. */
+
+#define printf com1_printf
+static int process_acpi_tables(void) {
+  ACPI_STATUS status;
+  status = AcpiInitializeTables(TableArray, ACPI_MAX_INIT_TABLES, TRUE);
+  if (status == AE_OK) {
+    ACPI_TABLE_MADT *madt;
+    ACPI_TABLE_FADT *fadt;
+    mp_ACPI_enabled = 1;
+    if(AcpiGetTable(ACPI_SIG_MADT, 0, (ACPI_TABLE_HEADER **)&madt) == AE_OK) {
+      /* Multiple APIC Description Table */
+      BYTE *ptr, *lim = (BYTE *)madt + madt->Header.Length;
+      printf("ACPI OEM: %.6s Compiler: %.4s LAPIC: %p Flags:%s\n", 
+             madt->Header.OemId,
+             madt->Header.AslCompilerId,
+             madt->Address,
+             (madt->Flags & ACPI_MADT_PCAT_COMPAT) ? " PCAT_COMPAT" : "");
+      ptr = (BYTE *)madt + sizeof(ACPI_TABLE_MADT);
+      while (ptr < lim) {
+        switch(((ACPI_SUBTABLE_HEADER *)ptr)->Type) {
+        case ACPI_MADT_TYPE_LOCAL_APIC: { /* Processor entry */
+          ACPI_MADT_LOCAL_APIC *sub = (ACPI_MADT_LOCAL_APIC *)ptr;
+          printf("Processor: %X APIC-ID: %X %s",
+                 sub->ProcessorId,
+                 sub->Id,
+                 sub->LapicFlags & 1 ? "(enabled)" : "(disabled)");
+          if(acpi_add_processor(sub)) {
+            printf(" (booted)");
+          }
+          printf("\n");
+          break;
+        }
+        case ACPI_MADT_TYPE_IO_APIC: { /* IO-APIC entry */
+          ACPI_MADT_IO_APIC *sub = (ACPI_MADT_IO_APIC *)ptr;
+          printf("IO-APIC ID: %X Address: %X IRQBase: %X\n",
+                 sub->Id,
+                 sub->Address,
+                 sub->GlobalIrqBase);
+          mp_IOAPIC_addr = sub->Address;
+          mp_timer_IOAPIC_id = sub->Id;
+          break;
+        }
+        case ACPI_MADT_TYPE_INTERRUPT_OVERRIDE: { /* Interrupt Override entry */
+          ACPI_MADT_INTERRUPT_OVERRIDE *sub = (ACPI_MADT_INTERRUPT_OVERRIDE *)ptr;
+          printf("Int. Override: Bus: %X SourceIRQ: %X GlobalIRQ: %X\n",
+                 sub->Bus,
+                 sub->SourceIrq,
+                 sub->GlobalIrq);
+          if (sub->Bus == 0 && /* spec sez: "'0' meaning ISA" */
+              sub->SourceIrq == 0)  { /* timer */
+            mp_timer_IOAPIC_irq = sub->GlobalIrq;
+          }
+          break;
+        }
+        default:
+          printf("MADT sub-entry: %X\n", ((ACPI_SUBTABLE_HEADER *)ptr)->Type);
+          break;
+        }
+        ptr += ((ACPI_SUBTABLE_HEADER *)ptr)->Length;
+      } 
+    } else printf("AcpiGetTable MADT: FAILED\n");
+    if(AcpiGetTable(ACPI_SIG_FADT, 0, (ACPI_TABLE_HEADER **)&fadt) == AE_OK) {
+      /* Fixed ACPI Description Table */
+      printf("Bootflags: %s %s %s\n",
+             (fadt->BootFlags & ACPI_FADT_LEGACY_DEVICES) ? 
+             "HAS_LEGACY_DEVICES" : "NO_LEGACY_DEVICES",
+             (fadt->BootFlags & ACPI_FADT_8042) ? 
+             "HAS_KBD_8042" : "NO_KBD_8042",
+             (fadt->BootFlags & ACPI_FADT_NO_VGA) ? 
+             "NO_VGA_PROBING" : "VGA_PROBING_OK");
+    } else printf("AcpiGetTable FADT: FAILED\n");
+  }
+
+  return mp_num_cpus;
+}
+#undef printf
+
+/* A small wrapper around boot_cpu() which does some checks and
+ * maintains two small tables. */
+static int acpi_add_processor(ACPI_MADT_LOCAL_APIC *ptr) {
+  BYTE this_apic_id = LAPIC_get_physical_ID();
+  BYTE apic_id = ptr->Id;
+
+  if(!(ptr->LapicFlags & 1)) return 0; /* disabled processor */
+  if(this_apic_id == apic_id) return 0; /* bootstrap processor */
+  
+  if(boot_cpu(apic_id, APIC_VER_NEW)) {
+    CPU_to_APIC[mp_num_cpus] = apic_id;
+    APIC_to_CPU[apic_id] = mp_num_cpus;
+    mp_num_cpus++;
+    return 1;
+  } else return 0;
+}
+
+
+/* End ACPI support */
 
 /*******************************************************
  * Support for the Intel Multiprocessing Specification *
@@ -557,8 +605,7 @@ extern BYTE ap_stack_ptr[];     /* we give the AP a stack pointer through this *
 
 /* For some reason, if this function is 'static', and -O is on, then
  * qemu fails. */
-int boot_cpu(struct mp_config_processor_entry *proc) {
-  BYTE apic_id = proc->APIC_id;
+int boot_cpu(BYTE apic_id, BYTE APIC_version) {
   int success = 1;
   volatile int to;
   DWORD bootaddr, accept_status;
@@ -594,7 +641,7 @@ int boot_cpu(struct mp_config_processor_entry *proc) {
   send_ipi(apic_id, LAPIC_ICR_TM_LEVEL | LAPIC_ICR_DM_INIT);
 
   /* Send start-up IPIs if not old version */
-  if (proc->APIC_version >= APIC_VER_NEW) {
+  if (APIC_version >= APIC_VER_NEW) {
     int i;
     for (i=1; i <= 2; i++) {
       /* Bochs starts it @ INIT-IPI and the AP goes into p-mode which is
@@ -631,7 +678,7 @@ static int add_processor(struct mp_config_processor_entry *proc) {
   if(!(proc->flags & 1)) return 0; /* disabled processor */
   if(proc->flags & 2) return 0;    /* bootstrap processor */
   
-  if(boot_cpu(proc)) {
+  if(boot_cpu(apic_id, proc->APIC_version)) {
     CPU_to_APIC[mp_num_cpus] = apic_id;
     APIC_to_CPU[apic_id] = mp_num_cpus;
     mp_num_cpus++;
