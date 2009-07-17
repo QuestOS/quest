@@ -10,7 +10,7 @@ ACPI_OBJS = $(patsubst %.c,%.o,$(ACPI_SRCS))
 MNT_POINT=/mnt/quest
 PROGS = quest terminal_server shell exec race test1 test2 test3 test4 test5 test6
 
-.PHONY: all tags clean cleanacpi vmware
+.PHONY: all tags clean cleanacpi vmware cleanall
 
 all: $(PROGS)
 
@@ -40,6 +40,8 @@ clean:
 
 cleanacpi:
 	-rm -f $(ACPI_OBJS)
+
+cleanall: clean cleanacpi
 
 define ACPI_template
 $(1): $(patsubst %.o,%.c,$(1))
