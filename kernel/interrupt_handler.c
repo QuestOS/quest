@@ -772,6 +772,7 @@ extern void _interrupt3e(void) {
   LAPIC_start_timer(cpu_bus_freq / 100); /* 100 Hz */
 
   if (str () == idleTSS_selector[phys_id]) {
+    lock_kernel();
     /* CPU was idling */
     schedule ();
     /* if returned, go back to idling */
