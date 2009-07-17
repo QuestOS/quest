@@ -2,6 +2,7 @@
  * http://www.uruk.org/mps/, http://www.osdev.org/, http://www.osdever.net/ 
  * and the Intel Multiprocessing Specification v1.4.
  */
+
 #include "i386.h"
 #include "kernel.h"
 #include "smp.h"
@@ -9,6 +10,7 @@
 #include "spinlock.h"
 #include "acpi/include/acpi.h"
 #include "acpi/include/acmacros.h"
+#include "acpi/include/acexcep.h"
 #include "printf.h"
                     
 /* CMOS write */
@@ -183,10 +185,14 @@ int smp_init(void) {
   return mp_num_cpus;
 }
 
+extern char const   *AcpiGbl_ExceptionNames_Env[];
+
 ACPI_STATUS DisplayOneDevice(ACPI_HANDLE ObjHandle, UINT32 Level, void *Context, void **RetVal) {
   ACPI_STATUS Status;
   ACPI_DEVICE_INFO *Info;
   ACPI_BUFFER Path;
+  ACPI_BUFFER Result;
+  ACPI_OBJECT Obj;
   char Buffer[256];
 
   Path.Length = sizeof(Buffer);
@@ -194,14 +200,51 @@ ACPI_STATUS DisplayOneDevice(ACPI_HANDLE ObjHandle, UINT32 Level, void *Context,
 
   Status = AcpiGetName(ObjHandle, ACPI_FULL_PATHNAME, &Path);
   if (ACPI_SUCCESS(Status)) {
-    com1_printf("%s\n", Path.Pointer);
+    com1_printf("%s: \n", Path.Pointer);
   }
   Status = AcpiGetObjectInfo(ObjHandle, &Info);
   if (ACPI_SUCCESS(Status)) {
-    com1_printf ("    HID: %.8X, ADR: %.8X, Status: %x\n",
-                 Info->HardwareId, Info->Address, Info->CurrentStatus);
+    com1_printf ("    ");
+    if(Info->Valid & ACPI_VALID_STA)
+      com1_printf (" STA %.8X", Info->CurrentStatus);
+    if(Info->Valid & ACPI_VALID_ADR)
+      com1_printf (" ADR %.8X", Info->Address);
+    if(Info->Valid & ACPI_VALID_HID)
+      com1_printf (" HID %s", Info->HardwareId.String);
+    if(Info->Valid & ACPI_VALID_UID)
+      com1_printf (" UID %s", Info->UniqueId.String);
+    if(Info->Valid & ACPI_VALID_CID) 
+      com1_printf (" CID");
+
     ACPI_FREE(Info);
   }
+
+  Result.Length = sizeof(Obj);
+  Result.Pointer = &Obj;
+  Status = AcpiEvaluateObjectTyped(ObjHandle, "_DDN", NULL, &Result
+                                   , ACPI_TYPE_STRING);
+  if(ACPI_SUCCESS(Status)) {
+    com1_printf(" DDN=%s", Obj.String.Pointer);
+  } //else com1_printf(" DDN=%s", AcpiGbl_ExceptionNames_Env[Status]);
+
+  Result.Length = sizeof(Obj);
+  Result.Pointer = &Obj;
+  Status = AcpiEvaluateObjectTyped(ObjHandle, "_STR", NULL, &Result
+                                   , ACPI_TYPE_STRING);
+  if(ACPI_SUCCESS(Status)) {
+    com1_printf(" STR=%s", Obj.String.Pointer);
+  } //else com1_printf(" STR=%s", AcpiGbl_ExceptionNames_Env[Status]);
+
+  Result.Length = sizeof(Obj);
+  Result.Pointer = &Obj;
+  Status = AcpiEvaluateObjectTyped(ObjHandle, "_MLS", NULL, &Result
+                                   , ACPI_TYPE_STRING);
+  if(ACPI_SUCCESS(Status)) {
+    com1_printf(" MLS=%s", Obj.String.Pointer);
+  } //else com1_printf(" MLS=%s", AcpiGbl_ExceptionNames_Env[Status]);
+
+  com1_printf("\n");
+
 
   return AE_OK;
 }

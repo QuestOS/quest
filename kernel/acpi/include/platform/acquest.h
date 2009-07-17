@@ -119,8 +119,6 @@
 #include"spinlock.h"
 #include"semaphore.h"
 
-/* Common (in-kernel/user-space) ACPICA configuration */
-
 //#define ACPI_USE_SYSTEM_CLIBRARY
 #define ACPI_USE_DO_WHILE_0
 #define ACPI_MUTEX_TYPE             ACPI_BINARY_SEMAPHORE
