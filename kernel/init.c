@@ -464,18 +464,22 @@ void init( multiboot* pmb ) {
 
   dummyTSS_selector = CreateDummyTSS();
 
-  //lock_kernel();
-
+  /* Load the dummy TSS so that when the CPU executes jmp_gate it has
+   * a place to write the state of the CPU -- even though we don't
+   * care about the state and it will be discarded. */
   ltr( dummyTSS_selector );
 
-  //runqueue_append( LookupTSS( tss[ 0 ] )->priority, tss[ 0 ] );	/* Shell module */
-
+  /* Slight misnomer, the APs do not begin actually operating until
+   * the PIT fires the first IRQ after interrupts are re-enabled.
+   * That's why it is safe to utilize the dummy TSS without locking
+   * the kernel yet. */
   smp_enable();
 
-  // schedule();
-  jmp_gate(tss[0]);             /* Just switch to the Shell module task right away */
+  /* The Shell module is in userspace and therefore interrupts will be
+   * enabled after this point.  Then, kernel locking will become
+   * necessary. */
+  jmp_gate(tss[0]);             /* task-switch to shell module */
   
-  //jmp_gate(idleTSS_selector[0]); /* Begin in IDLE task */
-
+  /* never return */
   panic("BSP: unreachable");
 }

@@ -12,17 +12,6 @@
 #include "acpi/include/acmacros.h"
 #include "acpi/include/acexcep.h"
 #include "printf.h"
-                    
-/* CMOS write */
-static inline void cmos_write(BYTE i, BYTE v) {
-  /* Assuming interrupts are disabled */
-  outb(i, 0x70);
-  asm volatile("nop");
-  asm volatile("nop");
-  asm volatile("nop");
-  outb(v, 0x71);
-}
-#define CMOS_WRITE_BYTE(x,y) cmos_write(x,y)
 
 #define DEBUG_SMP 1
 
@@ -32,14 +21,8 @@ static inline void cmos_write(BYTE i, BYTE v) {
 #define MP_READ(x)    (*((volatile DWORD *) (x)))
 #define MP_WRITE(x,y) (*((volatile DWORD *) (x)) = (y))
 
-
-#define EBDA_SEG_ADDR       0x40E
-#define BIOS_RESET_VECTOR   0x467
 #define LAPIC_ADDR_DEFAULT  0xFEE00000uL
 #define IOAPIC_ADDR_DEFAULT 0xFEC00000uL
-#define CMOS_RESET_CODE     0xF
-#define CMOS_RESET_JUMP     0xA
-#define CMOS_BASE_MEMORY    0x15
 
 volatile int mp_enabled=0, mp_num_cpus=1;
 
@@ -55,20 +38,28 @@ DWORD mp_IOAPIC_addr = IOAPIC_ADDR_DEFAULT;
 BYTE CPU_to_APIC[MAX_CPUS];
 BYTE APIC_to_CPU[MAX_CPUS];
 
+/* I hard-code a check for re-routing of the timer IRQ, but this
+ * should probably be folded into a more general interrupt routing
+ * system. */
 static int mp_timer_IOAPIC_irq = 0;
 static int mp_timer_IOAPIC_id = 0;
 static int mp_ISA_bus_id = 0;
 
-static BYTE checksum(BYTE *, int);
 static int process_mp_fp(struct mp_fp *);
 static int process_mp_config(struct mp_config *);
 static int add_processor(struct mp_config_processor_entry *);
-int boot_cpu(struct mp_config_processor_entry *);
 static struct mp_fp *probe_mp_fp(DWORD, DWORD);
 static void smp_setup_LAPIC_timer(void);
+int boot_cpu(struct mp_config_processor_entry *);
 
+/* ACPICA early initialization requires some static space be set aside
+ * for ACPI tables -- and there is no dynamic memory allocation
+ * available at this stage, so here it is: */
 #define ACPI_MAX_INIT_TABLES 16
 static ACPI_TABLE_DESC TableArray[ACPI_MAX_INIT_TABLES];
+
+/* ************************************************** */
+/* General initialization for SMP */
 
 /* Returns number of CPUs successfully booted. */
 int smp_init(void) {
@@ -185,9 +176,12 @@ int smp_init(void) {
   return mp_num_cpus;
 }
 
+/* ************************************************** */
+
 extern char const   *AcpiGbl_ExceptionNames_Env[];
 
-ACPI_STATUS DisplayOneDevice(ACPI_HANDLE ObjHandle, UINT32 Level, void *Context, void **RetVal) {
+ACPI_STATUS 
+DisplayOneDevice(ACPI_HANDLE ObjHandle, UINT32 Level, void *Context, void **RetVal) {
   ACPI_STATUS Status;
   ACPI_DEVICE_INFO *Info;
   ACPI_BUFFER Path;
@@ -313,6 +307,31 @@ void smp_enable(void) {
   //if (mp_num_cpus > 1) mp_enabled = 1;
 }
 
+
+/*******************************************************
+ * Support for the Intel Multiprocessing Specification *
+ *******************************************************/
+
+/* The Intel MPS is a legacy standard which specifies a set of tables
+ * populated by the BIOS that describe the system well enough to find
+ * and start the Application Processors and IO-APICs. */
+
+/* It is officially superseded by ACPI, but every system still
+ * supports it.  It has the benefit of being simpler.  However, it is
+ * not as informative, particularly when it comes to distinguishing
+ * non-uniform architectures and also hyperthreading vs multicore
+ * systems. */
+
+/* Quest will attempt to make use of ACPI first, then fall-back to the
+ * Intel MPS.  I do not plan on supporting systems pre-MPS, which
+ * means Quest is effectively limited to booting on Pentium-Pro+ most
+ * likely. */
+
+/* The Intel MPS tables are allowed to be placed in a variety of
+ * memory regions available to the BIOS.  Most commonly found in the
+ * ShadowROM area.  This function will search for the 4-byte signature
+ * in a given memory region and return a pointer to the so-called
+ * "Floating Pointer" table. */
 static struct mp_fp *probe_mp_fp(DWORD start, DWORD end) {
   DWORD i;
   start &= ~0xF;                /* 16-byte aligned */
@@ -325,7 +344,9 @@ static struct mp_fp *probe_mp_fp(DWORD start, DWORD end) {
   return NULL;
 }
 
-
+/* Once found, the pointer to the table is examined for sanity by this
+ * function.  It makes further calls to interpret the information
+ * found in the tables and begin SMP initialization. */
 int process_mp_fp (struct mp_fp *ptr) {
   struct mp_config *cfg;
 
@@ -370,80 +391,64 @@ int process_mp_fp (struct mp_fp *ptr) {
   return mp_num_cpus;
 }
 
-#define putx com1_putx
-#define print com1_puts
-#define putchar com1_putc
+/* The MP Configuration table is pointed to by the MP Floating Pointer
+ * table and contains the information in question that tells us how
+ * many processors, IO-APICs, and various bits of useful details about
+ * them. */
+#define printf com1_printf
 static int process_mp_config(struct mp_config *cfg) {
-  int i,j;
+  int i;
   BYTE *ptr;
 
   /* Sanity checks */
   if (cfg == NULL) {
-    print ("MP config pointer is NULL.\n");
+    printf("MP config pointer is NULL.\n");
     return 1;
   }
 
   if (cfg->signature != MP_CFG_SIGNATURE) {
-    print ("MP config signature invalid.\n");
+    printf("MP config signature invalid.\n");
     return 1;
   }
 
   if (cfg->specification_revision != 1 && 
       cfg->specification_revision != 4) {
-    print ("Unknown MP specification reported by MP config table.\n");
+    printf("Unknown MP specification reported by MP config table.\n");
     return 1;
   }
 
   if(checksum((BYTE *)cfg, cfg->base_table_length) != 0) {
-    print ("MP config table failed checksum.\n");
+    printf("MP config table failed checksum.\n");
     return 1;
   }
 
-  print("Manufacturer: ");
-  for(i=0;i<8;i++) putchar(cfg->OEM_id[i]);
-  
-  print(" Product: ");
-  for(i=0;i<12;i++) putchar(cfg->product_id[i]);
-  putchar('\n');
-  
-  print("Entry count: ");
-  putx(cfg->entry_count);
-
-  print(" Local APIC: ");
-  putx(cfg->local_APIC);
+  printf("Manufacturer: %.8s Product: %.12s Local APIC: %.8X\n", 
+         cfg->OEM_id, cfg->product_id, cfg->local_APIC);
   if(cfg->local_APIC) mp_LAPIC_addr = cfg->local_APIC;
- 
-  print(" Extended table length: ");
-  putx(cfg->extended_table_length);
-  putchar('\n');
 
   /* Check entries */
   ptr = (BYTE *)cfg->entries;
   for(i=0;i<cfg->entry_count;i++) {
     struct mp_config_entry *entry = (struct mp_config_entry*) ptr;
     switch (*ptr) {
-    case MP_CFG_TYPE_PROCESSOR:
-      print ("Processor APIC id: ");
-      putx (entry->processor.APIC_id);
-      print (" APIC version: ");
-      putx (entry->processor.APIC_version);
-      if (entry->processor.flags & 1) 
-        print (" (enabled)");
-      else
-        print (" (disabled)");
-      if (entry->processor.flags & 2)
-        print (" (bootstrap)");
+    case MP_CFG_TYPE_PROCESSOR: /* Processor entry */
+      printf("Processor APIC-id: %X version: %X %s%s", 
+              entry->processor.APIC_id,
+              entry->processor.APIC_version,
+              (entry->processor.flags & 1) ? "(enabled)" : "(disabled)",
+              (entry->processor.flags & 2) ? " (bootstrap)" : "");
       ptr += sizeof(struct mp_config_processor_entry);
-      if(add_processor(&entry->processor)) 
-        print(" (booted)");
-      print ("\n");
+
+      if(add_processor(&entry->processor)) /* Try to boot it if necessary */
+        printf(" (booted)");
+      printf("\n");
+
       break;
-    case MP_CFG_TYPE_BUS:
-      print ("Bus entry id: ");
-      putx (entry->bus.id);
-      print (" type: ");
-      for (j=0;j<6;j++) putchar(entry->bus.bus_type[j]);
-      print ("\n");
+
+    case MP_CFG_TYPE_BUS:       /* Bus entry, find out which one is ISA */
+      printf ("Bus entry-id: %X type: %.6s\n", 
+              entry->bus.id,
+              entry->bus.bus_type);
       if (entry->bus.bus_type[0] == 'I' &&
           entry->bus.bus_type[1] == 'S' &&
           entry->bus.bus_type[2] == 'A') {
@@ -451,30 +456,32 @@ static int process_mp_config(struct mp_config *cfg) {
       }
       ptr += sizeof(struct mp_config_bus_entry);
       break;
-    case MP_CFG_TYPE_IO_APIC:
-      print ("IO APIC id: ");
-      putx (entry->IO_APIC.id);
-      print (" version: ");
-      putx (entry->IO_APIC.version);
+
+    case MP_CFG_TYPE_IO_APIC:   /* IO-APIC entry */
+      printf ("IO APIC-id: %X version: %X address: %.8X", 
+              entry->IO_APIC.id,
+              entry->IO_APIC.version,
+              entry->IO_APIC.address);
       if (entry->IO_APIC.flags & 1) 
         mp_IOAPIC_addr = entry->IO_APIC.address;
       else
-        print (" (disabled)");
-      print (" address: ");
-      putx (entry->IO_APIC.address);
-      print ("\n");
+        printf(" (disabled)");
+      printf("\n");
       ptr += sizeof(struct mp_config_IO_APIC_entry);
       break;
-    case MP_CFG_TYPE_IO_INT:
-      print ("IO interrupt type: ");
-      putx (entry->IO_int.int_type); putchar (' ');
-      putx (entry->IO_int.flags); putchar (' ');
-      putx (entry->IO_int.source_bus_id); putchar (' ');
-      putx (entry->IO_int.source_bus_irq); putchar (' ');
-      putx (entry->IO_int.dest_APIC_id); putchar (' ');
-      putx (entry->IO_int.dest_APIC_intin); putchar (' ');
-      print ("\n");
 
+    case MP_CFG_TYPE_IO_INT:    /* IO-Interrupt entry */
+      printf("IO interrupt type: %X flags: %X source: (bus: %X irq: %X) dest: (APIC: %X int: %X)\n",
+             entry->IO_int.int_type,
+             entry->IO_int.flags,
+             entry->IO_int.source_bus_id,
+             entry->IO_int.source_bus_irq,
+             entry->IO_int.dest_APIC_id,
+             entry->IO_int.dest_APIC_intin);
+      
+      /* Check if timer interrupt was re-routed.  It is common for
+       * IRQ0 on the PIC to be re-routed to Global System Interrupt 2
+       * in APIC-mode.  QEmu does it, for example. */
       if (entry->IO_int.source_bus_id == mp_ISA_bus_id && /* ISA */
           entry->IO_int.source_bus_irq == 0)  { /* timer */
         mp_timer_IOAPIC_id  = entry->IO_int.dest_APIC_id;
@@ -483,63 +490,70 @@ static int process_mp_config(struct mp_config *cfg) {
           
       ptr += sizeof(struct mp_config_interrupt_entry);
       break;
-    case MP_CFG_TYPE_LOCAL_INT:
-      print ("Local interrupt type: ");
-      putx (entry->local_int.int_type); putchar (' ');
-      putx (entry->IO_int.flags); putchar (' ');
-      putx (entry->IO_int.source_bus_id); putchar (' ');
-      putx (entry->IO_int.source_bus_irq); putchar (' ');
-      putx (entry->IO_int.dest_APIC_id); putchar (' ');
-      putx (entry->IO_int.dest_APIC_intin); putchar (' ');
-      print ("\n");
+
+    case MP_CFG_TYPE_LOCAL_INT: /* Local-interrupt entry */
+      printf("Local interrupt type: %X flags: %X source: (bus: %X irq: %X) dest: (APIC: %X int: %X)\n",
+             entry->local_int.int_type,
+             entry->local_int.flags,
+             entry->local_int.source_bus_id,
+             entry->local_int.source_bus_irq,
+             entry->local_int.dest_APIC_id,
+             entry->local_int.dest_APIC_intin);
+      /* It's conceivable that local interrupts could be overriden
+       * like IO interrupts, but I have no good examples of it so I
+       * will have to defer doing anything about it. */
       ptr += sizeof(struct mp_config_interrupt_entry);
       break;
+
     default:
-      print ("Unknown entry type: ");
-      putx (*ptr);
-      print (" at address: ");
-      putx ((DWORD)ptr);
-      putchar ('\n');
+      printf("Unknown entry type: %X at address: %p\n", *ptr, ptr);
       return 1;      
     }
   }
 
   return mp_num_cpus;
 }
-#undef print
-#undef putchar
-#undef putx
+#undef printf
 
-static BYTE checksum(BYTE *ptr, int length) {
-  BYTE sum = 0;
-  while (length-- > 0) sum += *ptr++;
-  return sum;
-}
+/* End Intel Multiprocessing Specification implementation */
 
+/* ************************************************** */
+
+/* General SMP initialization functions */
+
+/* Send Interprocessor Interrupt -- prods the Local APIC to deliver an
+ * interprocessor interrupt, 'v' specifies the vector but also
+ * specifies flags according to the Intel System Programming Manual --
+ * also see apic.h and the LAPIC_ICR_* constants. */
 int send_ipi(DWORD dest, DWORD v) {
-  int to, send_status;
+  int timeout, send_status;
 
+  /* It is a bad idea to have interrupts enabled while twiddling the
+   * LAPIC. */
   asm volatile ("pushfl");
   asm volatile ("cli");
 
   MP_LAPIC_WRITE(LAPIC_ICR+0x10, dest << 24);
   MP_LAPIC_WRITE(LAPIC_ICR, v);
 
-  to = 0;
+  /* Give it a thousand iterations to see if the interrupt was
+   * successfully delivered. */
+  timeout = 0;
   do {
     send_status = MP_LAPIC_READ(LAPIC_ICR) & LAPIC_ICR_STATUS_PEND;
-  } while (send_status && (to++ < 1000));
+  } while (send_status && (timeout++ < 1000));
 
   asm volatile ("popfl");
 
-  return (to < 1000);
+  return (timeout < 1000);
 }
 
 
-extern BYTE patch_code_start[];
+/* A number of symbols defined in the boot-smp.S file: */
+extern BYTE patch_code_start[]; /* patch_code is what the AP boots */
 extern BYTE patch_code_end[];
-extern BYTE status_code[];
-extern BYTE ap_stack_ptr[];
+extern BYTE status_code[];      /* the AP writes a 1 into here when it's ready */
+extern BYTE ap_stack_ptr[];     /* we give the AP a stack pointer through this */
 
 /* For some reason, if this function is 'static', and -O is on, then
  * qemu fails. */
@@ -548,7 +562,6 @@ int boot_cpu(struct mp_config_processor_entry *proc) {
   int success = 1;
   volatile int to;
   DWORD bootaddr, accept_status;
-  /* DWORD bios_reset_vector = BIOS_RESET_VECTOR; */ /* identity mapped */
 
   /* Get a page for the AP's C stack */
   unsigned long page_frame = (unsigned long) AllocatePhysicalPage();
@@ -558,16 +571,17 @@ int boot_cpu(struct mp_config_processor_entry *proc) {
 #define TEST_BOOTED(x) (*((volatile DWORD *)(x+status_code-patch_code_start)))
 #define STACK_PTR(x)   (*((volatile DWORD *)(x+ap_stack_ptr-patch_code_start)))
 
+  /* The patch code is memcpyed into the hardcoded address MP_BOOTADDR */
   bootaddr = MP_BOOTADDR;           /* identity mapped */
   memcpy((BYTE *)bootaddr, patch_code_start, patch_code_end - patch_code_start);
+  /* The status code is reset to 0 */
   TEST_BOOTED(bootaddr) = 0;
+  /* A temporary stack is allocated for the AP to be able to call C code */
   STACK_PTR(bootaddr) = (DWORD)virt_addr;
+  /* (FIXME: when does this get de-allocated?) */
 
-  /* CPU startup sequence */
-  /******************************************************************************
-   * CMOS_WRITE_BYTE(CMOS_RESET_CODE, CMOS_RESET_JUMP);                         *
-   * *((volatile unsigned *) bios_reset_vector) = ((bootaddr & 0xFF000) << 12); *
-   ******************************************************************************/
+  /* CPU startup sequence: officially it is supposed to proceed:
+   * ASSERT INIT IPI, DE-ASSERT INIT IPI, STARTUP IPI, STARTUP IPI */
 
   /* clear APIC error register */
   MP_LAPIC_WRITE(LAPIC_ESR, 0);
@@ -599,33 +613,18 @@ int boot_cpu(struct mp_config_processor_entry *proc) {
     asm volatile("pause");
   }
   if (to >= LOOPS_TO_WAIT) {
-#if 0
-    print("Processor ");
-    putx(apic_id);
-    print(" not responding.\n");
-#endif
     success = 0;
-  } else {
-#if 0
-    print("Processor ");
-    putx(apic_id);
-    print(" BOOTED!\n");
-#endif
   }
 
   /* cleanup */
   MP_LAPIC_WRITE(LAPIC_ESR, 0);
   accept_status = MP_LAPIC_READ(LAPIC_ESR);
 
-  /* This seems to make more problems: */
-  /************************************************
-   * CMOS_WRITE_BYTE(CMOS_RESET_CODE, 0);         *
-   * *((volatile DWORD *) bios_reset_vector) = 0; *
-   ************************************************/
-  
   return success;
 }
 
+/* A small wrapper around boot_cpu() which does some checks and
+ * maintains two small tables. */
 static int add_processor(struct mp_config_processor_entry *proc) {
   BYTE apic_id = proc->APIC_id;
 
@@ -640,63 +639,103 @@ static int add_processor(struct mp_config_processor_entry *proc) {
   } else return 0;
 }
 
-extern volatile unsigned long tick;
 
+/* ************************************************** */
+
+/* CPU bus frequency measurement code -- the primary usage of this
+ * code is for the purpose of programming the Local APIC timer because
+ * it operates at the speed of the CPU bus.  So, in order to get an
+ * idea of what that means in clock time, we need to compare the
+ * frequency of the Local APIC to the frequency of the Programmable
+ * Interval Timer. */
+
+/* In essence this boils down to counting how many ticks the Local
+ * APIC can speed through for a single interval between PIT
+ * interrupts. */
+
+/* NB: The local APIC is perhaps the most finely grained timer
+ * commonly available on the PC architecture.  Expect precision on the
+ * order of 100 nanoseconds, or better.  In fact, this may cause a
+ * problem with integer overflow on the 32-bit architecture. */
+
+extern volatile unsigned long tick; /* defined in interrupt_handler.c */
 static void smp_setup_LAPIC_timer_int(void) {
+  /* Temporary handler for the PIT-generated timer IRQ */
   tick++;
   
-  outb( 0x60, 0x20 );           /* still using PIC */
-  
+  outb( 0x60, 0x20 );           /* EOI -- still using PIC */
+
+  /* Cheat a little here: the C compiler will insert 
+   *   leave
+   *   ret
+   * but we want to fix the stack up and IRET so I just
+   * stick that in right here. */
   asm volatile("leave");
   asm volatile("iret");
 }
 
 static void smp_LAPIC_timer_irq_handler(void) {
+  /* Temporary handler for the LAPIC-generated timer interrupt */
   /* just EOI and ignore it */
   MP_LAPIC_WRITE(LAPIC_EOI, 0); /* send to LAPIC -- this int came from LAPIC */
   asm volatile("leave");
   asm volatile("iret");
 }
 
+/* CPU BUS FREQUENCY -- IN HERTZ */
 unsigned long cpu_bus_freq;
 
 /* Use the PIT to find how fast the LAPIC ticks (and correspondingly,
  * the bus speed of the processor) */
 static void smp_setup_LAPIC_timer(void) {
   idt_descriptor old_timer, old_3f;
-  unsigned long value, start, finish, count;
-  
+  unsigned long value, start, count;
+
+  /* I want to enable interrupts but I don't want the normal
+   * interrupt-handling architecture to kick-in just yet.  Here's an
+   * idea: mask off every single entry in the IDT! */
   disable_idt();
+
+  /* Now save the handlers for vectors 0x20 and 0x3F */
   get_idt_descriptor(0x20, &old_timer);
   get_idt_descriptor(0x3f, &old_3f);
+  /* And use them for our temporary handlers */
   set_idt_descriptor_by_addr(0x20, (void *)&smp_setup_LAPIC_timer_int, 0x3);
   set_idt_descriptor_by_addr(0x3f, (void *)&smp_LAPIC_timer_irq_handler, 0x3);
   
   MP_LAPIC_WRITE(LAPIC_LVTT, 0x3f); /* enable LAPIC timer int: vector=0x3f */
   MP_LAPIC_WRITE(LAPIC_TDCR, 0x0B); /* set LAPIC timer divisor to 1 */
-  
+
+  /* Timing code: */
   value = tick;
   asm volatile("sti");
+  /* Wait until the PIT fires: */
   while(tick == value) asm volatile("pause");
   start = tick;
   MP_LAPIC_WRITE(LAPIC_TICR, 0xFFFFFFFF); /* write large value to Initial Count Reg. */
-  /* LAPIC begins counting down */
+  /* LAPIC begins counting down, wait until the PIT fires again: */
   while(tick == start) asm volatile("pause");
-  finish = tick;
   asm volatile("cli");
   
   MP_LAPIC_WRITE(LAPIC_LVTT, 0x10000); /* disable timer int */
   count = MP_LAPIC_READ(LAPIC_TCCR);   /* read the remaining count */
+
+  /* Restore the original handlers: */
   set_idt_descriptor(0x20, &old_timer);
   set_idt_descriptor(0x3f, &old_3f);
   
   cpu_bus_freq = (0xFFFFFFFF - count) * HZ;
-  print("CPU bus freq = ");
-  putx(cpu_bus_freq);
-  putchar('\n');
-  
+  printf("CPU bus frequency = %d\n", cpu_bus_freq);
+
+  /* Put the IDT back in shape */
   enable_idt();
 }
+
+/* End CPU Bus Frequency measurement code */
+
+/* ************************************************** */
+
+/* IOAPIC manipulation: */
 
 QWORD IOAPIC_read64(BYTE reg) {
   DWORD high, low;
@@ -722,6 +761,9 @@ void IOAPIC_write64(BYTE reg, QWORD v) {
   MP_IOAPIC_WRITE(IOAPIC_RW, (DWORD)(v & 0xFFFFFFFF));
 }
 
+/* ************************************************** */
+
+/* Some LAPIC utilities */
 
 BYTE LAPIC_get_physical_ID(void) {
   return (MP_LAPIC_READ(LAPIC_ID) >> 0x18) & 0xF;
@@ -741,12 +783,16 @@ void LAPIC_start_timer(unsigned long count) {
 
 /* ************************************************** */
 
+/* When the AP boots it will first start at the patch code in
+ * boot-smp.S.  That code prepares the AP for the jump into C code,
+ * namely, this function: */
 void ap_init(void) {
   int phys_id, log_dest;
+
   /* Setup the LAPIC */
 
-  MP_LAPIC_WRITE(LAPIC_TPR, 0x20); 
-  MP_LAPIC_WRITE(LAPIC_LVTT, 0x10000); /* disable timer int */
+  MP_LAPIC_WRITE(LAPIC_TPR, 0x20);      /* task priority = 0x20 */
+  MP_LAPIC_WRITE(LAPIC_LVTT, 0x10000);  /* disable timer int */
   MP_LAPIC_WRITE(LAPIC_LVTPC, 0x10000); /* disable perf ctr int */
   MP_LAPIC_WRITE(LAPIC_LVT0, 0x08700);  /* enable normal external ints */
   MP_LAPIC_WRITE(LAPIC_LVT1, 0x00400);  /* enable NMI */
@@ -764,8 +810,8 @@ void ap_init(void) {
   MP_LAPIC_WRITE(LAPIC_LDR, log_dest); /* write to logical destination reg */
   MP_LAPIC_WRITE(LAPIC_DFR, -1);       /* use 'flat model' destination format */
 
-  /* Wait for all processors to come online, and the system to enter
-   * MP mode. */
+  /* Spin-wait for all processors to come online, and the system to
+   * enter MP mode. */
   while (!mp_enabled) 
     asm volatile("pause");
 
@@ -774,21 +820,29 @@ void ap_init(void) {
   MP_LAPIC_WRITE(LAPIC_TDCR, 0x0B); /* set LAPIC timer divisor to 1 */
   MP_LAPIC_WRITE(LAPIC_TICR, cpu_bus_freq/100); /* 100Hz */
 
+  /* The AP is now operating in an SMP environment so the kernel must
+   * be locked before any shared resources are utilized.  The dummy
+   * TSS is a shared resource. */
   lock_kernel();
 
+  /* Load the dummy TSS so that when the CPU executes jmp_gate it has
+   * a place to write the state of the CPU -- even though we don't
+   * care about the state and it will be discarded. */
   ltr( dummyTSS_selector );
 
-  /**************************************************
-   * print("HELLO WORLD from Physical LAPIC ID: "); *
-   * putx(phys_id);                                 *
-   * print(" logical mask: ");                      *
-   * putx(log_dest);                                *
-   * print("\n");                                   *
-   **************************************************/
+  asm volatile("lidt idt_ptr"); /* Set the IDT */
 
-  asm volatile("lidt idt_ptr");
+  /* The IDLE task runs in kernelspace, therefore it is capable of
+   * unlocking the kernel and manually enabling interrupts.  This
+   * makes it safe to use lock_kernel() above.  */
+
+  /* If the IDLE task did not run in kernelspace, then we would need a
+   * dummy TSS per-processor because it would not be possible to
+   * protect the dummy TSS from simultaneous usage by multiple CPUs in
+   * this case. */
 
   jmp_gate(idleTSS_selector[phys_id]); /* begin in IDLE task */
+  /* never return */
   
   panic("AP: unreachable");
 }

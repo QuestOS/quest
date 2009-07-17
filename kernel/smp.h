@@ -104,6 +104,12 @@ void send_eoi(void);
 void LAPIC_start_timer(unsigned long);
 int send_ipi(DWORD, DWORD);
 
-#endif  /* __ASSEMBLER__ */
+static inline BYTE checksum(BYTE *ptr, int length) {
+  BYTE sum = 0;
+  while (length-- > 0) sum += *ptr++;
+  return sum;
+}
+
+#endif  /* ifndef __ASSEMBLER__ */
 
 #endif
