@@ -161,6 +161,19 @@ extern void HandleInterrupt( unsigned long fs_gs, unsigned long ds_es,
     _putchar( ' ' );
     if (ulInt < 32) _print( exception_messages[ulInt] );
     _putchar( '\n' );
+
+#define _putchar com1_putc
+#define _putx com1_putx
+#define _print com1_puts
+
+    _putchar( 'I' );
+    _putx( ulInt );
+    _putchar( ' ' );
+    _putchar( 'c' );
+    _putx( ulCode );
+    _putchar( ' ' );
+    if (ulInt < 32) _print( exception_messages[ulInt] );
+    _putchar( '\n' );
     
     _putchar( 'A' );
     _putx( eax );
@@ -193,6 +206,9 @@ extern void HandleInterrupt( unsigned long fs_gs, unsigned long ds_es,
     _putx( eflags );
     _putchar( '\n' );
     spinlock_unlock(&screen_lock);
+#undef _putx
+#undef _putchar
+#undef _print
     
     if( ulInt < 0x20 )
 	/* unhandled exception - die */
