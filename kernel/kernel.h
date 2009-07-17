@@ -107,6 +107,8 @@ extern void set_idt_descriptor_by_addr(BYTE, void *, BYTE);
 extern void get_idt_descriptor(BYTE, idt_descriptor *);
 extern void set_idt_descriptor(BYTE, idt_descriptor *);
 
+void stacktrace(void);
+
 static inline void *memset( void *p, int ch, unsigned long cb ) {
 
     asm volatile( "rep stosb" : : "D" (p), "a" (ch), "c" (cb) );

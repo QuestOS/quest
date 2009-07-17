@@ -1,6 +1,7 @@
 #include "i386.h"
 #include "kernel.h"
 #include "spinlock.h"
+#include "printf.h"
 
 extern unsigned _kernelstart;
 
@@ -349,8 +350,9 @@ void stacktrace(void) {
   extern void com1_putx(unsigned long);
   asm volatile("movl %%esp, %0" : "=r"(esp));
   asm volatile("movl %%ebp, %0" : "=r"(ebp));
+  com1_printf("Stacktrace:\n");
   while(ebp >= KERN_STK && ebp <= KERN_STK+0x1000) {
-    com1_putx(*((unsigned *)(ebp+4))); com1_putc('\n');
+    com1_printf("%0.8X\n", *((unsigned *)(ebp+4)));
     ebp = *((unsigned *)ebp);
   }
 }
