@@ -130,7 +130,9 @@ char *exception_messages[] = {
 extern void HandleInterrupt( unsigned long fs_gs, unsigned long ds_es, 
 			     unsigned long ulInt, unsigned long ulCode ) {
 
-    unsigned long eax, ebx, ecx, edx, esi, edi, eflags, eip, esp, ebp, cr2;
+  unsigned long eax, ebx, ecx, edx, esi, edi, eflags, eip, esp, ebp;
+  unsigned long cr0, cr2, cr3;
+  unsigned short tr;
 
     asm volatile(
 	"movl %%eax, %0\n"
@@ -147,11 +149,18 @@ extern void HandleInterrupt( unsigned long fs_gs, unsigned long ds_es,
 	"movl %%eax, %8\n"
 	"movl 0x24(%%ebp),%%eax\n"
 	"movl %%eax, %9\n"
-        "movl %%cr2, %%eax\n"
+        "movl %%cr0, %%eax\n"
         "movl %%eax, %10\n"
+        "movl %%cr2, %%eax\n"
+        "movl %%eax, %11\n"
+        "movl %%cr3, %%eax\n"
+        "movl %%eax, %12\n"
+        "xorl %%eax, %%eax\n"
+        "str  %%ax\n"
+        "movw %%ax, %13\n"
         : "=m" (eax), "=m" (ebx), "=m" (ecx), "=m" (edx),
 	"=m" (esi), "=m" (edi), "=m" (ebp), "=m" (eip), "=m" (eflags),
-	"=m" (esp), "=m" (cr2) : );
+	"=m" (esp), "=m" (cr0), "=m" (cr2), "=m" (cr3), "=m" (tr) : );
 
     spinlock_lock(&screen_lock);
     _putchar( 'I' );
@@ -206,7 +215,7 @@ extern void HandleInterrupt( unsigned long fs_gs, unsigned long ds_es,
     _putchar( 'F' );
     _putx( eflags );
     _putchar( '\n' );
-    com1_printf("2%.8X\n", cr2);
+    com1_printf("CR0 %.8X CR2 %.8X CR3 %.8X TR %.4X\n", cr0, cr2, cr3, tr);
     spinlock_unlock(&screen_lock);
 #undef _putx
 #undef _putchar
