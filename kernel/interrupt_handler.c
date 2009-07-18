@@ -10,6 +10,7 @@
 #include "filesys.h"
 #include "smp.h"
 #include "apic.h"
+#include "printf.h"
 
 static char kernel_ver[] = "0.1a";
 char *kernel_version = kernel_ver;
@@ -205,6 +206,7 @@ extern void HandleInterrupt( unsigned long fs_gs, unsigned long ds_es,
     _putchar( 'F' );
     _putx( eflags );
     _putchar( '\n' );
+    com1_printf("2%.8X\n", cr2);
     spinlock_unlock(&screen_lock);
 #undef _putx
 #undef _putchar
