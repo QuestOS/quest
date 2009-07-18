@@ -76,7 +76,7 @@ static unsigned short AllocIdleTSS (int cpu_num) {
 
   pTSS->ulEFlags = F_1 | F_IOPL0; 
 
-  pTSS->ulESP = (unsigned)MapVirtualPage(AllocatePhysicalPage() | 3);
+  pTSS->ulESP = (unsigned)MapVirtualPage(AllocatePhysicalPage() | 3) + 0x1000;
   pTSS->ulEBP = pTSS->ulESP;
   pTSS->usCS = 0x08;		
   pTSS->usES = 0x10;
