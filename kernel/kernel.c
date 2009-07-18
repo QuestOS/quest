@@ -170,8 +170,34 @@ unsigned AllocatePhysicalPage( void ) {
   return -1;			/* Error -- no free page? */
 }
 
+unsigned AllocatePhysicalPages(unsigned count) {
+
+  int i, j;
+  
+  for( i = 0; i < mm_limit; i++ ) {
+    for(j=0;j<count;j++) {
+      if(!BITMAP_TST(mm_table, i+j)) { /* Is not free page? */
+        goto try_next;
+      }
+    }
+    /* found window: */
+    for(j=0;j<count;j++) {
+      BITMAP_CLR(mm_table, i+j); 
+    }
+    return ( i << 12 ); /* physical byte address of free frames */
+  try_next:
+    ;
+  }
+  return -1;			/* Error -- no free page? */
+}
+
 void FreePhysicalPage(unsigned frame) {
   BITMAP_SET(mm_table, frame >> 12);
+}
+
+void FreePhysicalPages(unsigned frame, unsigned count) {
+  for(; count >= 0; count--, frame++)
+    BITMAP_SET(mm_table, frame >> 12);
 }
 
 
