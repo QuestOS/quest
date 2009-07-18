@@ -174,10 +174,11 @@ unsigned AllocatePhysicalPages(unsigned count) {
 
   int i, j;
   
-  for( i = 0; i < mm_limit; i++ ) {
+  for( i = 0; i < mm_limit - count + 1; i++ ) {
     for(j=0;j<count;j++) {
       if(!BITMAP_TST(mm_table, i+j)) { /* Is not free page? */
-        goto try_next;
+        i=i+j;
+        goto keep_searching;
       }
     }
     /* found window: */
@@ -185,7 +186,7 @@ unsigned AllocatePhysicalPages(unsigned count) {
       BITMAP_CLR(mm_table, i+j); 
     }
     return ( i << 12 ); /* physical byte address of free frames */
-  try_next:
+  keep_searching:
     ;
   }
   return -1;			/* Error -- no free page? */
@@ -196,8 +197,10 @@ void FreePhysicalPage(unsigned frame) {
 }
 
 void FreePhysicalPages(unsigned frame, unsigned count) {
-  for(; count >= 0; count--, frame++)
-    BITMAP_SET(mm_table, frame >> 12);
+  int i;
+  frame >>= 12;
+  for(i = 0; i < count; i++)
+    BITMAP_SET(mm_table, frame+i);
 }
 
 
@@ -235,12 +238,12 @@ void *MapContiguousVirtualPages(unsigned phys_frame, unsigned count) {
 
   if(count == 0) return NULL;
 
-  for( i = 0; i < 0x400; i++ ) {
+  for( i = 0; i < 0x400 - count + 1; i++ ) {
     if( !page_table[ i ] ) {	/* Free page */
       for(j=0; j<count; j++) {
         if (page_table[i+j]) {
           /* Not enough pages in this window */
-          i = j;
+          i = i+j;
           goto keep_searching;
         }
       }
@@ -273,12 +276,12 @@ void *MapVirtualPages(unsigned *phys_frames, unsigned count) {
 
   if(count == 0) return NULL;
 
-  for( i = 0; i < 0x400; i++ ) {
+  for( i = 0; i < 0x400 - count + 1; i++ ) {
     if( !page_table[ i ] ) {	/* Free page */
       for(j=0; j<count; j++) {
         if (page_table[i+j]) {
           /* Not enough pages in this window */
-          i = j;
+          i = i+j;
           goto keep_searching;
         }
       }
