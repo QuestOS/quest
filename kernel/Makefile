@@ -4,7 +4,7 @@ CPPFLAGS = -D_QUEST -Wa,--32 -MMD
 OBJS = boot.o init.o boot-smp.o smp.o interrupt.o interrupt_handler.o \
 	kernel.o diskio.o cpuid.o \
 	fsys_ext2fs.o sched.o sound.o \
-	quest-acpica.o printf.o
+	quest-acpica.o printf.o mem.o
 ACPI_SRCS = $(shell ls acpi/*.c)
 ACPI_OBJS = $(patsubst %.c,%.o,$(ACPI_SRCS))
 MNT_POINT=/mnt/quest

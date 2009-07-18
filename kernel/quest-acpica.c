@@ -122,6 +122,7 @@
 #include"pci.h"
 #include"acpi.h"
 #include"printf.h"
+#include"mem.h"
 
 
 /*
@@ -294,6 +295,23 @@ AcpiOsReleaseMutex (
 
 #endif
 
+
+void *
+AcpiOsAllocate (
+    ACPI_SIZE               Size) {
+  /* use pow2 memory allocator */
+  BYTE *ptr;
+  pow2_alloc(Size, &ptr);
+  return (void *)ptr;
+}
+
+void
+AcpiOsFree (
+    void *                  Memory) {
+  pow2_free((BYTE *)Memory);
+}
+
+#if 0
 static void *mem_break = NULL;
 void *
 AcpiOsAllocate (
@@ -317,6 +335,8 @@ AcpiOsFree (
     void *                  Memory) {
   /* nop */
 }
+
+#endif
 
 #if 0
 

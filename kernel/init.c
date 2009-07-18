@@ -4,6 +4,7 @@
 #include "kernel.h"
 #include "filesys.h"
 #include "smp.h"
+#include "mem.h"
 
 extern descriptor idt[];
 
@@ -454,6 +455,8 @@ void init( multiboot* pmb ) {
     /* while (1); */
   }
 #endif
+
+  pow2_init();
 
   { 
     int n;
