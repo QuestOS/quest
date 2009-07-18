@@ -6,12 +6,23 @@
  * in powers of 2, from 2^POW2_MIN_POW to 2^POW2_MAX_POW */
 
 #define POW2_MIN_POW 5
-#define POW2_MAX_POW 12
+#define POW2_MAX_POW 16
+/* NB: the value of POW2_MAX_POW has to be smaller than 2^POW2_MIN_POW
+ * because it needs to be able to fit within the POW2_MASK_POW.  Also
+ * keep in mind it needs to be able to find a contiguous virtual
+ * address range every time it allocates one of these large
+ * blocks. */
 
 #define POW2_MIN_SIZE (2<<POW2_MIN_POW)
 #define POW2_MAX_SIZE (2<<POW2_MAX_POW)
 
+/* Length of the central header table */
 #define POW2_TABLE_LEN ((POW2_MAX_POW - POW2_MIN_POW)+1)
+
+/* How many frames to allocate for a max-size block: */
+#define POW2_MAX_POW_FRAMES (1 << (POW2_MAX_POW - 12))
+
+/* Mask the index from a descriptor: */
 #define POW2_MASK_POW ((1<<POW2_MIN_POW)-1)
 
 struct _POW2_HEADER {
@@ -53,23 +64,29 @@ static void pow2_add_free_block(BYTE *ptr, BYTE index) {
   }
 }
 
-static void pow2_get_free_block(BYTE **ptr, BYTE index);
+static BYTE *pow2_get_free_block(BYTE index);
 
 /* mutual recursion -- lets try it.
- * I'm calculating 20 bytes per frame and a maximum of
- * 14*2 calls, so 560 bytes of stack needed at most */
+ * I'm calculating 20-24 bytes per frame and a maximum of
+ * 7*2 calls, so 308 bytes of stack needed at most */
 static void pow2_split_block(BYTE index) {
   BYTE *ptr1, *ptr2;
   
-  pow2_get_free_block(&ptr1, index);
+  ptr1 = pow2_get_free_block(index);
   ptr2 = ptr1 + (1 << (index-1));
 
   pow2_add_free_block(ptr1, index-1);
   pow2_add_free_block(ptr2, index-1);
 }
 
-static void pow2_get_free_block(BYTE **ptr, BYTE index) {
+/* Trying to avoid making the frame-size of pow2_get_free_block any
+ * larger than it is -- because of mutual recursion -- and this is
+ * used in a re-entrantly safe fashion. */
+static unsigned pow2_tmp_phys_frames[POW2_MAX_POW_FRAMES];
+
+static BYTE *pow2_get_free_block(BYTE index) {
   POW2_HEADER *hdr = pow2_table[index - POW2_MIN_POW], *prev = NULL;
+  BYTE *ptr;
 
   for(;;) {
     if (hdr->count == 0) {
@@ -78,13 +95,15 @@ static void pow2_get_free_block(BYTE **ptr, BYTE index) {
       if(index < POW2_MAX_POW) {
         pow2_split_block(index+1);
       } else {
-        /* grab a new page */
-        *ptr = MapVirtualPage(AllocatePhysicalPage() | 3);
-        return;
+        /* grab new pages */
+        int i;
+        for(i=0;i<POW2_MAX_POW_FRAMES;i++)
+          pow2_tmp_phys_frames[i] = AllocatePhysicalPage() | 3;
+        return MapVirtualPages(pow2_tmp_phys_frames, POW2_MAX_POW_FRAMES);
       }
     } else if (hdr->count < POW2_MAX_COUNT || hdr->next == NULL) {
       /* There are free blocks ready to go */
-      *ptr = hdr->ptrs[--hdr->count];
+      ptr = hdr->ptrs[--hdr->count];
       if (prev && hdr->count == 0) {
         /* We followed a next pointer to get here. */
         DWORD frame = (DWORD)get_phys_addr((void *)hdr);
@@ -92,7 +111,7 @@ static void pow2_get_free_block(BYTE **ptr, BYTE index) {
         UnmapVirtualPage((void *)hdr);
         FreePhysicalPage(frame);
       }
-      return;
+      return ptr;
     } else {
       /* hdr->count == POW2_MAX_COUNT && hdr->next != NULL */
       /* chase next pointer and try to use that header instead */
@@ -103,14 +122,15 @@ static void pow2_get_free_block(BYTE **ptr, BYTE index) {
 }
 
 static void pow2_insert_used_table(BYTE *ptr, BYTE index) {
-  if(pow2_used_count >= (pow2_used_table_pages * 0x1000)) {
+  if(pow2_used_count >= (pow2_used_table_pages * 0x400)) {
     unsigned count = pow2_used_table_pages + 1;
     DWORD frames = AllocatePhysicalPages(count), old_frames;
-    void *virt = MapContiguousVirtualPages(frames, count);
+    void *virt = MapContiguousVirtualPages(frames | 3, count);
     memcpy(virt, pow2_used_table, sizeof(DWORD) * pow2_used_count);
     old_frames = (DWORD)get_phys_addr(pow2_used_table);
     UnmapVirtualPages((void *)pow2_used_table, pow2_used_table_pages);
     FreePhysicalPages(old_frames, pow2_used_table_pages);
+    pow2_used_table = (unsigned *)virt;
     pow2_used_table_pages = count;
   }
   pow2_used_table[pow2_used_count++] = (DWORD)ptr | (DWORD)index;
@@ -141,7 +161,7 @@ static BYTE pow2_compute_index(WORD size) {
 int pow2_alloc(WORD size, BYTE **ptr) {
   BYTE index = pow2_compute_index(size);
   spinlock_lock(&pow2_lock);
-  pow2_get_free_block(ptr, index);
+  *ptr = pow2_get_free_block(index);
   pow2_insert_used_table(*ptr, index);
   spinlock_unlock(&pow2_lock);
   return index;
