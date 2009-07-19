@@ -63,6 +63,8 @@ static struct mp_fp *probe_mp_fp(DWORD, DWORD);
 static void smp_setup_LAPIC_timer(void);
 int boot_cpu(BYTE, BYTE);
 mp_IOAPIC_info *IOAPIC_lookup(BYTE);
+DWORD IRQ_to_GSI(DWORD bus, DWORD irq);
+int IOAPIC_map_GSI(DWORD GSI, BYTE vec, QWORD flags);
 
 /* ACPICA early initialization requires some static space be set aside
  * for ACPI tables -- and there is no dynamic memory allocation
@@ -187,41 +189,33 @@ DisplayOneDevice(ACPI_HANDLE ObjHandle, UINT32 Level, void *Context, void **RetV
   return AE_OK;
 }
 
-void smp_IOAPIC_setup(void) {
-  
+static void smp_IOAPIC_setup(void) {
+  int i, j;
+
+  outb( 0xFF, 0x21 );  /* Mask interrupts in Master/Slave 8259A PIC */
+  outb( 0xFF, 0xA1 );
+
+  /* To get to a consistent state, first disable all IO-APIC
+   * redirection entries. */
+
+  for(i=0;i<mp_num_IOAPICs;i++) {
+    for(j=0;j<mp_IOAPICs[i].numGSIs;j++) {
+      IOAPIC_write64(IOAPIC_REDIR + (i * 2), 0x0000000000010000LL);
+    }
+  }
+
+  /* Map timer IRQ to vector 0x20 */
+  IOAPIC_map_GSI(IRQ_to_GSI(mp_ISA_bus_id, 0), 0x20, 0xFF00000000000800LL);
+
+  outb(0x70, 0x22);             /* Re-direct IMCR to use IO-APIC */
+  outb(0x01, 0x23);             /* (for some motherboards) */
+
 }
 
 void smp_enable(void) {
   ACPI_STATUS Status;
-  int i;
 
-  outb( 0xFF, 0x21 );           /* Mask interrupts in Master/Slave 8259A PIC */
-  outb( 0xFF, 0xA1 );
-
-  /* starting at 0x10, 0x12, 0x14, ... write the redirection table entries */
-  for(i = 0; i < 24; i++) {
-    /* using logical destination mode, mask: 0xFF (all CPUs) */
-    IOAPIC_write64(IOAPIC_REDIR + (i * 2), (0xFF00000000000800LL | (0x20 + i)));
-
-    /* using logical destination mode, mask: 0x01 (CPU0 only) */
-    //IOAPIC_write64(IOAPIC_REDIR + (i * 2), (0x0100000000000800LL | (0x20 + i)));
-  }
-
-  /* need to handle multiple IO-APICs */
-
-  if (mp_timer_IOAPIC_irq != 0) {
-    /* some systems send the timer to another IRQ in APIC mode */
-    /* map the timer IRQ to vector 0x20 */
-    IOAPIC_write64(IOAPIC_REDIR + (mp_timer_IOAPIC_irq * 2), 0xFF00000000000820LL);
-    /* disable IRQ0 */
-    IOAPIC_write64(IOAPIC_REDIR + 0x00, (0x0000000000010000LL));
-  } else {
-    /* disable IRQ2 */
-    IOAPIC_write64(IOAPIC_REDIR + 0x04, (0x0000000000010000LL));
-  }
-
-  outb(0x70, 0x22);             /* Re-direct IMCR to use IO-APIC */
-  outb(0x01, 0x23);             /* (for some motherboards) */
+  smp_IOAPIC_setup();
 
   /* Complete the ACPICA initialization sequence */
   if(mp_ACPI_enabled) {
@@ -894,6 +888,45 @@ mp_IOAPIC_info *IOAPIC_lookup(BYTE id) {
   }
   panic("IOAPIC_lookup failed.");
 }
+
+DWORD IRQ_to_GSI(DWORD src_bus, DWORD src_irq) {
+  /* this probably only works for ISA at the moment */
+  int i;
+  for(i=0;i<mp_num_overrides;i++) {
+    if(src_bus == mp_overrides[i].src_bus &&
+       src_irq == mp_overrides[i].src_IRQ) 
+      return mp_overrides[i].dest_GSI;
+  }
+  if(src_bus != mp_ISA_bus_id)
+    panic("IRQ_to_GSI only implemented for ISA bus.");
+  /* assume identity-mapped if not overriden */
+  return src_irq;
+}
+
+int IOAPIC_map_GSI(DWORD GSI, BYTE vector, QWORD flags) {
+  int i;
+  DWORD old_addr = 0;
+  /* First, figure out which IOAPIC */
+  for(i=0;i<mp_num_IOAPICs;i++) {
+    if(mp_IOAPICs[i].startGSI <= GSI &&
+       GSI < mp_IOAPICs[i].startGSI + mp_IOAPICs[i].numGSIs) {
+      old_addr = mp_IOAPIC_addr;
+      /* set address for macros to use: */
+      mp_IOAPIC_addr = mp_IOAPICs[i].address;
+      /* set GSI relative to startGSI: */
+      GSI -= mp_IOAPICs[i].startGSI;
+      break;
+    }
+  }
+  if (!old_addr) return -1;     /* not found */
+
+  IOAPIC_write64(IOAPIC_REDIR + (GSI * 2), flags | vector);
+  
+  /* clean up */
+  mp_IOAPIC_addr = old_addr;
+  return GSI;
+}
+
 
 /* ************************************************** */
 
