@@ -23,17 +23,11 @@ ap_stack_ptr:                  /* C stack for AP */
         .long 0                
 
 1: 
-        /* Write 'A' to screen */
-        movw $0x0741, %ax
-        movw $0xB800, %dx
-        movw %dx, %ds
-        xorw %dx, %dx
-        movw %ax, %ds:(%edx)
-
+        /* Entering in 16-bit real mode */
         movw %cs, %dx
         movw %dx, %ds
         
-        lgdtl patch_gdt_ptr - patch_code_start /* ds segment */
+        lgdtl patch_gdt_ptr - patch_code_start /* using ds segment */
 
         xorw %dx, %dx
         movw %dx, %ds
@@ -63,11 +57,6 @@ ap_pmode:
                 
 	xorw %ax, %ax
 	lldt %ax        
-
-        /* Write 'B' to screen */
-        movw $0x0742, %ax
-        movl $0xB8002, %edx
-        movw %ax, (%edx)
 
 
         /* setup our stack */
