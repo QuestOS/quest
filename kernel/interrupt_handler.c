@@ -982,3 +982,40 @@ extern int _sched_setparam( int pid, const struct sched_param *p ) {
     /* Destination task does not exist.  Return an error. */
     return -1;
 }
+
+#if 0
+static void *tlb_shootdown_page = NULL;
+static unsigned tlb_shootdown_count = 0;
+static struct spinlock tlb_shootdown_lock = SPINLOCK_INIT;
+
+extern void invlpg_shootdown(void *va) {
+  
+  invalidate_page(va);
+  send_ipi(0xFF, 
+           LAPIC_ICR_LEVELASSERT |
+           LAPIC_ICR_DS_ALLEX    |
+           LAPIC_ICR_DM_LOGICAL  |
+           0xfd);
+
+}
+
+extern unsigned invlpg_handler(BYTE vec) {
+  asm volatile( "invlpg %0" : : "m" (*(char *) tlb_shootdown_page) );
+  asm volatile( "lock decl %0" : : "m" (tlb_shootdown_count) );
+  return 0;
+}
+
+extern unsigned flush_tlb_handler(BYTE vec) {
+  asm volatile( "movl %%cr3, %%eax\n"
+                "movl %%eax, %%cr3\n"
+                "lock decl %0" : : "m" (tlb_shootdown_count) );
+  return 0;
+}
+
+extern void init_interrupt_handlers(void) {
+  int i;
+  for(i=0;i<256;i++) vector_handlers[i] = default_vector_handler;
+  set_vector_handler(0xfd, invlpg_handler);
+  set_vector_handler(0xfe, flush_tlb_handler);
+}
+#endif
