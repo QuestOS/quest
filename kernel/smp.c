@@ -30,9 +30,16 @@ DWORD mp_LAPIC_addr = LAPIC_ADDR_DEFAULT;
 #define MP_LAPIC_READ(x)   (*((volatile DWORD *) (mp_LAPIC_addr+(x))))
 #define MP_LAPIC_WRITE(x,y) (*((volatile DWORD *) (mp_LAPIC_addr+(x))) = (y))
 
+#define MAX_IOAPICS MAX_CPUS
 DWORD mp_IOAPIC_addr = IOAPIC_ADDR_DEFAULT;
+static mp_IOAPIC_info mp_IOAPICs[MAX_IOAPICS];
+static int mp_num_IOAPICs = 0;
 #define MP_IOAPIC_READ(x)   (*((volatile DWORD *) (mp_IOAPIC_addr+(x))))
 #define MP_IOAPIC_WRITE(x,y) (*((volatile DWORD *) (mp_IOAPIC_addr+(x))) = (y))
+
+#define MAX_INT_OVERRIDES 4
+static mp_int_override mp_overrides[MAX_INT_OVERRIDES];
+static int mp_num_overrides = 0;
 
 /* Mapping from CPU # to APIC ID */
 BYTE CPU_to_APIC[MAX_CPUS];
@@ -55,6 +62,7 @@ static int add_processor(struct mp_config_processor_entry *);
 static struct mp_fp *probe_mp_fp(DWORD, DWORD);
 static void smp_setup_LAPIC_timer(void);
 int boot_cpu(BYTE, BYTE);
+mp_IOAPIC_info *IOAPIC_lookup(BYTE);
 
 /* ACPICA early initialization requires some static space be set aside
  * for ACPI tables -- and there is no dynamic memory allocation
@@ -179,6 +187,10 @@ DisplayOneDevice(ACPI_HANDLE ObjHandle, UINT32 Level, void *Context, void **RetV
   return AE_OK;
 }
 
+void smp_IOAPIC_setup(void) {
+  
+}
+
 void smp_enable(void) {
   ACPI_STATUS Status;
   int i;
@@ -268,6 +280,7 @@ static int process_acpi_tables(void) {
     ACPI_TABLE_MADT *madt;
     ACPI_TABLE_FADT *fadt;
     mp_ACPI_enabled = 1;
+    mp_ISA_bus_id = 0;
     if(AcpiGetTable(ACPI_SIG_MADT, 0, (ACPI_TABLE_HEADER **)&madt) == AE_OK) {
       /* Multiple APIC Description Table */
       BYTE *ptr, *lim = (BYTE *)madt + madt->Header.Length;
@@ -297,8 +310,16 @@ static int process_acpi_tables(void) {
                  sub->Id,
                  sub->Address,
                  sub->GlobalIrqBase);
+          if (mp_num_IOAPICs == MAX_IOAPICS) panic("Too many IO-APICs.");
           mp_IOAPIC_addr = sub->Address;
           mp_timer_IOAPIC_id = sub->Id;
+          mp_IOAPICs[mp_num_IOAPICs].id       = sub->Id;
+          mp_IOAPICs[mp_num_IOAPICs].address  = sub->Address;
+          mp_IOAPICs[mp_num_IOAPICs].startGSI = sub->GlobalIrqBase;
+          MP_IOAPIC_WRITE(IOAPIC_REGSEL, 0x1);
+          mp_IOAPICs[mp_num_IOAPICs].numGSIs  = 
+            APIC_MAXREDIR(MP_IOAPIC_READ(IOAPIC_RW)) + 1;
+          mp_num_IOAPICs++;
           break;
         }
         case ACPI_MADT_TYPE_INTERRUPT_OVERRIDE: { /* Interrupt Override entry */
@@ -311,6 +332,12 @@ static int process_acpi_tables(void) {
               sub->SourceIrq == 0)  { /* timer */
             mp_timer_IOAPIC_irq = sub->GlobalIrq;
           }
+          if (mp_num_overrides == MAX_INT_OVERRIDES) 
+            panic("Too many interrupt overrides.");
+          mp_overrides[mp_num_overrides].src_bus = sub->Bus;
+          mp_overrides[mp_num_overrides].src_IRQ = sub->SourceIrq;
+          mp_overrides[mp_num_overrides].dest_GSI = sub->GlobalIrq;
+          mp_num_overrides++;
           break;
         }
         default:
@@ -515,6 +542,23 @@ static int process_mp_config(struct mp_config *cfg) {
       else
         printf(" (disabled)");
       printf("\n");
+
+      if (mp_num_IOAPICs == MAX_IOAPICS) panic("Too many IO-APICs.");
+      mp_IOAPICs[mp_num_IOAPICs].id       = entry->IO_APIC.id;
+      mp_IOAPICs[mp_num_IOAPICs].address  = entry->IO_APIC.address;
+      /* going to assume IO-APICs are listed in order */
+      if (mp_num_IOAPICs == 0)
+        mp_IOAPICs[mp_num_IOAPICs].startGSI = 0;
+      else
+        mp_IOAPICs[mp_num_IOAPICs].startGSI = 
+          mp_IOAPICs[mp_num_IOAPICs-1].startGSI +
+          mp_IOAPICs[mp_num_IOAPICs-1].numGSIs;
+      
+      MP_IOAPIC_WRITE(IOAPIC_REGSEL, 0x1);
+      mp_IOAPICs[mp_num_IOAPICs].numGSIs  = 
+        APIC_MAXREDIR(MP_IOAPIC_READ(IOAPIC_RW)) + 1;
+      mp_num_IOAPICs++;
+
       ptr += sizeof(struct mp_config_IO_APIC_entry);
       break;
 
@@ -535,7 +579,18 @@ static int process_mp_config(struct mp_config *cfg) {
         mp_timer_IOAPIC_id  = entry->IO_int.dest_APIC_id;
         mp_timer_IOAPIC_irq = entry->IO_int.dest_APIC_intin;
       }
-          
+
+      if (entry->IO_int.source_bus_irq != entry->IO_int.dest_APIC_intin) {
+        /* not sure if this is the right condition */
+        if (mp_num_overrides == MAX_INT_OVERRIDES) 
+          panic("Too many interrupt overrides.");
+        mp_overrides[mp_num_overrides].src_bus = entry->IO_int.source_bus_id;
+        mp_overrides[mp_num_overrides].src_IRQ = entry->IO_int.source_bus_irq;
+        mp_overrides[mp_num_overrides].dest_GSI = 
+          IOAPIC_lookup(entry->IO_int.dest_APIC_id)->startGSI +
+          entry->IO_int.dest_APIC_intin;
+        mp_num_overrides++;
+      }
       ptr += sizeof(struct mp_config_interrupt_entry);
       break;
 
@@ -826,6 +881,18 @@ void send_eoi (void) {
 
 void LAPIC_start_timer(unsigned long count) {
   MP_LAPIC_WRITE(LAPIC_TICR, count); 
+}
+
+/* ************************************************** */
+
+/* Some IO-APIC utilities */
+                         
+mp_IOAPIC_info *IOAPIC_lookup(BYTE id) {
+  int i;
+  for(i=0;i<mp_num_IOAPICs;i++) {
+    if (mp_IOAPICs[i].id == id) return &mp_IOAPICs[i];
+  }
+  panic("IOAPIC_lookup failed.");
 }
 
 /* ************************************************** */

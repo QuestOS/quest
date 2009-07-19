@@ -93,6 +93,15 @@ struct mp_config {
   struct mp_config_entry entries[];
 } PACKED;
 
+typedef struct {
+  BYTE id;
+  DWORD address, startGSI, numGSIs;
+} mp_IOAPIC_info;
+
+typedef struct {
+  DWORD src_bus, src_IRQ, dest_GSI;
+} mp_int_override;
+
 extern unsigned long cpu_bus_freq;
 
 int smp_init(void);
