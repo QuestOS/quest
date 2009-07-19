@@ -18,6 +18,28 @@ unsigned long tick;		/* Software clock tick */
 
 extern unsigned ul_tss[][1024];
 
+static vector_handler vector_handlers[256];
+static unsigned default_vector_handler(BYTE vec) {
+  return 0;
+}
+void set_vector_handler(BYTE vec, vector_handler func) {
+  vector_handlers[vec] = func;
+}
+void clr_vector_handler(BYTE vec) {
+  vector_handlers[vec] = default_vector_handler;
+}
+vector_handler get_vector_handler(BYTE vec) {
+  if (vector_handlers[vec])
+    return vector_handlers[vec];
+  else
+    return default_vector_handler;
+}
+unsigned dispatch_vector(unsigned vec) {
+  vector_handler func = vector_handlers[(BYTE)vec];
+  if (func) return func(vec);
+  else return 0;
+}
+
 /* Duplicate parent TSS -- used with fork */
 static unsigned short DuplicateTSS( unsigned ebp, 
 				    unsigned *esp,

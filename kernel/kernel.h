@@ -109,6 +109,11 @@ extern void set_idt_descriptor_by_addr(BYTE, void *, BYTE);
 extern void get_idt_descriptor(BYTE, idt_descriptor *);
 extern void set_idt_descriptor(BYTE, idt_descriptor *);
 
+typedef unsigned (*vector_handler)(BYTE vector);
+extern void set_vector_handler(BYTE vector, vector_handler func);
+extern void clr_vector_handler(BYTE vector);
+extern vector_handler get_vector_handler(BYTE vector);
+
 void stacktrace(void);
 
 static inline void *memset( void *p, int ch, unsigned long cb ) {
