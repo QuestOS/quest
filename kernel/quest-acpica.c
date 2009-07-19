@@ -123,6 +123,7 @@
 #include"acpi.h"
 #include"printf.h"
 #include"mem.h"
+#include"smp.h"
 
 
 /*
@@ -498,12 +499,20 @@ AcpiOsReleaseObject (
 /*
  * Interrupt handlers
  */
+
+ACPI_OSD_HANDLER        acpi_service_routine;
+void *                  acpi_service_routine_context;
+
 ACPI_STATUS
 AcpiOsInstallInterruptHandler (
     UINT32                  InterruptNumber,
     ACPI_OSD_HANDLER        ServiceRoutine,
     void                    *Context) {
-  com1_printf("InterruptNumber = %X\n", InterruptNumber);
+  acpi_service_routine = ServiceRoutine;
+  acpi_service_routine_context = Context;
+  IOAPIC_map_GSI(IRQ_to_GSI(mp_ISA_bus_id, InterruptNumber), 
+                 0x29,
+                 0x0100000000000800LL);
   return AE_OK;
 }
 

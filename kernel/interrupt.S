@@ -473,6 +473,15 @@ interrupt:
 interruptIGN:
 	iret
 
+        .global interrupt29
+interrupt29:
+        pushal
+	SREGS_SAVE
+	call _interrupt29
+	REGS_RESTORE
+        popal
+        iret
+        
         .global interrupt2e
 interrupt2e:
         pushal
@@ -532,7 +541,6 @@ INT(25)
 INT(26)
 INT(27)
 INT(28)
-INT(29)
 INT(2a)
 INT(2b)
 INT(2c)

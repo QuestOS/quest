@@ -776,6 +776,12 @@ unsigned _time( void ) {
   return tick;
 }
 
+/* ACPI System Control Interrupt -- IRQ 9 usually */
+extern unsigned _interrupt29(void) {
+  extern ACPI_OSD_HANDLER acpi_service_routine;
+  extern void *acpi_service_routine_context;
+  return acpi_service_routine(acpi_service_routine_context);
+}
 
 extern void _interrupt3e(void) {
   BYTE phys_id = LAPIC_get_physical_ID();
