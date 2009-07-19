@@ -52,7 +52,7 @@ static int mp_ACPI_enabled = 0;
  * system. */
 static int mp_timer_IOAPIC_irq = 0;
 static int mp_timer_IOAPIC_id = 0;
-static int mp_ISA_bus_id = 0;
+int mp_ISA_bus_id = 0;
 
 static int process_acpi_tables(void);
 static int acpi_add_processor(ACPI_MADT_LOCAL_APIC *);
@@ -62,9 +62,6 @@ static int add_processor(struct mp_config_processor_entry *);
 static struct mp_fp *probe_mp_fp(DWORD, DWORD);
 static void smp_setup_LAPIC_timer(void);
 int boot_cpu(BYTE, BYTE);
-mp_IOAPIC_info *IOAPIC_lookup(BYTE);
-DWORD IRQ_to_GSI(DWORD bus, DWORD irq);
-int IOAPIC_map_GSI(DWORD GSI, BYTE vec, QWORD flags);
 
 /* ACPICA early initialization requires some static space be set aside
  * for ACPI tables -- and there is no dynamic memory allocation

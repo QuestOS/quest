@@ -112,6 +112,11 @@ BYTE LAPIC_get_physical_ID(void);
 void send_eoi(void);
 void LAPIC_start_timer(unsigned long);
 int send_ipi(DWORD, DWORD);
+mp_IOAPIC_info *IOAPIC_lookup(BYTE);
+DWORD IRQ_to_GSI(DWORD bus, DWORD irq);
+int IOAPIC_map_GSI(DWORD GSI, BYTE vec, QWORD flags);
+extern int mp_ISA_bus_id;
+
 
 static inline BYTE checksum(BYTE *ptr, int length) {
   BYTE sum = 0;
