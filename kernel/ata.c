@@ -4,6 +4,8 @@
 #include "smp.h"
 #include "kernel.h"
 
+//#define DEBUG_ATA
+
 /**************************************************************************
  *  IDENTIFY command                                                      *
  *                                                                        *
@@ -70,6 +72,10 @@ static WORD ata_waitqueue = 0;
 
 /* relinquish CPU until we get exclusive access to the ATA subsystem */
 static void ata_grab(void) {
+#ifdef DEBUG_ATA
+  com1_printf("ata_grab() ata_current_task=%x ata_waitqueue=%x tr=%x\n", 
+              ata_current_task, ata_waitqueue, str());
+#endif
   while(ata_current_task) {
     queue_append(&ata_waitqueue, str());
     schedule();
@@ -78,6 +84,10 @@ static void ata_grab(void) {
 }
 
 static void ata_release(void) {
+#ifdef DEBUG_ATA
+  com1_printf("ata_release() ata_current_task=%x ata_waitqueue=%x tr=%x\n", 
+              ata_current_task, ata_waitqueue, str());
+#endif
   wakeup_list(ata_waitqueue);
   ata_waitqueue = 0;
   ata_current_task = 0;
@@ -177,8 +187,6 @@ int ata_drive_read_sector(DWORD bus, DWORD drive, DWORD lba, BYTE *buffer) {
   outb((BYTE)(lba >> 16), ATA_ADDRESS3(bus));
   outb(0x20, ATA_COMMAND(bus)); /* READ SECTORS (28-bit LBA) */
   
-  //if(mp_enabled) schedule();
-  
   while(!(status=inb(ATA_COMMAND(bus)) & 0x8) && !(status & 0x1))
     asm volatile("pause");
   if(status & 0x1) {
@@ -223,6 +231,9 @@ int ata_drive_write_sector(DWORD bus, DWORD drive, DWORD lba, BYTE *buffer) {
 static DWORD ata_primary_irq_count = 0, ata_secondary_irq_count = 0;
 static unsigned ata_irq_handler(BYTE vec) {
   lock_kernel();
+#ifdef DEBUG_ATA
+  com1_printf("ata_irq_handler(%x) ata_current_task=%x\n", vec, ata_current_task);
+#endif
   if(vec == 0x27) ata_primary_irq_count++;
   else ata_secondary_irq_count++;
   if(ata_current_task) wakeup(ata_current_task);
