@@ -86,8 +86,8 @@ DWORD ata_identify(DWORD bus, DWORD drive) {
   if(status & 0x1) {
     unsigned char b1, b2;
 
-    b1 = inb(0x1F4);
-    b2 = inb(0x1F5);
+    b1 = inb(ATA_ADDRESS2(bus));
+    b2 = inb(ATA_ADDRESS3(bus));
   
     com1_printf("ata_detect: %.2X %.2X\n", b1, b2);
 
@@ -110,7 +110,7 @@ DWORD ata_identify(DWORD bus, DWORD drive) {
    * clears, and bit 3 (DRQ, value = 8) sets -- or until bit 0 (ERR,
    * value = 1) sets. */
 
-  while((status = inb(0x1F7)) & 0x80) /* BUSY */
+  while((status = inb(ATA_COMMAND(bus))) & 0x80) /* BUSY */
     asm volatile("pause");
 
   while(!(status & 0x8) && !(status & 0x1))
@@ -122,7 +122,7 @@ DWORD ata_identify(DWORD bus, DWORD drive) {
   }
 
   /* Read 256 words */
-  insw(0x1F0, buffer, 256);
+  insw(bus, buffer, 256);
 
   com1_printf("IDENTIFY (bus: %X drive: %X) command output:\n", bus, drive);
   /* dump to com1 */
