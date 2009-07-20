@@ -88,7 +88,7 @@ static void ata_release(void) {
   com1_printf("ata_release() ata_current_task=%x ata_waitqueue=%x tr=%x\n", 
               ata_current_task, ata_waitqueue, str());
 #endif
-  wakeup_list(ata_waitqueue);
+  wakeup_queue(&ata_waitqueue);
   ata_waitqueue = 0;
   ata_current_task = 0;
 }

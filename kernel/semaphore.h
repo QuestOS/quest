@@ -26,7 +26,7 @@ static inline int semaphore_signal(struct semaphore *sem, int s) {
     status = -1;
   }
   /* wake up waiters */
-  wakeup_list(sem->waitqueue);
+  wakeup_queue(&sem->waitqueue);
   spinlock_unlock(&sem->lock);
   return status;
 }

@@ -73,14 +73,11 @@ extern void wakeup(unsigned short selector) {
   runqueue_append(tssp->priority, selector);
 }
 
-extern void wakeup_list(unsigned short selector) {
-  quest_tss *tssp;
+extern void wakeup_queue(unsigned short *q) {
+  unsigned short head;
 
-  while(selector) {
-    tssp = LookupTSS(selector);
-    runqueue_append(tssp->priority, selector);
-    selector = tssp->next;    
-  }
+  while((head = queue_remove_head(q))) 
+    runqueue_append(LookupTSS(head)->priority, head);
 }
 
 /* Pick from the highest priority non-empty queue */

@@ -99,7 +99,7 @@ extern void queue_append( unsigned short *queue, unsigned short selector );
 extern unsigned short queue_remove_head( unsigned short *queue );
 extern void schedule( void );
 extern void wakeup(unsigned short);
-extern void wakeup_list(unsigned short);
+extern void wakeup_queue(unsigned short *);
 extern void lock_kernel( void );
 extern void unlock_kernel( void );
 
