@@ -40,5 +40,6 @@ extern ata_info pata_drives[4];
 void ata_init(void);
 int  ata_drive_read_sector(DWORD bus, DWORD drive, DWORD lba, BYTE *buffer);
 int  ata_drive_write_sector(DWORD bus, DWORD drive, DWORD lba, BYTE *buffer);
+int  atapi_drive_read_sector(DWORD bus, DWORD drive, DWORD lba, BYTE *buffer);
 
 #endif

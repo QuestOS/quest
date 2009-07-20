@@ -287,3 +287,50 @@ void ata_init(void) {
   set_vector_handler(ATA_VECTOR_PRIMARY, ata_irq_handler);
   set_vector_handler(ATA_VECTOR_SECONDARY, ata_irq_handler);
 }
+
+/* ************************************************** */
+/* ATAPI */
+
+#define ATAPI_SECTOR_SIZE 2048
+
+int atapi_drive_read_sector(DWORD bus, DWORD drive, DWORD lba, BYTE *buffer) {
+  BYTE read_cmd[12] = {0xA8, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0};
+  BYTE status;
+  WORD size;
+  ata_grab();
+  outb(drive & (1<<4), ATA_DRIVE_SELECT(bus)); /* select drive (only slavebit needed) */
+  ATA_SELECT_DELAY(bus);
+  outb(0x0, ATA_FEATURES(bus)); /* PIO mode */
+  outb(ATAPI_SECTOR_SIZE & 0xFF, ATA_ADDRESS2(bus));
+  outb(ATAPI_SECTOR_SIZE >> 8, ATA_ADDRESS3(bus));
+  outb(0xA0, ATA_COMMAND(bus)); /* PACKET command */
+
+  while((status = inb(ATA_COMMAND(bus))) & 0x80) /* BUSY */
+    asm volatile("pause");
+
+  while(!((status = inb(ATA_COMMAND(bus))) & 0x8) && !(status & 0x1))
+    asm volatile("pause");
+  /* DRQ or ERROR set */
+  if(status & 0x1) return -1;   /* error */
+
+  read_cmd[9] = 1;                  /* 1 sector */
+  read_cmd[2] = (lba >> 0x18) & 0xFF; /* most sig. byte of LBA */
+  read_cmd[3] = (lba >> 0x10) & 0xFF;
+  read_cmd[4] = (lba >> 0x08) & 0xFF;
+  read_cmd[5] = (lba >> 0x00) & 0xFF; /* least sig. byte of LBA */
+
+  /* Send ATAPI/SCSI command */
+  outsw(ATA_DATA(bus), (WORD *)read_cmd, 6);
+  
+  if(sched_enabled) schedule();
+  else ata_poll_for_irq(bus);
+
+  /* Read actual size */
+  size = (((WORD)inb(ATA_ADDRESS3(bus))) << 8) | (WORD)(inb(ATA_ADDRESS2(bus)));
+
+  /* Read data */
+  insw(ATA_DATA(bus), buffer, size/2);
+
+  ata_release();
+  return size;
+}
