@@ -2,6 +2,7 @@
 #include "i386.h"
 #include "printf.h"
 #include "smp.h"
+#include "kernel.h"
 
 /**************************************************************************
  *  IDENTIFY command                                                      *
@@ -55,6 +56,32 @@
  **************************************************************************/
 
 ata_info pata_drives[4];
+/* ata_current_task has exclusive access to ATA.  If an ATA IRQ comes
+ * in, we assume that ata_current_task is waiting on it and needs to
+ * be woken. */
+static WORD ata_current_task = 0;
+/* waitqueue of tasks that want to use ATA. */
+static WORD ata_waitqueue = 0;
+
+/* technically I think there could be separate queues for each bus,
+ * but, whatever. */
+
+/* Kernel lock should be held while using ATA */
+
+/* relinquish CPU until we get exclusive access to the ATA subsystem */
+static void ata_grab(void) {
+  while(ata_current_task) {
+    queue_append(&ata_waitqueue, str());
+    schedule();
+  }
+  ata_current_task = str();
+}
+
+static void ata_release(void) {
+  wakeup_list(ata_waitqueue);
+  ata_waitqueue = 0;
+  ata_current_task = 0;
+}
 
 #define ATA_SELECT_DELAY(bus) \
   {inb(ATA_DCR(bus));inb(ATA_DCR(bus));inb(ATA_DCR(bus));inb(ATA_DCR(bus));}
@@ -141,6 +168,7 @@ DWORD ata_identify(DWORD bus, DWORD drive) {
 
 int ata_drive_read_sector(DWORD bus, DWORD drive, DWORD lba, BYTE *buffer) {
   BYTE status;
+  ata_grab();
   outb(drive | 0x40 /* LBA */ | ((lba >> 24) & 0x0F), ATA_DRIVE_SELECT(bus));
   ATA_SELECT_DELAY(bus);
   outb(0x1, ATA_SECTOR_COUNT(bus));
@@ -148,11 +176,17 @@ int ata_drive_read_sector(DWORD bus, DWORD drive, DWORD lba, BYTE *buffer) {
   outb((BYTE)(lba >> 8), ATA_ADDRESS2(bus));
   outb((BYTE)(lba >> 16), ATA_ADDRESS3(bus));
   outb(0x20, ATA_COMMAND(bus)); /* READ SECTORS (28-bit LBA) */
+  
+  //if(mp_enabled) schedule();
+  
   while(!(status=inb(ATA_COMMAND(bus)) & 0x8) && !(status & 0x1))
     asm volatile("pause");
-  if(status & 0x1)
+  if(status & 0x1) {
+    ata_release();
     return -1;
+  }
   insw(ATA_DATA(bus), buffer, 256);
+  ata_release();
   return 512; 
 }
 
@@ -168,8 +202,10 @@ int ata_drive_write_sector(DWORD bus, DWORD drive, DWORD lba, BYTE *buffer) {
   outb(0x30, ATA_COMMAND(bus)); /* WRITE SECTORS (28-bit LBA) */
   while(!(status=inb(ATA_COMMAND(bus)) & 0x8) && !(status & 0x1))
     asm volatile("pause");
-  if(status & 0x1)
+  if(status & 0x1) {
+    ata_release();
     return -1;
+  }
 
   /* ``Do not use REP OUTSW to transfer data. There must be a tiny
    * delay between each OUTSW output word. A jmp $+2 size of
@@ -180,14 +216,17 @@ int ata_drive_write_sector(DWORD bus, DWORD drive, DWORD lba, BYTE *buffer) {
     outw(((WORD *)buffer)[i], ATA_DATA(bus));
 
   outb(0xE7, ATA_COMMAND(bus));
-
+  ata_release();
   return 512; 
 }
 
 static DWORD ata_primary_irq_count = 0, ata_secondary_irq_count = 0;
 static unsigned ata_irq_handler(BYTE vec) {
+  lock_kernel();
   if(vec == 0x27) ata_primary_irq_count++;
   else ata_secondary_irq_count++;
+  if(ata_current_task) wakeup(ata_current_task);
+  unlock_kernel();
   return 0;
 }
 
