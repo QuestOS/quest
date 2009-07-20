@@ -11,23 +11,27 @@ static struct spinlock kernel_lock = SPINLOCK_INIT;
  
 extern void queue_append( unsigned short *queue, unsigned short selector ) {
 
-    quest_tss *tssp;
+  quest_tss *tssp;
 
-    /* NB: This code assumes atomic execution, and therefore cannot be
-       called with interrupts enabled. */
+  /* NB: This code assumes atomic execution, and therefore cannot be
+     called with interrupts enabled. */
+
+  if( *queue ) {
+    if(*queue == selector) return; /* already on queue */
+
+    for( tssp = LookupTSS( *queue ); tssp->next;
+         tssp = LookupTSS( tssp->next ) )
+      if(tssp->next == selector)
+        /* already on queue */
+        return;
+
+    /* add to end of queue */
+    tssp->next = selector;
 
     tssp = LookupTSS( selector );
-
     tssp->next = 0;
-
-    if( *queue ) {
-	for( tssp = LookupTSS( *queue ); tssp->next;
-	     tssp = LookupTSS( tssp->next ) )
-	    ;
-
-	tssp->next = selector;
-    } else
-	*queue = selector;
+  } else
+    *queue = selector;
 }
 
 
