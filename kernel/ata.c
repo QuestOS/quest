@@ -113,7 +113,7 @@ DWORD ata_identify(DWORD bus, DWORD drive) {
   while((status = inb(ATA_COMMAND(bus))) & 0x80) /* BUSY */
     asm volatile("pause");
 
-  while(!(status & 0x8) && !(status & 0x1))
+  while(!((status = inb(ATA_COMMAND(bus))) & 0x8) && !(status & 0x1))
     asm volatile("pause");
 
   if(status & 0x1) {
@@ -122,7 +122,7 @@ DWORD ata_identify(DWORD bus, DWORD drive) {
   }
 
   /* Read 256 words */
-  insw(bus, buffer, 256);
+  insw(ATA_DATA(bus), buffer, 256);
 
   com1_printf("IDENTIFY (bus: %X drive: %X) command output:\n", bus, drive);
   /* dump to com1 */
@@ -136,6 +136,51 @@ DWORD ata_identify(DWORD bus, DWORD drive) {
   if(buffer[83] & (1<<10)) com1_printf("LBA48 mode supported.\n");
   com1_printf("LBA48 addressable sectors: %.4X %.4X %.4X %.4X\n", buffer[100], buffer[101], buffer[102], buffer[103]);
   return ATA_TYPE_PATA;
+}
+
+int ata_drive_read_sector(DWORD bus, DWORD drive, DWORD lba, BYTE *buffer) {
+  BYTE status;
+  outb(drive | 0x40 /* LBA */ | ((lba >> 24) & 0x0F), ATA_DRIVE_SELECT(bus));
+  ATA_SELECT_DELAY(bus);
+  outb(0x1, ATA_SECTOR_COUNT(bus));
+  outb((BYTE)lba, ATA_ADDRESS1(bus));
+  outb((BYTE)(lba >> 8), ATA_ADDRESS2(bus));
+  outb((BYTE)(lba >> 16), ATA_ADDRESS3(bus));
+  outb(0x20, ATA_COMMAND(bus)); /* READ SECTORS (28-bit LBA) */
+  while(!(status=inb(ATA_COMMAND(bus)) & 0x8) && !(status & 0x1))
+    asm volatile("pause");
+  if(status & 0x1)
+    return -1;
+  insw(ATA_DATA(bus), buffer, 256);
+  return 512; 
+}
+
+int ata_drive_write_sector(DWORD bus, DWORD drive, DWORD lba, BYTE *buffer) {
+  BYTE status;
+  int i;
+  outb(drive | 0x40 /* LBA */ | ((lba >> 24) & 0x0F), ATA_DRIVE_SELECT(bus));
+  ATA_SELECT_DELAY(bus);
+  outb(0x1, ATA_SECTOR_COUNT(bus));
+  outb((BYTE)lba, ATA_ADDRESS1(bus));
+  outb((BYTE)(lba >> 8), ATA_ADDRESS2(bus));
+  outb((BYTE)(lba >> 16), ATA_ADDRESS3(bus));
+  outb(0x30, ATA_COMMAND(bus)); /* WRITE SECTORS (28-bit LBA) */
+  while(!(status=inb(ATA_COMMAND(bus)) & 0x8) && !(status & 0x1))
+    asm volatile("pause");
+  if(status & 0x1)
+    return -1;
+
+  /* ``Do not use REP OUTSW to transfer data. There must be a tiny
+   * delay between each OUTSW output word. A jmp $+2 size of
+   * delay. Make sure to do a Cache Flush (ATA command 0xE7) after
+   * each write command completes.'' */
+  
+  for(i=0;i<256;i++)
+    outw(((WORD *)buffer)[i], ATA_DATA(bus));
+
+  outb(0xE7, ATA_COMMAND(bus));
+
+  return 512; 
 }
 
 void ata_init(void) {

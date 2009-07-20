@@ -17,6 +17,7 @@ extern ata_info pata_drives[4];
 #define ATA_BUS_PRIMARY     0x1F0
 #define ATA_BUS_SECONDARY   0x170
 
+#define ATA_DATA(x)         (x)
 #define ATA_FEATURES(x)     (x+1)
 #define ATA_SECTOR_COUNT(x) (x+2)
 #define ATA_ADDRESS1(x)     (x+3)
@@ -30,5 +31,7 @@ extern ata_info pata_drives[4];
 #define ATA_DRIVE_SLAVE     0xB0
 
 void ata_init(void);
+int  ata_drive_read_sector(DWORD bus, DWORD drive, DWORD lba, BYTE *buffer);
+int  ata_drive_write_sector(DWORD bus, DWORD drive, DWORD lba, BYTE *buffer);
 
 #endif

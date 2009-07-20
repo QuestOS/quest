@@ -1,6 +1,7 @@
 
 
 #include "i386.h"
+#include "ata.h"
 #include "printf.h"
 
 /*
@@ -104,52 +105,10 @@ void WriteSector( void *offset, int cylinder, int head, int sector ) {
 
 /* Read a sector using LBA information */
 void ReadSectorLBA( void *offset, unsigned long lba ) {
-
-  /* Setup drive 0 */
-  outb ( ( lba >> 24 ) | 0xE0, 0x1f6 );
-
-  /* Setup count of sectors to read -- here one sector */
-  outb ( 0x1, 0x1f2 );
-
-  outb ( lba & 0xFF, 0x1f3 );
-
-  outb ( ( lba >> 8 ) & 0xFF, 0x1f4 );
-
-  outb ( ( lba >> 16 ) & 0xFF, 0x1f5 );
-
-  /* Issue read sectors with retry command to command register */
-  outb ( 0x20, 0x1f7 );
-
-  while( !( inb ( 0x1f7 ) & 0x8 ) ); /* Wait until sector buffer requires 
-					servicing */
-
-  /* Read a sector of 512 bytes as 256 short words */
-  insw( 0x1f0, offset, 256 );
-  
+  ata_drive_read_sector(ATA_BUS_PRIMARY, ATA_DRIVE_MASTER, lba, (BYTE *)offset);
 }
 
 /* Write a sector using LBA information */
 void WriteSectorLBA( void *offset, unsigned long lba ) {
-
-  /* Setup drive 0 */
-  outb ( ( lba >> 24 ) | 0xE0, 0x1f6 );
-
-  /* Setup count of sectors to write -- here one sector */
-  outb ( 0x1, 0x1f2 );
-
-  outb ( lba & 0xFF, 0x1f3 );
-
-  outb ( ( lba >> 8 ) & 0xFF, 0x1f4 );
-
-  outb ( ( lba >> 16 ) & 0xFF, 0x1f5 );
-
-  /* Issue write sectors with retry command to command register */
-  outb ( 0x30, 0x1f7 );
-
-  while( !( inb ( 0x1f7 ) & 0x8 ) ); /* Wait until sector buffer requires 
-					servicing */
-
-  /* Write a sector of 512 bytes as 256 short words */
-  outsw( 0x1f0, offset, 256 );
-  
+  ata_drive_write_sector(ATA_BUS_PRIMARY, ATA_DRIVE_MASTER, lba, (BYTE *)offset);
 }
