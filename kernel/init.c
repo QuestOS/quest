@@ -306,7 +306,7 @@ void init( multiboot* pmb ) {
   int i, j, k, c, num_cpus;
   unsigned short tss[NR_MODS];
   memory_map_t *mmap;
-  unsigned long limit; 
+  unsigned long limit, boot_device=0; 
   Elf32_Phdr *pph;
   Elf32_Ehdr *pe;
   char brandstring[I386_CPUID_BRAND_STRING_LENGTH];
@@ -316,6 +316,7 @@ void init( multiboot* pmb ) {
 
   initialize_serial_port();
   if(pmb->flags & 0x2) {
+    boot_device = pmb->boot_device;
     com1_puts("Boot device: ");
     com1_putx(pmb->boot_device);
     com1_putc('\n');
@@ -422,55 +423,18 @@ void init( multiboot* pmb ) {
     LookupTSS( tss[i] )->priority = MIN_PRIO;
   }
 
-#if 0
-  /* --??-- Test reading the MBR in LBA mode 
-     Signature (last two bytes) should be 0x55AA */
-  {
-    extern void ReadSectorLBA( void *offset, unsigned long lba );
-    char buf[512];
-    
-    ReadSectorLBA ( buf, 0 );
-
-    putx( buf[510] );
-    putx( buf[511] );
-  }
-#endif
-
   /* Initialise soundcard, if one exists */
   //initialise_sound ();
 
-#if 0
-  /* --??-- To be removed, just testing the disk IO in CHS mode */
-  {
-    extern void ReadSector( void *offset, int cylinder, int head, int sector );
-    char buf[512];
-    
-    ReadSector( buf, 0, 0, 1 );
-
-    putx( buf[510] );
-    putx( buf[511] );
-
-    ext2fs_dir( "/boot/grub/grub.conf" );
-    ext2fs_read( buf, 119 );
-
-    for( i = 0; i < 117; i++)
-      putchar( buf[i] );
-
-    /* while (1); */
-  }
-#endif
-
   pow2_init();                  /* initialize power-of-2 memory allocator */
 
-  { 
-    int n;
-    for (n=0; n < num_cpus; n++) {
-      idleTSS_selector[n] = AllocIdleTSS(n);
-    }
-  } 
-
+  /* Dummy TSS used when CPU needs somewhere to write scratch values */
   dummyTSS_selector = CreateDummyTSS();
 
+  /* Create IDLE tasks */
+  for(i=0; i < num_cpus; i++) 
+    idleTSS_selector[i] = AllocIdleTSS(i);
+  
   /* Load the dummy TSS so that when the CPU executes jmp_gate it has
    * a place to write the state of the CPU -- even though we don't
    * care about the state and it will be discarded. */
@@ -482,12 +446,22 @@ void init( multiboot* pmb ) {
    * the kernel yet. */
   smp_enable();
 
+  /* Initialize ATA/ATAPI subsystem */
   ata_init();
 
-  if(pata_drives[0].ata_type == ATA_TYPE_PATA) {
+  if(boot_device == 0x8000FFFF &&
+     pata_drives[0].ata_type == ATA_TYPE_PATA) {
     /* Mount root filesystem */
     if ( !ext2fs_mount() ) 
       panic( "Filesystem mount failed" );
+  } else if(boot_device == 0xE0FFFFFF) {
+    /* CD-ROM boot, figure out which drive (assume first) */
+    for(i=0;i<4;i++) {
+      if(pata_drives[i].ata_type == ATA_TYPE_PATAPI) {
+        print("CD-ROM boot unimplemented.\n");
+        break;
+      }
+    }
   } else {
     print("Unsupported boot device.\n");
   }
