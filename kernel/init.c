@@ -5,6 +5,7 @@
 #include "filesys.h"
 #include "smp.h"
 #include "mem.h"
+#include "ata.h"
 
 extern descriptor idt[];
 
@@ -474,17 +475,15 @@ void init( multiboot* pmb ) {
    * the kernel yet. */
   smp_enable();
 
-  { extern void diskio_identify(void);
-    extern void diskio_detect(void);
-    extern void diskio_sreset(void);
-    diskio_sreset();
-    diskio_detect();
-    diskio_identify(); 
-  }
+  ata_init();
 
-  /* Mount root filesystem */
-  if ( !ext2fs_mount() ) 
-    panic( "Filesystem mount failed" );
+  if(pata_drives[0].ata_type == ATA_TYPE_PATA) {
+    /* Mount root filesystem */
+    if ( !ext2fs_mount() ) 
+      panic( "Filesystem mount failed" );
+  } else {
+    print("Unsupported boot device.\n");
+  }
 
 
   /* The Shell module is in userspace and therefore interrupts will be
