@@ -428,10 +428,6 @@ void init( multiboot* pmb ) {
   }
 #endif
 
-  /* Mount root filesystem */
-  if ( !ext2fs_mount() ) 
-    panic( "Filesystem mount failed" );
-
   /* Initialise soundcard, if one exists */
   //initialise_sound ();
 
@@ -477,6 +473,19 @@ void init( multiboot* pmb ) {
    * That's why it is safe to utilize the dummy TSS without locking
    * the kernel yet. */
   smp_enable();
+
+  { extern void diskio_identify(void);
+    extern void diskio_detect(void);
+    extern void diskio_sreset(void);
+    diskio_sreset();
+    diskio_detect();
+    diskio_identify(); 
+  }
+
+  /* Mount root filesystem */
+  if ( !ext2fs_mount() ) 
+    panic( "Filesystem mount failed" );
+
 
   /* The Shell module is in userspace and therefore interrupts will be
    * enabled after this point.  Then, kernel locking will become
