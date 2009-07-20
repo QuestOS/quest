@@ -416,6 +416,12 @@ void enable_idt(void) {
   }
 }
 
+void enable_idt_entry(WORD i) {
+  idt_descriptor *ptr = *((idt_descriptor **)(idt_ptr + 2));
+  if(ptr[i].pBase0)
+    ptr[i].fPresent = 1;
+}  
+
 void set_idt_descriptor_by_addr(BYTE n, void *addr, BYTE dpl) {
   idt_descriptor *ptr = *((idt_descriptor **)(idt_ptr + 2));
 

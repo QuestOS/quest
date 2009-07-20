@@ -80,6 +80,8 @@ extern void wakeup_queue(unsigned short *q) {
     runqueue_append(LookupTSS(head)->priority, head);
 }
 
+BYTE sched_enabled = 0;
+
 /* Pick from the highest priority non-empty queue */
 extern void schedule( void ) {
 

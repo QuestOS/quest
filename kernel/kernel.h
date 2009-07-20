@@ -105,6 +105,7 @@ extern void unlock_kernel( void );
 
 extern void disable_idt(void);
 extern void enable_idt(void);
+extern void enable_idt_entry(WORD);
 extern void set_idt_descriptor_by_addr(BYTE, void *, BYTE);
 extern void get_idt_descriptor(BYTE, idt_descriptor *);
 extern void set_idt_descriptor(BYTE, idt_descriptor *);
@@ -160,6 +161,8 @@ typedef unsigned int pid_t;
 extern struct spinlock screen_lock;
 
 extern BYTE idt_ptr[];
+
+extern BYTE sched_enabled;
 
 #endif  /* __ASSEMBLER__ */
 #endif
