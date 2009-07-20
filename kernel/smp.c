@@ -688,6 +688,8 @@ int boot_cpu(BYTE apic_id, BYTE APIC_version) {
   /* de-assert INIT IPI */
   send_ipi(apic_id, LAPIC_ICR_TM_LEVEL | LAPIC_ICR_DM_INIT);
 
+  tsc_delay_usec(10000);       /* wait 10 millisec */
+
   /* Send start-up IPIs if not old version */
   if (APIC_version >= APIC_VER_NEW) {
     int i;
@@ -698,6 +700,7 @@ int boot_cpu(BYTE apic_id, BYTE APIC_version) {
        * I added the test. */
       if (TEST_BOOTED(bootaddr)) break;
       send_ipi(apic_id, LAPIC_ICR_DM_SIPI | ((bootaddr >> 12) & 0xFF));
+      tsc_delay_usec(200);      /* wait 200 microsec */
     }
   }
   
@@ -705,7 +708,7 @@ int boot_cpu(BYTE apic_id, BYTE APIC_version) {
   /* Check for successful start */
   to = 0;
   while (!TEST_BOOTED(bootaddr) && to++ < LOOPS_TO_WAIT) {
-    asm volatile("pause");
+    tsc_delay_usec(200);      /* wait 200 microsec */
   }
   if (to >= LOOPS_TO_WAIT) {
     success = 0;
