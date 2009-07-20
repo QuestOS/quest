@@ -67,14 +67,33 @@ void closure_vprintf(void putc_clo(void *,char), void *data, const char *fmt, va
 
           goto directive_finished;
         }
-        case 'u':               /* fixme */
-        case 'd': {
+        case 'u': {
           /* decimal output */
-          long x = va_arg(args,long);
+          unsigned long x = va_arg(args,unsigned long);
           int i, q, print_padding = 0, print_digits = 0;
           int divisors[10] = 
             {1000000000, 100000000, 10000000, 1000000, 100000, 10000, 1000, 100, 10, 1};
 
+          for( i = 0; i < 10; i++ ) {
+            q = x / divisors[i];
+            x %= divisors[i];
+
+            HANDLE_OPTIONS(q,10,9);
+            
+            if (print_digits)
+              putc('0' + q);
+          }
+
+          goto directive_finished;
+        }
+        case 'd': {
+          /* decimal output */
+          signed long x = va_arg(args,signed long);
+          int i, q, print_padding = 0, print_digits = 0;
+          int divisors[10] = 
+            {1000000000, 100000000, 10000000, 1000000, 100000, 10000, 1000, 100, 10, 1};
+
+          if(x < 0) { putc('-'); x *= -1; }
           for( i = 0; i < 10; i++ ) {
             q = x / divisors[i];
             x %= divisors[i];
