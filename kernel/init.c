@@ -315,6 +315,11 @@ void init( multiboot* pmb ) {
   outw (0x8A00, 0x8A00);
 
   initialize_serial_port();
+  if(pmb->flags & 0x2) {
+    com1_puts("Boot device: ");
+    com1_putx(pmb->boot_device);
+    com1_putc('\n');
+  }
 
   /* clear screen */
   for( i = 0; i < 80 * 25; i++ ) {
@@ -391,6 +396,8 @@ void init( multiboot* pmb ) {
    *  marked in the mm_table 
    */
 
+  init_interrupt_handlers();
+
   /* Initialise the programmable interrupt controller (PIC) */
   initialise_pic ();
 
@@ -453,7 +460,7 @@ void init( multiboot* pmb ) {
   }
 #endif
 
-  pow2_init();
+  pow2_init();                  /* initialize power-of-2 memory allocator */
 
   { 
     int n;

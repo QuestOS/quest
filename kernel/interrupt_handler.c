@@ -1012,10 +1012,14 @@ extern unsigned flush_tlb_handler(BYTE vec) {
   return 0;
 }
 
+#endif
+
 extern void init_interrupt_handlers(void) {
   int i;
   for(i=0;i<256;i++) vector_handlers[i] = default_vector_handler;
-  set_vector_handler(0xfd, invlpg_handler);
-  set_vector_handler(0xfe, flush_tlb_handler);
+  /************************************************
+   * set_vector_handler(0xfd, invlpg_handler);    *
+   * set_vector_handler(0xfe, flush_tlb_handler); *
+   ************************************************/
 }
-#endif
+
