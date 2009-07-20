@@ -36,6 +36,7 @@ vector_handler get_vector_handler(BYTE vec) {
 }
 unsigned dispatch_vector(unsigned vec) {
   vector_handler func = vector_handlers[(BYTE)vec];
+  send_eoi();
   if (func) return func(vec);
   else return 0;
 }
