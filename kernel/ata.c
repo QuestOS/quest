@@ -223,7 +223,7 @@ int ata_drive_write_sector(DWORD bus, DWORD drive, DWORD lba, BYTE *buffer) {
   for(i=0;i<256;i++)
     outw(((WORD *)buffer)[i], ATA_DATA(bus));
 
-  outb(0xE7, ATA_COMMAND(bus));
+  outb(0xE7, ATA_COMMAND(bus)); /* FLUSH */
   ata_release();
   return 512; 
 }
