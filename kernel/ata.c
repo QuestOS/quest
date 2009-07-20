@@ -1,6 +1,7 @@
 #include "ata.h"
 #include "i386.h"
 #include "printf.h"
+#include "smp.h"
 
 /**************************************************************************
  *  IDENTIFY command                                                      *
@@ -183,9 +184,20 @@ int ata_drive_write_sector(DWORD bus, DWORD drive, DWORD lba, BYTE *buffer) {
   return 512; 
 }
 
+static DWORD ata_primary_irq_count = 0, ata_secondary_irq_count = 0;
+static unsigned ata_irq_handler(BYTE vec) {
+  if(vec == 0x27) ata_primary_irq_count++;
+  else ata_secondary_irq_count++;
+  return 0;
+}
+
 void ata_init(void) {
   pata_drives[0].ata_type = ata_identify(ATA_BUS_PRIMARY, ATA_DRIVE_MASTER);
   pata_drives[1].ata_type = ata_identify(ATA_BUS_PRIMARY, ATA_DRIVE_SLAVE);
   pata_drives[2].ata_type = ata_identify(ATA_BUS_SECONDARY, ATA_DRIVE_MASTER);
   pata_drives[3].ata_type = ata_identify(ATA_BUS_SECONDARY, ATA_DRIVE_SLAVE);
+  IOAPIC_map_GSI(IRQ_to_GSI(mp_ISA_bus_id, ATA_IRQ_PRIMARY), 0x27, 0xFF00000000000800LL);
+  IOAPIC_map_GSI(IRQ_to_GSI(mp_ISA_bus_id, ATA_IRQ_SECONDARY), 0x28, 0xFF00000000000800LL);
+  set_vector_handler(0x27, ata_irq_handler);
+  set_vector_handler(0x28, ata_irq_handler);
 }
