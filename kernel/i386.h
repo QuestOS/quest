@@ -247,13 +247,14 @@ static inline unsigned int ffs(unsigned int word)
   return word;
 }
 
-static inline unsigned long long rdtsc(void) {
-  unsigned long hi, lo;
-  unsigned long long ret;
-  asm volatile("rdtsc" : "=a"(hi), "=d"(lo));
-  ret = ((unsigned long long)hi << 32) | (unsigned long long)lo;
-  return ret;
-}
+#define RDTSC(var)                                              \
+  {                                                             \
+    DWORD var##_lo, var##_hi;                                   \
+    asm volatile("rdtsc" : "=a"(var##_lo), "=d"(var##_hi));     \
+    var = var##_hi;                                             \
+    var <<= 32;                                                 \
+    var |= var##_lo;                                            \
+  }
 
 #endif
 
