@@ -927,7 +927,8 @@ void __exit( int status ) {
     UnmapVirtualPage( ptss );
 
     schedule();
-    unlock_kernel();
+    /* never return */
+    panic("__exit: unreachable");
 }
 
 
