@@ -1,6 +1,13 @@
+#ifndef _FILESYS_H_
+#define _FILESYS_H_
+
+#include "types.h"
+
 int ext2fs_mount (void);
 int ext2fs_read (char *buf, int len);
 int ext2fs_dir (char *dirname);
+
+int iso9660_mount(DWORD, DWORD);
 
 #define SECTOR_SIZE            0x200
 
@@ -46,3 +53,5 @@ typedef enum
 
   MAX_ERR_NUM
 } grub_error_t;
+
+#endif

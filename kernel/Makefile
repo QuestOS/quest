@@ -4,7 +4,7 @@ CFLAGS = -m32 -fno-builtin -nostdinc -Iacpi/include -I. -I../libc/include -g -Wa
 CPPFLAGS = -D_QUEST -Wa,--32 -MMD 
 OBJS = boot.o init.o boot-smp.o smp.o interrupt.o interrupt_handler.o \
 	kernel.o diskio.o cpuid.o \
-	fsys_ext2fs.o sched.o sound.o \
+	fsys_ext2fs.o fsys_iso9660.o sched.o sound.o \
 	quest-acpica.o printf.o mem.o ata.o
 ACPI_SRCS = $(shell ls acpi/*.c)
 ACPI_OBJS = $(patsubst %.c,%.o,$(ACPI_SRCS))
