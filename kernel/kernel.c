@@ -461,3 +461,25 @@ void set_idt_descriptor(BYTE n, idt_descriptor *d) {
 
   ptr[n] = *d;
 }
+
+void tsc_delay_usec(DWORD usec) {
+  extern QWORD tsc_freq;
+  QWORD f;
+  DWORD ticks, f_hi, f_lo;
+  QWORD start, value, finish;
+  DWORD divisor = 1000000;
+
+  f = tsc_freq * usec;
+  f_hi = (DWORD) (f >> 32);
+  f_lo = (DWORD) (f & 0xFFFFFFFF);
+  asm volatile("div %1" : "=a"(ticks) : "r"(divisor), "a"(f_lo), "d"(f_hi));
+
+  RDTSC(start);
+
+  finish = start+ticks;
+  for(;;) {
+    RDTSC(value);
+    if(value >= finish) break;
+    asm volatile("pause");
+  }
+}

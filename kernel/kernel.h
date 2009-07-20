@@ -118,6 +118,8 @@ extern void init_interrupt_handlers(void);
 
 void stacktrace(void);
 
+void tsc_delay_usec(DWORD usec);
+
 static inline void *memset( void *p, int ch, unsigned long cb ) {
 
     asm volatile( "rep stosb" : : "D" (p), "a" (ch), "c" (cb) );
