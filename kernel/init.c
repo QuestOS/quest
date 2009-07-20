@@ -466,7 +466,7 @@ void init( multiboot* pmb ) {
     print("Unsupported boot device.\n");
   }
 
-  sched_enabled = 1;
+  smp_enable_scheduling();
 
   /* The Shell module is in userspace and therefore interrupts will be
    * enabled after this point.  Then, kernel locking will become

@@ -107,6 +107,7 @@ extern QWORD tsc_freq;
 
 int smp_init(void);
 void smp_enable(void);
+void smp_enable_scheduling(void);
 QWORD IOAPIC_read64(BYTE);
 void IOAPIC_write64(BYTE, QWORD);
 BYTE LAPIC_get_physical_ID(void);

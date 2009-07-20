@@ -75,7 +75,29 @@ static ACPI_TABLE_DESC TableArray[ACPI_MAX_INIT_TABLES];
 /* Returns number of CPUs successfully booted. */
 int smp_init(void) {
   struct mp_fp *ptr;
-  
+  int phys_id, log_dest;
+
+  MP_LAPIC_WRITE(LAPIC_TPR, 0x00);
+  MP_LAPIC_WRITE(LAPIC_LVTT, 0x10000); /* disable timer int */
+  MP_LAPIC_WRITE(LAPIC_LVTPC, 0x10000); /* disable perf ctr int */
+  MP_LAPIC_WRITE(LAPIC_LVT0, 0x08700);  /* enable normal external ints */
+  MP_LAPIC_WRITE(LAPIC_LVT1, 0x00400);  /* enable NMI */
+  MP_LAPIC_WRITE(LAPIC_LVTE, 0x10000);  /* disable error ints */
+  MP_LAPIC_WRITE(LAPIC_SPIV, 0x0010F);  /* enable APIC: spurious vector = 0xF */
+
+  /* be sure: */
+  MP_LAPIC_WRITE(LAPIC_LVT1, 0x00400);  /* enable NMI */
+  MP_LAPIC_WRITE(LAPIC_LVTE, 0x10000);  /* disable error ints */
+
+  phys_id = (MP_LAPIC_READ(LAPIC_ID) >> 0x18) & 0xF;
+
+  /* setup a logical destination address */
+  log_dest = 0x01000000 << phys_id;
+  MP_LAPIC_WRITE(LAPIC_LDR, log_dest); /* write to logical destination reg */
+  MP_LAPIC_WRITE(LAPIC_DFR, -1);       /* use 'flat model' destination format */
+
+  smp_setup_LAPIC_timer();
+
   if(process_acpi_tables() <= 1) {
     /* ACPI failed to initialize, try Intel MPS */
   
@@ -85,35 +107,6 @@ int smp_init(void) {
     else return 1;                /* assume uniprocessor */
 
     mp_num_cpus = process_mp_fp (ptr);
-  }
-
-  if (mp_num_cpus > 1) {
-    int phys_id, log_dest;
-    MP_LAPIC_WRITE(LAPIC_TPR, 0x00);
-    MP_LAPIC_WRITE(LAPIC_LVTT, 0x10000); /* disable timer int */
-    MP_LAPIC_WRITE(LAPIC_LVTPC, 0x10000); /* disable perf ctr int */
-    MP_LAPIC_WRITE(LAPIC_LVT0, 0x08700);  /* enable normal external ints */
-    MP_LAPIC_WRITE(LAPIC_LVT1, 0x00400);  /* enable NMI */
-    MP_LAPIC_WRITE(LAPIC_LVTE, 0x10000);  /* disable error ints */
-    MP_LAPIC_WRITE(LAPIC_SPIV, 0x0010F);  /* enable APIC: spurious vector = 0xF */
-
-    /* be sure: */
-    MP_LAPIC_WRITE(LAPIC_LVT1, 0x00400);  /* enable NMI */
-    MP_LAPIC_WRITE(LAPIC_LVTE, 0x10000);  /* disable error ints */
-
-    phys_id = (MP_LAPIC_READ(LAPIC_ID) >> 0x18) & 0xF;
-
-    /* setup a logical destination address */
-    log_dest = 0x01000000 << phys_id;
-    MP_LAPIC_WRITE(LAPIC_LDR, log_dest); /* write to logical destination reg */
-    MP_LAPIC_WRITE(LAPIC_DFR, -1);       /* use 'flat model' destination format */
-
-    smp_setup_LAPIC_timer();
-
-    MP_LAPIC_WRITE(LAPIC_LVTT, 0x3e); /* enable LAPIC timer int: vector=0x3e 
-                                       * one-shot mode. */
-    MP_LAPIC_WRITE(LAPIC_TDCR, 0x0B); /* set LAPIC timer divisor to 1 */
-    MP_LAPIC_WRITE(LAPIC_TICR, cpu_bus_freq/100); /* 100Hz */
   }
 
   return mp_num_cpus;
@@ -251,6 +244,15 @@ void smp_enable(void) {
    * handler, this permits the Application Processors to go ahead and
    * complete initialization after the kernel has entered a
    * multi-processing safe state. */
+}
+
+void smp_enable_scheduling(void) {
+  MP_LAPIC_WRITE(LAPIC_LVTT, 0x3e); /* enable LAPIC timer int: vector=0x3e 
+                                     * one-shot mode. */
+  MP_LAPIC_WRITE(LAPIC_TDCR, 0x0B); /* set LAPIC timer divisor to 1 */
+  MP_LAPIC_WRITE(LAPIC_TICR, cpu_bus_freq/100); /* 100Hz */
+
+  sched_enabled = 1;
 }
 
 /*******************************************************************
