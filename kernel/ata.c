@@ -176,6 +176,8 @@ DWORD ata_identify(DWORD bus, DWORD drive) {
   return ATA_TYPE_PATA;
 }
 
+static void ata_poll_for_irq(DWORD);
+
 int ata_drive_read_sector(DWORD bus, DWORD drive, DWORD lba, BYTE *buffer) {
   BYTE status;
   ata_grab();
@@ -186,7 +188,10 @@ int ata_drive_read_sector(DWORD bus, DWORD drive, DWORD lba, BYTE *buffer) {
   outb((BYTE)(lba >> 8), ATA_ADDRESS2(bus));
   outb((BYTE)(lba >> 16), ATA_ADDRESS3(bus));
   outb(0x20, ATA_COMMAND(bus)); /* READ SECTORS (28-bit LBA) */
-  
+
+  if(sched_enabled) schedule();
+  else ata_poll_for_irq(bus);
+
   while(!(status=inb(ATA_COMMAND(bus)) & 0x8) && !(status & 0x1))
     asm volatile("pause");
   if(status & 0x1) {
@@ -240,6 +245,35 @@ static unsigned ata_irq_handler(BYTE vec) {
   unlock_kernel();
   return 0;
 }
+
+
+void ata_poll_for_irq_timer_handler(void) {
+  send_eoi();
+  asm volatile("leave");
+  asm volatile("iret");
+}
+
+static void ata_poll_for_irq(DWORD bus) {
+#if 0
+  DWORD count, *counter;
+  idt_descriptor old_timer;
+  /* Use this if scheduling is not enabled yet */
+  counter = (bus == ATA_BUS_PRIMARY ? &ata_primary_irq_count : &ata_secondary_irq_count);
+  disable_idt();
+  get_idt_descriptor(0x20, &old_timer);
+  set_idt_descriptor_by_addr(0x20, (void *)&ata_poll_for_irq_timer_handler, 0x3);
+  enable_idt_entry(ATA_VECTOR(bus));
+  count = *counter;
+  asm volatile("sti");
+  while(count == *counter) asm volatile("pause");
+  asm volatile("cli");
+  set_idt_descriptor(0x20, &old_timer);
+  enable_idt();
+#endif
+
+  tsc_delay_usec(100000);       /* wait 100 milliseconds */
+}
+
 
 void ata_init(void) {
   pata_drives[0].ata_type = ata_identify(ATA_BUS_PRIMARY, ATA_DRIVE_MASTER);
