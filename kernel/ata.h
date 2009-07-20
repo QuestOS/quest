@@ -19,7 +19,10 @@ extern ata_info pata_drives[4];
 
 #define ATA_IRQ_PRIMARY     0x0E
 #define ATA_IRQ_SECONDARY   0x0F
+#define ATA_VECTOR_PRIMARY   0x27
+#define ATA_VECTOR_SECONDARY 0x28
 #define ATA_IRQ(bus)        (bus==ATA_BUS_PRIMARY ? ATA_IRQ_PRIMARY : ATA_IRQ_SECONDARY)
+#define ATA_VECTOR(bus)     (bus==ATA_BUS_PRIMARY ? ATA_VECTOR_PRIMARY : ATA_VECTOR_SECONDARY)
 
 #define ATA_DATA(x)         (x)
 #define ATA_FEATURES(x)     (x+1)

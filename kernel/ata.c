@@ -234,7 +234,7 @@ static unsigned ata_irq_handler(BYTE vec) {
 #ifdef DEBUG_ATA
   com1_printf("ata_irq_handler(%x) ata_current_task=%x\n", vec, ata_current_task);
 #endif
-  if(vec == 0x27) ata_primary_irq_count++;
+  if(vec == ATA_VECTOR_PRIMARY) ata_primary_irq_count++;
   else ata_secondary_irq_count++;
   if(ata_current_task) wakeup(ata_current_task);
   unlock_kernel();
@@ -246,8 +246,10 @@ void ata_init(void) {
   pata_drives[1].ata_type = ata_identify(ATA_BUS_PRIMARY, ATA_DRIVE_SLAVE);
   pata_drives[2].ata_type = ata_identify(ATA_BUS_SECONDARY, ATA_DRIVE_MASTER);
   pata_drives[3].ata_type = ata_identify(ATA_BUS_SECONDARY, ATA_DRIVE_SLAVE);
-  IOAPIC_map_GSI(IRQ_to_GSI(mp_ISA_bus_id, ATA_IRQ_PRIMARY), 0x27, 0xFF00000000000800LL);
-  IOAPIC_map_GSI(IRQ_to_GSI(mp_ISA_bus_id, ATA_IRQ_SECONDARY), 0x28, 0xFF00000000000800LL);
-  set_vector_handler(0x27, ata_irq_handler);
-  set_vector_handler(0x28, ata_irq_handler);
+  IOAPIC_map_GSI(IRQ_to_GSI(mp_ISA_bus_id, ATA_IRQ_PRIMARY), 
+                 ATA_VECTOR_PRIMARY, 0xFF00000000000800LL);
+  IOAPIC_map_GSI(IRQ_to_GSI(mp_ISA_bus_id, ATA_IRQ_SECONDARY), 
+                 ATA_VECTOR_SECONDARY, 0xFF00000000000800LL);
+  set_vector_handler(ATA_VECTOR_PRIMARY, ata_irq_handler);
+  set_vector_handler(ATA_VECTOR_SECONDARY, ata_irq_handler);
 }
