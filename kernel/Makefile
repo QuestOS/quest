@@ -1,3 +1,4 @@
+GRUBLIB = /usr/lib/grub/*-pc/
 CC = gcc
 CFLAGS = -m32 -fno-builtin -nostdinc -Iacpi/include -I. -I../libc/include -g -Wall 
 CPPFLAGS = -D_QUEST -Wa,--32 -MMD 
@@ -30,6 +31,16 @@ install: $(PROGS)
 vmware: install
 	qemu-img convert c.img -O vmdk c-img.vmdk
 	cp c-img.vmdk /mnt/hgfs/shared/quest
+
+quest.iso: quest
+	mkdir -p iso/boot/grub 
+	cp $(GRUBLIB)/stage2_eltorito iso/boot/grub/ 
+	cp iso-menu.lst iso/boot/grub/menu.lst 
+	cp $(PROGS) iso/boot/ 
+	mkisofs -quiet \
+		-R -b boot/grub/stage2_eltorito \
+		-no-emul-boot -boot-load-size 4 \
+		-boot-info-table -o $@ iso
 
 tags:
 	etags -o TAGS *.c acpi/*.c 
