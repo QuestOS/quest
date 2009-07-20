@@ -276,10 +276,28 @@ static void ata_poll_for_irq(DWORD bus) {
 
 
 void ata_init(void) {
-  pata_drives[0].ata_type = ata_identify(ATA_BUS_PRIMARY, ATA_DRIVE_MASTER);
-  pata_drives[1].ata_type = ata_identify(ATA_BUS_PRIMARY, ATA_DRIVE_SLAVE);
-  pata_drives[2].ata_type = ata_identify(ATA_BUS_SECONDARY, ATA_DRIVE_MASTER);
-  pata_drives[3].ata_type = ata_identify(ATA_BUS_SECONDARY, ATA_DRIVE_SLAVE);
+  DWORD bus, drive, i;
+  
+  i=0; bus=ATA_BUS_PRIMARY; drive=ATA_DRIVE_MASTER;
+  pata_drives[i].ata_type   = ata_identify(bus, drive);
+  pata_drives[i].ata_bus    = bus;
+  pata_drives[i].ata_drive  = drive;
+
+  i=1; bus=ATA_BUS_PRIMARY; drive=ATA_DRIVE_SLAVE;
+  pata_drives[i].ata_type   = ata_identify(bus, drive);
+  pata_drives[i].ata_bus    = bus;
+  pata_drives[i].ata_drive  = drive;
+
+  i=2; bus=ATA_BUS_SECONDARY; drive=ATA_DRIVE_MASTER;
+  pata_drives[i].ata_type   = ata_identify(bus, drive);
+  pata_drives[i].ata_bus    = bus;
+  pata_drives[i].ata_drive  = drive;
+
+  i=3; bus=ATA_BUS_SECONDARY; drive=ATA_DRIVE_SLAVE;
+  pata_drives[i].ata_type   = ata_identify(bus, drive);
+  pata_drives[i].ata_bus    = bus;
+  pata_drives[i].ata_drive  = drive;
+  
   IOAPIC_map_GSI(IRQ_to_GSI(mp_ISA_bus_id, ATA_IRQ_PRIMARY), 
                  ATA_VECTOR_PRIMARY, 0xFF00000000000800LL);
   IOAPIC_map_GSI(IRQ_to_GSI(mp_ISA_bus_id, ATA_IRQ_SECONDARY), 

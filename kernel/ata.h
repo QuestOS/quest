@@ -9,7 +9,7 @@
 #define ATA_TYPE_SATAPI 4
 
 typedef struct {
-  DWORD ata_type;
+  DWORD ata_type, ata_bus, ata_drive;
 } ata_info;
 
 extern ata_info pata_drives[4];
