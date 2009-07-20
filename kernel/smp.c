@@ -776,13 +776,15 @@ static void smp_LAPIC_timer_irq_handler(void) {
 }
 
 /* CPU BUS FREQUENCY -- IN HERTZ */
-unsigned long cpu_bus_freq;
+unsigned long cpu_bus_freq = 0;
+QWORD tsc_freq = 0;
 
 /* Use the PIT to find how fast the LAPIC ticks (and correspondingly,
  * the bus speed of the processor) */
 static void smp_setup_LAPIC_timer(void) {
   idt_descriptor old_timer, old_3f;
   unsigned long value, start, count;
+  DWORD tsc_start_hi, tsc_start_lo, tsc_value_hi, tsc_value_lo;
 
   /* I want to enable interrupts but I don't want the normal
    * interrupt-handling architecture to kick-in just yet.  Here's an
@@ -806,10 +808,11 @@ static void smp_setup_LAPIC_timer(void) {
   while(tick == value) asm volatile("pause");
   start = tick;
   MP_LAPIC_WRITE(LAPIC_TICR, 0xFFFFFFFF); /* write large value to Initial Count Reg. */
+  asm volatile("rdtsc" : "=a"(tsc_start_lo), "=d"(tsc_start_hi)); /* store timestamp */
   /* LAPIC begins counting down, wait until the PIT fires again: */
   while(tick == start) asm volatile("pause");
   asm volatile("cli");
-  
+  asm volatile("rdtsc" : "=a"(tsc_value_lo), "=d"(tsc_value_hi)); /* store timestamp */
   MP_LAPIC_WRITE(LAPIC_LVTT, 0x10000); /* disable timer int */
   count = MP_LAPIC_READ(LAPIC_TCCR);   /* read the remaining count */
 
@@ -819,6 +822,12 @@ static void smp_setup_LAPIC_timer(void) {
   
   cpu_bus_freq = (0xFFFFFFFF - count) * HZ;
   printf("CPU bus frequency = %d\n", cpu_bus_freq);
+  com1_printf("CPU bus frequency = 0x%X\n", cpu_bus_freq);
+  tsc_freq = (((QWORD)tsc_value_hi) << 32) | ((QWORD)tsc_value_lo);
+  tsc_freq -= ((QWORD)tsc_start_hi) << 32;
+  tsc_freq -= (QWORD)tsc_start_lo;
+  tsc_freq *= HZ;
+  com1_printf("TSC frequency = 0x%X 0x%X\n", (DWORD)(tsc_freq >> 32), (DWORD)tsc_freq);
 
   /* Put the IDT back in shape */
   enable_idt();

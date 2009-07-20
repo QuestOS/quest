@@ -103,6 +103,7 @@ typedef struct {
 } mp_int_override;
 
 extern unsigned long cpu_bus_freq;
+extern QWORD tsc_freq;
 
 int smp_init(void);
 void smp_enable(void);

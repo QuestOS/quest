@@ -246,6 +246,15 @@ static inline unsigned int ffs(unsigned int word)
 	  :"rm" (word));
   return word;
 }
+
+static inline unsigned long long rdtsc(void) {
+  unsigned long hi, lo;
+  unsigned long long ret;
+  asm volatile("rdtsc" : "=a"(hi), "=d"(lo));
+  ret = ((unsigned long long)hi << 32) | (unsigned long long)lo;
+  return ret;
+}
+
 #endif
 
 
