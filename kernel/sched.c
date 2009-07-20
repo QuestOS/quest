@@ -1,6 +1,9 @@
 #include "i386.h"
 #include "kernel.h"
 #include "smp.h"
+#include "printf.h"
+
+//#define DEBUG_SCHED
 
 unsigned short runqueue[MAX_PRIO_QUEUES];
 unsigned short waitqueue[MAX_PRIO_QUEUES]; /* For tasks having expired
@@ -28,14 +31,19 @@ extern void queue_append( unsigned short *queue, unsigned short selector ) {
     /* add to end of queue */
     tssp->next = selector;
 
-    tssp = LookupTSS( selector );
-    tssp->next = 0;
   } else
     *queue = selector;
+
+  tssp = LookupTSS( selector );
+  tssp->next = 0;
+
 }
 
 
 extern void runqueue_append( unsigned int prio, unsigned short selector ) {
+#ifdef DEBUG_SCHED
+  com1_printf("runqueue_append(%x, %x)\n", prio, selector);
+#endif
   queue_append( &runqueue[prio], selector );
   
   BITMAP_SET( runq_bitmap, prio );
@@ -86,26 +94,28 @@ extern void schedule( void ) {
     next = queue_remove_head( &runqueue[prio] );
     if( !runqueue[prio] )
       BITMAP_CLR( runq_bitmap, prio );
+
+#ifdef DEBUG_SCHED
+    com1_printf("CPU %x: switching to task: %x runqueue(%x):", 
+                LAPIC_get_physical_ID(), next, prio);
+    {                           /* print runqueue to com1 */
+      quest_tss *tssp;
+      int sel = runqueue[prio];
+      while(sel) {
+        tssp = LookupTSS(sel);
+        com1_printf(" %x", sel);
+        sel = tssp->next;
+      }
+    }
+    com1_putc('\n');
+#endif
     
     if( next == str() ) {
       /* no task switch required */
       return;
     }
 
-#if 0
-    com1_puts("CPU "); com1_putx(LAPIC_get_physical_ID());
-    com1_puts(" jmp_gate: "); com1_putx(next); 
-    {                           /* print runqueue to com1 */
-      quest_tss *tssp;
-      int sel = runqueue[prio];
-      while(sel) {
-        tssp = LookupTSS(sel);
-        com1_putc(' '); com1_putx(sel);
-        sel = tssp->next;
-      }
-    }
-    com1_putc('\n');
-#endif
+
 
     jmp_gate( next );
   }
@@ -120,7 +130,13 @@ extern void schedule( void ) {
      * If a task calls schedule() and is selected from the runqueue,
      * then it must be switched out.  Go to IDLE task if nothing else. 
      */
-    unsigned short idle_sel = idleTSS_selector[LAPIC_get_physical_ID()];
+    BYTE phys_id = LAPIC_get_physical_ID();
+    unsigned short idle_sel = idleTSS_selector[phys_id];
+    
+#ifdef DEBUG_SCHED
+    com1_printf("CPU %x: idling\n", phys_id);
+#endif
+
 
     /* Only switch tasks to IDLE if we are not already running IDLE. */
     if(str() != idle_sel) jmp_gate(idle_sel);
