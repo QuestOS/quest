@@ -100,7 +100,7 @@ int smp_init(void) {
 
   smp_setup_LAPIC_timer();
 
-  if(process_acpi_tables() <= 1) {
+  if(process_acpi_tables() <= 0) {
     /* ACPI failed to initialize, try Intel MPS */
   
     if       ((ptr = probe_mp_fp(0x9F800, 0xA0000)));
@@ -341,7 +341,10 @@ static int process_acpi_tables(void) {
         }
         ptr += ((ACPI_SUBTABLE_HEADER *)ptr)->Length;
       } 
-    } else printf("AcpiGetTable MADT: FAILED\n");
+    } else {
+      printf("AcpiGetTable MADT: FAILED\n");
+      return 0;
+    }
     if(AcpiGetTable(ACPI_SIG_FADT, 0, (ACPI_TABLE_HEADER **)&fadt) == AE_OK) {
       /* Fixed ACPI Description Table */
       printf("Bootflags: %s %s %s\n",
@@ -351,8 +354,11 @@ static int process_acpi_tables(void) {
              "HAS_KBD_8042" : "NO_KBD_8042",
              (fadt->BootFlags & ACPI_FADT_NO_VGA) ? 
              "NO_VGA_PROBING" : "VGA_PROBING_OK");
-    } else printf("AcpiGetTable FADT: FAILED\n");
-  }
+    } else {
+      printf("AcpiGetTable FADT: FAILED\n");
+      return 0;
+    }
+  } else return 0;
 
   return mp_num_cpus;
 }
