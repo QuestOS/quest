@@ -447,19 +447,22 @@ void init( multiboot* pmb ) {
    * the kernel yet. */
   smp_enable();
 
+  com1_puts("ATA_INIT\n");
   /* Initialize ATA/ATAPI subsystem */
   ata_init();
 
   if(boot_device == 0x8000FFFF &&
      pata_drives[0].ata_type == ATA_TYPE_PATA) {
+    com1_puts("ROOT: EXT2FS\n");
     /* Mount root filesystem */
     if ( !ext2fs_mount() ) 
       panic( "Filesystem mount failed" );
     vfs_set_root(VFS_FSYS_EXT2, &pata_drives[0]);
-  } else if(boot_device == 0xE0FFFFFF) {
+  } else {
     /* CD-ROM boot, figure out which drive (assume first) */
     for(i=0;i<4;i++) {
       if(pata_drives[i].ata_type == ATA_TYPE_PATAPI) {
+        com1_puts("ROOT: ISO9660\n");
         if(!eziso_mount(pata_drives[i].ata_bus,
                         pata_drives[i].ata_drive))
           panic("Filesystem mount failed");
@@ -467,8 +470,8 @@ void init( multiboot* pmb ) {
         break;
       }
     }
-  } else {
-    print("Unsupported boot device.\n");
+    if(i==4)
+      print("Unsupported boot device.\n");
   }
 
   smp_enable_scheduling();
