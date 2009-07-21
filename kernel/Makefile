@@ -1,6 +1,6 @@
 GRUBLIB = /usr/lib/grub/*-pc/
 CC = gcc
-CFLAGS = -m32 -fno-builtin -nostdinc -Iacpi/include -I. -I../libc/include -g -Wall 
+CFLAGS = -m32 -fno-builtin -nostdinc -Iacpi/include -I. -I../libc/include -g -Wall $(EXTRA_CFLAGS)
 CPPFLAGS = -D_QUEST -Wa,--32 -MMD 
 OBJS = boot.o init.o boot-smp.o smp.o interrupt.o interrupt_handler.o \
 	kernel.o diskio.o cpuid.o \

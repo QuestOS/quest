@@ -131,7 +131,11 @@ void _putx( unsigned long l ) {
 }
 
 void com1_putc(char c) {
+#ifdef COM1_TO_SCREEN
+  _putchar(c);
+#else
   while(!(inb(PORT1+5) & 0x20)); /* check line status register, empty transmitter bit */
+#endif
   outb(c, PORT1);
 }
 
