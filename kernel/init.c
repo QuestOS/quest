@@ -316,17 +316,17 @@ void init( multiboot* pmb ) {
   outw (0x8A00, 0x8A00);
 
   initialize_serial_port();
-  if(pmb->flags & 0x2) {
-    boot_device = pmb->boot_device;
-    com1_puts("Boot device: ");
-    com1_putx(pmb->boot_device);
-    com1_putc('\n');
-  }
 
   /* clear screen */
   for( i = 0; i < 80 * 25; i++ ) {
 	pchVideo[ i * 2 ] = ' ';
 	pchVideo[ i * 2 + 1 ] = 7;
+  }
+
+  if(pmb->flags & 0x2) {
+    boot_device = pmb->boot_device;
+    printf("Boot device: %X\n", boot_device);
+    com1_printf("Boot device: %X\n", boot_device);
   }
 
   cpuid_get_brand_string(brandstring, I386_CPUID_BRAND_STRING_LENGTH);

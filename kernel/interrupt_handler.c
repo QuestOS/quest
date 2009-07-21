@@ -831,14 +831,14 @@ extern void _interrupt3e(void) {
 /* IRQ0 system timer interrupt handler: simply updates the system clock
    tick for now */
 void _timer( void ) {
-  extern volatile int mp_enabled, mp_num_cpus;
+  extern volatile int mp_enabled;
   tick++;
   
   /* Need to issue an EOI "end of interrupt" to be ready for further
      interrupts */
   send_eoi ();
 
-  if (!mp_enabled && mp_num_cpus > 1) mp_enabled = 1;
+  mp_enabled = 1;
 
 #if 0
   send_ipi(0xFF, 

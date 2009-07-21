@@ -24,7 +24,7 @@
 #define LAPIC_ADDR_DEFAULT  0xFEE00000uL
 #define IOAPIC_ADDR_DEFAULT 0xFEC00000uL
 
-volatile int mp_enabled=0, mp_num_cpus=1;
+volatile int mp_enabled=0, mp_num_cpus=1, mp_apic_mode=0;
 
 DWORD mp_LAPIC_addr = LAPIC_ADDR_DEFAULT;
 #define MP_LAPIC_READ(x)   (*((volatile DWORD *) (mp_LAPIC_addr+(x))))
@@ -76,6 +76,8 @@ static ACPI_TABLE_DESC TableArray[ACPI_MAX_INIT_TABLES];
 int smp_init(void) {
   struct mp_fp *ptr;
   int phys_id, log_dest;
+
+  mp_apic_mode = 1;
 
   MP_LAPIC_WRITE(LAPIC_TPR, 0x00);
   MP_LAPIC_WRITE(LAPIC_LVTT, 0x10000); /* disable timer int */
@@ -877,7 +879,7 @@ BYTE LAPIC_get_physical_ID(void) {
 }
 
 void send_eoi (void) {
-  if (mp_num_cpus > 1) {
+  if (mp_apic_mode) {
     MP_LAPIC_WRITE(LAPIC_EOI, 0); /* send to LAPIC */
   } else {
     outb( 0x60, 0x20 );         /* send to 8259A PIC */
