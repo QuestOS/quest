@@ -460,8 +460,8 @@ void init( multiboot* pmb ) {
     for(i=0;i<4;i++) {
       if(pata_drives[i].ata_type == ATA_TYPE_PATAPI) {
         print("CD-ROM boot unimplemented.\n");
-        if(iso9660_mount(pata_drives[i].ata_bus,
-                         pata_drives[i].ata_drive) < 0)
+        if(eziso_mount(pata_drives[i].ata_bus,
+                       pata_drives[i].ata_drive) < 0)
           panic("Filesystem mount failed");
         
         break;
