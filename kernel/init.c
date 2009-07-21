@@ -324,9 +324,18 @@ void init( multiboot* pmb ) {
   }
 
   if(pmb->flags & 0x2) {
+    multiboot_drive *d;
     boot_device = pmb->boot_device;
     printf("Boot device: %X\n", boot_device);
     com1_printf("Boot device: %X\n", boot_device);
+    if(pmb->flags & 0x80) {
+      for(d=pmb->drives_addr, i=0;
+          i<pmb->drives_length;
+          i+=d->size,d=(multiboot_drive*)((BYTE*)d+d->size)) {
+        printf("Found drive. number: %X\n", d->number);
+        com1_printf("Found drive. number: %X\n", d->number);
+      }
+    }
   }
 
   cpuid_get_brand_string(brandstring, I386_CPUID_BRAND_STRING_LENGTH);

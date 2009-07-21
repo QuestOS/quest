@@ -29,6 +29,16 @@ typedef struct _multiboot_module {
     unsigned long reserved;
 } multiboot_module;
 
+typedef struct _multiboot_drive {
+  unsigned long size;
+  unsigned char number;
+  unsigned char mode;
+  unsigned short cylinders;
+  unsigned char heads;
+  unsigned char sectors;
+  unsigned short ports[];
+} multiboot_drive;
+
 typedef struct _multiboot {
     unsigned long flags;
     unsigned long mem_lower;
@@ -44,7 +54,7 @@ typedef struct _multiboot {
     unsigned long mmap_length;
     unsigned long mmap_addr;
     unsigned long drives_length;
-    void *drives_addr;
+    multiboot_drive *drives_addr;
     void *config_table;
     char *boot_loader_name;
 } multiboot;
