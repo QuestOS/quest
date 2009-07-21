@@ -62,7 +62,7 @@ void _start() {
 
     
     if (waitpid(pid) < 0) {
-      print("WAITPID ERROR\n");
+      print("waitpid returned -1\n");
     }
 
     print("value = ");

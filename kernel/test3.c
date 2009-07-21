@@ -40,7 +40,7 @@ void _start() {
   if ((pid=fork ())) { 
     /* PARENT */
     if (waitpid(pid) < 0) {
-      print("WAITPID ERROR\n");
+      print("waitpid returned -1\n");
     }
 
     shared_mem = shared_mem_attach(shared_id);

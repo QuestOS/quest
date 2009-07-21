@@ -32,7 +32,7 @@ vmware: install
 	qemu-img convert c.img -O vmdk c-img.vmdk
 	cp c-img.vmdk /mnt/hgfs/shared/quest
 
-quest.iso: quest
+quest.iso: quest $(PROGS)
 	mkdir -p iso/boot/grub 
 	cp $(GRUBLIB)/stage2_eltorito iso/boot/grub/ 
 	cp iso-menu.lst iso/boot/grub/menu.lst 
