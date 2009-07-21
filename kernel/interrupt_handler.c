@@ -491,7 +491,7 @@ int _exec( char *filename, char *argv[], unsigned *curr_stack ) {
   
 
   /* Read filename from disk -- essentially a basic open call */
-  if ( (filesize = ext2fs_dir( filename )) < 0 ) { /* Error */
+  if ( (filesize = vfs_dir( filename )) < 0 ) { /* Error */
     BITMAP_SET( mm_table, phys_addr >> 12 );
     UnmapVirtualPage( plPageDirectory );
     UnmapVirtualPage( frame_ptr );
@@ -543,7 +543,7 @@ int _exec( char *filename, char *argv[], unsigned *curr_stack ) {
   flush_tlb_all();
 
   /* Read into virtual address corresponding to plPageDirectory[1021] */
-  if ( filesize != ext2fs_read( (void *) pe, filesize ) )
+  if ( filesize != vfs_read( (void *) pe, filesize ) )
     panic( "File size mismatch on read" );
 
   pph = (void *) pe + pe->e_phoff;
@@ -694,14 +694,14 @@ void _switch_to( unsigned pid ) {
 /* --??-- Flags not used for now...a crude open call as it stands  */
 int _open( char *pathname, int flags ) {
 
-    return( ext2fs_dir( pathname ) );
+    return( vfs_dir( pathname ) );
 
 }
 
 
 int _read( char *pathname, void *buf, int count ) {
 
-    return( ext2fs_read( buf, count ) );
+    return( vfs_read( buf, count ) );
 
 }
 

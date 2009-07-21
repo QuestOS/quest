@@ -330,9 +330,9 @@ BOOL sb_install_driver (WORD frequency, BOOL use_stereo) {
 
 BOOL sb_read_raw (char *pathname) {
 
-    filesize = ext2fs_dir (pathname); /* --??-- Need error checking */
+    filesize = vfs_dir (pathname); /* --??-- Need error checking */
 
-    ext2fs_read (filebuffer, filesize);
+    vfs_read (filebuffer, filesize);
 
     return (SB_OK);
 }

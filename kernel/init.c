@@ -455,15 +455,15 @@ void init( multiboot* pmb ) {
     /* Mount root filesystem */
     if ( !ext2fs_mount() ) 
       panic( "Filesystem mount failed" );
+    vfs_set_root(VFS_FSYS_EXT2, &pata_drives[0]);
   } else if(boot_device == 0xE0FFFFFF) {
     /* CD-ROM boot, figure out which drive (assume first) */
     for(i=0;i<4;i++) {
       if(pata_drives[i].ata_type == ATA_TYPE_PATAPI) {
-        print("CD-ROM boot unimplemented.\n");
-        if(eziso_mount(pata_drives[i].ata_bus,
-                       pata_drives[i].ata_drive) < 0)
+        if(!eziso_mount(pata_drives[i].ata_bus,
+                        pata_drives[i].ata_drive))
           panic("Filesystem mount failed");
-        
+        vfs_set_root(VFS_FSYS_EZISO, &pata_drives[i]);
         break;
       }
     }

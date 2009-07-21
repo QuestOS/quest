@@ -2,6 +2,7 @@
 #define _FILESYS_H_
 
 #include "types.h"
+#include "ata.h"
 
 #define PATHSEP '/'
 
@@ -55,6 +56,14 @@ int iso9660_open(iso9660_mounted_info *, char *, iso9660_handle *);
 int eziso_mount(DWORD bus, DWORD drive);
 int eziso_dir(char *pathname);
 int eziso_read(char *buf, int len);
+
+#define VFS_FSYS_NONE  0
+#define VFS_FSYS_EXT2  1
+#define VFS_FSYS_EZISO 2
+
+void vfs_set_root(int type, ata_info *drive_info);
+int vfs_dir(char*);
+int vfs_read(char*,int);
 
 #define SECTOR_SIZE            0x200
 
