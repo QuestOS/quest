@@ -280,6 +280,7 @@ int iso9660_read(iso9660_handle *h, BYTE *buf, DWORD len) {
     rem -= curlen;
     count += curlen;
     h->offset += curlen;
+    h->length -= curlen;
     if(h->offset == 2048) {
       h->sector++;
       h->offset = 0;
@@ -333,9 +334,9 @@ int eziso_mount(DWORD bus, DWORD drive) {
 static iso9660_handle eziso_handle;
 int eziso_dir(char *pathname) {
   if(iso9660_open(&eziso_mount_info, pathname, &eziso_handle) == 0)
-    return 1;
+    return eziso_handle.length;
   else
-    return 0;
+    return -1;
 }
 
 int eziso_read(char *buf, int len) {
