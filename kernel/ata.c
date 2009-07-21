@@ -316,6 +316,9 @@ int atapi_drive_read_sector(DWORD bus, DWORD drive, DWORD lba, BYTE *buffer) {
   BYTE status;
   WORD size;
   ata_grab();
+#ifdef DEBUG_ATA
+  com1_printf("atapi_drive_read_sector(%X,%X,%X,%p)\n",bus,drive,lba,buffer);
+#endif
   outb(drive & (1<<4), ATA_DRIVE_SELECT(bus)); /* select drive (only slavebit needed) */
   ATA_SELECT_DELAY(bus);
   outb(0x0, ATA_FEATURES(bus)); /* PIO mode */
