@@ -134,9 +134,15 @@ void com1_putc(char c) {
 #ifdef COM1_TO_SCREEN
   _putchar(c);
 #else
+  if(c == '\n') {
+    /* output CR before NL */
+    while(!(inb(PORT1+5) & 0x20)); /* check line status register, empty transmitter bit */
+    outb('\r', PORT1);
+  }
+
   while(!(inb(PORT1+5) & 0x20)); /* check line status register, empty transmitter bit */
-#endif
   outb(c, PORT1);
+#endif
 }
 
 void com1_puts(char *p) {
