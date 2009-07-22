@@ -239,6 +239,7 @@ extern void HandleInterrupt( unsigned long fs_gs, unsigned long ds_es,
     _putx( eflags );
     _putchar( '\n' );
     com1_printf("CR0 %.8X CR2 %.8X CR3 %.8X TR %.4X\n", cr0, cr2, cr3, tr);
+    stacktrace();
     spinlock_unlock(&screen_lock);
 #undef _putx
 #undef _putchar
