@@ -17,10 +17,10 @@ all: $(PROGS)
 
 quest: $(OBJS) $(ACPI_OBJS)
 	rm -f quest
-	$(LD) -T quest.ld -o $@ $^ 
+	$(LD) -Map quest.map -T quest.ld -o $@ $^ 
 
 %: %.o
-	$(LD) -o $@ $< -T module.ld
+	$(LD) -o $@ $< -T module.ld -Map $@.map
 
 %: %.c
 
@@ -37,7 +37,7 @@ quest.iso: quest $(PROGS)
 	cp $(GRUBLIB)/stage2_eltorito iso/boot/grub/ 
 	cp iso-menu.lst iso/boot/grub/menu.lst 
 	cp $(PROGS) iso/boot/ 
-	mkisofs -quiet \
+	mkisofs -quiet $(MSINFO) \
 		-R -b boot/grub/stage2_eltorito \
 		-no-emul-boot -boot-load-size 4 \
 		-boot-info-table -o $@ iso
