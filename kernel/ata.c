@@ -115,6 +115,8 @@ DWORD ata_identify(DWORD bus, DWORD drive) {
 
   outb(0xEC, ATA_COMMAND(bus)); /* Send IDENTIFY command */
 
+  ATA_SELECT_DELAY(bus);
+
   status = inb(ATA_COMMAND(bus));
   if(status == 0) { 
     com1_printf("ATA bus %X drive %X does not exist\n", bus, drive);
@@ -122,6 +124,41 @@ DWORD ata_identify(DWORD bus, DWORD drive) {
   }
 
   if(status & 0x1) {
+    goto guess_identity;
+  }
+
+  /* Poll the Status port (0x1F7) until bit 7 (BSY, value = 0x80)
+   * clears, and bit 3 (DRQ, value = 8) sets -- or until bit 0 (ERR,
+   * value = 1) sets. */
+
+  while((status = inb(ATA_COMMAND(bus))) & 0x80) /* BUSY */
+    asm volatile("pause");
+
+  while(!((status = inb(ATA_COMMAND(bus))) & 0x8) && !(status & 0x1))
+    asm volatile("pause");
+
+  if(status & 0x1) {
+    com1_printf("ATA bus %X drive %X caused error.\n", bus, drive);
+    goto guess_identity;
+  }
+
+  /* Read 256 words */
+  insw(ATA_DATA(bus), buffer, 256);
+
+  com1_printf("IDENTIFY (bus: %X drive: %X) command output:\n", bus, drive);
+  /* dump to com1 */
+  for(i=0;i<32;i++) {
+    for(j=0;j<8;j++) {
+      com1_printf("%.4X ", buffer[i*32+j]);
+    }
+    com1_printf("\n");
+  }
+
+  if(buffer[83] & (1<<10)) com1_printf("LBA48 mode supported.\n");
+  com1_printf("LBA48 addressable sectors: %.4X %.4X %.4X %.4X\n", buffer[100], buffer[101], buffer[102], buffer[103]);
+  return ATA_TYPE_PATA;
+
+ guess_identity: {
     unsigned char b1, b2;
 
     b1 = inb(ATA_ADDRESS2(bus));
@@ -143,37 +180,6 @@ DWORD ata_identify(DWORD bus, DWORD drive) {
     }
     return ATA_TYPE_NONE;
   }
-
-  /* Poll the Status port (0x1F7) until bit 7 (BSY, value = 0x80)
-   * clears, and bit 3 (DRQ, value = 8) sets -- or until bit 0 (ERR,
-   * value = 1) sets. */
-
-  while((status = inb(ATA_COMMAND(bus))) & 0x80) /* BUSY */
-    asm volatile("pause");
-
-  while(!((status = inb(ATA_COMMAND(bus))) & 0x8) && !(status & 0x1))
-    asm volatile("pause");
-
-  if(status & 0x1) {
-    com1_printf("ATA bus %X drive %X caused error.\n", bus, drive);
-    return ATA_TYPE_NONE;
-  }
-
-  /* Read 256 words */
-  insw(ATA_DATA(bus), buffer, 256);
-
-  com1_printf("IDENTIFY (bus: %X drive: %X) command output:\n", bus, drive);
-  /* dump to com1 */
-  for(i=0;i<32;i++) {
-    for(j=0;j<8;j++) {
-      com1_printf("%.4X ", buffer[i*32+j]);
-    }
-    com1_printf("\n");
-  }
-
-  if(buffer[83] & (1<<10)) com1_printf("LBA48 mode supported.\n");
-  com1_printf("LBA48 addressable sectors: %.4X %.4X %.4X %.4X\n", buffer[100], buffer[101], buffer[102], buffer[103]);
-  return ATA_TYPE_PATA;
 }
 
 static void ata_poll_for_irq(DWORD);
