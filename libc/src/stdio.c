@@ -172,14 +172,16 @@ int sprintf (char *str, const char *format, ...) {
 }
 
 
+static char arena[1000000];	/* --??-- To configure later for d.m.a. */
 
 void mem_init ( void ) {
-  
+  void *memset( void *p, int ch, size_t cb );
   addrs_t baseptr;
   frec_p frp;
 
-  static char arena[1000000];	/* --??-- To configure later for d.m.a. */
   int size = 800000;		/* --??-- (See above) */
+
+  memset(arena, 0, 1000000);
 
   baseptr = arena; 
   frhead = (frec_p)(baseptr + size); 
