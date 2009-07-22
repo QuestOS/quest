@@ -354,12 +354,15 @@ void init( multiboot* pmb ) {
      * Set mm_table bitmap entries to 1 for all pages of RAM that are free. 
      */
     if (mmap->type == 1) {	/* Available RAM -- see 'info multiboot' */
-      for (i = 0; i < (mmap->length_low >> 12); i++)
-	BITMAP_SET(mm_table,(mmap->base_addr_low >> 12)+i);
-      limit = (mmap->base_addr_low >> 12)+i;
+      if(mmap->base_addr_high == 0x0) {
+        /* restrict to 4GB RAM */
+        for (i = 0; i < (mmap->length_low >> 12); i++)
+          BITMAP_SET(mm_table,(mmap->base_addr_low >> 12)+i);
+        limit = (mmap->base_addr_low >> 12)+i;
       
-      if (limit > mm_limit)
-	mm_limit = limit;
+        if (limit > mm_limit)
+          mm_limit = limit;
+      }
     }
   }
 
