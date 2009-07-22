@@ -68,13 +68,13 @@ void splash_screen( void ) {
   for( p=line1; *p;p++ )
     _putchar( *p, 4 );
 
-  sprintf( line1, "%d", meminfo() );
+  sprintf( line1, "%u", meminfo() );
   i = strlen( line1 );
 
   for( i = strlen( line1 ); i < 16; i++ )
       line2[ i - strlen( line1 ) ] = '*';
 
-  sprintf( line1, "******** %d bytes free %s   \\\\__\\_  \\\\_/ \\\\__ \\\\__/   || \n", meminfo(), line2 );
+  sprintf( line1, "******** %u bytes free %s   \\\\__\\_  \\\\_/ \\\\__ \\\\__/   || \n", meminfo(), line2 );
   for( p=line1; *p;p++ )
     _putchar( *p, 4 );
 }
