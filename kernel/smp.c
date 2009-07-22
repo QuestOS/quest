@@ -37,7 +37,7 @@ static int mp_num_IOAPICs = 0;
 #define MP_IOAPIC_READ(x)   (*((volatile DWORD *) (mp_IOAPIC_addr+(x))))
 #define MP_IOAPIC_WRITE(x,y) (*((volatile DWORD *) (mp_IOAPIC_addr+(x))) = (y))
 
-#define MAX_INT_OVERRIDES 4
+#define MAX_INT_OVERRIDES 128
 static mp_int_override mp_overrides[MAX_INT_OVERRIDES];
 static int mp_num_overrides = 0;
 
@@ -284,6 +284,7 @@ static int process_acpi_tables(void) {
              madt->Header.AslCompilerId,
              madt->Address,
              (madt->Flags & ACPI_MADT_PCAT_COMPAT) ? " PCAT_COMPAT" : "");
+      mp_LAPIC_addr = madt->Address;
       ptr = (BYTE *)madt + sizeof(ACPI_TABLE_MADT);
       while (ptr < lim) {
         switch(((ACPI_SUBTABLE_HEADER *)ptr)->Type) {
@@ -834,7 +835,6 @@ static void smp_setup_LAPIC_timer(void) {
   set_idt_descriptor(0x3f, &old_3f);
   
   cpu_bus_freq = (0xFFFFFFFF - count) * HZ;
-  printf("CPU bus frequency = %d\n", cpu_bus_freq);
   com1_printf("CPU bus frequency = 0x%X\n", cpu_bus_freq);
   tsc_freq = (((QWORD)tsc_value_hi) << 32) | ((QWORD)tsc_value_lo);
   tsc_freq -= ((QWORD)tsc_start_hi) << 32;

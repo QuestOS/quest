@@ -323,6 +323,8 @@ void init( multiboot* pmb ) {
 	pchVideo[ i * 2 + 1 ] = 7;
   }
 
+  print("\n\n\n");
+
   if(pmb->flags & 0x2) {
     multiboot_drive *d;
     boot_device = pmb->boot_device;
@@ -456,13 +458,13 @@ void init( multiboot* pmb ) {
    * the kernel yet. */
   smp_enable();
 
-  com1_puts("ATA_INIT\n");
+  printf("ATA_INIT\n");
   /* Initialize ATA/ATAPI subsystem */
   ata_init();
 
   if(boot_device == 0x8000FFFF &&
      pata_drives[0].ata_type == ATA_TYPE_PATA) {
-    com1_puts("ROOT: EXT2FS\n");
+    printf("ROOT: EXT2FS\n");
     /* Mount root filesystem */
     if ( !ext2fs_mount() ) 
       panic( "Filesystem mount failed" );
@@ -471,7 +473,7 @@ void init( multiboot* pmb ) {
     /* CD-ROM boot, figure out which drive (assume first) */
     for(i=0;i<4;i++) {
       if(pata_drives[i].ata_type == ATA_TYPE_PATAPI) {
-        com1_puts("ROOT: ISO9660\n");
+        printf("ROOT: ISO9660\n");
         if(!eziso_mount(pata_drives[i].ata_bus,
                         pata_drives[i].ata_drive))
           panic("Filesystem mount failed");
@@ -480,7 +482,7 @@ void init( multiboot* pmb ) {
       }
     }
     if(i==4)
-      print("Unsupported boot device.\n");
+      printf("Unsupported boot device=%X.\n",boot_device);
   }
 
   smp_enable_scheduling();

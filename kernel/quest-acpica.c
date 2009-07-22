@@ -659,9 +659,11 @@ AcpiOsPrintf (
     const char              *Fmt,
     ...) {
   va_list Args;
+#if 0
   va_start (Args, Fmt);
   AcpiOsVprintf (Fmt, Args);
   va_end (Args);
+#endif
 }
 
 
@@ -669,7 +671,9 @@ void
 AcpiOsVprintf (
     const char              *Format,
     va_list                 Args) {
+#if 0
   fun_vprintf(com1_putc, Format, Args);
+#endif
 }
 
 
