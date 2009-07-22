@@ -100,7 +100,13 @@ int smp_init(void) {
 
   smp_setup_LAPIC_timer();
 
-  if(process_acpi_tables() <= 0) {
+  if(
+#ifdef NO_ACPI
+     0
+#else
+     process_acpi_tables() 
+#endif
+     <= 0) {
     /* ACPI failed to initialize, try Intel MPS */
   
     if       ((ptr = probe_mp_fp(0x9F800, 0xA0000)));
@@ -199,8 +205,10 @@ static void smp_IOAPIC_setup(void) {
   /* Map timer IRQ to vector 0x20 */
   IOAPIC_map_GSI(IRQ_to_GSI(mp_ISA_bus_id, 0), 0x20, 0xFF00000000000800LL);
 
+#ifndef NO_IMCR_REDIRECT
   outb(0x70, 0x22);             /* Re-direct IMCR to use IO-APIC */
   outb(0x01, 0x23);             /* (for some motherboards) */
+#endif
 
 }
 
@@ -582,7 +590,8 @@ static int process_mp_config(struct mp_config *cfg) {
         mp_timer_IOAPIC_irq = entry->IO_int.dest_APIC_intin;
       }
 
-      if (entry->IO_int.source_bus_irq != entry->IO_int.dest_APIC_intin) {
+      if (entry->IO_int.source_bus_irq != entry->IO_int.dest_APIC_intin
+          && entry->IO_int.int_type == 0) {
         /* not sure if this is the right condition */
         if (mp_num_overrides == MAX_INT_OVERRIDES) 
           panic("Too many interrupt overrides.");
