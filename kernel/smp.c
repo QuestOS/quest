@@ -282,6 +282,12 @@ static int process_acpi_tables(void) {
   if (status == AE_OK) {
     ACPI_TABLE_MADT *madt;
     ACPI_TABLE_FADT *fadt;
+    ACPI_TABLE_BOOT *boot;
+    ACPI_TABLE_ASF  *asf;
+    ACPI_TABLE_MCFG *mcfg;
+    ACPI_TABLE_HPET *hpet;
+    ACPI_TABLE_TCPA *tcpa;
+
     mp_ACPI_enabled = 1;
     mp_ISA_bus_id = 0;
     if(AcpiGetTable(ACPI_SIG_MADT, 0, (ACPI_TABLE_HEADER **)&madt) == AE_OK) {
@@ -365,7 +371,38 @@ static int process_acpi_tables(void) {
              "NO_VGA_PROBING" : "VGA_PROBING_OK");
     } else {
       printf("AcpiGetTable FADT: FAILED\n");
-      return 0;
+    }
+    if(AcpiGetTable(ACPI_SIG_BOOT, 0, (ACPI_TABLE_HEADER **)&boot) == AE_OK) {
+      /* Simple Boot Information Table */
+      printf("BOOT: CmosIndex=%X\n", boot->CmosIndex);
+    } 
+    if(AcpiGetTable(ACPI_SIG_TCPA, 0, (ACPI_TABLE_HEADER **)&tcpa) == AE_OK) {
+      /* Trusted Computing Platform Alliance table */
+      printf("TCPA: MaxLog=%X Addr Upper: %.8X Lower: %.8X\n", 
+             tcpa->MaxLogLength, 
+             (DWORD)(tcpa->LogAddress >> 32),
+             (DWORD)tcpa->LogAddress);
+    } 
+    if(AcpiGetTable(ACPI_SIG_HPET, 0, (ACPI_TABLE_HEADER **)&hpet) == AE_OK) {
+      /* High Precision Event Timer table */
+      printf("HPET: ID: %X Addr: %p Seq#: %X MinTick: %X Flags: %X\n",
+             hpet->Id,
+             hpet->Address,
+             (DWORD)hpet->Sequence,
+             (DWORD)hpet->MinimumTick,
+             (DWORD)hpet->Flags);
+    }
+    if(AcpiGetTable(ACPI_SIG_MCFG, 0, (ACPI_TABLE_HEADER **)&mcfg) == AE_OK) {
+      /* PCI Memory Mapped Configuration table */
+      printf("MCFG: Length: %X Reserved: %.8X%.8X\n",
+             mcfg->Header.Length,
+             *((DWORD *)mcfg->Reserved),
+             *((DWORD *)(mcfg->Reserved+4)));
+    }
+    if(AcpiGetTable(ACPI_SIG_ASF, 0, (ACPI_TABLE_HEADER **)&asf) == AE_OK) {
+      /* Alert Standard Format table */
+      printf("ASF: Length: %X\n",
+             mcfg->Header.Length);
     }
   } else return 0;
 
