@@ -12,6 +12,8 @@
 #include "apic.h"
 #include "printf.h"
 
+//#define DEBUG_PIT
+
 static char kernel_ver[] = "0.1a";
 char *kernel_version = kernel_ver;
 unsigned long tick;		/* Software clock tick */
@@ -833,6 +835,11 @@ extern void _interrupt3e(void) {
    tick for now */
 void _timer( void ) {
   extern volatile int mp_enabled;
+  
+#ifdef DEBUG_PIT
+  com1_printf("tick: %u\n", tick);
+#endif
+
   tick++;
   
   /* Need to issue an EOI "end of interrupt" to be ready for further
