@@ -37,7 +37,10 @@ vector_handler get_vector_handler(BYTE vec) {
     return default_vector_handler;
 }
 unsigned dispatch_vector(unsigned vec) {
+  extern volatile int mp_apic_mode;
   vector_handler func = vector_handlers[(BYTE)vec];
+  if (!mp_apic_mode && PIC2_BASE_IRQ <= vec && vec <= (PIC2_BASE_IRQ + 8))
+    outb( 0x20, 0xA0 );         /* send to 8259A slave PIC too */
   send_eoi();
   if (func) return func(vec);
   else return 0;
@@ -834,7 +837,7 @@ extern void _interrupt3e(void) {
 /* IRQ0 system timer interrupt handler: simply updates the system clock
    tick for now */
 void _timer( void ) {
-  extern volatile int mp_enabled;
+  extern volatile int mp_enabled, mp_ISA_PC;
   
 #ifdef DEBUG_PIT
   com1_printf("tick: %u\n", tick);
@@ -846,7 +849,21 @@ void _timer( void ) {
      interrupts */
   send_eoi ();
 
-  mp_enabled = 1;
+  if(!mp_ISA_PC) mp_enabled = 1;
+  else {
+    /* On an ISA PC, must use PIT IRQ for scheduling */
+    if (str () == idleTSS_selector[0]) {
+      /* CPU was idling */
+      schedule ();
+      /* if returned, go back to idling */
+      return;
+    } else {
+      /* add the current task to the back of the run queue */
+      runqueue_append( LookupTSS( str() )->priority, str() ); 
+      /* with kernel locked, go ahead and schedule */
+      schedule (); 
+    }
+  }
 
 #if 0
   send_ipi(0xFF, 

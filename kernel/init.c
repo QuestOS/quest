@@ -252,22 +252,16 @@ void initialise_pic( void ) {
 
   /* Master PIC */
   outb( 0x11, 0x20 );		/* 8259 (ICW1) - xxx10x01 */
-  outb( 0x20, 0x21 );		/* 8259 (ICW2) - set IRQ0... to int 0x20... */
+  outb( PIC1_BASE_IRQ, 0x21 );  /* 8259 (ICW2) - set IRQ0... to int 0x20... */
   outb( 0x04, 0x21 );		/* 8259 (ICW3) - connect IRQ2 to slave 8259 */
   outb( 0x0D, 0x21 );		/* 8259 (ICW4) - Buffered master, normal EOI, 8086 mode */
 
   /* Slave PIC */
   outb( 0x11, 0xA0 );		/* 8259 (ICW1) - xxx10x01 */
-  outb( 0x28, 0xA1 );		/* 8259 (ICW2) - set IRQ8...to int 0x28... */
+  outb( PIC2_BASE_IRQ, 0xA1 );  /* 8259 (ICW2) - set IRQ8...to int 0x28... */
   outb( 0x02, 0xA1 );		/* 8259 (ICW3) - slave ID #2 */
   outb( 0x09, 0xA1 );		/* 8259 (ICW4) - Buffered slave, normal EOI, 8086 mode */
 
-  outb( 0xDE, 0x21 );		/* 8259 (OCW1/IMR master) - enable only 
-				   IRQ0/timer for now and IRQ5/hard-coded 
-				   soundcard --??-- in future, need to probe
-				   for soundcard IRQ */
-  outb( 0xFF, 0xA1 );		/* 8259 (OCW1/IMR slave) - mask IRQs in slave PIC for now */
-  
 }
 
 

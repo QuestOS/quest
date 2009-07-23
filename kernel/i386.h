@@ -32,6 +32,8 @@
 
 #define PORT1 0x03F8            /* COM1 */
 
+#define PIC1_BASE_IRQ 0x20
+#define PIC2_BASE_IRQ 0x28
 
 typedef struct _tss {
     /* 80386 hardware data */

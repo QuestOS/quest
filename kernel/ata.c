@@ -282,6 +282,7 @@ static void ata_poll_for_irq(DWORD bus) {
 
 
 void ata_init(void) {
+  extern volatile int mp_ISA_PC;
   DWORD bus, drive, i;
   
   i=0; bus=ATA_BUS_PRIMARY; drive=ATA_DRIVE_MASTER;
@@ -303,13 +304,18 @@ void ata_init(void) {
   pata_drives[i].ata_type   = ata_identify(bus, drive);
   pata_drives[i].ata_bus    = bus;
   pata_drives[i].ata_drive  = drive;
-  
-  IOAPIC_map_GSI(IRQ_to_GSI(mp_ISA_bus_id, ATA_IRQ_PRIMARY), 
-                 ATA_VECTOR_PRIMARY, 0xFF00000000000800LL);
-  IOAPIC_map_GSI(IRQ_to_GSI(mp_ISA_bus_id, ATA_IRQ_SECONDARY), 
-                 ATA_VECTOR_SECONDARY, 0xFF00000000000800LL);
-  set_vector_handler(ATA_VECTOR_PRIMARY, ata_irq_handler);
-  set_vector_handler(ATA_VECTOR_SECONDARY, ata_irq_handler);
+
+  if(mp_ISA_PC) {
+    set_vector_handler((ATA_IRQ_PRIMARY - 8) + PIC2_BASE_IRQ, ata_irq_handler);
+    set_vector_handler((ATA_IRQ_SECONDARY - 8) + PIC2_BASE_IRQ, ata_irq_handler);
+  } else {
+    IOAPIC_map_GSI(IRQ_to_GSI(mp_ISA_bus_id, ATA_IRQ_PRIMARY), 
+                   ATA_VECTOR_PRIMARY, 0xFF00000000000800LL);
+    IOAPIC_map_GSI(IRQ_to_GSI(mp_ISA_bus_id, ATA_IRQ_SECONDARY), 
+                   ATA_VECTOR_SECONDARY, 0xFF00000000000800LL);
+    set_vector_handler(ATA_VECTOR_PRIMARY, ata_irq_handler);
+    set_vector_handler(ATA_VECTOR_SECONDARY, ata_irq_handler);
+  }
 }
 
 /* ************************************************** */

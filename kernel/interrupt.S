@@ -482,15 +482,6 @@ interrupt29:
         popal
         iret
         
-        .global interrupt2e
-interrupt2e:
-        pushal
-	SREGS_SAVE
-	call send_eoi
-	REGS_RESTORE
-        popal
-        iret
-
         .global interrupt3e
 interrupt3e:
         pushal
@@ -559,6 +550,7 @@ INT(2a)
 INT(2b)
 INT(2c)
 INT(2d)
+INT(2e)
 INT(2f)
 INT(30)
 INT(31)

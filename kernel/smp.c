@@ -24,7 +24,7 @@
 #define LAPIC_ADDR_DEFAULT  0xFEE00000uL
 #define IOAPIC_ADDR_DEFAULT 0xFEC00000uL
 
-volatile int mp_enabled=0, mp_num_cpus=1, mp_apic_mode=0;
+volatile int mp_enabled=0, mp_num_cpus=1, mp_apic_mode=0, mp_ISA_PC=0;
 
 DWORD mp_LAPIC_addr = LAPIC_ADDR_DEFAULT;
 #define MP_LAPIC_READ(x)   (*((volatile DWORD *) (mp_LAPIC_addr+(x))))
@@ -108,11 +108,20 @@ int smp_init(void) {
 #endif
      <= 0) {
     /* ACPI failed to initialize, try Intel MPS */
-  
+
+#ifdef NO_INTEL_MPS
+    if (0) ;
+#else
     if       ((ptr = probe_mp_fp(0x9F800, 0xA0000)));
     else if  ((ptr = probe_mp_fp(0x0040E, 0x0140E)));
     else if  ((ptr = probe_mp_fp(0xE0000, 0xFFFFF)));
-    else return 1;                /* assume uniprocessor */
+#endif
+    else {
+      mp_apic_mode = 0;
+      com1_printf("Disabling APIC mode -- assuming ISA bus-only\n");
+      mp_ISA_PC = 1;            /* assume no PCI */
+      return 1;                 /* assume uniprocessor */
+    }
 
     mp_num_cpus = process_mp_fp (ptr);
   }
@@ -215,7 +224,8 @@ static void smp_IOAPIC_setup(void) {
 void smp_enable(void) {
   ACPI_STATUS Status;
 
-  smp_IOAPIC_setup();
+  if(!mp_ISA_PC)                /* ISA PCs do not have IO APICs */
+    smp_IOAPIC_setup();
 
   /* Complete the ACPICA initialization sequence */
   if(mp_ACPI_enabled) {
@@ -816,7 +826,7 @@ static void smp_setup_LAPIC_timer_int(void) {
   /* Temporary handler for the PIT-generated timer IRQ */
   tick++;
   
-  outb( 0x60, 0x20 );           /* EOI -- still using PIC */
+  outb( 0x20, 0x20 );           /* EOI -- still using PIC */
 
   /* Cheat a little here: the C compiler will insert 
    *   leave
@@ -927,14 +937,15 @@ void IOAPIC_write64(BYTE reg, QWORD v) {
 /* Some LAPIC utilities */
 
 BYTE LAPIC_get_physical_ID(void) {
-  return (MP_LAPIC_READ(LAPIC_ID) >> 0x18) & 0xF;
+  if (mp_ISA_PC) return 0;
+  else return (MP_LAPIC_READ(LAPIC_ID) >> 0x18) & 0xF;
 }
 
 void send_eoi (void) {
   if (mp_apic_mode) {
     MP_LAPIC_WRITE(LAPIC_EOI, 0); /* send to LAPIC */
   } else {
-    outb( 0x60, 0x20 );         /* send to 8259A PIC */
+    outb( 0x20, 0x20 );         /* send to 8259A PIC */
   }
 }
 
@@ -971,6 +982,9 @@ DWORD IRQ_to_GSI(DWORD src_bus, DWORD src_irq) {
 int IOAPIC_map_GSI(DWORD GSI, BYTE vector, QWORD flags) {
   int i;
   DWORD old_addr = 0;
+
+  if(mp_ISA_PC) return -1;
+
   /* First, figure out which IOAPIC */
   for(i=0;i<mp_num_IOAPICs;i++) {
     if(mp_IOAPICs[i].startGSI <= GSI &&
