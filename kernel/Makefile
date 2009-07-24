@@ -50,7 +50,7 @@ quest: $(OBJS) $(ACPI_OBJS)
 	$(ATSCC) $(ATSFLAGS) -fno-builtin -m32 -o $@ -c $^
 
 install: $(PROGS)
-	cp $(PROGS) $(MNT_POINT)/boot
+	cp $(PROGS) welcome.raw $(MNT_POINT)/boot
 	sync
 
 vmware: install
@@ -61,7 +61,7 @@ quest.iso: quest $(PROGS)
 	mkdir -p iso/boot/grub 
 	cp $(GRUBLIB)/stage2_eltorito iso/boot/grub/ 
 	cp iso-menu.lst iso/boot/grub/menu.lst 
-	cp $(PROGS) iso/boot/ 
+	cp $(PROGS) welcome.raw iso/boot/ 
 	mkisofs -quiet $(MSINFO) \
 		-R -b boot/grub/stage2_eltorito \
 		-no-emul-boot -boot-load-size 4 \
