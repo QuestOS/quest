@@ -18,32 +18,32 @@
 #define APIC_BROADCAST_ID 0xFF
 //#define MAX_CPUS          APIC_BROADCAST_ID
 
-#define MP_READ(x)    (*((volatile DWORD *) (x)))
-#define MP_WRITE(x,y) (*((volatile DWORD *) (x)) = (y))
+#define MP_READ(x)    (*((volatile uint32 *) (x)))
+#define MP_WRITE(x,y) (*((volatile uint32 *) (x)) = (y))
 
 #define LAPIC_ADDR_DEFAULT  0xFEE00000uL
 #define IOAPIC_ADDR_DEFAULT 0xFEC00000uL
 
 volatile int mp_enabled=0, mp_num_cpus=1, mp_apic_mode=0, mp_ISA_PC=0;
 
-DWORD mp_LAPIC_addr = LAPIC_ADDR_DEFAULT;
-#define MP_LAPIC_READ(x)   (*((volatile DWORD *) (mp_LAPIC_addr+(x))))
-#define MP_LAPIC_WRITE(x,y) (*((volatile DWORD *) (mp_LAPIC_addr+(x))) = (y))
+uint32 mp_LAPIC_addr = LAPIC_ADDR_DEFAULT;
+#define MP_LAPIC_READ(x)   (*((volatile uint32 *) (mp_LAPIC_addr+(x))))
+#define MP_LAPIC_WRITE(x,y) (*((volatile uint32 *) (mp_LAPIC_addr+(x))) = (y))
 
 #define MAX_IOAPICS MAX_CPUS
-DWORD mp_IOAPIC_addr = IOAPIC_ADDR_DEFAULT;
+uint32 mp_IOAPIC_addr = IOAPIC_ADDR_DEFAULT;
 static mp_IOAPIC_info mp_IOAPICs[MAX_IOAPICS];
 static int mp_num_IOAPICs = 0;
-#define MP_IOAPIC_READ(x)   (*((volatile DWORD *) (mp_IOAPIC_addr+(x))))
-#define MP_IOAPIC_WRITE(x,y) (*((volatile DWORD *) (mp_IOAPIC_addr+(x))) = (y))
+#define MP_IOAPIC_READ(x)   (*((volatile uint32 *) (mp_IOAPIC_addr+(x))))
+#define MP_IOAPIC_WRITE(x,y) (*((volatile uint32 *) (mp_IOAPIC_addr+(x))) = (y))
 
 #define MAX_INT_OVERRIDES 128
 static mp_int_override mp_overrides[MAX_INT_OVERRIDES];
 static int mp_num_overrides = 0;
 
 /* Mapping from CPU # to APIC ID */
-BYTE CPU_to_APIC[MAX_CPUS];
-BYTE APIC_to_CPU[MAX_CPUS];
+uint8 CPU_to_APIC[MAX_CPUS];
+uint8 APIC_to_CPU[MAX_CPUS];
 
 static int mp_ACPI_enabled = 0;
 
@@ -59,9 +59,9 @@ static int acpi_add_processor(ACPI_MADT_LOCAL_APIC *);
 static int process_mp_fp(struct mp_fp *);
 static int process_mp_config(struct mp_config *);
 static int add_processor(struct mp_config_processor_entry *);
-static struct mp_fp *probe_mp_fp(DWORD, DWORD);
+static struct mp_fp *probe_mp_fp(uint32, uint32);
 static void smp_setup_LAPIC_timer(void);
-int boot_cpu(BYTE, BYTE);
+int boot_cpu(uint8, uint8);
 
 /* ACPICA early initialization requires some static space be set aside
  * for ACPI tables -- and there is no dynamic memory allocation
@@ -302,14 +302,14 @@ static int process_acpi_tables(void) {
     mp_ISA_bus_id = 0;
     if(AcpiGetTable(ACPI_SIG_MADT, 0, (ACPI_TABLE_HEADER **)&madt) == AE_OK) {
       /* Multiple APIC Description Table */
-      BYTE *ptr, *lim = (BYTE *)madt + madt->Header.Length;
+      uint8 *ptr, *lim = (uint8 *)madt + madt->Header.Length;
       printf("ACPI OEM: %.6s Compiler: %.4s LAPIC: %p Flags:%s\n", 
              madt->Header.OemId,
              madt->Header.AslCompilerId,
              madt->Address,
              (madt->Flags & ACPI_MADT_PCAT_COMPAT) ? " PCAT_COMPAT" : "");
       mp_LAPIC_addr = madt->Address;
-      ptr = (BYTE *)madt + sizeof(ACPI_TABLE_MADT);
+      ptr = (uint8 *)madt + sizeof(ACPI_TABLE_MADT);
       while (ptr < lim) {
         switch(((ACPI_SUBTABLE_HEADER *)ptr)->Type) {
         case ACPI_MADT_TYPE_LOCAL_APIC: { /* Processor entry */
@@ -390,24 +390,24 @@ static int process_acpi_tables(void) {
       /* Trusted Computing Platform Alliance table */
       printf("TCPA: MaxLog=%X Addr Upper: %.8X Lower: %.8X\n", 
              tcpa->MaxLogLength, 
-             (DWORD)(tcpa->LogAddress >> 32),
-             (DWORD)tcpa->LogAddress);
+             (uint32)(tcpa->LogAddress >> 32),
+             (uint32)tcpa->LogAddress);
     } 
     if(AcpiGetTable(ACPI_SIG_HPET, 0, (ACPI_TABLE_HEADER **)&hpet) == AE_OK) {
       /* High Precision Event Timer table */
       printf("HPET: ID: %X Addr: %p Seq#: %X MinTick: %X Flags: %X\n",
              hpet->Id,
              hpet->Address,
-             (DWORD)hpet->Sequence,
-             (DWORD)hpet->MinimumTick,
-             (DWORD)hpet->Flags);
+             (uint32)hpet->Sequence,
+             (uint32)hpet->MinimumTick,
+             (uint32)hpet->Flags);
     }
     if(AcpiGetTable(ACPI_SIG_MCFG, 0, (ACPI_TABLE_HEADER **)&mcfg) == AE_OK) {
       /* PCI Memory Mapped Configuration table */
       printf("MCFG: Length: %X Reserved: %.8X%.8X\n",
              mcfg->Header.Length,
-             *((DWORD *)mcfg->Reserved),
-             *((DWORD *)(mcfg->Reserved+4)));
+             *((uint32 *)mcfg->Reserved),
+             *((uint32 *)(mcfg->Reserved+4)));
     }
     if(AcpiGetTable(ACPI_SIG_ASF, 0, (ACPI_TABLE_HEADER **)&asf) == AE_OK) {
       /* Alert Standard Format table */
@@ -423,8 +423,8 @@ static int process_acpi_tables(void) {
 /* A small wrapper around boot_cpu() which does some checks and
  * maintains two small tables. */
 static int acpi_add_processor(ACPI_MADT_LOCAL_APIC *ptr) {
-  BYTE this_apic_id = LAPIC_get_physical_ID();
-  BYTE apic_id = ptr->Id;
+  uint8 this_apic_id = LAPIC_get_physical_ID();
+  uint8 apic_id = ptr->Id;
 
   if(!(ptr->LapicFlags & 1)) return 0; /* disabled processor */
   if(this_apic_id == apic_id) return 0; /* bootstrap processor */
@@ -464,11 +464,11 @@ static int acpi_add_processor(ACPI_MADT_LOCAL_APIC *ptr) {
  * ShadowROM area.  This function will search for the 4-byte signature
  * in a given memory region and return a pointer to the so-called
  * "Floating Pointer" table. */
-static struct mp_fp *probe_mp_fp(DWORD start, DWORD end) {
-  DWORD i;
+static struct mp_fp *probe_mp_fp(uint32 start, uint32 end) {
+  uint32 i;
   start &= ~0xF;                /* 16-byte aligned */
   for (i=start;i<end;i+=0x10) {
-    if (*((volatile DWORD *) i) == MP_FP_SIGNATURE) {
+    if (*((volatile uint32 *) i) == MP_FP_SIGNATURE) {
       /* found it */
       return (struct mp_fp *)i;
     }
@@ -510,7 +510,7 @@ int process_mp_fp (struct mp_fp *ptr) {
     return 1;
   }
 
-  if (checksum((BYTE *)ptr, sizeof(struct mp_fp)) != 0) {
+  if (checksum((uint8 *)ptr, sizeof(struct mp_fp)) != 0) {
     print ("MP floating pointer structure failed checksum.\n");
     return 1;
   }
@@ -530,7 +530,7 @@ int process_mp_fp (struct mp_fp *ptr) {
 #define printf com1_printf
 static int process_mp_config(struct mp_config *cfg) {
   int i;
-  BYTE *ptr;
+  uint8 *ptr;
 
   /* Sanity checks */
   if (cfg == NULL) {
@@ -549,7 +549,7 @@ static int process_mp_config(struct mp_config *cfg) {
     return 1;
   }
 
-  if(checksum((BYTE *)cfg, cfg->base_table_length) != 0) {
+  if(checksum((uint8 *)cfg, cfg->base_table_length) != 0) {
     printf("MP config table failed checksum.\n");
     return 1;
   }
@@ -559,7 +559,7 @@ static int process_mp_config(struct mp_config *cfg) {
   if(cfg->local_APIC) mp_LAPIC_addr = cfg->local_APIC;
 
   /* Check entries */
-  ptr = (BYTE *)cfg->entries;
+  ptr = (uint8 *)cfg->entries;
   for(i=0;i<cfg->entry_count;i++) {
     struct mp_config_entry *entry = (struct mp_config_entry*) ptr;
     switch (*ptr) {
@@ -686,7 +686,7 @@ static int process_mp_config(struct mp_config *cfg) {
  * interprocessor interrupt, 'v' specifies the vector but also
  * specifies flags according to the Intel System Programming Manual --
  * also see apic.h and the LAPIC_ICR_* constants. */
-int send_ipi(DWORD dest, DWORD v) {
+int send_ipi(uint32 dest, uint32 v) {
   int timeout, send_status;
 
   /* It is a bad idea to have interrupts enabled while twiddling the
@@ -711,33 +711,33 @@ int send_ipi(DWORD dest, DWORD v) {
 
 
 /* A number of symbols defined in the boot-smp.S file: */
-extern BYTE patch_code_start[]; /* patch_code is what the AP boots */
-extern BYTE patch_code_end[];
-extern BYTE status_code[];      /* the AP writes a 1 into here when it's ready */
-extern BYTE ap_stack_ptr[];     /* we give the AP a stack pointer through this */
+extern uint8 patch_code_start[]; /* patch_code is what the AP boots */
+extern uint8 patch_code_end[];
+extern uint8 status_code[];      /* the AP writes a 1 into here when it's ready */
+extern uint8 ap_stack_ptr[];     /* we give the AP a stack pointer through this */
 
 /* For some reason, if this function is 'static', and -O is on, then
  * qemu fails. */
-int boot_cpu(BYTE apic_id, BYTE APIC_version) {
+int boot_cpu(uint8 apic_id, uint8 APIC_version) {
   int success = 1;
   volatile int to;
-  DWORD bootaddr, accept_status;
+  uint32 bootaddr, accept_status;
 
   /* Get a page for the AP's C stack */
-  unsigned long page_frame = (unsigned long) AllocatePhysicalPage();
-  DWORD *virt_addr = MapVirtualPage( page_frame | 3 );
+  uint32 page_frame = (uint32) AllocatePhysicalPage();
+  uint32 *virt_addr = MapVirtualPage( page_frame | 3 );
 
   /* Set up the boot code for the APs */
-#define TEST_BOOTED(x) (*((volatile DWORD *)(x+status_code-patch_code_start)))
-#define STACK_PTR(x)   (*((volatile DWORD *)(x+ap_stack_ptr-patch_code_start)))
+#define TEST_BOOTED(x) (*((volatile uint32 *)(x+status_code-patch_code_start)))
+#define STACK_PTR(x)   (*((volatile uint32 *)(x+ap_stack_ptr-patch_code_start)))
 
   /* The patch code is memcpyed into the hardcoded address MP_BOOTADDR */
   bootaddr = MP_BOOTADDR;           /* identity mapped */
-  memcpy((BYTE *)bootaddr, patch_code_start, patch_code_end - patch_code_start);
+  memcpy((uint8 *)bootaddr, patch_code_start, patch_code_end - patch_code_start);
   /* The status code is reset to 0 */
   TEST_BOOTED(bootaddr) = 0;
   /* A temporary stack is allocated for the AP to be able to call C code */
-  STACK_PTR(bootaddr) = (DWORD)virt_addr;
+  STACK_PTR(bootaddr) = (uint32)virt_addr;
   /* (FIXME: when does this get de-allocated?) */
 
   /* CPU startup sequence: officially it is supposed to proceed:
@@ -789,7 +789,7 @@ int boot_cpu(BYTE apic_id, BYTE APIC_version) {
 /* A small wrapper around boot_cpu() which does some checks and
  * maintains two small tables. */
 static int add_processor(struct mp_config_processor_entry *proc) {
-  BYTE apic_id = proc->APIC_id;
+  uint8 apic_id = proc->APIC_id;
 
   if(!(proc->flags & 1)) return 0; /* disabled processor */
   if(proc->flags & 2) return 0;    /* bootstrap processor */
@@ -821,7 +821,7 @@ static int add_processor(struct mp_config_processor_entry *proc) {
  * order of 100 nanoseconds, or better.  In fact, this may cause a
  * problem with integer overflow on the 32-bit architecture. */
 
-extern volatile unsigned long tick; /* defined in interrupt_handler.c */
+extern volatile uint32 tick; /* defined in interrupt_handler.c */
 static void smp_setup_LAPIC_timer_int(void) {
   /* Temporary handler for the PIT-generated timer IRQ */
   tick++;
@@ -846,15 +846,15 @@ static void smp_LAPIC_timer_irq_handler(void) {
 }
 
 /* CPU BUS FREQUENCY -- IN HERTZ */
-unsigned long cpu_bus_freq = 0;
-QWORD tsc_freq = 0;
+uint32 cpu_bus_freq = 0;
+uint64 tsc_freq = 0;
 
 /* Use the PIT to find how fast the LAPIC ticks (and correspondingly,
  * the bus speed of the processor) */
 static void smp_setup_LAPIC_timer(void) {
   idt_descriptor old_timer, old_3f;
-  unsigned long value, start, count;
-  DWORD tsc_start_hi, tsc_start_lo, tsc_value_hi, tsc_value_lo;
+  uint32 value, start, count;
+  uint32 tsc_start_hi, tsc_start_lo, tsc_value_hi, tsc_value_lo;
 
   /* I want to enable interrupts but I don't want the normal
    * interrupt-handling architecture to kick-in just yet.  Here's an
@@ -892,11 +892,11 @@ static void smp_setup_LAPIC_timer(void) {
   
   cpu_bus_freq = (0xFFFFFFFF - count) * HZ;
   com1_printf("CPU bus frequency = 0x%X\n", cpu_bus_freq);
-  tsc_freq = (((QWORD)tsc_value_hi) << 32) | ((QWORD)tsc_value_lo);
-  tsc_freq -= ((QWORD)tsc_start_hi) << 32;
-  tsc_freq -= (QWORD)tsc_start_lo;
+  tsc_freq = (((uint64)tsc_value_hi) << 32) | ((uint64)tsc_value_lo);
+  tsc_freq -= ((uint64)tsc_start_hi) << 32;
+  tsc_freq -= (uint64)tsc_start_lo;
   tsc_freq *= HZ;
-  com1_printf("TSC frequency = 0x%X 0x%X\n", (DWORD)(tsc_freq >> 32), (DWORD)tsc_freq);
+  com1_printf("TSC frequency = 0x%X 0x%X\n", (uint32)(tsc_freq >> 32), (uint32)tsc_freq);
 
   /* Put the IDT back in shape */
   enable_idt();
@@ -908,35 +908,35 @@ static void smp_setup_LAPIC_timer(void) {
 
 /* IOAPIC manipulation: */
 
-QWORD IOAPIC_read64(BYTE reg) {
-  DWORD high, low;
-  QWORD retval;
+uint64 IOAPIC_read64(uint8 reg) {
+  uint32 high, low;
+  uint64 retval;
   MP_IOAPIC_WRITE(IOAPIC_REGSEL, reg+1);
   high = MP_IOAPIC_READ(IOAPIC_RW);
   MP_IOAPIC_WRITE(IOAPIC_REGSEL, reg);
   low = MP_IOAPIC_READ(IOAPIC_RW);
-  retval = (QWORD)high << 32;
-  retval |= (QWORD)low;
+  retval = (uint64)high << 32;
+  retval |= (uint64)low;
   return retval;
 }
 
-void IOAPIC_write64(BYTE reg, QWORD v) {
+void IOAPIC_write64(uint8 reg, uint64 v) {
   /* First, disable the entry by setting the mask bit */
   MP_IOAPIC_WRITE(IOAPIC_REGSEL, reg);
   MP_IOAPIC_WRITE(IOAPIC_RW, 0x10000);
   /* Write to the upper half */
   MP_IOAPIC_WRITE(IOAPIC_REGSEL, reg+1);
-  MP_IOAPIC_WRITE(IOAPIC_RW, (DWORD)(v >> 32));
+  MP_IOAPIC_WRITE(IOAPIC_RW, (uint32)(v >> 32));
   /* Write to the lower half */
   MP_IOAPIC_WRITE(IOAPIC_REGSEL, reg);
-  MP_IOAPIC_WRITE(IOAPIC_RW, (DWORD)(v & 0xFFFFFFFF));
+  MP_IOAPIC_WRITE(IOAPIC_RW, (uint32)(v & 0xFFFFFFFF));
 }
 
 /* ************************************************** */
 
 /* Some LAPIC utilities */
 
-BYTE LAPIC_get_physical_ID(void) {
+uint8 LAPIC_get_physical_ID(void) {
   if (mp_ISA_PC) return 0;
   else return (MP_LAPIC_READ(LAPIC_ID) >> 0x18) & 0xF;
 }
@@ -949,7 +949,7 @@ void send_eoi (void) {
   }
 }
 
-void LAPIC_start_timer(unsigned long count) {
+void LAPIC_start_timer(uint32 count) {
   MP_LAPIC_WRITE(LAPIC_TICR, count); 
 }
 
@@ -957,7 +957,7 @@ void LAPIC_start_timer(unsigned long count) {
 
 /* Some IO-APIC utilities */
                          
-mp_IOAPIC_info *IOAPIC_lookup(BYTE id) {
+mp_IOAPIC_info *IOAPIC_lookup(uint8 id) {
   int i;
   for(i=0;i<mp_num_IOAPICs;i++) {
     if (mp_IOAPICs[i].id == id) return &mp_IOAPICs[i];
@@ -965,7 +965,7 @@ mp_IOAPIC_info *IOAPIC_lookup(BYTE id) {
   panic("IOAPIC_lookup failed.");
 }
 
-DWORD IRQ_to_GSI(DWORD src_bus, DWORD src_irq) {
+uint32 IRQ_to_GSI(uint32 src_bus, uint32 src_irq) {
   /* this probably only works for ISA at the moment */
   int i;
   for(i=0;i<mp_num_overrides;i++) {
@@ -979,9 +979,9 @@ DWORD IRQ_to_GSI(DWORD src_bus, DWORD src_irq) {
   return src_irq;
 }
 
-int IOAPIC_map_GSI(DWORD GSI, BYTE vector, QWORD flags) {
+int IOAPIC_map_GSI(uint32 GSI, uint8 vector, uint64 flags) {
   int i;
-  DWORD old_addr = 0;
+  uint32 old_addr = 0;
 
   if(mp_ISA_PC) return -1;
 

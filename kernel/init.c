@@ -18,7 +18,7 @@ extern void initialise_sound(void);
 /* We use this function to create a dummy TSS so that when we issue a
    switch_to/jmp_gate e.g. at the end of init() or __exit(), we have a
    valid previous TSS for the processor to store state info */
-static unsigned short CreateDummyTSS(void) {
+static uint16 CreateDummyTSS(void) {
 
   int i;
   descriptor *ad = (idt + 256); /* Get address of GDT from IDT address */
@@ -33,9 +33,9 @@ static unsigned short CreateDummyTSS(void) {
 
     ad[ i ].uLimit0 = sizeof( tss );
     ad[ i ].uLimit1 = 0;
-    ad[ i ].pBase0 = (unsigned long)&dummyTSS & 0xFFFF;
-    ad[ i ].pBase1 = ( (unsigned long)&dummyTSS >> 16 ) & 0xFF;
-    ad[ i ].pBase2 = (unsigned long)&dummyTSS >> 24;
+    ad[ i ].pBase0 = (uint32)&dummyTSS & 0xFFFF;
+    ad[ i ].pBase1 = ( (uint32)&dummyTSS >> 16 ) & 0xFF;
+    ad[ i ].pBase2 = (uint32)&dummyTSS >> 24;
     ad[ i ].uType = 0x09;
     ad[ i ].uDPL = 0;		/* Only let kernel perform task-switching */
     ad[ i ].fPresent = 1;
@@ -47,7 +47,7 @@ static unsigned short CreateDummyTSS(void) {
 
 }
 
-static unsigned short AllocIdleTSS (int cpu_num) {
+static uint16 AllocIdleTSS (int cpu_num) {
   int i;
   descriptor *ad = (idt + 256); /* Get address of GDT from IDT address */
   tss *pTSS = (tss *)(&idleTSS[cpu_num]);
@@ -63,9 +63,9 @@ static unsigned short AllocIdleTSS (int cpu_num) {
 
   ad[ i ].uLimit0 = sizeof( idleTSS[cpu_num] ) - 1;
   ad[ i ].uLimit1 = 0;
-  ad[ i ].pBase0 = (unsigned long) pTSS & 0xFFFF;
-  ad[ i ].pBase1 = ( (unsigned long) pTSS >> 16 ) & 0xFF;
-  ad[ i ].pBase2 = (unsigned long) pTSS >> 24;
+  ad[ i ].pBase0 = (uint32) pTSS & 0xFFFF;
+  ad[ i ].pBase1 = ( (uint32) pTSS >> 16 ) & 0xFF;
+  ad[ i ].pBase2 = (uint32) pTSS >> 24;
   ad[ i ].uType = 0x09;	/* 32-bit tss */
   ad[ i ].uDPL = 0;		/* Only let kernel perform task-switching */
   ad[ i ].fPresent = 1;
@@ -74,7 +74,7 @@ static unsigned short AllocIdleTSS (int cpu_num) {
   ad[ i ].fGranularity = 0;	/* Set granularity of tss in bytes */
 
   pTSS->pCR3 = get_pdbr();
-  pTSS->ulEIP = (unsigned long)&idle_task;
+  pTSS->ulEIP = (uint32)&idle_task;
 
   pTSS->ulEFlags = F_1 | F_IOPL0; 
 
@@ -99,7 +99,7 @@ static unsigned short AllocIdleTSS (int cpu_num) {
 
 
 /* Allocate a basic TSS */
-static unsigned short AllocTSS( void *pPageDirectory, void *pEntry, 
+static uint16 AllocTSS( void *pPageDirectory, void *pEntry, 
 				int mod_num ) {
 
     int i;
@@ -116,9 +116,9 @@ static unsigned short AllocTSS( void *pPageDirectory, void *pEntry,
 
     ad[ i ].uLimit0 = sizeof( ul_tss[mod_num] ) - 1;
     ad[ i ].uLimit1 = 0;
-    ad[ i ].pBase0 = (unsigned long) pTSS & 0xFFFF;
-    ad[ i ].pBase1 = ( (unsigned long) pTSS >> 16 ) & 0xFF;
-    ad[ i ].pBase2 = (unsigned long) pTSS >> 24;
+    ad[ i ].pBase0 = (uint32) pTSS & 0xFFFF;
+    ad[ i ].pBase1 = ( (uint32) pTSS >> 16 ) & 0xFF;
+    ad[ i ].pBase2 = (uint32) pTSS >> 24;
     ad[ i ].uType = 0x09;	/* 32-bit tss */
     ad[ i ].uDPL = 0;		/* Only let kernel perform task-switching */
     ad[ i ].fPresent = 1;
@@ -127,7 +127,7 @@ static unsigned short AllocTSS( void *pPageDirectory, void *pEntry,
     ad[ i ].fGranularity = 0;	/* Set granularity of tss in bytes */
 
     pTSS->pCR3 = pPageDirectory;
-    pTSS->ulEIP = (unsigned long) pEntry;
+    pTSS->ulEIP = (uint32) pEntry;
 
     if( mod_num != 1) 
       pTSS->ulEFlags = F_1 | F_IF | F_IOPL0; 
@@ -153,16 +153,16 @@ static unsigned short AllocTSS( void *pPageDirectory, void *pEntry,
 
 
 /* Create an address space for boot modules */
-static unsigned short LoadModule( multiboot_module *pmm, int mod_num ) {
+static uint16 LoadModule( multiboot_module *pmm, int mod_num ) {
 
-  unsigned long *plPageDirectory = get_phys_addr( pg_dir[mod_num] );
-  unsigned long *plPageTable = get_phys_addr( pg_table[mod_num] );
+  uint32 *plPageDirectory = get_phys_addr( pg_dir[mod_num] );
+  uint32 *plPageTable = get_phys_addr( pg_table[mod_num] );
   void *pStack = get_phys_addr( ul_stack[mod_num] );
   Elf32_Ehdr *pe = pmm->pe;
   Elf32_Phdr *pph = (void *) pmm->pe + pe->e_phoff;
   void *pEntry = (void *) pe->e_entry;
   int i, c, j;
-  unsigned long *stack_virt_addr;
+  uint32 *stack_virt_addr;
 
   /* Populate ring 3 page directory with kernel mappings */
   memcpy( &plPageDirectory[1023], (void *)(((unsigned)get_pdbr())+4092), 4 );
@@ -171,10 +171,10 @@ static unsigned short LoadModule( multiboot_module *pmm, int mod_num ) {
 
   /* Populate ring 3 page directory with entries for its private address
      space */
-  plPageDirectory[0] = (unsigned long) plPageTable | 7;
+  plPageDirectory[0] = (uint32) plPageTable | 7;
 
-  plPageDirectory[1022] = (unsigned long)get_phys_addr( kls_pg_table[mod_num] ) | 3;
-  kls_pg_table[mod_num][0] = (unsigned long)get_phys_addr( kl_stack[mod_num] ) | 3; 
+  plPageDirectory[1022] = (uint32)get_phys_addr( kls_pg_table[mod_num] ) | 3;
+  kls_pg_table[mod_num][0] = (uint32)get_phys_addr( kl_stack[mod_num] ) | 3; 
 
   /* Walk ELF header */
   for( i = 0; i < pe->e_phnum; i++ ) {
@@ -184,8 +184,8 @@ static unsigned short LoadModule( multiboot_module *pmm, int mod_num ) {
       c = ( pph->p_filesz + 0xFFF ) >> 12; /* #pages to load for module */
 
       for( j = 0; j < c; j++ )
-	plPageTable[ ( (unsigned long) pph->p_vaddr >> 12 ) + j ] =
-	  (unsigned long) pmm->pe + ( pph->p_offset & 0xFFFFF000 ) +
+	plPageTable[ ( (uint32) pph->p_vaddr >> 12 ) + j ] =
+	  (uint32) pmm->pe + ( pph->p_offset & 0xFFFFF000 ) +
 	  ( j << 12 ) + 7;
 
       /* zero remainder of final page */
@@ -199,10 +199,10 @@ static unsigned short LoadModule( multiboot_module *pmm, int mod_num ) {
        * memset call to clear physical frame(s)
        */
       for( ; j <= c; j++ ) {
-	unsigned long page_frame = (unsigned long) AllocatePhysicalPage();
+	uint32 page_frame = (uint32) AllocatePhysicalPage();
 	void *virt_addr = MapVirtualPage( page_frame | 3 );
 	memset( virt_addr, 0, 0x1000 );
-	plPageTable[ ( (unsigned long) pph->p_vaddr >> 12 ) + j ] =
+	plPageTable[ ( (uint32) pph->p_vaddr >> 12 ) + j ] =
 	  page_frame + 7;
 	 UnmapVirtualPage( virt_addr );
       }
@@ -212,7 +212,7 @@ static unsigned short LoadModule( multiboot_module *pmm, int mod_num ) {
   }
 
   /* map stack */
-  plPageTable[1023] = (unsigned long) pStack | 7;
+  plPageTable[1023] = (uint32) pStack | 7;
 
     /* --??-- 
      *
@@ -222,9 +222,9 @@ static unsigned short LoadModule( multiboot_module *pmm, int mod_num ) {
      *
      */
   if (mod_num == 1) 
-    plPageTable[512] = (unsigned long) 0x000B8000 | 7;
+    plPageTable[512] = (uint32) 0x000B8000 | 7;
 
-  stack_virt_addr = MapVirtualPage( (unsigned long)pStack | 3 );
+  stack_virt_addr = MapVirtualPage( (uint32)pStack | 3 );
   
   /* This sets up the module's stack with command-line args from grub */
   memcpy( (char *)stack_virt_addr + 0x1000 - 80, pmm->string, 80 );
@@ -299,9 +299,9 @@ void initialize_serial_port(void) {
 void init( multiboot* pmb ) {
 
   int i, j, k, c, num_cpus;
-  unsigned short tss[NR_MODS];
+  uint16 tss[NR_MODS];
   memory_map_t *mmap;
-  unsigned long limit, boot_device=0; 
+  uint32 limit, boot_device=0; 
   Elf32_Phdr *pph;
   Elf32_Ehdr *pe;
   char brandstring[I386_CPUID_BRAND_STRING_LENGTH];
@@ -327,7 +327,7 @@ void init( multiboot* pmb ) {
     if(pmb->flags & 0x80) {
       for(d=pmb->drives_addr, i=0;
           i<pmb->drives_length;
-          i+=d->size,d=(multiboot_drive*)((BYTE*)d+d->size)) {
+          i+=d->size,d=(multiboot_drive*)((uint8*)d+d->size)) {
         printf("Found drive. number: %X\n", d->number);
         com1_printf("Found drive. number: %X\n", d->number);
       }
@@ -340,8 +340,8 @@ void init( multiboot* pmb ) {
   if (cpuid_vmx_support()) print("VMX support detected\n");
 
   for (mmap = (memory_map_t *) pmb->mmap_addr;
-       (unsigned long) mmap < pmb->mmap_addr + pmb->mmap_length;
-       mmap = (memory_map_t *) ((unsigned long) mmap
+       (uint32) mmap < pmb->mmap_addr + pmb->mmap_length;
+       mmap = (memory_map_t *) ((uint32) mmap
 				+ mmap->size + 4 /*sizeof (mmap->size)*/)) {
     
     /* 
@@ -389,7 +389,7 @@ void init( multiboot* pmb ) {
 	 c = ( pph->p_filesz + 0xFFF ) >> 12; /* #pages required for module */
 	 
 	 for( k = 0; k < c; k++ )
-	   BITMAP_CLR(mm_table, (((unsigned long) pe + pph->p_offset) >> 12) + k);
+	   BITMAP_CLR(mm_table, (((uint32) pe + pph->p_offset) >> 12) + k);
        }
        pph = (void *) pph + pe->e_phentsize;
      }

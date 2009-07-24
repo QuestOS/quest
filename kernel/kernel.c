@@ -3,44 +3,44 @@
 #include "spinlock.h"
 #include "printf.h"
 
-extern unsigned _kernelstart;
+extern uint32 _kernelstart;
 
 
 /* Declare space for a stack */
-unsigned ul_stack[NR_MODS][1024] __attribute__ ((aligned (4096))); 
+uint32 ul_stack[NR_MODS][1024] __attribute__ ((aligned (4096))); 
 
 /* Declare space for a task state segment */
-unsigned ul_tss[NR_MODS][1024] __attribute__ ((aligned (4096))); 
+uint32 ul_tss[NR_MODS][1024] __attribute__ ((aligned (4096))); 
 
 /* Declare space for a page directory */
-unsigned pg_dir[NR_MODS][1024] __attribute__ ((aligned (4096)));
+uint32 pg_dir[NR_MODS][1024] __attribute__ ((aligned (4096)));
 
 /* Declare space for a page table */
-unsigned pg_table[NR_MODS][1024] __attribute__ ((aligned (4096)));
+uint32 pg_table[NR_MODS][1024] __attribute__ ((aligned (4096)));
 
 /* Declare space for per process kernel stack */
-unsigned kl_stack[NR_MODS][1024] __attribute__ ((aligned (4096)));
+uint32 kl_stack[NR_MODS][1024] __attribute__ ((aligned (4096)));
 
 /* Declare space for a page table mappings for kernel stacks */
-unsigned kls_pg_table[NR_MODS][1024] __attribute__ ((aligned (4096)));
+uint32 kls_pg_table[NR_MODS][1024] __attribute__ ((aligned (4096)));
 
 /* Declare space for a dummy TSS -- used for kernel switch_to/jmp_gate
    semantics */
 tss dummyTSS;
 
 /* This is a global index into the GDT for a dummyTSS */
-unsigned short dummyTSS_selector;
+uint16 dummyTSS_selector;
 
 /* Each CPU gets an IDLE task -- something to do when nothing else */
 tss idleTSS[MAX_CPUS];
-unsigned short idleTSS_selector[MAX_CPUS];
+uint16 idleTSS_selector[MAX_CPUS];
 
 /* Declare space for bitmap (physical) memory usage table.
  * PHYS_INDEX_MAX entries of 32-bit integers each for a 4K page => 
  * 4GB memory limit when PHYS_INDEX_MAX=32768
  */
-unsigned mm_table[PHYS_INDEX_MAX] __attribute__ ((aligned (4096)));
-unsigned mm_limit;       /* Actual physical page limit */
+uint32 mm_table[PHYS_INDEX_MAX] __attribute__ ((aligned (4096)));
+uint32 mm_limit;       /* Actual physical page limit */
 
 char *pchVideo = (char *) KERN_SCR;
 
@@ -99,7 +99,7 @@ int print( char *pch ) {
 }
 
 
-void putx( unsigned long l ) {
+void putx( uint32 l ) {
 
     int i, li;
 
@@ -119,7 +119,7 @@ int _print( char *pch ) {
 }
 
 
-void _putx( unsigned long l ) {
+void _putx( uint32 l ) {
 
     int i, li;
 
@@ -150,7 +150,7 @@ void com1_puts(char *p) {
     com1_putc(*p++);
 }
 
-void com1_putx(unsigned long l) {
+void com1_putx(uint32 l) {
     int i, li;
 
     for( i = 7; i >= 0; i-- )
@@ -167,7 +167,7 @@ void com1_putx(unsigned long l) {
  * Returns physical address rather than virtual, since we
  * we don't want user-level pages mapped into kernel page tables in all cases
  */
-unsigned AllocatePhysicalPage( void ) {
+uint32 AllocatePhysicalPage( void ) {
 
   int i;
   
@@ -180,7 +180,7 @@ unsigned AllocatePhysicalPage( void ) {
   return -1;			/* Error -- no free page? */
 }
 
-unsigned AllocatePhysicalPages(unsigned count) {
+uint32 AllocatePhysicalPages(uint32 count) {
 
   int i, j;
   
@@ -202,11 +202,11 @@ unsigned AllocatePhysicalPages(unsigned count) {
   return -1;			/* Error -- no free page? */
 }
 
-void FreePhysicalPage(unsigned frame) {
+void FreePhysicalPage(uint32 frame) {
   BITMAP_SET(mm_table, frame >> 12);
 }
 
-void FreePhysicalPages(unsigned frame, unsigned count) {
+void FreePhysicalPages(uint32 frame, uint32 count) {
   int i;
   frame >>= 12;
   for(i = 0; i < count; i++)
@@ -219,9 +219,9 @@ void FreePhysicalPages(unsigned frame, unsigned count) {
  * Returns virtual address
  *
  */
-void *MapVirtualPage( unsigned phys_frame ) {
+void *MapVirtualPage( uint32 phys_frame ) {
 
-  unsigned *page_table = (unsigned *) KERN_PGT;
+  uint32 *page_table = (uint32 *) KERN_PGT;
   int i;
   void *va;
 
@@ -241,8 +241,8 @@ void *MapVirtualPage( unsigned phys_frame ) {
 }
 
 /* Map contiguous physical to virtual memory */
-void *MapContiguousVirtualPages(unsigned phys_frame, unsigned count) {
-  unsigned *page_table = (unsigned *) KERN_PGT;
+void *MapContiguousVirtualPages(uint32 phys_frame, uint32 count) {
+  uint32 *page_table = (uint32 *) KERN_PGT;
   int i,j;
   void *va;
 
@@ -279,8 +279,8 @@ void *MapContiguousVirtualPages(unsigned phys_frame, unsigned count) {
 }
 
 /* Map non-contiguous physical memory to contiguous virtual memory */
-void *MapVirtualPages(unsigned *phys_frames, unsigned count) {
-  unsigned *page_table = (unsigned *) KERN_PGT;
+void *MapVirtualPages(uint32 *phys_frames, uint32 count) {
+  uint32 *page_table = (uint32 *) KERN_PGT;
   int i,j;
   void *va;
 
@@ -322,15 +322,15 @@ void *MapVirtualPages(unsigned *phys_frames, unsigned count) {
  */
 void UnmapVirtualPage( void *virt_addr ) {
 
-    unsigned *page_table = (unsigned *) KERN_PGT;
+    uint32 *page_table = (uint32 *) KERN_PGT;
 
-    page_table[ ((unsigned)virt_addr >> 12) & 0x3FF ] = 0;
+    page_table[ ((uint32)virt_addr >> 12) & 0x3FF ] = 0;
 
     /* Invalidate page in case it was cached in the TLB */
     invalidate_page( virt_addr ); 
 }
 
-void UnmapVirtualPages(void *virt_addr, unsigned count) {
+void UnmapVirtualPages(void *virt_addr, uint32 count) {
   int j;
   for(j=0; j<count; j++)
     UnmapVirtualPage(virt_addr + j*0x1000);
@@ -339,10 +339,10 @@ void UnmapVirtualPages(void *virt_addr, unsigned count) {
 void *get_phys_addr( void *virt_addr ) {
 
   void *pa;
-  unsigned phys_frame;
-  unsigned va = (unsigned)virt_addr;
+  uint32 phys_frame;
+  uint32 va = (uint32)virt_addr;
 
-  unsigned *kernel_pdbr = (unsigned *)get_pdbr(); /* --WARN-- Assumes
+  uint32 *kernel_pdbr = (uint32 *)get_pdbr(); /* --WARN-- Assumes
 						   * virtual and phys addrs
 						   * are the same. Okay to
 						   * use at boot time up
@@ -350,9 +350,9 @@ void *get_phys_addr( void *virt_addr ) {
 						   * first dynamically
 						   * created address space
 						   */
-  unsigned *kernel_ptbr;
+  uint32 *kernel_ptbr;
 
-  kernel_ptbr = (unsigned *)( kernel_pdbr[va >> 22] & 0xFFFFF000 );
+  kernel_ptbr = (uint32 *)( kernel_pdbr[va >> 22] & 0xFFFFF000 );
 
   phys_frame = kernel_ptbr[(va >> 12) & 0x3FF] & 0xFFFFF000;
   
@@ -373,7 +373,7 @@ __attribute__((noreturn)) void panic( char *sz ) {
 
 
 
-extern quest_tss *LookupTSS( unsigned short selector ) {
+extern quest_tss *LookupTSS( uint16 selector ) {
 
     descriptor *ad = (descriptor *) KERN_GDT;
     
@@ -383,16 +383,16 @@ extern quest_tss *LookupTSS( unsigned short selector ) {
 }
 
 void stacktrace(void) {
-  unsigned esp,ebp;
+  uint32 esp,ebp;
   extern void com1_putc(char);
   extern void com1_puts(char *);
-  extern void com1_putx(unsigned long);
+  extern void com1_putx(uint32);
   asm volatile("movl %%esp, %0" : "=r"(esp));
   asm volatile("movl %%ebp, %0" : "=r"(ebp));
   com1_printf("Stacktrace:\n");
   while(ebp >= KERN_STK && ebp <= KERN_STK+0x1000) {
-    com1_printf("%0.8X\n", *((unsigned *)(ebp+4)));
-    ebp = *((unsigned *)ebp);
+    com1_printf("%0.8X\n", *((uint32 *)(ebp+4)));
+    ebp = *((uint32 *)ebp);
   }
 }
 
@@ -405,9 +405,9 @@ void idle_task(void) {
 }
 
 void disable_idt(void) {
-  WORD len = *((WORD *)idt_ptr);
+  uint16 len = *((uint16 *)idt_ptr);
   idt_descriptor *ptr = *((idt_descriptor **)(idt_ptr + 2));
-  WORD i;
+  uint16 i;
   
   for (i=0;i<(len >> 3);i++) {
     if(ptr[i].pBase0)
@@ -416,9 +416,9 @@ void disable_idt(void) {
 }
 
 void enable_idt(void) {
-  WORD len = *((WORD *)idt_ptr);
+  uint16 len = *((uint16 *)idt_ptr);
   idt_descriptor *ptr = *((idt_descriptor **)(idt_ptr + 2));
-  WORD i;
+  uint16 i;
   
   for (i=0;i<(len >> 3);i++) {
     if(ptr[i].pBase0)
@@ -426,18 +426,18 @@ void enable_idt(void) {
   }
 }
 
-void enable_idt_entry(WORD i) {
+void enable_idt_entry(uint16 i) {
   idt_descriptor *ptr = *((idt_descriptor **)(idt_ptr + 2));
   if(ptr[i].pBase0)
     ptr[i].fPresent = 1;
 }  
 
-void set_idt_descriptor_by_addr(BYTE n, void *addr, BYTE dpl) {
+void set_idt_descriptor_by_addr(uint8 n, void *addr, uint8 dpl) {
   idt_descriptor *ptr = *((idt_descriptor **)(idt_ptr + 2));
 
   ptr[n].fPresent = 0;          /* disable */
-  ptr[n].pBase1 = ((unsigned)addr & 0xFFFF0000) >> 16;
-  ptr[n].pBase0 = ((unsigned)addr & 0x0000FFFF);
+  ptr[n].pBase1 = ((uint32)addr & 0xFFFF0000) >> 16;
+  ptr[n].pBase0 = ((uint32)addr & 0x0000FFFF);
   ptr[n].pSeg = 0x08;
   ptr[n].fZero0 = 0;
   ptr[n].fZero1 = 0;
@@ -448,7 +448,7 @@ void set_idt_descriptor_by_addr(BYTE n, void *addr, BYTE dpl) {
   ptr[n].fPresent = 1;          /* re-enable */
 }
 
-void get_idt_descriptor(BYTE n, idt_descriptor *d) {
+void get_idt_descriptor(uint8 n, idt_descriptor *d) {
   idt_descriptor *ptr = *((idt_descriptor **)(idt_ptr + 2));
 
   *d = ptr[n];
@@ -466,22 +466,22 @@ void get_idt_descriptor(BYTE n, idt_descriptor *d) {
 }
 
 
-void set_idt_descriptor(BYTE n, idt_descriptor *d) {
+void set_idt_descriptor(uint8 n, idt_descriptor *d) {
   idt_descriptor *ptr = *((idt_descriptor **)(idt_ptr + 2));
 
   ptr[n] = *d;
 }
 
-void tsc_delay_usec(DWORD usec) {
-  extern QWORD tsc_freq;
-  QWORD f;
-  DWORD ticks, f_hi, f_lo;
-  QWORD start, value, finish;
-  DWORD divisor = 1000000;
+void tsc_delay_usec(uint32 usec) {
+  extern uint64 tsc_freq;
+  uint64 f;
+  uint32 ticks, f_hi, f_lo;
+  uint64 start, value, finish;
+  uint32 divisor = 1000000;
 
   f = tsc_freq * usec;
-  f_hi = (DWORD) (f >> 32);
-  f_lo = (DWORD) (f & 0xFFFFFFFF);
+  f_hi = (uint32) (f >> 32);
+  f_lo = (uint32) (f & 0xFFFFFFFF);
   asm volatile("div %1" : "=a"(ticks) : "r"(divisor), "a"(f_lo), "d"(f_hi));
 
   RDTSC(start);

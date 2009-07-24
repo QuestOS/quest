@@ -116,8 +116,10 @@
 #ifndef __ACQUEST_H__
 #define __ACQUEST_H__
 
+#include"types.h"
 #include"spinlock.h"
 #include"semaphore.h"
+
 
 //#define ACPI_USE_SYSTEM_CLIBRARY
 #define ACPI_USE_DO_WHILE_0
@@ -136,8 +138,8 @@
 //#define ACPI_CACHE_T                struct cache
 #define ACPI_USE_LOCAL_CACHE
 #define ACPI_SPINLOCK               struct spinlock *
-#define ACPI_CPU_FLAGS              unsigned long
-#define ACPI_THREAD_ID              unsigned short
+#define ACPI_CPU_FLAGS              uint32
+#define ACPI_THREAD_ID              uint16
 #define ACPI_SEMAPHORE              struct semaphore *
 
 // fixme
@@ -153,8 +155,8 @@
          : "=r"(n_hi), "=r"(n_lo) :); \
 }
 
-#define COMPILER_DEPENDENT_INT64  long long
-#define COMPILER_DEPENDENT_UINT64  unsigned long long
+#define COMPILER_DEPENDENT_INT64   sint64
+#define COMPILER_DEPENDENT_UINT64  uint64
 
 #include "acgcc.h"
 

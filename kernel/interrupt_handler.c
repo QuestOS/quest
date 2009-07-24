@@ -16,29 +16,29 @@
 
 static char kernel_ver[] = "0.1a";
 char *kernel_version = kernel_ver;
-unsigned long tick;		/* Software clock tick */
+uint32 tick;		/* Software clock tick */
 
-extern unsigned ul_tss[][1024];
+extern uint32 ul_tss[][1024];
 
 static vector_handler vector_handlers[256];
-static unsigned default_vector_handler(BYTE vec) {
+static uint32 default_vector_handler(uint8 vec) {
   return 0;
 }
-void set_vector_handler(BYTE vec, vector_handler func) {
+void set_vector_handler(uint8 vec, vector_handler func) {
   vector_handlers[vec] = func;
 }
-void clr_vector_handler(BYTE vec) {
+void clr_vector_handler(uint8 vec) {
   vector_handlers[vec] = default_vector_handler;
 }
-vector_handler get_vector_handler(BYTE vec) {
+vector_handler get_vector_handler(uint8 vec) {
   if (vector_handlers[vec])
     return vector_handlers[vec];
   else
     return default_vector_handler;
 }
-unsigned dispatch_vector(unsigned vec) {
+uint32 dispatch_vector(uint32 vec) {
   extern volatile int mp_apic_mode;
-  vector_handler func = vector_handlers[(BYTE)vec];
+  vector_handler func = vector_handlers[(uint8)vec];
   if (!mp_apic_mode && PIC2_BASE_IRQ <= vec && vec <= (PIC2_BASE_IRQ + 8))
     outb( 0x20, 0xA0 );         /* send to 8259A slave PIC too */
   send_eoi();
@@ -47,7 +47,7 @@ unsigned dispatch_vector(unsigned vec) {
 }
 
 /* Duplicate parent TSS -- used with fork */
-static unsigned short DuplicateTSS( unsigned ebp, 
+static uint16 DuplicateTSS( unsigned ebp, 
 				    unsigned *esp,
                                     unsigned child_eip,
                                     unsigned child_ebp,
@@ -88,9 +88,9 @@ static unsigned short DuplicateTSS( unsigned ebp,
     /* See pp 6-7 in IA-32 vol 3 docs for meanings of these assignments */
     ad[ i ].uLimit0 = 0xFFF;	/* --??-- Right now, a page per TSS */
     ad[ i ].uLimit1 = 0;
-    ad[ i ].pBase0 = (unsigned long) pTSS & 0xFFFF;
-    ad[ i ].pBase1 = ( (unsigned long) pTSS >> 16 ) & 0xFF;
-    ad[ i ].pBase2 = (unsigned long) pTSS >> 24;
+    ad[ i ].pBase0 = (uint32) pTSS & 0xFFFF;
+    ad[ i ].pBase1 = ( (uint32) pTSS >> 16 ) & 0xFF;
+    ad[ i ].pBase2 = (uint32) pTSS >> 24;
     ad[ i ].uType = 0x09;	/* 32-bit tss */
     ad[ i ].uDPL = 0;		/* Only let kernel perform task-switching */
     ad[ i ].fPresent = 1;
@@ -155,12 +155,12 @@ char *exception_messages[] = {
   "Reserved"
 };
 
-extern void HandleInterrupt( unsigned long fs_gs, unsigned long ds_es, 
-			     unsigned long ulInt, unsigned long ulCode ) {
+extern void HandleInterrupt( uint32 fs_gs, uint32 ds_es, 
+			     uint32 ulInt, uint32 ulCode ) {
 
-  unsigned long eax, ebx, ecx, edx, esi, edi, eflags, eip, esp, ebp;
-  unsigned long cr0, cr2, cr3;
-  unsigned short tr;
+  uint32 eax, ebx, ecx, edx, esi, edi, eflags, eip, esp, ebp;
+  uint32 cr0, cr2, cr3;
+  uint16 tr;
 
     asm volatile(
 	"movl %%eax, %0\n"
@@ -264,7 +264,7 @@ extern void HandleInterrupt( unsigned long fs_gs, unsigned long ds_es,
 
 
 extern void _interrupt3f(void) {
-  BYTE phys_id = LAPIC_get_physical_ID();
+  uint8 phys_id = LAPIC_get_physical_ID();
   spinlock_lock(&screen_lock);
   _print ("CPU ");
   _putx (phys_id);
@@ -277,7 +277,7 @@ extern void _interrupt3f(void) {
 void HandleSyscall0 (int eax, int ebx) {
 
   quest_tss *pTSS = (quest_tss *)ul_tss[1];	/* --??-- tss index hard-coded to 1 for now */
-  unsigned short head;
+  uint16 head;
 
   if (eax) {			/* eax should be 0 for syscall0 */
     print ("Invalid syscall number!\n");
@@ -336,7 +336,7 @@ void HandleSyscall0 (int eax, int ebx) {
  */
 pid_t _fork ( unsigned ebp, unsigned *esp ) {
 
-  unsigned short child_gdt_index;
+  uint16 child_gdt_index;
   void *phys_addr;
   unsigned *virt_addr;
   int i, j;
@@ -469,21 +469,21 @@ char *strncpy( char *s1, const char *s2, int length ) {
  */
 int _exec( char *filename, char *argv[], unsigned *curr_stack ) {
 
-  unsigned long *plPageDirectory = MapVirtualPage( (unsigned) get_pdbr() | 3 );
-  unsigned long *plPageTable;
-  unsigned long pStack;
+  uint32 *plPageDirectory = MapVirtualPage( (unsigned) get_pdbr() | 3 );
+  uint32 *plPageTable;
+  uint32 pStack;
   Elf32_Ehdr *pe = (Elf32_Ehdr *)0xFF400000; /* 4MB below KERN_STK virt address */
   Elf32_Phdr *pph;
   void *pEntry;
   int filesize;
   /* Temporary storage for frame pointers for a file image up to 4MB
      discounting bss */
-  unsigned long phys_addr = AllocatePhysicalPage() | 3;
+  uint32 phys_addr = AllocatePhysicalPage() | 3;
   /* frame_map is a 1024 bit bitmap to mark frames not needed for 
      file of specific size when not all sections need loading into RAM */
-  unsigned long frame_map[32];
-  unsigned long *frame_ptr = MapVirtualPage( phys_addr );
-  unsigned long *tmp_page;
+  uint32 frame_map[32];
+  uint32 *frame_ptr = MapVirtualPage( phys_addr );
+  uint32 *tmp_page;
   int i, j, c;
   char command_args[80];
 
@@ -555,7 +555,7 @@ int _exec( char *filename, char *argv[], unsigned *curr_stack ) {
   pph = (void *) pe + pe->e_phoff;
   pEntry = (void *) pe->e_entry;
 
-  memset( frame_map, 0, 32 * sizeof( unsigned long ) );
+  memset( frame_map, 0, 32 * sizeof( uint32 ) );
 
   /* Walk ELF header */
   for( i = 0; i < pe->e_phnum; i++ ) {
@@ -583,11 +583,11 @@ int _exec( char *filename, char *argv[], unsigned *curr_stack ) {
 		
 		UnmapVirtualPage( buf );
 		
-		plPageTable[ ( (unsigned long) pph->p_vaddr >> 12 ) + j ] =
+		plPageTable[ ( (uint32) pph->p_vaddr >> 12 ) + j ] =
 		    frame | 7;
 	    } else {
 		BITMAP_SET( frame_map, j + (pph->p_offset >> 12) );
-		plPageTable[ ( (unsigned long) pph->p_vaddr >> 12 ) + j ] =
+		plPageTable[ ( (uint32) pph->p_vaddr >> 12 ) + j ] =
 		    frame_ptr[j + (pph->p_offset >> 12)] | 7;
 	    }
 	}
@@ -600,9 +600,9 @@ int _exec( char *filename, char *argv[], unsigned *curr_stack ) {
 	 * memset call to clear physical frame(s)
 	 */
 	for( ; j < c; j++ ) {
-	    unsigned long page_frame = (unsigned long) AllocatePhysicalPage();
+	    uint32 page_frame = (uint32) AllocatePhysicalPage();
 	    void *virt_page = MapVirtualPage( page_frame | 3 );
-	    plPageTable[ ( (unsigned long) pph->p_vaddr >> 12 ) + j ] =
+	    plPageTable[ ( (uint32) pph->p_vaddr >> 12 ) + j ] =
 		page_frame | 7;
 	    memset( virt_page, 0, 0x1000 );
 	    UnmapVirtualPage( virt_page );
@@ -813,7 +813,7 @@ extern unsigned _interrupt29(void) {
 }
 
 extern void _interrupt3e(void) {
-  BYTE phys_id = LAPIC_get_physical_ID();
+  uint8 phys_id = LAPIC_get_physical_ID();
   send_eoi();
   LAPIC_start_timer(cpu_bus_freq / 100); /* 100 Hz */
 
@@ -893,7 +893,7 @@ void __exit( int status ) {
     unsigned *virt_addr;
     unsigned *tmp_page;
     int i, j;
-    unsigned short tss;
+    uint16 tss;
     descriptor *ad = (descriptor *) KERN_GDT; 
     unsigned *kern_page_table = (unsigned *) KERN_PGT;
     quest_tss *ptss;
@@ -1026,13 +1026,13 @@ extern void invlpg_shootdown(void *va) {
 
 }
 
-extern unsigned invlpg_handler(BYTE vec) {
+extern unsigned invlpg_handler(uint8 vec) {
   asm volatile( "invlpg %0" : : "m" (*(char *) tlb_shootdown_page) );
   asm volatile( "lock decl %0" : : "m" (tlb_shootdown_count) );
   return 0;
 }
 
-extern unsigned flush_tlb_handler(BYTE vec) {
+extern unsigned flush_tlb_handler(uint8 vec) {
   asm volatile( "movl %%cr3, %%eax\n"
                 "movl %%eax, %%cr3\n"
                 "lock decl %0" : : "m" (tlb_shootdown_count) );

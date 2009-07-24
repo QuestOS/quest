@@ -1,6 +1,6 @@
 #include "syscall.h"
 
-static inline void outb( unsigned char uch, unsigned short usPort ) {
+static inline void outb( unsigned char uch, uint16 usPort ) {
 
     asm volatile( "outb %0,%1" : : "a" (uch), "Nd" (usPort) );
 }

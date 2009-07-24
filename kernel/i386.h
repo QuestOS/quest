@@ -1,5 +1,6 @@
 #ifndef __I386_H__
 #define __I386_H__
+#include"types.h"
 
 /* EFLAGS bits */
 #define F_CF 0x01 /* carry */
@@ -37,27 +38,27 @@
 
 typedef struct _tss {
     /* 80386 hardware data */
-    unsigned short usPrevious; /* previous task selector */
-    unsigned short usReserved0;
-    unsigned long ulESP0; /* ring 0 stack pointer */
-    unsigned short usSS0; /* ring 0 stack selector */
-    unsigned short usReserved1;
-    unsigned long ulESP1; /* ring 1 stack pointer */
-    unsigned short usSS1; /* ring 1 stack selector */
-    unsigned short usReserved2;
-    unsigned long ulESP2; /* ring 2 stack pointer */
-    unsigned short usSS2; /* ring 2 stack selector */
-    unsigned short usReserved3;
+    uint16 usPrevious; /* previous task selector */
+    uint16 usReserved0;
+    uint32 ulESP0; /* ring 0 stack pointer */
+    uint16 usSS0; /* ring 0 stack selector */
+    uint16 usReserved1;
+    uint32 ulESP1; /* ring 1 stack pointer */
+    uint16 usSS1; /* ring 1 stack selector */
+    uint16 usReserved2;
+    uint32 ulESP2; /* ring 2 stack pointer */
+    uint16 usSS2; /* ring 2 stack selector */
+    uint16 usReserved3;
     void *pCR3; /* page directory */
-    unsigned long ulEIP; /* instruction pointer */
-    unsigned long ulEFlags;
-    unsigned long ulEAX, ulECX, ulEDX, ulEBX, ulESP, ulEBP, ulESI, ulEDI;
-    unsigned short usES, usReserved4, usCS, usReserved5, usSS, usReserved6,
+    uint32 ulEIP; /* instruction pointer */
+    uint32 ulEFlags;
+    uint32 ulEAX, ulECX, ulEDX, ulEBX, ulESP, ulEBP, ulESI, ulEDI;
+    uint16 usES, usReserved4, usCS, usReserved5, usSS, usReserved6,
 	usDS, usReserved7, usFS, usReserved8, usGS, usReserved9;
-    unsigned short usLDT, usReserved10;
+    uint16 usLDT, usReserved10;
     unsigned int fTrap : 1;
     unsigned int uReserved11 : 15;
-    unsigned short usIOMap;
+    uint16 usIOMap;
 } tss;
 
 /* Bit-field definitions for a segment descriptor */
@@ -116,9 +117,9 @@ static inline void *get_pdbr( void ) {
 }
 
 
-static inline void jmp_gate( unsigned short us ) {
+static inline void jmp_gate( uint16 us ) {
 
-    unsigned short gate[ 3 ];
+    uint16 gate[ 3 ];
 
     gate[ 2 ] = us;  /* Set segment selector -- ignore 4-byte offset */
     
@@ -126,9 +127,9 @@ static inline void jmp_gate( unsigned short us ) {
 }
 
 
-static inline void call_gate( unsigned short us ) {
+static inline void call_gate( uint16 us ) {
 
-    unsigned short gate[ 3 ];
+    uint16 gate[ 3 ];
 
     gate[ 2 ] = us;  /* Set segment selector -- ignore 4-byte offset */
     
@@ -170,7 +171,7 @@ static inline void flush_tlb_all () {
 }
 
 
-static inline unsigned char inb( unsigned short usPort ) {
+static inline unsigned char inb( uint16 usPort ) {
 
     unsigned char uch;
     
@@ -179,62 +180,62 @@ static inline unsigned char inb( unsigned short usPort ) {
 }
 
 
-static inline unsigned short inw( unsigned short usPort ) {
+static inline uint16 inw( uint16 usPort ) {
 
-    unsigned short us;
+    uint16 us;
     
     asm volatile( "inw %1,%0" : "=a" (us) : "Nd" (usPort) );
     return us;
 }
 
-static inline unsigned long inl( unsigned short usPort ) {
+static inline uint32 inl( uint16 usPort ) {
 
-    unsigned long ul;
+    uint32 ul;
     
     asm volatile( "inl %1,%0" : "=a" (ul) : "Nd" (usPort) );
     return ul;
 }
 
 
-static inline void insw( unsigned short usPort, void *buf, int count ) {
+static inline void insw( uint16 usPort, void *buf, int count ) {
 
   asm volatile( "rep insw" : : "d" (usPort), "D" (buf), "c" (count) );
 }
 
 
-static inline void outsw( unsigned short usPort, void *buf, int count ) {
+static inline void outsw( uint16 usPort, void *buf, int count ) {
 
   asm volatile( "rep outsw" : : "d" (usPort), "S" (buf), "c" (count) );
 }
 
 
-static inline void outb( unsigned char uch, unsigned short usPort ) {
+static inline void outb( unsigned char uch, uint16 usPort ) {
 
     asm volatile( "outb %0,%1" : : "a" (uch), "Nd" (usPort) );
 }
 
 
-static inline void outw( unsigned short us, unsigned short usPort ) {
+static inline void outw( uint16 us, uint16 usPort ) {
 
     asm volatile( "outw %0,%1" : : "a" (us), "Nd" (usPort) );
 }
 
-static inline void outl( unsigned long ul, unsigned short usPort ) {
+static inline void outl( uint32 ul, uint16 usPort ) {
 
     asm volatile( "outl %0,%1" : : "a" (ul), "Nd" (usPort) );
 }
 
 
-static inline unsigned short str( void ) {
+static inline uint16 str( void ) {
 
-    unsigned short us;
+    uint16 us;
 
     asm volatile( "str %0" : "=r" (us) : );
     return us;
 }
 
 
-static inline void ltr( unsigned short us ) {
+static inline void ltr( uint16 us ) {
 
     asm volatile( "ltr %0" : : "r" (us) );
 
@@ -251,7 +252,7 @@ static inline unsigned int ffs(unsigned int word)
 
 #define RDTSC(var)                                              \
   {                                                             \
-    DWORD var##_lo, var##_hi;                                   \
+    uint32 var##_lo, var##_hi;                                   \
     asm volatile("rdtsc" : "=a"(var##_lo), "=d"(var##_hi));     \
     var = var##_hi;                                             \
     var <<= 32;                                                 \

@@ -9,7 +9,7 @@
 #define ATA_TYPE_SATAPI 4
 
 typedef struct {
-  DWORD ata_type, ata_bus, ata_drive;
+  uint32 ata_type, ata_bus, ata_drive;
 } ata_info;
 
 extern ata_info pata_drives[4];
@@ -38,8 +38,8 @@ extern ata_info pata_drives[4];
 #define ATA_DRIVE_SLAVE     0xB0
 
 void ata_init(void);
-int  ata_drive_read_sector(DWORD bus, DWORD drive, DWORD lba, BYTE *buffer);
-int  ata_drive_write_sector(DWORD bus, DWORD drive, DWORD lba, BYTE *buffer);
-int  atapi_drive_read_sector(DWORD bus, DWORD drive, DWORD lba, BYTE *buffer);
+int  ata_drive_read_sector(uint32 bus, uint32 drive, uint32 lba, uint8 *buffer);
+int  ata_drive_write_sector(uint32 bus, uint32 drive, uint32 lba, uint8 *buffer);
+int  atapi_drive_read_sector(uint32 bus, uint32 drive, uint32 lba, uint8 *buffer);
 
 #endif

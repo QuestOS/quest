@@ -28,8 +28,8 @@
 
 extern void ReadSector( void *offset, int cylinder, int head, int sector );
 extern void WriteSector( void *offset, int cylinder, int head, int sector );
-extern void ReadSectorLBA( void *offset, unsigned long lba );
-extern void WriteSectorLBA( void *offset, unsigned long lba );
+extern void ReadSectorLBA( void *offset, uint32 lba );
+extern void WriteSectorLBA( void *offset, uint32 lba );
 
 static int mapblock1, mapblock2;
 static int errnum;
@@ -51,7 +51,7 @@ static int filemax;
 typedef __signed__ char __s8;
 typedef unsigned char __u8;
 typedef __signed__ short __s16;
-typedef unsigned short __u16;
+typedef uint16 __u16;
 typedef __signed__ int __s32;
 typedef unsigned int __u32;
 
@@ -257,7 +257,7 @@ itoa (char *buf, int base, int d)
 {
   char *p = buf;
   char *p1, *p2;
-  unsigned long ud = d;
+  uint32 ud = d;
   int divisor = 10;
      
   /* If %d is specified and D is minus, put `-' in the head. */
@@ -524,8 +524,8 @@ devread (int sector, int byte_offset, int byte_len, char *buf)
  * ffz = Find First Zero in word. Undefined if no zero exists,
  * so code should check against ~0UL first..
  */
-static __inline__ unsigned long
-ffz (unsigned long word)
+static __inline__ uint32
+ffz (uint32 word)
 {
   __asm__ ("bsfl %1,%0"
 :	   "=r" (word)

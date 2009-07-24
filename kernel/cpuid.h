@@ -24,6 +24,6 @@ static inline void cpuid ( in_eax, in_ecx, out_eax, out_ebx, out_ecx, out_edx )
 }
 
 void cpuid_get_brand_string(char *, int);
-BOOL cpuid_vmx_support(void);
+bool cpuid_vmx_support(void);
 
 #endif

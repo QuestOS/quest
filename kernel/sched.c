@@ -5,14 +5,14 @@
 
 //#define DEBUG_SCHED
 
-unsigned short runqueue[MAX_PRIO_QUEUES];
-unsigned short waitqueue[MAX_PRIO_QUEUES]; /* For tasks having expired
+uint16 runqueue[MAX_PRIO_QUEUES];
+uint16 waitqueue[MAX_PRIO_QUEUES]; /* For tasks having expired
 					      their current quanta */
 static unsigned int runq_bitmap[( MAX_PRIO_QUEUES + 31 ) / 32];
 
 static struct spinlock kernel_lock = SPINLOCK_INIT;
  
-extern void queue_append( unsigned short *queue, unsigned short selector ) {
+extern void queue_append( uint16 *queue, uint16 selector ) {
 
   quest_tss *tssp;
 
@@ -40,7 +40,7 @@ extern void queue_append( unsigned short *queue, unsigned short selector ) {
 }
 
 
-extern void runqueue_append( unsigned int prio, unsigned short selector ) {
+extern void runqueue_append( unsigned int prio, uint16 selector ) {
 #ifdef DEBUG_SCHED
   com1_printf("runqueue_append(%x, %x)\n", prio, selector);
 #endif
@@ -49,10 +49,10 @@ extern void runqueue_append( unsigned int prio, unsigned short selector ) {
   BITMAP_SET( runq_bitmap, prio );
 }
 
-extern unsigned short queue_remove_head( unsigned short *queue ) {
+extern uint16 queue_remove_head( uint16 *queue ) {
 
     quest_tss *tssp;
-    unsigned short head;
+    uint16 head;
     
     /* NB: This code assumes atomic execution, and therefore cannot be
        called with interrupts enabled. */
@@ -67,25 +67,25 @@ extern unsigned short queue_remove_head( unsigned short *queue ) {
     return head;
 }
 
-extern void wakeup(unsigned short selector) {
+extern void wakeup(uint16 selector) {
   quest_tss *tssp;
   tssp = LookupTSS(selector);
   runqueue_append(tssp->priority, selector);
 }
 
-extern void wakeup_queue(unsigned short *q) {
-  unsigned short head;
+extern void wakeup_queue(uint16 *q) {
+  uint16 head;
 
   while((head = queue_remove_head(q))) 
     runqueue_append(LookupTSS(head)->priority, head);
 }
 
-BYTE sched_enabled = 0;
+uint8 sched_enabled = 0;
 
 /* Pick from the highest priority non-empty queue */
 extern void schedule( void ) {
 
-  unsigned short next;
+  uint16 next;
   unsigned int prio;
 
   if( ( prio = bitmap_find_first_set( runq_bitmap, MAX_PRIO_QUEUES ) ) != -1) { /* Got a task to execute */
@@ -129,8 +129,8 @@ extern void schedule( void ) {
      * If a task calls schedule() and is selected from the runqueue,
      * then it must be switched out.  Go to IDLE task if nothing else. 
      */
-    BYTE phys_id = LAPIC_get_physical_ID();
-    unsigned short idle_sel = idleTSS_selector[phys_id];
+    uint8 phys_id = LAPIC_get_physical_ID();
+    uint16 idle_sel = idleTSS_selector[phys_id];
     
 #ifdef DEBUG_SCHED
     com1_printf("CPU %x: idling\n", phys_id);

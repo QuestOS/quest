@@ -11,49 +11,49 @@ int ext2fs_read (char *buf, int len);
 int ext2fs_dir (char *dirname);
 
 struct _iso9660_dir_record {
-  BYTE length;
-  BYTE zero_1;
-  DWORD first_sector;
-  DWORD first_sector_BE;        /* big endian */
-  DWORD data_length;
-  DWORD data_length_BE;
-  BYTE years_since_1900;
-  BYTE month;
-  BYTE day;
-  BYTE hour;
-  BYTE minute;
-  BYTE second;
-  BYTE GMT_offset;
-  BYTE flag_hidden : 1;
-  BYTE flag_dir : 1;
-  BYTE flag_assoc : 1;
-  BYTE flag_recfmtspec : 1;
-  BYTE flag_permspec : 1;
-  BYTE flag_unused : 2;
-  BYTE flag_notfinal : 1;
-  BYTE zero_2;
-  BYTE zero_3;
-  WORD volume_sequence;
-  WORD volume_sequence_BE;
-  BYTE identifier_length;
-  BYTE identifier[32];
+  uint8 length;
+  uint8 zero_1;
+  uint32 first_sector;
+  uint32 first_sector_BE;        /* big endian */
+  uint32 data_length;
+  uint32 data_length_BE;
+  uint8 years_since_1900;
+  uint8 month;
+  uint8 day;
+  uint8 hour;
+  uint8 minute;
+  uint8 second;
+  uint8 GMT_offset;
+  uint8 flag_hidden : 1;
+  uint8 flag_dir : 1;
+  uint8 flag_assoc : 1;
+  uint8 flag_recfmtspec : 1;
+  uint8 flag_permspec : 1;
+  uint8 flag_unused : 2;
+  uint8 flag_notfinal : 1;
+  uint8 zero_2;
+  uint8 zero_3;
+  uint16 volume_sequence;
+  uint16 volume_sequence_BE;
+  uint8 identifier_length;
+  uint8 identifier[32];
 } PACKED;
 typedef struct _iso9660_dir_record iso9660_dir_record;
 
 typedef struct {
-  DWORD bus, drive, root_dir_sector, root_dir_data_length;
+  uint32 bus, drive, root_dir_sector, root_dir_data_length;
 } iso9660_mounted_info;
 
 typedef struct {
   iso9660_mounted_info *mount;
-  DWORD sector, offset, length;
+  uint32 sector, offset, length;
 } iso9660_handle;
 
-int iso9660_mount(DWORD, DWORD, iso9660_mounted_info *);
-int iso9660_read(iso9660_handle *, BYTE *, DWORD);
+int iso9660_mount(uint32, uint32, iso9660_mounted_info *);
+int iso9660_read(iso9660_handle *, uint8 *, uint32);
 int iso9660_open(iso9660_mounted_info *, char *, iso9660_handle *);
 
-int eziso_mount(DWORD bus, DWORD drive);
+int eziso_mount(uint32 bus, uint32 drive);
 int eziso_dir(char *pathname);
 int eziso_read(char *buf, int len);
 

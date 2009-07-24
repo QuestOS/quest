@@ -7,34 +7,35 @@
 
 #ifndef _ELF_H_
 #define _ELF_H_
+#include"types.h"
 
 /* Type for a 16-bit quantity.  */
-typedef unsigned short Elf32_Half;
-typedef unsigned short Elf64_Half;
+typedef uint16 Elf32_Half;
+typedef uint16 Elf64_Half;
 
 /* Types for signed and unsigned 32-bit quantities.  */
-typedef unsigned long Elf32_Word;
+typedef uint32 Elf32_Word;
 typedef	long Elf32_Sword;
-typedef unsigned long Elf64_Word;
+typedef uint32 Elf64_Word;
 typedef	long Elf64_Sword;
 
 /* Types for signed and unsigned 64-bit quantities.  */
-typedef unsigned long long Elf32_Xword;
-typedef	long long Elf32_Sxword;
-typedef unsigned long long Elf64_Xword;
-typedef	long long Elf64_Sxword;
+typedef uint64 Elf32_Xword;
+typedef	sint64 Elf32_Sxword;
+typedef uint64 Elf64_Xword;
+typedef	sint64 Elf64_Sxword;
 
 /* Type of addresses.  */
-typedef unsigned long Elf32_Addr;
-typedef unsigned long long Elf64_Addr;
+typedef uint32 Elf32_Addr;
+typedef uint64 Elf64_Addr;
 
 /* Type of file offsets.  */
-typedef unsigned long Elf32_Off;
-typedef unsigned long long Elf64_Off;
+typedef uint32 Elf32_Off;
+typedef uint64 Elf64_Off;
 
 /* Type for section indices, which are 16-bit quantities.  */
-typedef unsigned short Elf32_Section;
-typedef unsigned short Elf64_Section;
+typedef uint16 Elf32_Section;
+typedef uint16 Elf64_Section;
 
 /* Type for version symbol information.  */
 typedef Elf32_Half Elf32_Versym;

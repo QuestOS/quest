@@ -3,7 +3,7 @@
 #include"atomic.h"
 
 struct spinlock {
-  DWORD lock;
+  uint32 lock;
 };
 
 extern volatile int mp_enabled;
@@ -11,12 +11,12 @@ extern volatile int mp_enabled;
 static inline void spinlock_lock(struct spinlock *lock) {
   extern void com1_putc(char);
   extern void com1_puts(char *);
-  extern void com1_putx(unsigned long);
-  BYTE LAPIC_get_physical_ID(void);
+  extern void com1_putx(uint32);
+  uint8 LAPIC_get_physical_ID(void);
 
   if (mp_enabled) {
     int x = 1;
-    DWORD *addr = &lock->lock;
+    uint32 *addr = &lock->lock;
     for (;;) {
       asm volatile("lock xchgl %1,(%0)" : "=r"(addr), "=ir"(x) : "0"(addr), "1"(x));
       if (x == 0) break;
@@ -27,11 +27,11 @@ static inline void spinlock_lock(struct spinlock *lock) {
 
 static inline void spinlock_unlock(struct spinlock *lock) {
   int x = 0;
-  DWORD *addr = &lock->lock;
+  uint32 *addr = &lock->lock;
   extern void com1_putc(char);
   extern void com1_puts(char *);
-  extern void com1_putx(unsigned long);
-  BYTE LAPIC_get_physical_ID(void);
+  extern void com1_putx(uint32);
+  uint8 LAPIC_get_physical_ID(void);
   void stacktrace(void);
      
   asm volatile("lock xchgl %1,(%0)" : "=r"(addr), "=ir"(x) : "0"(addr), "1"(x));

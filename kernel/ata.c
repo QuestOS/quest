@@ -48,11 +48,11 @@
  *     * Word 93 from a master drive on the bus: Bit 12 is supposed to be *
  *     * set if the drive detects an 80 pin cable.                        *
  *                                                                        *
- *     * Words 60 & 61 taken as a DWORD contain the total number of 28    *
+ *     * Words 60 & 61 taken as a uint32 contain the total number of 28    *
  *     * bit LBA addressable sectors on the drive. (If non-zero, the      *
  *     * drive supports LBA28.)                                           *
  *                                                                        *
- *     * Words 100 through 103 taken as a QWORD contain the total number  *
+ *     * Words 100 through 103 taken as a uint64 contain the total number  *
  *     * of 48 bit addressable sectors on the drive. (Probably also proof *
  *     * that LBA48 is supported.)                                        *
  **************************************************************************/
@@ -61,9 +61,9 @@ ata_info pata_drives[4];
 /* ata_current_task has exclusive access to ATA.  If an ATA IRQ comes
  * in, we assume that ata_current_task is waiting on it and needs to
  * be woken. */
-static WORD ata_current_task = 0;
+static uint16 ata_current_task = 0;
 /* waitqueue of tasks that want to use ATA. */
-static WORD ata_waitqueue = 0;
+static uint16 ata_waitqueue = 0;
 
 /* technically I think there could be separate queues for each bus,
  * but, whatever. */
@@ -96,19 +96,19 @@ static void ata_release(void) {
 #define ATA_SELECT_DELAY(bus) \
   {inb(ATA_DCR(bus));inb(ATA_DCR(bus));inb(ATA_DCR(bus));inb(ATA_DCR(bus));}
 
-void ata_sreset(DWORD bus) {
+void ata_sreset(uint32 bus) {
   outb(0x02, ATA_DCR(bus));
   outb(0x00, ATA_DCR(bus));
 }
 
-void ata_drive_select(DWORD bus, DWORD drive) {
+void ata_drive_select(uint32 bus, uint32 drive) {
   outb(drive, ATA_DRIVE_SELECT(bus));
   ATA_SELECT_DELAY(bus);
 }
 
-DWORD ata_identify(DWORD bus, DWORD drive) {
+uint32 ata_identify(uint32 bus, uint32 drive) {
   unsigned char status;
-  unsigned short buffer[256];
+  uint16 buffer[256];
   int i,j;
 
   ata_drive_select(bus,drive);
@@ -182,17 +182,17 @@ DWORD ata_identify(DWORD bus, DWORD drive) {
   }
 }
 
-static void ata_poll_for_irq(DWORD);
+static void ata_poll_for_irq(uint32);
 
-int ata_drive_read_sector(DWORD bus, DWORD drive, DWORD lba, BYTE *buffer) {
-  BYTE status;
+int ata_drive_read_sector(uint32 bus, uint32 drive, uint32 lba, uint8 *buffer) {
+  uint8 status;
   ata_grab();
   outb(drive | 0x40 /* LBA */ | ((lba >> 24) & 0x0F), ATA_DRIVE_SELECT(bus));
   ATA_SELECT_DELAY(bus);
   outb(0x1, ATA_SECTOR_COUNT(bus));
-  outb((BYTE)lba, ATA_ADDRESS1(bus));
-  outb((BYTE)(lba >> 8), ATA_ADDRESS2(bus));
-  outb((BYTE)(lba >> 16), ATA_ADDRESS3(bus));
+  outb((uint8)lba, ATA_ADDRESS1(bus));
+  outb((uint8)(lba >> 8), ATA_ADDRESS2(bus));
+  outb((uint8)(lba >> 16), ATA_ADDRESS3(bus));
   outb(0x20, ATA_COMMAND(bus)); /* READ SECTORS (28-bit LBA) */
 
   if(sched_enabled) schedule();
@@ -209,15 +209,15 @@ int ata_drive_read_sector(DWORD bus, DWORD drive, DWORD lba, BYTE *buffer) {
   return 512; 
 }
 
-int ata_drive_write_sector(DWORD bus, DWORD drive, DWORD lba, BYTE *buffer) {
-  BYTE status;
+int ata_drive_write_sector(uint32 bus, uint32 drive, uint32 lba, uint8 *buffer) {
+  uint8 status;
   int i;
   outb(drive | 0x40 /* LBA */ | ((lba >> 24) & 0x0F), ATA_DRIVE_SELECT(bus));
   ATA_SELECT_DELAY(bus);
   outb(0x1, ATA_SECTOR_COUNT(bus));
-  outb((BYTE)lba, ATA_ADDRESS1(bus));
-  outb((BYTE)(lba >> 8), ATA_ADDRESS2(bus));
-  outb((BYTE)(lba >> 16), ATA_ADDRESS3(bus));
+  outb((uint8)lba, ATA_ADDRESS1(bus));
+  outb((uint8)(lba >> 8), ATA_ADDRESS2(bus));
+  outb((uint8)(lba >> 16), ATA_ADDRESS3(bus));
   outb(0x30, ATA_COMMAND(bus)); /* WRITE SECTORS (28-bit LBA) */
   while(!(status=inb(ATA_COMMAND(bus)) & 0x8) && !(status & 0x1))
     asm volatile("pause");
@@ -232,15 +232,15 @@ int ata_drive_write_sector(DWORD bus, DWORD drive, DWORD lba, BYTE *buffer) {
    * each write command completes.'' */
   
   for(i=0;i<256;i++)
-    outw(((WORD *)buffer)[i], ATA_DATA(bus));
+    outw(((uint16 *)buffer)[i], ATA_DATA(bus));
 
   outb(0xE7, ATA_COMMAND(bus)); /* FLUSH */
   ata_release();
   return 512; 
 }
 
-static DWORD ata_primary_irq_count = 0, ata_secondary_irq_count = 0;
-static unsigned ata_irq_handler(BYTE vec) {
+static uint32 ata_primary_irq_count = 0, ata_secondary_irq_count = 0;
+static uint32 ata_irq_handler(uint8 vec) {
   lock_kernel();
 #ifdef DEBUG_ATA
   com1_printf("ata_irq_handler(%x) ata_current_task=%x\n", vec, ata_current_task);
@@ -259,9 +259,9 @@ void ata_poll_for_irq_timer_handler(void) {
   asm volatile("iret");
 }
 
-static void ata_poll_for_irq(DWORD bus) {
+static void ata_poll_for_irq(uint32 bus) {
 #if 0
-  DWORD count, *counter;
+  uint32 count, *counter;
   idt_descriptor old_timer;
   /* Use this if scheduling is not enabled yet */
   counter = (bus == ATA_BUS_PRIMARY ? &ata_primary_irq_count : &ata_secondary_irq_count);
@@ -283,7 +283,7 @@ static void ata_poll_for_irq(DWORD bus) {
 
 void ata_init(void) {
   extern volatile int mp_ISA_PC;
-  DWORD bus, drive, i;
+  uint32 bus, drive, i;
   
   i=0; bus=ATA_BUS_PRIMARY; drive=ATA_DRIVE_MASTER;
   pata_drives[i].ata_type   = ata_identify(bus, drive);
@@ -323,10 +323,10 @@ void ata_init(void) {
 
 #define ATAPI_SECTOR_SIZE 2048
 
-int atapi_drive_read_sector(DWORD bus, DWORD drive, DWORD lba, BYTE *buffer) {
-  BYTE read_cmd[12] = {0xA8, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0};
-  BYTE status;
-  WORD size;
+int atapi_drive_read_sector(uint32 bus, uint32 drive, uint32 lba, uint8 *buffer) {
+  uint8 read_cmd[12] = {0xA8, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0};
+  uint8 status;
+  uint16 size;
   ata_grab();
 #ifdef DEBUG_ATA
   com1_printf("atapi_drive_read_sector(%X,%X,%X,%p)\n",bus,drive,lba,buffer);
@@ -353,13 +353,13 @@ int atapi_drive_read_sector(DWORD bus, DWORD drive, DWORD lba, BYTE *buffer) {
   read_cmd[5] = (lba >> 0x00) & 0xFF; /* least sig. byte of LBA */
 
   /* Send ATAPI/SCSI command */
-  outsw(ATA_DATA(bus), (WORD *)read_cmd, 6);
+  outsw(ATA_DATA(bus), (uint16 *)read_cmd, 6);
   
   if(sched_enabled) schedule();
   else ata_poll_for_irq(bus);
 
   /* Read actual size */
-  size = (((WORD)inb(ATA_ADDRESS3(bus))) << 8) | (WORD)(inb(ATA_ADDRESS2(bus)));
+  size = (((uint16)inb(ATA_ADDRESS3(bus))) << 8) | (uint16)(inb(ATA_ADDRESS2(bus)));
 
   /* Read data */
   insw(ATA_DATA(bus), buffer, size/2);

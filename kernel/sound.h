@@ -81,12 +81,12 @@ typedef struct {
     char wavesign[4] /*PACKED*/;   // The WAVE signature (should be 'WAVE')
     char ftmsign[4] /*PACKED*/;    // Contains the characters 'fmt'
     int  formatlength PACKED;  // Length of the data in the format chunk
-    WORD waveformat PACKED;    // Wave Format
-    WORD channels PACKED;      // Number of channels (1=mono, 2=stereo)
-    WORD samplespersec PACKED; // Playback Frequency
-    WORD averagebytes PACKED;  // average number of bytes a second
-    WORD blockalign PACKED;    // block alignment of the data
-    WORD formatspecific PACKED;// Format specific data area
+    uint16 waveformat PACKED;    // Wave Format
+    uint16 channels PACKED;      // Number of channels (1=mono, 2=stereo)
+    uint16 samplespersec PACKED; // Playback Frequency
+    uint16 averagebytes PACKED;  // average number of bytes a second
+    uint16 blockalign PACKED;    // block alignment of the data
+    uint16 formatspecific PACKED;// Format specific data area
 } WAVCHUNK;
 
 typedef struct {
@@ -96,17 +96,17 @@ typedef struct {
 
 
 typedef struct {
-    WORD min_mono_8;    // Min mono sample for 8 bits
-    WORD max_mono_8;    // Max mono sample for 8 bits
-    WORD min_stereo_8;  // Min stereo sample for 8 bits
-    WORD max_stereo_8;  // Max stereo sample for 8 bits
-    WORD min_mono_16;   // Min mono sample for 16 bits
-    WORD max_mono_16;   // Max mono sample for 16 bits
-    WORD min_stereo_16; // Min stereo sample for 16 bits
-    WORD max_stereo_16; // Max stereo sample for 16 bits
-    BOOL auto_dma;      // Can use auto dma
-    BOOL stereo;        // Can use stereo mode
-    BOOL _16_bit;       // Can use 16-bit
+    uint16 min_mono_8;    // Min mono sample for 8 bits
+    uint16 max_mono_8;    // Max mono sample for 8 bits
+    uint16 min_stereo_8;  // Min stereo sample for 8 bits
+    uint16 max_stereo_8;  // Max stereo sample for 8 bits
+    uint16 min_mono_16;   // Min mono sample for 16 bits
+    uint16 max_mono_16;   // Max mono sample for 16 bits
+    uint16 min_stereo_16; // Min stereo sample for 16 bits
+    uint16 max_stereo_16; // Max stereo sample for 16 bits
+    bool auto_dma;      // Can use auto dma
+    bool stereo;        // Can use stereo mode
+    bool _16_bit;       // Can use 16-bit
 } SB_CAPABILITY;
 
 // Capabilities of the Sound Blaster cards
@@ -185,29 +185,29 @@ PRIVATE	SB_CAPABILITY capability_sb_awe32 = {
     _16_bit:	  TRUE 
 };
 
-#define	SAMPLE_BYTE     unsigned char
+#define	SAMPLE_uint8     unsigned char
 #define	SAMPLE_CLIP_MIN 0
 #define	SAMPLE_CLIP_MAX	255
 
 typedef struct {
     int	size;          // Size of the sound data
-    SAMPLE_BYTE *data; // Data memory area
-    BOOL stereo;       // Mono or stereo sample data
+    SAMPLE_uint8 *data; // Data memory area
+    bool stereo;       // Mono or stereo sample data
 } SAMPLE;
 
-BOOL sb_dsp_reset(WORD base_address);
-BOOL sb_dsp_write(BYTE value);
-BOOL sb_dsp_read(BYTE *value);
-BOOL sb_speaker_on(void);
-BOOL sb_speaker_off(void);
-BOOL sb_dsp_get_version(WORD *version);
-BOOL sb_get_model_name(char *name);
-BOOL sb_dsp_detect_base_address(WORD *base_address);
-BOOL sb_dsp_detect_irq_number (WORD base_address, BYTE *irq_number);
-BOOL sb_dsp_detect_dma (WORD base_address, BYTE *dma8, BYTE *dma16);
-BOOL sb_play_sample (SAMPLE *sample);
-BOOL sb_mixer_register_set (BYTE index, BYTE value);
-BOOL sb_mixer_register_get (BYTE index, BYTE *value);
-BOOL sb_install_driver (WORD frequency, BOOL use_stereo);
-// BOOL sb_read_raw (char *filename, SAMPLE *sample);
+bool sb_dsp_reset(uint16 base_address);
+bool sb_dsp_write(uint8 value);
+bool sb_dsp_read(uint8 *value);
+bool sb_speaker_on(void);
+bool sb_speaker_off(void);
+bool sb_dsp_get_version(uint16 *version);
+bool sb_get_model_name(char *name);
+bool sb_dsp_detect_base_address(uint16 *base_address);
+bool sb_dsp_detect_irq_number (uint16 base_address, uint8 *irq_number);
+bool sb_dsp_detect_dma (uint16 base_address, uint8 *dma8, uint8 *dma16);
+bool sb_play_sample (SAMPLE *sample);
+bool sb_mixer_register_set (uint8 index, uint8 value);
+bool sb_mixer_register_get (uint8 index, uint8 *value);
+bool sb_install_driver (uint16 frequency, bool use_stereo);
+// bool sb_read_raw (char *filename, SAMPLE *sample);
 #endif

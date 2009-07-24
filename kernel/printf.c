@@ -24,7 +24,7 @@ void closure_vprintf(void putc_clo(void *,char), void *data, const char *fmt, va
         switch(*fmt) {
         case 'p': {
           /* pointer value */
-          unsigned long x = va_arg(args,unsigned long);
+          uint32 x = va_arg(args,uint32);
           int i, li;
 
           for( i = 0; i < 8; i++ ) {
@@ -39,7 +39,7 @@ void closure_vprintf(void putc_clo(void *,char), void *data, const char *fmt, va
           upper = 0;
         case 'X': {
           /* hexadecimal output */
-          unsigned long x = va_arg(args,unsigned long);
+          uint32 x = va_arg(args,uint32);
           int i, li, print_padding = 0, print_digits = 0;
 
           for( i = 0; i < 8; i++ ) {
@@ -69,7 +69,7 @@ void closure_vprintf(void putc_clo(void *,char), void *data, const char *fmt, va
         }
         case 'u': {
           /* decimal output */
-          unsigned long x = va_arg(args,unsigned long);
+          uint32 x = va_arg(args,uint32);
           int i, q, print_padding = 0, print_digits = 0;
           int divisors[10] = 
             {1000000000, 100000000, 10000000, 1000000, 100000, 10000, 1000, 100, 10, 1};

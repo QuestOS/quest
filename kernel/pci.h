@@ -17,10 +17,10 @@ typedef struct _pci_config_addr {
 
 static inline void 
 pci_config_addr_init(pci_config_addr *a, 
-                     WORD bus,
-                     WORD dev,
-                     WORD func,
-                     WORD reg) {
+                     uint16 bus,
+                     uint16 dev,
+                     uint16 func,
+                     uint16 reg) {
   a->regNum   = reg;
   a->funcNum  = func;
   a->devNum   = dev;
@@ -30,10 +30,10 @@ pci_config_addr_init(pci_config_addr *a,
 }
 
 static inline void
-pci_read_byte(pci_config_addr *a, BYTE *v) {
-  WORD offs = a->regNum & 0x3;
-  DWORD a32, i32;
-  a32 = *((DWORD *)a) & (~0x3); /* zero out lowest 2 bits */
+pci_read_byte(pci_config_addr *a, uint8 *v) {
+  uint16 offs = a->regNum & 0x3;
+  uint32 a32, i32;
+  a32 = *((uint32 *)a) & (~0x3); /* zero out lowest 2 bits */
   outl(a32, PCI_CONFIG_ADDRESS);
   i32 = inl(PCI_CONFIG_DATA);
   /* offs selects the first, second, third, or fourth byte in i32. */
@@ -41,10 +41,10 @@ pci_read_byte(pci_config_addr *a, BYTE *v) {
 }
 
 static inline void
-pci_read_word(pci_config_addr *a, WORD *v) {
-  WORD offs = a->regNum & 0x2;
-  DWORD a32, i32;
-  a32 = *((DWORD *)a) & (~0x3); /* zero out lowest 2 bits */
+pci_read_word(pci_config_addr *a, uint16 *v) {
+  uint16 offs = a->regNum & 0x2;
+  uint32 a32, i32;
+  a32 = *((uint32 *)a) & (~0x3); /* zero out lowest 2 bits */
   outl(a32, PCI_CONFIG_ADDRESS);
   i32 = inl(PCI_CONFIG_DATA);
   /* offs selects the first or second word in i32. */
@@ -52,19 +52,19 @@ pci_read_word(pci_config_addr *a, WORD *v) {
 }
 
 static inline void
-pci_read_dword(pci_config_addr *a, DWORD *v) {
-  DWORD a32, i32;
-  a32 = *((DWORD *)a) & (~0x3); /* zero out lowest 2 bits */
+pci_read_dword(pci_config_addr *a, uint32 *v) {
+  uint32 a32, i32;
+  a32 = *((uint32 *)a) & (~0x3); /* zero out lowest 2 bits */
   outl(a32, PCI_CONFIG_ADDRESS);
   i32 = inl(PCI_CONFIG_DATA);
   *v = i32;
 }
 
 static inline void
-pci_write_byte(pci_config_addr *a, BYTE v) {
-  WORD offs = a->regNum & 0x3;
-  DWORD a32;
-  a32 = *((DWORD *)a) & (~0x3); /* zero out lowest 2 bits */
+pci_write_byte(pci_config_addr *a, uint8 v) {
+  uint16 offs = a->regNum & 0x3;
+  uint32 a32;
+  a32 = *((uint32 *)a) & (~0x3); /* zero out lowest 2 bits */
   outl(a32, PCI_CONFIG_ADDRESS);
   /* offs selects the first, second, third, or fourth byte in i32. */
   outb(v, PCI_CONFIG_DATA+offs);
@@ -72,19 +72,19 @@ pci_write_byte(pci_config_addr *a, BYTE v) {
 }
 
 static inline void
-pci_write_word(pci_config_addr *a, WORD v) {
-  WORD offs = a->regNum & 0x2;
-  DWORD a32;
-  a32 = *((DWORD *)a) & (~0x3); /* zero out lowest 2 bits */
+pci_write_word(pci_config_addr *a, uint16 v) {
+  uint16 offs = a->regNum & 0x2;
+  uint32 a32;
+  a32 = *((uint32 *)a) & (~0x3); /* zero out lowest 2 bits */
   outl(a32, PCI_CONFIG_ADDRESS);
   /* offs selects the first or second word in i32. */
   outw(v, PCI_CONFIG_DATA+offs);
 }
 
 static inline void
-pci_write_dword(pci_config_addr *a, DWORD v) {
-  DWORD a32;
-  a32 = *((DWORD *)a) & (~0x3); /* zero out lowest 2 bits */
+pci_write_dword(pci_config_addr *a, uint32 v) {
+  uint32 a32;
+  a32 = *((uint32 *)a) & (~0x3); /* zero out lowest 2 bits */
   outl(a32, PCI_CONFIG_ADDRESS);
   outl(v, PCI_CONFIG_DATA);
 }

@@ -6,7 +6,7 @@
 struct semaphore {
   int s, max;
   struct spinlock lock;
-  unsigned short waitqueue;
+  uint16 waitqueue;
 };
 
 static inline int semaphore_init(struct semaphore *sem, int max, int init) {

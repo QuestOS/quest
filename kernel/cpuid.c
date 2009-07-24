@@ -25,7 +25,7 @@ void cpuid_get_brand_string(char *str, int n)
   str[n-1] = 0;
 }
 
-BOOL cpuid_vmx_support(void) 
+bool cpuid_vmx_support(void) 
 {
   int ecx;
   cpuid(1, 0, NULL, NULL, &ecx, NULL);

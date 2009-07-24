@@ -4,14 +4,14 @@
 #include "printf.h"
 #include "ata.h"
 
-void iso9660_date_record(BYTE *buf) {
+void iso9660_date_record(uint8 *buf) {
   com1_printf("%.4s-%.2s-%.2s %.2s:%.2s:%.2s.%.2s %02d",
               buf, buf+4, buf+6, 
               buf+8, buf+10, buf+12, buf+14, *((signed char *)buf+16)/4);
 }
 
 
-void iso9660_show_dir_record(BYTE *r) {
+void iso9660_show_dir_record(uint8 *r) {
   iso9660_dir_record *d = (iso9660_dir_record *)r;
   int i;
   com1_printf("dir_record\n  length=%d first_sector=%X data_length=%d\n",
@@ -33,7 +33,7 @@ void iso9660_show_dir_record(BYTE *r) {
   com1_putc('\n');
 }
 
-void iso9660_walk_tree(DWORD bus, DWORD drive, 
+void iso9660_walk_tree(uint32 bus, uint32 drive, 
                        iso9660_dir_record *d, int depth) {
   int i, len;
 
@@ -54,14 +54,14 @@ void iso9660_walk_tree(DWORD bus, DWORD drive,
     
   if(d->flag_dir) {
     unsigned frame = AllocatePhysicalPage();
-    BYTE *sector = MapVirtualPage(frame | 3);
+    uint8 *sector = MapVirtualPage(frame | 3);
 
     len = atapi_drive_read_sector(bus, drive, d->first_sector, sector);
     if(len < 0) {
       panic("CD ROM READ ERROR\n");
     }
 
-    for(d = (iso9660_dir_record *)sector; d->length; d = (iso9660_dir_record*)((BYTE*)d + d->length)) {
+    for(d = (iso9660_dir_record *)sector; d->length; d = (iso9660_dir_record*)((uint8*)d + d->length)) {
       iso9660_walk_tree(bus, drive, d, depth+1);
     }
     UnmapVirtualPage(sector);
@@ -70,9 +70,9 @@ void iso9660_walk_tree(DWORD bus, DWORD drive,
 }
 
 
-int iso9660_mount(DWORD bus, DWORD drive, iso9660_mounted_info *mi) {
-  DWORD frame = AllocatePhysicalPage();
-  BYTE *page = MapVirtualPage(frame | 3);
+int iso9660_mount(uint32 bus, uint32 drive, iso9660_mounted_info *mi) {
+  uint32 frame = AllocatePhysicalPage();
+  uint8 *page = MapVirtualPage(frame | 3);
   int len;
   
   /* The first 16 sectors (0-15) are empty. */
@@ -100,9 +100,9 @@ int iso9660_mount(DWORD bus, DWORD drive, iso9660_mounted_info *mi) {
 
   com1_printf("Sys ID: %.32s\n", page+8);
   com1_printf("Vol ID: %.32s\n", page+40);
-  com1_printf("# Sectors: %.8X\n", *(DWORD *)(page+80));
-  com1_printf("Path Table: len=%.8X fst=", *(DWORD *)(page+132));
-  com1_printf("%.8X snd=%.8X\n", *(DWORD *)(page+140), *(DWORD *)(page+144));
+  com1_printf("# Sectors: %.8X\n", *(uint32 *)(page+80));
+  com1_printf("Path Table: len=%.8X fst=", *(uint32 *)(page+132));
+  com1_printf("%.8X snd=%.8X\n", *(uint32 *)(page+140), *(uint32 *)(page+144));
   /* root dir @ 156 */
   iso9660_show_dir_record(page+156);
   com1_printf("Vol Set ID: %.128s\n", page+190);
@@ -182,8 +182,8 @@ iso9660_search_dir(iso9660_mounted_info *mi,
                    iso9660_dir_record *d, 
                    char *pathname, int start, int end,
                    iso9660_dir_record *de) {
-  DWORD frame;
-  BYTE *page;
+  uint32 frame;
+  uint8 *page;
   int len = end - start;
 
   frame = AllocatePhysicalPage();
@@ -195,7 +195,7 @@ iso9660_search_dir(iso9660_mounted_info *mi,
 
   for(d = (iso9660_dir_record *)page; 
       d->length; 
-      d = (iso9660_dir_record*)((BYTE*)d + d->length)) {
+      d = (iso9660_dir_record*)((uint8*)d + d->length)) {
 
     if(iso9660_filename_compare(pathname+start,len,
                                 (char *)d->identifier,
@@ -260,11 +260,11 @@ int iso9660_open(iso9660_mounted_info *mi, char *pathname,
   }  
 }
 
-int iso9660_read(iso9660_handle *h, BYTE *buf, DWORD len) {
+int iso9660_read(iso9660_handle *h, uint8 *buf, uint32 len) {
   int n, count = 0, rem = len, curlen;
   iso9660_mounted_info *mi = h->mount;
-  DWORD frame;
-  BYTE *page;
+  uint32 frame;
+  uint8 *page;
 
   frame = AllocatePhysicalPage();
   page = MapVirtualPage(frame | 3);
@@ -300,10 +300,10 @@ int iso9660_read(iso9660_handle *h, BYTE *buf, DWORD len) {
 static iso9660_mounted_info eziso_mount_info;
 
 #if 0
-BYTE test1_buf[2958];
+uint8 test1_buf[2958];
 #endif
 
-int eziso_mount(DWORD bus, DWORD drive) {
+int eziso_mount(uint32 bus, uint32 drive) {
   int v;
 
   v = iso9660_mount(bus, drive, &eziso_mount_info);
@@ -341,7 +341,7 @@ int eziso_dir(char *pathname) {
 
 int eziso_read(char *buf, int len) {
   int n;
-  if((n=iso9660_read(&eziso_handle, (BYTE *)buf, len)) < 0)
+  if((n=iso9660_read(&eziso_handle, (uint8 *)buf, len)) < 0)
     return 0;
   return n;
 }

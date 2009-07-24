@@ -104,11 +104,11 @@ void WriteSector( void *offset, int cylinder, int head, int sector ) {
 }
 
 /* Read a sector using LBA information */
-void ReadSectorLBA( void *offset, unsigned long lba ) {
-  ata_drive_read_sector(ATA_BUS_PRIMARY, ATA_DRIVE_MASTER, lba, (BYTE *)offset);
+void ReadSectorLBA( void *offset, uint32 lba ) {
+  ata_drive_read_sector(ATA_BUS_PRIMARY, ATA_DRIVE_MASTER, lba, (uint8 *)offset);
 }
 
 /* Write a sector using LBA information */
-void WriteSectorLBA( void *offset, unsigned long lba ) {
-  ata_drive_write_sector(ATA_BUS_PRIMARY, ATA_DRIVE_MASTER, lba, (BYTE *)offset);
+void WriteSectorLBA( void *offset, uint32 lba ) {
+  ata_drive_write_sector(ATA_BUS_PRIMARY, ATA_DRIVE_MASTER, lba, (uint8 *)offset);
 }

@@ -301,7 +301,7 @@ void *
 AcpiOsAllocate (
     ACPI_SIZE               Size) {
   /* use pow2 memory allocator */
-  BYTE *ptr;
+  uint8 *ptr;
   pow2_alloc(Size, &ptr);
   return (void *)ptr;
 }
@@ -309,7 +309,7 @@ AcpiOsAllocate (
 void
 AcpiOsFree (
     void *                  Memory) {
-  pow2_free((BYTE *)Memory);
+  pow2_free((uint8 *)Memory);
 }
 
 void *
@@ -541,9 +541,9 @@ AcpiOsReadPciConfiguration (
     void                    *Value,
     UINT32                  Width) {
   pci_config_addr a;
-  BYTE v8;
-  WORD v16;
-  DWORD v32;
+  uint8 v8;
+  uint16 v16;
+  uint32 v32;
   com1_printf("AcpiOsReadPciConfiguration(%.4X:%.4X:%.4X:%.4X, %.8X, ..., %d)\n",
               PciId->Segment, PciId->Bus, PciId->Device, PciId->Function, 
               Reg, Width);
@@ -579,13 +579,13 @@ AcpiOsWritePciConfiguration (
   pci_config_addr_init(&a, PciId->Bus, PciId->Device, PciId->Function, Reg);
   switch(Width) {
   case 8:
-    pci_write_byte(&a, (BYTE)Value);
+    pci_write_byte(&a, (uint8)Value);
     break;
   case 16:
-    pci_write_word(&a, (WORD)Value);
+    pci_write_word(&a, (uint16)Value);
     break;
   case 32:
-    pci_write_dword(&a, (DWORD)Value);
+    pci_write_dword(&a, (uint32)Value);
     break;
   default:
     return AE_BAD_PARAMETER;

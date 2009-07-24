@@ -4,27 +4,27 @@
 #include "filesys.h"
 #include "smp.h"
 
-PRIVATE	WORD dsp_version; // Version of the Digital Sound Processor
+PRIVATE	uint16 dsp_version; // Version of the Digital Sound Processor
 
 // Driver capabilities
 PRIVATE	SB_CAPABILITY driver_capability; // Depends on the SB card capability
 
-PRIVATE	WORD dsp_base_address   = 0x220;   // I/O Base Address of the DSP
-PRIVATE	BYTE dsp_irq_number     = 5;   // IRQ used for DMA transfer
-PRIVATE	BYTE dsp_dma_channel_8  = 1;   // DMA channel in 8-bit mode
-PRIVATE	BYTE dsp_dma_channel_16 = 5;   // DMA channel in 16-bit mode
+PRIVATE	uint16 dsp_base_address   = 0x220;   // I/O Base Address of the DSP
+PRIVATE	uint8 dsp_irq_number     = 5;   // IRQ used for DMA transfer
+PRIVATE	uint8 dsp_dma_channel_8  = 1;   // DMA channel in 8-bit mode
+PRIVATE	uint8 dsp_dma_channel_16 = 5;   // DMA channel in 16-bit mode
 
 #ifdef __8_BIT__
 /* Port settings for page, count & memory address DMA registers (8-bit mode) */
-PRIVATE	BYTE driver_dma_page[4]    = {0x87, 0x83, 0x81, 0x82};
-PRIVATE	BYTE driver_dma_length[4]  = {0x01, 0x03, 0x05, 0x07};
-PRIVATE	BYTE driver_dma_address[4] = {0x00, 0x02, 0x04, 0x06};
+PRIVATE	uint8 driver_dma_page[4]    = {0x87, 0x83, 0x81, 0x82};
+PRIVATE	uint8 driver_dma_length[4]  = {0x01, 0x03, 0x05, 0x07};
+PRIVATE	uint8 driver_dma_address[4] = {0x00, 0x02, 0x04, 0x06};
 #endif
 
 /* Port settings for page, count & memory address DMA registers (16-bit mode) */
-PRIVATE	BYTE driver_dma_page[4]    = {0x8F, 0x8B, 0x89, 0x8A};
-PRIVATE	BYTE driver_dma_length[4]  = {0xC2, 0xC6, 0xCA, 0xCE};
-PRIVATE	BYTE driver_dma_address[4] = {0xC0, 0xC4, 0xC8, 0xCC};
+PRIVATE	uint8 driver_dma_page[4]    = {0x8F, 0x8B, 0x89, 0x8A};
+PRIVATE	uint8 driver_dma_length[4]  = {0xC2, 0xC6, 0xCA, 0xCE};
+PRIVATE	uint8 driver_dma_address[4] = {0xC0, 0xC4, 0xC8, 0xCC};
 
 /* Virtual address of DMA buffer */
 static unsigned dma_buffer_virt_base;
@@ -34,7 +34,7 @@ unsigned dma_buffer_phys_base;
 static int filesize;
 static char filebuffer[0x10000];
 
-BOOL sb_dsp_reset (WORD base_address) {
+bool sb_dsp_reset (uint16 base_address) {
     int	i;
     // int	start_time;
     
@@ -59,9 +59,9 @@ BOOL sb_dsp_reset (WORD base_address) {
 }
 
 
-BOOL sb_dsp_detect_base_address (WORD *base_address) {
+bool sb_dsp_detect_base_address (uint16 *base_address) {
 
-    WORD address;
+    uint16 address;
     
     for (address = 0x220; address <= 0x280; address += 0x020)
 	if (!sb_dsp_reset(address)) {
@@ -74,9 +74,9 @@ BOOL sb_dsp_detect_base_address (WORD *base_address) {
 }
 
 
-BOOL sb_dsp_detect_irq_number (WORD base_address, BYTE *irq_number) {
+bool sb_dsp_detect_irq_number (uint16 base_address, uint8 *irq_number) {
 
-    BYTE b;
+    uint8 b;
 
     outb (INTERRUPT_SETUP, base_address + MIXER_REG_ADDR_PORT);
     b = inb (base_address + MIXER_DATA_PORT);
@@ -96,9 +96,9 @@ BOOL sb_dsp_detect_irq_number (WORD base_address, BYTE *irq_number) {
 }
 
 
-BOOL sb_dsp_detect_dma (WORD base_address, BYTE *dma8, BYTE *dma16) {
+bool sb_dsp_detect_dma (uint16 base_address, uint8 *dma8, uint8 *dma16) {
     
-    BYTE b;
+    uint8 b;
 
     outb (DMA_SETUP, base_address + MIXER_REG_ADDR_PORT);
     b = inb (base_address + MIXER_DATA_PORT);
@@ -114,7 +114,7 @@ BOOL sb_dsp_detect_dma (WORD base_address, BYTE *dma8, BYTE *dma16) {
 
 
 
-BOOL sb_dsp_write (BYTE value) {
+bool sb_dsp_write (uint8 value) {
 
     if (!dsp_base_address) 
 	return (SB_NOT_INITIALIZED);
@@ -128,7 +128,7 @@ BOOL sb_dsp_write (BYTE value) {
 }
 
 
-BOOL sb_dsp_read (BYTE *value) {
+bool sb_dsp_read (uint8 *value) {
 
     if (!dsp_base_address) 
 	return (SB_NOT_INITIALIZED);
@@ -142,12 +142,12 @@ BOOL sb_dsp_read (BYTE *value) {
 }
 
 
-BOOL sb_speaker_on (void) {  
+bool sb_speaker_on (void) {  
 
     return (sb_dsp_write(SB_SPEAKER_ON)); 
 }
 
-BOOL sb_speaker_off (void) {  
+bool sb_speaker_off (void) {  
 
     return (sb_dsp_write(SB_SPEAKER_OFF)); 
 }
@@ -160,9 +160,9 @@ BOOL sb_speaker_off (void) {
 // Sound-Blaster Pro     >=0x0300
 // Sound-Blaster 2.0     >=0x0201
 // Sound-Blaster 1.0/1.5 else
-BOOL sb_dsp_get_version (WORD *version) {
-    BYTE value;
-    BOOL result;
+bool sb_dsp_get_version (uint16 *version) {
+    uint8 value;
+    bool result;
 
     if ((result = sb_dsp_write (SB_DSP_VERSION)))
 	return (result);
@@ -170,7 +170,7 @@ BOOL sb_dsp_get_version (WORD *version) {
     if ((result = sb_dsp_read (&value)))
 	return (result);
 
-   dsp_version = (WORD) value << 8;
+   dsp_version = (uint16) value << 8;
    if ((result = sb_dsp_read (&value))) 
        return (result);
    dsp_version += value;
@@ -190,7 +190,7 @@ BOOL sb_dsp_get_version (WORD *version) {
 }
 
 
-PRIVATE	BOOL driver_set_time_constant (WORD frequency) {
+PRIVATE	bool driver_set_time_constant (uint16 frequency) {
 
     // Reset the mixer
     sb_mixer_register_set (MIXER_RESET, 0);
@@ -247,7 +247,7 @@ PRIVATE	void driver_setup_dsp_transfer (int memory_size) {
 
 
 // Write a value to the mixer register
-BOOL sb_mixer_register_set (BYTE index, BYTE value) {
+bool sb_mixer_register_set (uint8 index, uint8 value) {
     if(!dsp_base_address) return(SB_NOT_INITIALIZED);
 
     // Set the register index
@@ -260,7 +260,7 @@ BOOL sb_mixer_register_set (BYTE index, BYTE value) {
 
 
 // Read a value from the mixer register
-BOOL sb_mixer_register_get (BYTE index, BYTE *value) {
+bool sb_mixer_register_get (uint8 index, uint8 *value) {
     if (!dsp_base_address) return (SB_NOT_INITIALIZED);
     
     // Set the register index
@@ -316,8 +316,8 @@ void _soundcard (void) {
 // Install the Sound Blaster Driver
 // 'frequency': sound driver frequency (Hz)
 // 'stereo': use stereo mode (not currently supported)
-BOOL sb_install_driver (WORD frequency, BOOL use_stereo) {
-    BOOL result;
+bool sb_install_driver (uint16 frequency, bool use_stereo) {
+    bool result;
 
     if ((result = driver_set_time_constant (frequency)))
 	return (result);
@@ -328,7 +328,7 @@ BOOL sb_install_driver (WORD frequency, BOOL use_stereo) {
 }
 
 
-BOOL sb_read_raw (char *pathname) {
+bool sb_read_raw (char *pathname) {
 
     filesize = vfs_dir (pathname); /* --??-- Need error checking */
 

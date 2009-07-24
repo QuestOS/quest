@@ -27,21 +27,21 @@
 
 struct _POW2_HEADER {
   struct _POW2_HEADER *next;
-  DWORD count;
-  BYTE *ptrs[0];
+  uint32 count;
+  uint8 *ptrs[0];
 } PACKED;
 typedef struct _POW2_HEADER POW2_HEADER;
 #define POW2_MAX_COUNT ((0x1000 - sizeof(POW2_HEADER)) >> 2)
 
 static POW2_HEADER *pow2_table[POW2_TABLE_LEN];
 
-static DWORD *pow2_used_table;  /* array of descriptors:
+static uint32 *pow2_used_table;  /* array of descriptors:
                                  * pointer | index */
-static DWORD pow2_used_count, pow2_used_table_pages;
+static uint32 pow2_used_count, pow2_used_table_pages;
 
 static struct spinlock pow2_lock = SPINLOCK_INIT;
 
-static void pow2_add_free_block(BYTE *ptr, BYTE index) {
+static void pow2_add_free_block(uint8 *ptr, uint8 index) {
   POW2_HEADER *hdr = pow2_table[index - POW2_MIN_POW];
 
   for(;;) {
@@ -64,13 +64,13 @@ static void pow2_add_free_block(BYTE *ptr, BYTE index) {
   }
 }
 
-static BYTE *pow2_get_free_block(BYTE index);
+static uint8 *pow2_get_free_block(uint8 index);
 
 /* mutual recursion -- lets try it.
  * I'm calculating 20-24 bytes per frame and a maximum of
  * 7*2 calls, so 308 bytes of stack needed at most */
-static void pow2_split_block(BYTE index) {
-  BYTE *ptr1, *ptr2;
+static void pow2_split_block(uint8 index) {
+  uint8 *ptr1, *ptr2;
   
   ptr1 = pow2_get_free_block(index);
   ptr2 = ptr1 + (1 << (index-1));
@@ -82,11 +82,11 @@ static void pow2_split_block(BYTE index) {
 /* Trying to avoid making the frame-size of pow2_get_free_block any
  * larger than it is -- because of mutual recursion -- and this is
  * used in a re-entrantly safe fashion. */
-static unsigned pow2_tmp_phys_frames[POW2_MAX_POW_FRAMES];
+static uint32 pow2_tmp_phys_frames[POW2_MAX_POW_FRAMES];
 
-static BYTE *pow2_get_free_block(BYTE index) {
+static uint8 *pow2_get_free_block(uint8 index) {
   POW2_HEADER *hdr = pow2_table[index - POW2_MIN_POW], *prev = NULL;
-  BYTE *ptr;
+  uint8 *ptr;
 
   for(;;) {
     if (hdr->count == 0) {
@@ -106,7 +106,7 @@ static BYTE *pow2_get_free_block(BYTE index) {
       ptr = hdr->ptrs[--hdr->count];
       if (prev && hdr->count == 0) {
         /* We followed a next pointer to get here. */
-        DWORD frame = (DWORD)get_phys_addr((void *)hdr);
+        uint32 frame = (uint32)get_phys_addr((void *)hdr);
         prev->next = NULL;
         UnmapVirtualPage((void *)hdr);
         FreePhysicalPage(frame);
@@ -121,25 +121,25 @@ static BYTE *pow2_get_free_block(BYTE index) {
   }
 }
 
-static void pow2_insert_used_table(BYTE *ptr, BYTE index) {
+static void pow2_insert_used_table(uint8 *ptr, uint8 index) {
   if(pow2_used_count >= (pow2_used_table_pages * 0x400)) {
-    unsigned count = pow2_used_table_pages + 1;
-    DWORD frames = AllocatePhysicalPages(count), old_frames;
+    uint32 count = pow2_used_table_pages + 1;
+    uint32 frames = AllocatePhysicalPages(count), old_frames;
     void *virt = MapContiguousVirtualPages(frames | 3, count);
-    memcpy(virt, pow2_used_table, sizeof(DWORD) * pow2_used_count);
-    old_frames = (DWORD)get_phys_addr(pow2_used_table);
+    memcpy(virt, pow2_used_table, sizeof(uint32) * pow2_used_count);
+    old_frames = (uint32)get_phys_addr(pow2_used_table);
     UnmapVirtualPages((void *)pow2_used_table, pow2_used_table_pages);
     FreePhysicalPages(old_frames, pow2_used_table_pages);
-    pow2_used_table = (unsigned *)virt;
+    pow2_used_table = (uint32 *)virt;
     pow2_used_table_pages = count;
   }
-  pow2_used_table[pow2_used_count++] = (DWORD)ptr | (DWORD)index;
+  pow2_used_table[pow2_used_count++] = (uint32)ptr | (uint32)index;
 }
 
-static int pow2_remove_used_table(BYTE *ptr, BYTE *index) {
+static int pow2_remove_used_table(uint8 *ptr, uint8 *index) {
   int i;
   for(i=0;i<pow2_used_count;i++) {
-    if ((DWORD)ptr == (pow2_used_table[i] & (~ POW2_MASK_POW))) {
+    if ((uint32)ptr == (pow2_used_table[i] & (~ POW2_MASK_POW))) {
       /* found it */
       *index = pow2_used_table[i] & POW2_MASK_POW;
       pow2_used_table[i] = pow2_used_table[--pow2_used_count];
@@ -150,7 +150,7 @@ static int pow2_remove_used_table(BYTE *ptr, BYTE *index) {
   return -1;
 }
 
-static BYTE pow2_compute_index(WORD size) {
+static uint8 pow2_compute_index(uint16 size) {
   int i;
   if (size <= POW2_MIN_SIZE) return POW2_MIN_POW;
   else if (size >= POW2_MAX_SIZE) return POW2_MAX_POW;
@@ -162,8 +162,8 @@ static BYTE pow2_compute_index(WORD size) {
   }
 }
 
-int pow2_alloc(WORD size, BYTE **ptr) {
-  BYTE index = pow2_compute_index(size);
+int pow2_alloc(uint16 size, uint8 **ptr) {
+  uint8 index = pow2_compute_index(size);
   spinlock_lock(&pow2_lock);
   *ptr = pow2_get_free_block(index);
   pow2_insert_used_table(*ptr, index);
@@ -171,8 +171,8 @@ int pow2_alloc(WORD size, BYTE **ptr) {
   return index;
 }
 
-void pow2_free(BYTE *ptr) {
-  BYTE index;
+void pow2_free(uint8 *ptr) {
+  uint8 index;
   spinlock_lock(&pow2_lock);
   if(pow2_remove_used_table(ptr, &index) == 0) {
     pow2_add_free_block(ptr, index);
