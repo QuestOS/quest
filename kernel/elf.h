@@ -48,7 +48,7 @@ typedef Elf64_Half Elf64_Versym;
 
 typedef struct
 {
-  unsigned char	e_ident[EI_NIDENT];	/* Magic number and other info */
+  uint8	e_ident[EI_NIDENT];	/* Magic number and other info */
   Elf32_Half	e_type;			/* Object file type */
   Elf32_Half	e_machine;		/* Architecture */
   Elf32_Word	e_version;		/* Object file version */
@@ -66,7 +66,7 @@ typedef struct
 
 typedef struct
 {
-  unsigned char	e_ident[EI_NIDENT];	/* Magic number and other info */
+  uint8	e_ident[EI_NIDENT];	/* Magic number and other info */
   Elf64_Half	e_type;			/* Object file type */
   Elf64_Half	e_machine;		/* Architecture */
   Elf64_Word	e_version;		/* Object file version */
@@ -333,16 +333,16 @@ typedef struct
   Elf32_Word	st_name;		/* Symbol name (string tbl index) */
   Elf32_Addr	st_value;		/* Symbol value */
   Elf32_Word	st_size;		/* Symbol size */
-  unsigned char	st_info;		/* Symbol type and binding */
-  unsigned char	st_other;		/* Symbol visibility */
+  uint8	st_info;		/* Symbol type and binding */
+  uint8	st_other;		/* Symbol visibility */
   Elf32_Section	st_shndx;		/* Section index */
 } Elf32_Sym;
 
 typedef struct
 {
   Elf64_Word	st_name;		/* Symbol name (string tbl index) */
-  unsigned char	st_info;		/* Symbol type and binding */
-  unsigned char st_other;		/* Symbol visibility */
+  uint8	st_info;		/* Symbol type and binding */
+  uint8 st_other;		/* Symbol visibility */
   Elf64_Section	st_shndx;		/* Section index */
   Elf64_Addr	st_value;		/* Symbol value */
   Elf64_Xword	st_size;		/* Symbol size */
@@ -386,7 +386,7 @@ typedef struct
 
 /* How to extract and insert information held in the st_info field.  */
 
-#define ELF32_ST_BIND(val)		(((unsigned char) (val)) >> 4)
+#define ELF32_ST_BIND(val)		(((uint8) (val)) >> 4)
 #define ELF32_ST_TYPE(val)		((val) & 0xf)
 #define ELF32_ST_INFO(bind, type)	(((bind) << 4) + ((type) & 0xf))
 
@@ -954,8 +954,8 @@ typedef struct
 
 /* Macro to construct move records.  */
 #define ELF32_M_SYM(info)	((info) >> 8)
-#define ELF32_M_SIZE(info)	((unsigned char) (info))
-#define ELF32_M_INFO(sym, size)	(((sym) << 8) + (unsigned char) (size))
+#define ELF32_M_SIZE(info)	((uint8) (info))
+#define ELF32_M_INFO(sym, size)	(((sym) << 8) + (uint8) (size))
 
 #define ELF64_M_SYM(info)	ELF32_M_SYM (info)
 #define ELF64_M_SIZE(info)	ELF32_M_SIZE (info)
@@ -1245,9 +1245,9 @@ typedef struct
 
 typedef struct
 {
-  unsigned char kind;		/* Determines interpretation of the
+  uint8 kind;		/* Determines interpretation of the
 				   variable part of descriptor.  */
-  unsigned char size;		/* Size of descriptor, including header.  */
+  uint8 size;		/* Size of descriptor, including header.  */
   Elf32_Section section;	/* Section header index of section affected,
 				   0 for global options.  */
   Elf32_Word info;		/* Kind-specific information.  */

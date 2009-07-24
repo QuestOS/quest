@@ -72,14 +72,14 @@ int _putchar( int ch ) {
 	if( y > 24 )
 	    y = 0;
 	
-	return (int) (unsigned char) ch;
+	return (int) (uint8) ch;
     }
 
     pchVideo[ y * 160 + x * 2 ] = ch;
     pchVideo[ y * 160 + x * 2 + 1 ] = 7;
     x++;
 
-    return (int) (unsigned char) ch;
+    return (int) (uint8) ch;
 }
 
 int putchar( int ch ) {

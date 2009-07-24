@@ -185,7 +185,7 @@ PRIVATE	SB_CAPABILITY capability_sb_awe32 = {
     _16_bit:	  TRUE 
 };
 
-#define	SAMPLE_uint8     unsigned char
+#define	SAMPLE_uint8     uint8
 #define	SAMPLE_CLIP_MIN 0
 #define	SAMPLE_CLIP_MAX	255
 

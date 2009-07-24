@@ -49,7 +49,7 @@ static int filemax;
 
 /* include/asm-i386/types.h */
 typedef __signed__ char __s8;
-typedef unsigned char __u8;
+typedef uint8 __u8;
 typedef __signed__ short __s16;
 typedef uint16 __u16;
 typedef __signed__ int __s32;
@@ -568,14 +568,14 @@ ext2fs_block_map (int logical_block)
 {
 
 #ifdef E2DEBUG
-  unsigned char *i;
-  for (i = (unsigned char *) INODE;
-       i < ((unsigned char *) INODE + sizeof (struct ext2_inode));
+  uint8 *i;
+  for (i = (uint8 *) INODE;
+       i < ((uint8 *) INODE + sizeof (struct ext2_inode));
        i++)
     {
       printf ("%c", "0123456789abcdef"[*i >> 4]);
       printf ("%c", "0123456789abcdef"[*i % 16]);
-      if (!((i + 1 - (unsigned char *) INODE) % 16))
+      if (!((i + 1 - (uint8 *) INODE) % 16))
 	{
 	  printf ("\n");
 	}
@@ -591,7 +591,7 @@ ext2fs_block_map (int logical_block)
   if (logical_block < EXT2_NDIR_BLOCKS)
     {
 #ifdef E2DEBUG
-      printf ("returning %d\n", (unsigned char *) (INODE->i_block[logical_block]));
+      printf ("returning %d\n", (uint8 *) (INODE->i_block[logical_block]));
       printf ("returning %d\n", INODE->i_block[logical_block]);
 #endif /* E2DEBUG */
       return INODE->i_block[logical_block];
@@ -677,14 +677,14 @@ ext2fs_read (char *buf, int len)
 
 #ifdef E2DEBUG
   static char hexdigit[] = "0123456789abcdef";
-  unsigned char *i;
-  for (i = (unsigned char *) INODE;
-       i < ((unsigned char *) INODE + sizeof (struct ext2_inode));
+  uint8 *i;
+  for (i = (uint8 *) INODE;
+       i < ((uint8 *) INODE + sizeof (struct ext2_inode));
        i++)
     {
       printf ("%c", hexdigit[*i >> 4]);
       printf ("%c", hexdigit[*i % 16]);
-      if (!((i + 1 - (unsigned char *) INODE) % 16))
+      if (!((i + 1 - (uint8 *) INODE) % 16))
 	{
 	  printf ("\n");
 	}
@@ -794,7 +794,7 @@ ext2fs_dir (char *dirname)
   long map;			/* fs pointer of a particular block from dir entry */
   struct ext2_dir_entry *dp;	/* pointer to directory entry */
 #ifdef E2DEBUG
-  unsigned char *i;
+  uint8 *i;
 #endif	/* E2DEBUG */
 
   /* loop invariants:
@@ -853,12 +853,12 @@ ext2fs_dir (char *dirname)
 	      sizeof (struct ext2_inode));
       printf ("inode=%x, raw_inode=%x\n", INODE, raw_inode);
       printf ("offset into inode table block=%d\n", (int) raw_inode - (int) INODE);
-      for (i = (unsigned char *) INODE; i <= (unsigned char *) raw_inode;
+      for (i = (uint8 *) INODE; i <= (uint8 *) raw_inode;
 	   i++)
 	{
 	  printf ("%c", "0123456789abcdef"[*i >> 4]);
 	  printf ("%c", "0123456789abcdef"[*i % 16]);
-	  if (!((i + 1 - (unsigned char *) INODE) % 16))
+	  if (!((i + 1 - (uint8 *) INODE) % 16))
 	    {
 	      printf ("\n");
 	    }

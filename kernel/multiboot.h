@@ -33,11 +33,11 @@ typedef struct _multiboot_module {
 
 typedef struct _multiboot_drive {
   uint32 size;
-  unsigned char number;
-  unsigned char mode;
+  uint8 number;
+  uint8 mode;
   uint16 cylinders;
-  unsigned char heads;
-  unsigned char sectors;
+  uint8 heads;
+  uint8 sectors;
   uint16 ports[];
 } multiboot_drive;
 

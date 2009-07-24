@@ -171,9 +171,9 @@ static inline void flush_tlb_all () {
 }
 
 
-static inline unsigned char inb( uint16 usPort ) {
+static inline uint8 inb( uint16 usPort ) {
 
-    unsigned char uch;
+    uint8 uch;
     
     asm volatile( "inb %1,%0" : "=a" (uch) : "Nd" (usPort) );
     return uch;
@@ -209,7 +209,7 @@ static inline void outsw( uint16 usPort, void *buf, int count ) {
 }
 
 
-static inline void outb( unsigned char uch, uint16 usPort ) {
+static inline void outb( uint8 uch, uint16 usPort ) {
 
     asm volatile( "outb %0,%1" : : "a" (uch), "Nd" (usPort) );
 }

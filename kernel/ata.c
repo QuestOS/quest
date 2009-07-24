@@ -107,7 +107,7 @@ void ata_drive_select(uint32 bus, uint32 drive) {
 }
 
 uint32 ata_identify(uint32 bus, uint32 drive) {
-  unsigned char status;
+  uint8 status;
   uint16 buffer[256];
   int i,j;
 
@@ -159,7 +159,7 @@ uint32 ata_identify(uint32 bus, uint32 drive) {
   return ATA_TYPE_PATA;
 
  guess_identity: {
-    unsigned char b1, b2;
+    uint8 b1, b2;
 
     b1 = inb(ATA_ADDRESS2(bus));
     b2 = inb(ATA_ADDRESS3(bus));
