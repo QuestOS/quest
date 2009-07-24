@@ -13,8 +13,8 @@
  * address range every time it allocates one of these large
  * blocks. */
 
-#define POW2_MIN_SIZE (2<<POW2_MIN_POW)
-#define POW2_MAX_SIZE (2<<POW2_MAX_POW)
+#define POW2_MIN_SIZE (1<<POW2_MIN_POW)
+#define POW2_MAX_SIZE (1<<POW2_MAX_POW)
 
 /* Length of the central header table */
 #define POW2_TABLE_LEN ((POW2_MAX_POW - POW2_MIN_POW)+1)
@@ -158,7 +158,7 @@ static BYTE pow2_compute_index(WORD size) {
     size--;
     /* bit scan reverse -- find most significant set bit */
     asm volatile("bsr %1,%0" : "=r"(i) : "r"(size));
-    return i;
+    return (i+1);
   }
 }
 
