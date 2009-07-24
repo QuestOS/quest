@@ -3,13 +3,14 @@
 #include "kernel.h"
 #include "spinlock.h"
 
-struct semaphore {
+struct _semaphore {
   int s, max;
-  struct spinlock lock;
+  spinlock lock;
   uint16 waitqueue;
 };
+typedef struct _semaphore semaphore;
 
-static inline int semaphore_init(struct semaphore *sem, int max, int init) {
+static inline int semaphore_init(semaphore *sem, int max, int init) {
   sem->s = init;
   sem->max = max;
   sem->waitqueue = 0;
@@ -17,7 +18,7 @@ static inline int semaphore_init(struct semaphore *sem, int max, int init) {
   return 0;
 }
 
-static inline int semaphore_signal(struct semaphore *sem, int s) {
+static inline int semaphore_signal(semaphore *sem, int s) {
   int status = 0;
   spinlock_lock(&sem->lock);
   sem->s += s;
@@ -32,7 +33,7 @@ static inline int semaphore_signal(struct semaphore *sem, int s) {
 }
 
 /* timeout: millisec, (-1) for indefinite */
-static inline int semaphore_wait(struct semaphore *sem, int s, short timeout) {
+static inline int semaphore_wait(semaphore *sem, int s, short timeout) {
   for(;;) {
     spinlock_lock(&sem->lock);
     if (sem->s >= s) {
@@ -46,7 +47,7 @@ static inline int semaphore_wait(struct semaphore *sem, int s, short timeout) {
   }
 }
 
-static inline int semaphore_destroy(struct semaphore *sem) {
+static inline int semaphore_destroy(semaphore *sem) {
   return 0;
 }
 

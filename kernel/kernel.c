@@ -58,7 +58,7 @@ int bitmap_find_first_set( unsigned int *table, unsigned int limit ) {
 }
 
 
-struct spinlock screen_lock = {0};
+spinlock screen_lock = {0};
 
 
 int _putchar( int ch ) {

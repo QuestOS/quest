@@ -160,7 +160,7 @@ extern uint16 idleTSS_selector[MAX_CPUS];
 
 typedef unsigned int pid_t;
 
-extern struct spinlock screen_lock;
+extern spinlock screen_lock;
 
 extern uint8 idt_ptr[];
 

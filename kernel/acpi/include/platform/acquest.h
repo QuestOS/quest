@@ -137,10 +137,10 @@
 //struct cache { unsigned long foo; };
 //#define ACPI_CACHE_T                struct cache
 #define ACPI_USE_LOCAL_CACHE
-#define ACPI_SPINLOCK               struct spinlock *
+#define ACPI_SPINLOCK               spinlock *
 #define ACPI_CPU_FLAGS              uint32
 #define ACPI_THREAD_ID              uint16
-#define ACPI_SEMAPHORE              struct semaphore *
+#define ACPI_SEMAPHORE              semaphore *
 
 // fixme
 #define ACPI_DIV_64_BY_32(n_hi, n_lo, d32, q32, r32) \

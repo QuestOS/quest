@@ -2,13 +2,14 @@
 #define _SPINLOCK_H_
 #include"atomic.h"
 
-struct spinlock {
+struct _spinlock {
   uint32 lock;
 };
+typedef struct _spinlock spinlock;
 
 extern volatile int mp_enabled;
 
-static inline void spinlock_lock(struct spinlock *lock) {
+static inline void spinlock_lock(spinlock *lock) {
   extern void com1_putc(char);
   extern void com1_puts(char *);
   extern void com1_putx(uint32);
@@ -25,7 +26,7 @@ static inline void spinlock_lock(struct spinlock *lock) {
   }
 }
 
-static inline void spinlock_unlock(struct spinlock *lock) {
+static inline void spinlock_unlock(spinlock *lock) {
   int x = 0;
   uint32 *addr = &lock->lock;
   extern void com1_putc(char);
@@ -37,7 +38,7 @@ static inline void spinlock_unlock(struct spinlock *lock) {
   asm volatile("lock xchgl %1,(%0)" : "=r"(addr), "=ir"(x) : "0"(addr), "1"(x));
 }
 
-static inline void spinlock_init(struct spinlock *lock) {
+static inline void spinlock_init(spinlock *lock) {
   atomic_store_dword(&lock->lock, 0);
 }
 

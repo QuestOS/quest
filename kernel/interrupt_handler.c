@@ -1013,7 +1013,7 @@ extern int _sched_setparam( int pid, const struct sched_param *p ) {
 #if 0
 static void *tlb_shootdown_page = NULL;
 static unsigned tlb_shootdown_count = 0;
-static struct spinlock tlb_shootdown_lock = SPINLOCK_INIT;
+static spinlock tlb_shootdown_lock = SPINLOCK_INIT;
 
 extern void invlpg_shootdown(void *va) {
   

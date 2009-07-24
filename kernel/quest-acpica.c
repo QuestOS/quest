@@ -183,7 +183,7 @@ AcpiOsTableOverride (
 ACPI_STATUS
 AcpiOsCreateLock (
     ACPI_SPINLOCK           *OutHandle) {
-  *OutHandle = AcpiOsAllocate(sizeof(struct spinlock));
+  *OutHandle = AcpiOsAllocate(sizeof(spinlock));
   spinlock_init(*OutHandle);
   return AE_OK;
 }
@@ -223,7 +223,7 @@ AcpiOsCreateSemaphore (
     UINT32                  MaxUnits,
     UINT32                  InitialUnits,
     ACPI_SEMAPHORE          *OutHandle) {
-  *OutHandle = AcpiOsAllocate(sizeof(struct semaphore));
+  *OutHandle = AcpiOsAllocate(sizeof(semaphore));
   semaphore_init(*OutHandle, MaxUnits, InitialUnits);
   return AE_OK;
 }

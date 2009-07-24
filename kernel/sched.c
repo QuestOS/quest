@@ -10,7 +10,7 @@ uint16 waitqueue[MAX_PRIO_QUEUES]; /* For tasks having expired
 					      their current quanta */
 static unsigned int runq_bitmap[( MAX_PRIO_QUEUES + 31 ) / 32];
 
-static struct spinlock kernel_lock = SPINLOCK_INIT;
+static spinlock kernel_lock = SPINLOCK_INIT;
  
 extern void queue_append( uint16 *queue, uint16 selector ) {
 

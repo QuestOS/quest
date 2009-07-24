@@ -39,7 +39,7 @@ static uint32 *pow2_used_table;  /* array of descriptors:
                                  * pointer | index */
 static uint32 pow2_used_count, pow2_used_table_pages;
 
-static struct spinlock pow2_lock = SPINLOCK_INIT;
+static spinlock pow2_lock = SPINLOCK_INIT;
 
 static void pow2_add_free_block(uint8 *ptr, uint8 index) {
   POW2_HEADER *hdr = pow2_table[index - POW2_MIN_POW];
