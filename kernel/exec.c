@@ -1,15 +1,16 @@
 #include <stdlib.h>
 #include <stdio.h>
 
-int main () {
+int
+main ()
+{
 
   char *p;
 
-  for (p="In exec'd program!\n"; *p; p++)
-	  putchar( *p );
+  for (p = "In exec'd program!\n"; *p; p++)
+    putchar (*p);
 
-  printf( "memory = %d\n", meminfo() ); 
-  
+  printf ("memory = %d\n", meminfo ());
+
   return 0;
 }
-

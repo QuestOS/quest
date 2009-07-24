@@ -1,26 +1,27 @@
 #include <stdio.h>
 
-int main () {
+int
+main ()
+{
 
-    int i, child, grandchild;
-    
-    if( ( child = fork() ) ) {
-	/* parent */
-	for( i = 0; i < 10; i++ )
-	    puts( "Parent!" );
+  int i, child, grandchild;
 
-	waitpid( child );
-    } else if( ( grandchild = fork() ) ) {
-	/* child */
-	for( i = 0; i < 10; i++ )
-	    puts( "Child!" );
+  if ((child = fork ())) {
+    /* parent */
+    for (i = 0; i < 10; i++)
+      puts ("Parent!");
 
-	waitpid( grandchild );
-    } else
-	/* grandchild */
-	for( i = 0; i < 10; i++ )
-	    puts( "Grandchild!" );
-    
-    return 0;
+    waitpid (child);
+  } else if ((grandchild = fork ())) {
+    /* child */
+    for (i = 0; i < 10; i++)
+      puts ("Child!");
+
+    waitpid (grandchild);
+  } else
+    /* grandchild */
+    for (i = 0; i < 10; i++)
+      puts ("Grandchild!");
+
+  return 0;
 }
-

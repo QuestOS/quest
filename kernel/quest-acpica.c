@@ -130,15 +130,15 @@
  * OSL Initialization and shutdown primitives
  */
 ACPI_STATUS
-AcpiOsInitialize (
-    void) {
+AcpiOsInitialize (void)
+{
   return AE_OK;
 }
 
 
 ACPI_STATUS
-AcpiOsTerminate (
-    void) {
+AcpiOsTerminate (void)
+{
   return AE_OK;
 }
 
@@ -148,29 +148,29 @@ AcpiOsTerminate (
  * ACPI Table interfaces
  */
 ACPI_PHYSICAL_ADDRESS
-AcpiOsGetRootPointer (
-    void) {
+AcpiOsGetRootPointer (void)
+{
   ACPI_SIZE addr;
-  if (AcpiFindRootPointer(&addr) == AE_OK)
-    return (ACPI_PHYSICAL_ADDRESS)addr;
+  if (AcpiFindRootPointer (&addr) == AE_OK)
+    return (ACPI_PHYSICAL_ADDRESS) addr;
   else
     return 0;
 }
 
 
 ACPI_STATUS
-AcpiOsPredefinedOverride (
-    const ACPI_PREDEFINED_NAMES *InitVal,
-    ACPI_STRING                 *NewVal) {
+AcpiOsPredefinedOverride (const ACPI_PREDEFINED_NAMES * InitVal,
+                          ACPI_STRING * NewVal)
+{
   *NewVal = NULL;
   return AE_OK;
 }
 
 
 ACPI_STATUS
-AcpiOsTableOverride (
-    ACPI_TABLE_HEADER       *ExistingTable,
-    ACPI_TABLE_HEADER       **NewTable) {
+AcpiOsTableOverride (ACPI_TABLE_HEADER * ExistingTable,
+                     ACPI_TABLE_HEADER ** NewTable)
+{
   *NewTable = NULL;
   return AE_OK;
 }
@@ -181,35 +181,34 @@ AcpiOsTableOverride (
  * Spinlock primitives
  */
 ACPI_STATUS
-AcpiOsCreateLock (
-    ACPI_SPINLOCK           *OutHandle) {
-  *OutHandle = AcpiOsAllocate(sizeof(spinlock));
-  spinlock_init(*OutHandle);
+AcpiOsCreateLock (ACPI_SPINLOCK * OutHandle)
+{
+  *OutHandle = AcpiOsAllocate (sizeof (spinlock));
+  spinlock_init (*OutHandle);
   return AE_OK;
 }
 
 
 void
-AcpiOsDeleteLock (
-    ACPI_SPINLOCK           Handle) {
-  AcpiOsFree(Handle);
+AcpiOsDeleteLock (ACPI_SPINLOCK Handle)
+{
+  AcpiOsFree (Handle);
   return;
 }
 
 
 ACPI_CPU_FLAGS
-AcpiOsAcquireLock (
-    ACPI_SPINLOCK           Handle) {
-  spinlock_lock(Handle);
+AcpiOsAcquireLock (ACPI_SPINLOCK Handle)
+{
+  spinlock_lock (Handle);
   return 0;
 }
 
 
 void
-AcpiOsReleaseLock (
-    ACPI_SPINLOCK           Handle,
-    ACPI_CPU_FLAGS          Flags) {
-  spinlock_unlock(Handle);
+AcpiOsReleaseLock (ACPI_SPINLOCK Handle, ACPI_CPU_FLAGS Flags)
+{
+  spinlock_unlock (Handle);
   return;
 }
 
@@ -219,40 +218,36 @@ AcpiOsReleaseLock (
  * Semaphore primitives
  */
 ACPI_STATUS
-AcpiOsCreateSemaphore (
-    UINT32                  MaxUnits,
-    UINT32                  InitialUnits,
-    ACPI_SEMAPHORE          *OutHandle) {
-  *OutHandle = AcpiOsAllocate(sizeof(semaphore));
-  semaphore_init(*OutHandle, MaxUnits, InitialUnits);
+AcpiOsCreateSemaphore (UINT32 MaxUnits,
+                       UINT32 InitialUnits, ACPI_SEMAPHORE * OutHandle)
+{
+  *OutHandle = AcpiOsAllocate (sizeof (semaphore));
+  semaphore_init (*OutHandle, MaxUnits, InitialUnits);
   return AE_OK;
 }
 
 
 ACPI_STATUS
-AcpiOsDeleteSemaphore (
-    ACPI_SEMAPHORE          Handle) {
-  semaphore_destroy(Handle);
-  AcpiOsFree(Handle);
+AcpiOsDeleteSemaphore (ACPI_SEMAPHORE Handle)
+{
+  semaphore_destroy (Handle);
+  AcpiOsFree (Handle);
   return AE_OK;
 }
 
 
 ACPI_STATUS
-AcpiOsWaitSemaphore (
-    ACPI_SEMAPHORE          Handle,
-    UINT32                  Units,
-    UINT16                  Timeout) {
-  semaphore_wait(Handle, Units, Timeout);
+AcpiOsWaitSemaphore (ACPI_SEMAPHORE Handle, UINT32 Units, UINT16 Timeout)
+{
+  semaphore_wait (Handle, Units, Timeout);
   return AE_OK;
 }
 
 
 ACPI_STATUS
-AcpiOsSignalSemaphore (
-    ACPI_SEMAPHORE          Handle,
-    UINT32                  Units) {
-  if(semaphore_signal(Handle, Units) == 0)
+AcpiOsSignalSemaphore (ACPI_SEMAPHORE Handle, UINT32 Units)
+{
+  if (semaphore_signal (Handle, Units) == 0)
     return AE_OK;
   else
     return AE_LIMIT;
@@ -267,30 +262,29 @@ AcpiOsSignalSemaphore (
 #if (ACPI_MUTEX_TYPE != ACPI_BINARY_SEMAPHORE)
 
 ACPI_STATUS
-AcpiOsCreateMutex (
-    ACPI_MUTEX              *OutHandle) {
+AcpiOsCreateMutex (ACPI_MUTEX * OutHandle)
+{
   return;
 }
 
 
 void
-AcpiOsDeleteMutex (
-    ACPI_MUTEX              Handle) {
+AcpiOsDeleteMutex (ACPI_MUTEX Handle)
+{
   return;
 }
 
 
 ACPI_STATUS
-AcpiOsAcquireMutex (
-    ACPI_MUTEX              Handle,
-    UINT16                  Timeout) {
+AcpiOsAcquireMutex (ACPI_MUTEX Handle, UINT16 Timeout)
+{
   return AE_NOT_IMPLEMENTED;
 }
 
 
 void
-AcpiOsReleaseMutex (
-    ACPI_MUTEX              Handle) {
+AcpiOsReleaseMutex (ACPI_MUTEX Handle)
+{
   return;
 }
 
@@ -298,51 +292,50 @@ AcpiOsReleaseMutex (
 
 
 void *
-AcpiOsAllocate (
-    ACPI_SIZE               Size) {
+AcpiOsAllocate (ACPI_SIZE Size)
+{
   /* use pow2 memory allocator */
   uint8 *ptr;
-  pow2_alloc(Size, &ptr);
-  return (void *)ptr;
+  pow2_alloc (Size, &ptr);
+  return (void *) ptr;
 }
 
 void
-AcpiOsFree (
-    void *                  Memory) {
-  pow2_free((uint8 *)Memory);
+AcpiOsFree (void *Memory)
+{
+  pow2_free ((uint8 *) Memory);
 }
 
 void *
-AcpiOsMapMemory (
-    ACPI_PHYSICAL_ADDRESS   Where,
-    ACPI_SIZE               Length) {
+AcpiOsMapMemory (ACPI_PHYSICAL_ADDRESS Where, ACPI_SIZE Length)
+{
   ACPI_PHYSICAL_ADDRESS start_frame = Where & (~0xFFF);
   ACPI_PHYSICAL_ADDRESS end_frame = (Where + Length) & (~0xFFF);
   ACPI_SIZE num_frames = ((end_frame - start_frame) >> 12) + 1;
-  void *virt = MapContiguousVirtualPages(start_frame | 3, num_frames);
+  void *virt = MapContiguousVirtualPages (start_frame | 3, num_frames);
   if (virt)
-    return (void *)((unsigned)virt | (Where & 0xFFF)); /* mask back in the offset */
-  else return NULL;
+    return (void *) ((unsigned) virt | (Where & 0xFFF));        /* mask back in the offset */
+  else
+    return NULL;
 }
 
 
 void
-AcpiOsUnmapMemory (
-    void                    *LogicalAddress,
-    ACPI_SIZE               Size) {
-  unsigned start_addr = (unsigned)LogicalAddress & (~0xFFF);
-  unsigned end_addr = ((unsigned)LogicalAddress + Size) & (~0xFFF);
+AcpiOsUnmapMemory (void *LogicalAddress, ACPI_SIZE Size)
+{
+  unsigned start_addr = (unsigned) LogicalAddress & (~0xFFF);
+  unsigned end_addr = ((unsigned) LogicalAddress + Size) & (~0xFFF);
   ACPI_SIZE num_pages = ((end_addr - start_addr) >> 12) + 1;
-  
-  return UnmapVirtualPages((void *)start_addr, num_pages);
+
+  return UnmapVirtualPages ((void *) start_addr, num_pages);
 }
 
 
 ACPI_STATUS
-AcpiOsGetPhysicalAddress (
-    void                    *LogicalAddress,
-    ACPI_PHYSICAL_ADDRESS   *PhysicalAddress) {
-  *PhysicalAddress = (ACPI_PHYSICAL_ADDRESS)get_phys_addr(LogicalAddress);
+AcpiOsGetPhysicalAddress (void *LogicalAddress,
+                          ACPI_PHYSICAL_ADDRESS * PhysicalAddress)
+{
+  *PhysicalAddress = (ACPI_PHYSICAL_ADDRESS) get_phys_addr (LogicalAddress);
   return AE_OK;
 }
 
@@ -353,40 +346,38 @@ AcpiOsGetPhysicalAddress (
  * Memory/Object Cache
  */
 ACPI_STATUS
-AcpiOsCreateCache (
-    char                    *CacheName,
-    UINT16                  ObjectSize,
-    UINT16                  MaxDepth,
-    ACPI_CACHE_T            **ReturnCache) {
+AcpiOsCreateCache (char *CacheName,
+                   UINT16 ObjectSize,
+                   UINT16 MaxDepth, ACPI_CACHE_T ** ReturnCache)
+{
   return AE_NOT_IMPLEMENTED;
 }
 
 
 ACPI_STATUS
-AcpiOsDeleteCache (
-    ACPI_CACHE_T            *Cache) {
+AcpiOsDeleteCache (ACPI_CACHE_T * Cache)
+{
   return AE_NOT_IMPLEMENTED;
 }
 
 
 ACPI_STATUS
-AcpiOsPurgeCache (
-    ACPI_CACHE_T            *Cache) {
+AcpiOsPurgeCache (ACPI_CACHE_T * Cache)
+{
   return AE_NOT_IMPLEMENTED;
 }
 
 
 void *
-AcpiOsAcquireObject (
-    ACPI_CACHE_T            *Cache) {
+AcpiOsAcquireObject (ACPI_CACHE_T * Cache)
+{
   return NULL;
 }
 
 
 ACPI_STATUS
-AcpiOsReleaseObject (
-    ACPI_CACHE_T            *Cache,
-    void                    *Object) {
+AcpiOsReleaseObject (ACPI_CACHE_T * Cache, void *Object)
+{
   return AE_NOT_IMPLEMENTED;
 }
 
@@ -396,27 +387,25 @@ AcpiOsReleaseObject (
  * Interrupt handlers
  */
 
-ACPI_OSD_HANDLER        acpi_service_routine;
-void *                  acpi_service_routine_context;
+ACPI_OSD_HANDLER acpi_service_routine;
+void *acpi_service_routine_context;
 
 ACPI_STATUS
-AcpiOsInstallInterruptHandler (
-    UINT32                  InterruptNumber,
-    ACPI_OSD_HANDLER        ServiceRoutine,
-    void                    *Context) {
+AcpiOsInstallInterruptHandler (UINT32 InterruptNumber,
+                               ACPI_OSD_HANDLER ServiceRoutine, void *Context)
+{
   acpi_service_routine = ServiceRoutine;
   acpi_service_routine_context = Context;
-  IOAPIC_map_GSI(IRQ_to_GSI(mp_ISA_bus_id, InterruptNumber), 
-                 0x29,
-                 0x0100000000000800LL);
+  IOAPIC_map_GSI (IRQ_to_GSI (mp_ISA_bus_id, InterruptNumber),
+                  0x29, 0x0100000000000800LL);
   return AE_OK;
 }
 
 
 ACPI_STATUS
-AcpiOsRemoveInterruptHandler (
-    UINT32                  InterruptNumber,
-    ACPI_OSD_HANDLER        ServiceRoutine) {
+AcpiOsRemoveInterruptHandler (UINT32 InterruptNumber,
+                              ACPI_OSD_HANDLER ServiceRoutine)
+{
   return AE_NOT_IMPLEMENTED;
 }
 
@@ -426,38 +415,37 @@ AcpiOsRemoveInterruptHandler (
  * Threads and Scheduling
  */
 ACPI_THREAD_ID
-AcpiOsGetThreadId (
-    void) {
-  return str();
+AcpiOsGetThreadId (void)
+{
+  return str ();
 }
 
 
 ACPI_STATUS
-AcpiOsExecute (
-    ACPI_EXECUTE_TYPE       Type,
-    ACPI_OSD_EXEC_CALLBACK  Function,
-    void                    *Context) {
+AcpiOsExecute (ACPI_EXECUTE_TYPE Type,
+               ACPI_OSD_EXEC_CALLBACK Function, void *Context)
+{
   return AE_NOT_IMPLEMENTED;
 }
 
 
 void
-AcpiOsWaitEventsComplete (
-    void                    *Context) {
+AcpiOsWaitEventsComplete (void *Context)
+{
   return;
 }
 
 
 void
-AcpiOsSleep (
-    ACPI_INTEGER            Milliseconds) {
+AcpiOsSleep (ACPI_INTEGER Milliseconds)
+{
   return;
 }
 
 
 void
-AcpiOsStall (
-    UINT32                  Microseconds) {
+AcpiOsStall (UINT32 Microseconds)
+{
   return;
 }
 
@@ -467,19 +455,17 @@ AcpiOsStall (
  * Platform and hardware-independent I/O interfaces
  */
 ACPI_STATUS
-AcpiOsReadPort (
-    ACPI_IO_ADDRESS         Address,
-    UINT32                  *Value,
-    UINT32                  Width) {
-  switch(Width) {
-  case 8: 
-    *Value = inb(Address);
+AcpiOsReadPort (ACPI_IO_ADDRESS Address, UINT32 * Value, UINT32 Width)
+{
+  switch (Width) {
+  case 8:
+    *Value = inb (Address);
     break;
   case 16:
-    *Value = inw(Address);
+    *Value = inw (Address);
     break;
   case 32:
-    *Value = inl(Address);
+    *Value = inl (Address);
     break;
   }
   return AE_OK;
@@ -487,19 +473,17 @@ AcpiOsReadPort (
 
 
 ACPI_STATUS
-AcpiOsWritePort (
-    ACPI_IO_ADDRESS         Address,
-    UINT32                  Value,
-    UINT32                  Width) {
-  switch(Width) {
-  case 8: 
-    outb((UINT8)Value, Address);
+AcpiOsWritePort (ACPI_IO_ADDRESS Address, UINT32 Value, UINT32 Width)
+{
+  switch (Width) {
+  case 8:
+    outb ((UINT8) Value, Address);
     break;
   case 16:
-    outw((UINT16)Value, Address);
+    outw ((UINT16) Value, Address);
     break;
   case 32:
-    outl(Value, Address);
+    outl (Value, Address);
     break;
   }
   return AE_OK;
@@ -511,19 +495,15 @@ AcpiOsWritePort (
  * Platform and hardware-independent physical memory interfaces
  */
 ACPI_STATUS
-AcpiOsReadMemory (
-    ACPI_PHYSICAL_ADDRESS   Address,
-    UINT32                  *Value,
-    UINT32                  Width) {
+AcpiOsReadMemory (ACPI_PHYSICAL_ADDRESS Address, UINT32 * Value, UINT32 Width)
+{
   return AE_NOT_IMPLEMENTED;
 }
 
 
 ACPI_STATUS
-AcpiOsWriteMemory (
-    ACPI_PHYSICAL_ADDRESS   Address,
-    UINT32                  Value,
-    UINT32                  Width) {
+AcpiOsWriteMemory (ACPI_PHYSICAL_ADDRESS Address, UINT32 Value, UINT32 Width)
+{
   return AE_NOT_IMPLEMENTED;
 }
 
@@ -535,31 +515,29 @@ AcpiOsWriteMemory (
  * certain compilers complain.
  */
 ACPI_STATUS
-AcpiOsReadPciConfiguration (
-    ACPI_PCI_ID             *PciId,
-    UINT32                  Reg,
-    void                    *Value,
-    UINT32                  Width) {
+AcpiOsReadPciConfiguration (ACPI_PCI_ID * PciId,
+                            UINT32 Reg, void *Value, UINT32 Width)
+{
   pci_config_addr a;
   uint8 v8;
   uint16 v16;
   uint32 v32;
-  com1_printf("AcpiOsReadPciConfiguration(%.4X:%.4X:%.4X:%.4X, %.8X, ..., %d)\n",
-              PciId->Segment, PciId->Bus, PciId->Device, PciId->Function, 
-              Reg, Width);
-  pci_config_addr_init(&a, PciId->Bus, PciId->Device, PciId->Function, Reg);
-  switch(Width) {
+  com1_printf
+    ("AcpiOsReadPciConfiguration(%.4X:%.4X:%.4X:%.4X, %.8X, ..., %d)\n",
+     PciId->Segment, PciId->Bus, PciId->Device, PciId->Function, Reg, Width);
+  pci_config_addr_init (&a, PciId->Bus, PciId->Device, PciId->Function, Reg);
+  switch (Width) {
   case 8:
-    pci_read_byte(&a, &v8);
-    *((ACPI_INTEGER *)Value) = (ACPI_INTEGER)v8;
+    pci_read_byte (&a, &v8);
+    *((ACPI_INTEGER *) Value) = (ACPI_INTEGER) v8;
     break;
   case 16:
-    pci_read_word(&a, &v16);
-    *((ACPI_INTEGER *)Value) = (ACPI_INTEGER)v16;
+    pci_read_word (&a, &v16);
+    *((ACPI_INTEGER *) Value) = (ACPI_INTEGER) v16;
     break;
   case 32:
-    pci_read_dword(&a, &v32);
-    *((ACPI_INTEGER *)Value) = (ACPI_INTEGER)v32;
+    pci_read_dword (&a, &v32);
+    *((ACPI_INTEGER *) Value) = (ACPI_INTEGER) v32;
     break;
   default:
     return AE_BAD_PARAMETER;
@@ -569,23 +547,21 @@ AcpiOsReadPciConfiguration (
 
 
 ACPI_STATUS
-AcpiOsWritePciConfiguration (
-    ACPI_PCI_ID             *PciId,
-    UINT32                  Reg,
-    ACPI_INTEGER            Value,
-    UINT32                  Width) {
+AcpiOsWritePciConfiguration (ACPI_PCI_ID * PciId,
+                             UINT32 Reg, ACPI_INTEGER Value, UINT32 Width)
+{
   pci_config_addr a;
-  com1_printf("AcpiOsWritePciConfiguration\n");
-  pci_config_addr_init(&a, PciId->Bus, PciId->Device, PciId->Function, Reg);
-  switch(Width) {
+  com1_printf ("AcpiOsWritePciConfiguration\n");
+  pci_config_addr_init (&a, PciId->Bus, PciId->Device, PciId->Function, Reg);
+  switch (Width) {
   case 8:
-    pci_write_byte(&a, (uint8)Value);
+    pci_write_byte (&a, (uint8) Value);
     break;
   case 16:
-    pci_write_word(&a, (uint16)Value);
+    pci_write_word (&a, (uint16) Value);
     break;
   case 32:
-    pci_write_dword(&a, (uint32)Value);
+    pci_write_dword (&a, (uint32) Value);
     break;
   default:
     return AE_BAD_PARAMETER;
@@ -599,11 +575,10 @@ AcpiOsWritePciConfiguration (
  * Interim function needed for PCI IRQ routing
  */
 void
-AcpiOsDerivePciId(
-    ACPI_HANDLE             Rhandle,
-    ACPI_HANDLE             Chandle,
-    ACPI_PCI_ID             **PciId) {
-  com1_printf("AcpiOsDerivePciId\n");
+AcpiOsDerivePciId (ACPI_HANDLE Rhandle,
+                   ACPI_HANDLE Chandle, ACPI_PCI_ID ** PciId)
+{
+  com1_printf ("AcpiOsDerivePciId\n");
   return;
 }
 
@@ -613,39 +588,36 @@ AcpiOsDerivePciId(
  * Miscellaneous
  */
 ACPI_STATUS
-AcpiOsValidateInterface (
-    char                    *Interface) {
+AcpiOsValidateInterface (char *Interface)
+{
   return AE_NOT_IMPLEMENTED;
 }
 
 
 BOOLEAN
-AcpiOsReadable (
-    void                    *Pointer,
-    ACPI_SIZE               Length) {
+AcpiOsReadable (void *Pointer, ACPI_SIZE Length)
+{
   return AE_NOT_IMPLEMENTED;
 }
 
 
 BOOLEAN
-AcpiOsWritable (
-    void                    *Pointer,
-    ACPI_SIZE               Length) {
+AcpiOsWritable (void *Pointer, ACPI_SIZE Length)
+{
   return AE_NOT_IMPLEMENTED;
 }
 
 
 UINT64
-AcpiOsGetTimer (
-    void) {
+AcpiOsGetTimer (void)
+{
   return AE_NOT_IMPLEMENTED;
 }
 
 
 ACPI_STATUS
-AcpiOsSignal (
-    UINT32                  Function,
-    void                    *Info) {
+AcpiOsSignal (UINT32 Function, void *Info)
+{
   return AE_NOT_IMPLEMENTED;
 }
 
@@ -655,9 +627,8 @@ AcpiOsSignal (
  * Debug print routines
  */
 void ACPI_INTERNAL_VAR_XFACE
-AcpiOsPrintf (
-    const char              *Fmt,
-    ...) {
+AcpiOsPrintf (const char *Fmt, ...)
+{
   va_list Args;
   va_start (Args, Fmt);
   AcpiOsVprintf (Fmt, Args);
@@ -666,16 +637,15 @@ AcpiOsPrintf (
 
 
 void
-AcpiOsVprintf (
-    const char              *Format,
-    va_list                 Args) {
-  fun_vprintf(com1_putc, Format, Args);
+AcpiOsVprintf (const char *Format, va_list Args)
+{
+  fun_vprintf (com1_putc, Format, Args);
 }
 
 
 void
-AcpiOsRedirectOutput (
-    void                    *Destination) {
+AcpiOsRedirectOutput (void *Destination)
+{
   return;
 }
 
@@ -685,8 +655,8 @@ AcpiOsRedirectOutput (
  * Debug input
  */
 UINT32
-AcpiOsGetLine (
-    char                    *Buffer) {
+AcpiOsGetLine (char *Buffer)
+{
   return 0;
 }
 
@@ -696,24 +666,21 @@ AcpiOsGetLine (
  * Directory manipulation
  */
 void *
-AcpiOsOpenDirectory (
-    char                    *Pathname,
-    char                    *WildcardSpec,
-    char                    RequestedFileType) {
+AcpiOsOpenDirectory (char *Pathname,
+                     char *WildcardSpec, char RequestedFileType)
+{
   return NULL;
 }
 
 char *
-AcpiOsGetNextFilename (
-    void                    *DirHandle) {
+AcpiOsGetNextFilename (void *DirHandle)
+{
   return NULL;
 }
 
 
 void
-AcpiOsCloseDirectory (
-    void                    *DirHandle) {
+AcpiOsCloseDirectory (void *DirHandle)
+{
   return;
 }
-
-

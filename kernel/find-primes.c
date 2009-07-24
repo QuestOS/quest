@@ -2,30 +2,34 @@
 
 #define SIZE 10000
 
-static char a[ SIZE ];
+static char a[SIZE];
 
-static void remove_multiples( int k ) {
+static void
+remove_multiples (int k)
+{
 
-    int i;
+  int i;
 
-    for( i = k * 2; i < SIZE; i += k )
-	a[ i ] = 0;
+  for (i = k * 2; i < SIZE; i += k)
+    a[i] = 0;
 }
 
-int main() {
+int
+main ()
+{
 
-    int i, iter;
+  int i, iter;
 
-    for( iter = 0; iter < 10000; iter++ ) {
-	for( i = 2; i < SIZE; i++ )
-	    a[ i ] = 1;
-    
-	for( i = 2; i * i < SIZE; i++ )
-	    if( a[ i ] )
-		remove_multiples( i );
-    }
+  for (iter = 0; iter < 10000; iter++) {
+    for (i = 2; i < SIZE; i++)
+      a[i] = 1;
 
-    printf ("finished!\n");
+    for (i = 2; i * i < SIZE; i++)
+      if (a[i])
+        remove_multiples (i);
+  }
 
-    return 0;
+  printf ("finished!\n");
+
+  return 0;
 }

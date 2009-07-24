@@ -5,6 +5,8 @@ ATSOPT = atsopt
 CFLAGS = -m32 -fno-builtin -nostdinc -Iacpi/include -I. -I../libc/include -g -Wall $(EXTRA_CFLAGS)
 CPPFLAGS = -D_QUEST -Wa,--32 -MMD 
 ATSFLAGS = -I. -Iacpi/include -I../libc/include -g -D_ATS_PRELUDE_NONE -D_ATS_DYNLOADFUN_NONE -D_ATS_STALOADFUN_NONE -DATS_TYPES_H -DATS_EXCEPTION_H -DATS_MEMORY_H -D_QUEST
+INDENT = indent
+INDENTFLAGS = -gnu -br -ce --no-tabs
 OBJS = boot.o init.o boot-smp.o smp.o interrupt.o interrupt_handler.o \
 	kernel.o diskio.o cpuid.o \
 	fsys.o fsys_ext2fs.o fsys_iso9660.o sched.o sound.o \
@@ -47,6 +49,9 @@ quest.iso: quest $(PROGS)
 		-R -b boot/grub/stage2_eltorito \
 		-no-emul-boot -boot-load-size 4 \
 		-boot-info-table -o $@ iso
+
+indent:
+	$(INDENT) $(INDENTFLAGS) *.c *.h
 
 tags:
 	etags -o TAGS *.c acpi/*.c 

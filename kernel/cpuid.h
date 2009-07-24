@@ -9,21 +9,25 @@
 #define I386_CPUID_BRAND_STRING_INPUT4 0x80000004
 
 
-static inline void cpuid ( in_eax, in_ecx, out_eax, out_ebx, out_ecx, out_edx )
-  uint32 in_eax, in_ecx;
-  uint32 *out_eax, *out_ebx, *out_ecx, *out_edx;
+static inline void
+cpuid (in_eax, in_ecx, out_eax, out_ebx, out_ecx, out_edx)
+     uint32 in_eax, in_ecx;
+     uint32 *out_eax, *out_ebx, *out_ecx, *out_edx;
 {
   uint32 eax, ebx, ecx, edx;
-  asm volatile ( "cpuid" 
-                 : "=a" (eax), "=b" (ebx), "=c" (ecx), "=d" (edx)
-                 : "a" (in_eax), "c" (in_ecx) );
-  if (out_eax) *out_eax = eax;
-  if (out_ebx) *out_ebx = ebx;
-  if (out_ecx) *out_ecx = ecx;
-  if (out_edx) *out_edx = edx;
+  asm volatile ("cpuid":"=a" (eax), "=b" (ebx), "=c" (ecx), "=d" (edx)
+                :"a" (in_eax), "c" (in_ecx));
+  if (out_eax)
+    *out_eax = eax;
+  if (out_ebx)
+    *out_ebx = ebx;
+  if (out_ecx)
+    *out_ecx = ecx;
+  if (out_edx)
+    *out_edx = edx;
 }
 
-void cpuid_get_brand_string(char *, uint32);
-bool cpuid_vmx_support(void);
+void cpuid_get_brand_string (char *, uint32);
+bool cpuid_vmx_support (void);
 
 #endif

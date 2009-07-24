@@ -76,16 +76,16 @@
 /* But, Pentium4 assumes other IPIs have it set, according to Intel specs */
 /* So... just always use it. */
 
-#define		LAPIC_ICR_STATUS_PEND		0x1000 /* status check, readonly */
-#define		LAPIC_ICR_DM_LOGICAL		0x800  /* logical destination mode */
+#define		LAPIC_ICR_STATUS_PEND		0x1000  /* status check, readonly */
+#define		LAPIC_ICR_DM_LOGICAL		0x800   /* logical destination mode */
 
 /* Delivery mode: */
 /* FIXED delivery is 0x0 */
-#define		LAPIC_ICR_DM_LOWPRI		0x100  /* send to lowest-priority CPU */
-#define		LAPIC_ICR_DM_SMI		0x200  /* send SMI */
-#define		LAPIC_ICR_DM_NMI		0x400  /* send NMI */
-#define		LAPIC_ICR_DM_INIT		0x500  /* send INIT */
-#define		LAPIC_ICR_DM_SIPI		0x600  /* send Startup IPI */
+#define		LAPIC_ICR_DM_LOWPRI		0x100   /* send to lowest-priority CPU */
+#define		LAPIC_ICR_DM_SMI		0x200   /* send SMI */
+#define		LAPIC_ICR_DM_NMI		0x400   /* send NMI */
+#define		LAPIC_ICR_DM_INIT		0x500   /* send INIT */
+#define		LAPIC_ICR_DM_SIPI		0x600   /* send Startup IPI */
 
 
 #define LAPIC_LVTT				0x320
@@ -97,5 +97,4 @@
 #define LAPIC_TCCR				0x390
 #define LAPIC_TDCR				0x3E0
 
-#endif  /* _APIC_H */
-
+#endif /* _APIC_H */

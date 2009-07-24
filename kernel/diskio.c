@@ -46,69 +46,79 @@
 */
 
 /* Read a sector using CHS geometry information */
-void ReadSector( void *offset, int cylinder, int head, int sector ) {
+void
+ReadSector (void *offset, int cylinder, int head, int sector)
+{
 
   /* Setup drive 0, head 0 */
-  outb ( 0xa0 + head, 0x1f6 );
+  outb (0xa0 + head, 0x1f6);
 
   /* Setup count of sectors to read -- here one sector */
-  outb ( 0x1, 0x1f2 );
+  outb (0x1, 0x1f2);
 
   /* Read from selected sector */
-  outb ( sector, 0x1f3 );
+  outb (sector, 0x1f3);
 
   /* Specify cylinder 0 -- using low port for cylinder */
-  outb ( cylinder & 0xFF, 0x1f4 );
+  outb (cylinder & 0xFF, 0x1f4);
 
   /* Specify cylinder 0 -- using high port */
-  outb ( cylinder >> 8 , 0x1f5 );
+  outb (cylinder >> 8, 0x1f5);
 
   /* Issue read sectors with retry command to command register */
-  outb ( 0x20, 0x1f7 );
+  outb (0x20, 0x1f7);
 
-  while( !( inb ( 0x1f7 ) & 0x8 ) ); /* Wait until sector buffer requires 
-					servicing */
+  while (!(inb (0x1f7) & 0x8)); /* Wait until sector buffer requires 
+                                   servicing */
 
   /* Read a sector of 512 bytes as 256 short words */
-  insw( 0x1f0, offset, 256 );
-  
+  insw (0x1f0, offset, 256);
+
 }
 
 /* Write a sector using CHS geometry information */
-void WriteSector( void *offset, int cylinder, int head, int sector ) {
+void
+WriteSector (void *offset, int cylinder, int head, int sector)
+{
 
   /* Setup drive 0, head 0 */
-  outb ( 0xa0 + head, 0x1f6 );
+  outb (0xa0 + head, 0x1f6);
 
   /* Setup count of sectors to write -- here one sector */
-  outb ( 0x1, 0x1f2 );
+  outb (0x1, 0x1f2);
 
   /* Write to selected sector */
-  outb ( sector, 0x1f3 );
+  outb (sector, 0x1f3);
 
   /* Specify cylinder 0 -- using low port for cylinder */
-  outb ( cylinder & 0xFF, 0x1f4 );
+  outb (cylinder & 0xFF, 0x1f4);
 
   /* Specify cylinder 0 -- using high port */
-  outb ( cylinder >> 8, 0x1f5 );
+  outb (cylinder >> 8, 0x1f5);
 
   /* Issue write sectors with retry command to command register */
-  outb ( 0x30, 0x1f7 );
+  outb (0x30, 0x1f7);
 
-  while( !( inb ( 0x1f7 ) & 0x8 ) ); /* Wait until sector buffer requires 
-					servicing */
+  while (!(inb (0x1f7) & 0x8)); /* Wait until sector buffer requires 
+                                   servicing */
 
   /* Write a sector of 512 bytes as 256 short words */
-  outsw( 0x1f0, offset, 256 );
-  
+  outsw (0x1f0, offset, 256);
+
 }
 
 /* Read a sector using LBA information */
-void ReadSectorLBA( void *offset, uint32 lba ) {
-  ata_drive_read_sector(ATA_BUS_PRIMARY, ATA_DRIVE_MASTER, lba, (uint8 *)offset);
+void
+ReadSectorLBA (void *offset, uint32 lba)
+{
+  ata_drive_read_sector (ATA_BUS_PRIMARY, ATA_DRIVE_MASTER, lba,
+                         (uint8 *) offset);
 }
 
 /* Write a sector using LBA information */
-void WriteSectorLBA( void *offset, uint32 lba ) {
-  ata_drive_write_sector(ATA_BUS_PRIMARY, ATA_DRIVE_MASTER, lba, (uint8 *)offset);
+void
+WriteSectorLBA (void *offset, uint32 lba)
+{
+  ata_drive_write_sector (ATA_BUS_PRIMARY, ATA_DRIVE_MASTER, lba,
+                          (uint8 *) offset);
 }

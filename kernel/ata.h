@@ -8,7 +8,8 @@
 #define ATA_TYPE_SATA 3
 #define ATA_TYPE_SATAPI 4
 
-typedef struct {
+typedef struct
+{
   uint32 ata_type, ata_bus, ata_drive;
 } ata_info;
 
@@ -32,14 +33,17 @@ extern ata_info pata_drives[4];
 #define ATA_ADDRESS3(x)     (x+5)
 #define ATA_DRIVE_SELECT(x) (x+6)
 #define ATA_COMMAND(x)      (x+7)
-#define ATA_DCR(x)          (x+0x206) /* device control register */
+#define ATA_DCR(x)          (x+0x206)   /* device control register */
 
 #define ATA_DRIVE_MASTER    0xA0
 #define ATA_DRIVE_SLAVE     0xB0
 
-void ata_init(void);
-int  ata_drive_read_sector(uint32 bus, uint32 drive, uint32 lba, uint8 *buffer);
-int  ata_drive_write_sector(uint32 bus, uint32 drive, uint32 lba, uint8 *buffer);
-int  atapi_drive_read_sector(uint32 bus, uint32 drive, uint32 lba, uint8 *buffer);
+void ata_init (void);
+int ata_drive_read_sector (uint32 bus, uint32 drive, uint32 lba,
+                           uint8 * buffer);
+int ata_drive_write_sector (uint32 bus, uint32 drive, uint32 lba,
+                            uint8 * buffer);
+int atapi_drive_read_sector (uint32 bus, uint32 drive, uint32 lba,
+                             uint8 * buffer);
 
 #endif
