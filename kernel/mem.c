@@ -152,10 +152,14 @@ static int pow2_remove_used_table(BYTE *ptr, BYTE *index) {
 
 static BYTE pow2_compute_index(WORD size) {
   int i;
-  for(i=POW2_MIN_POW;i<POW2_MAX_POW;i++) {
-    if(size <= (1<<i)) return i;
+  if (size <= POW2_MIN_SIZE) return POW2_MIN_POW;
+  else if (size >= POW2_MAX_SIZE) return POW2_MAX_POW;
+  else {
+    size--;
+    /* bit scan reverse -- find most significant set bit */
+    asm volatile("bsr %1,%0" : "=r"(i) : "r"(size));
+    return i;
   }
-  return POW2_MAX_POW;
 }
 
 int pow2_alloc(WORD size, BYTE **ptr) {
