@@ -39,10 +39,10 @@ all: $(PROGS)
 
 quest: $(OBJS) $(ACPI_OBJS)
 	rm -f quest
-	$(LD) -Map quest.map -T quest.ld -o $@ $^ 
+	$(LD) -Map quest.map -T ldscripts/quest.ld -o $@ $^ 
 
 %: %.o
-	$(LD) -o $@ $< -T module.ld -Map $@.map
+	$(LD) -o $@ $< -T ldscripts/module.ld -Map $@.map
 
 %: %.c
 
