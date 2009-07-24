@@ -28,7 +28,8 @@ MAPFILES = $(patsubst %.o,%.map,$(OBJS))
 ACPI_SRCS = $(shell ls drivers/acpica/*.c)
 ACPI_OBJS = $(patsubst %.c,%.o,$(ACPI_SRCS))
 MNT_POINT=/mnt/quest
-PROGS = quest terminal_server shell \
+PROGS = quest \
+	sysprogs/terminal_server sysprogs/shell \
 	tests/exec tests/race tests/test1 tests/test2 \
 	tests/test3 tests/test4 tests/test5 tests/test6
 
