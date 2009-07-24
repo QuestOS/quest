@@ -75,7 +75,8 @@ tags:
 	ctags -o tags *.c acpi/*.c
 
 clean:
-	-rm -f $(OBJS) $(DFILES) $(MAPFILES) $(PROGS)
+	-rm -f $(OBJS) $(DFILES) $(MAPFILES) $(PROGS) quest.iso quest.map
+	-rm -rf iso
 
 cleanacpi:
 	-rm -f $(ACPI_OBJS)
