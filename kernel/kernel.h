@@ -55,10 +55,9 @@ typedef struct _quest_tss {
   uint16 waitqueue;	/* queue of other tasks waiting for this
 				   one -- either attempting to send IPC to it,
 				   or waiting for it to exit */
-  int busy; /* mutex for server: when busy, clients must add themselves to
-	       waitqueue above */
-  unsigned int priority;
-  int waiting;
+  bool   busy; /* mutex for server: when busy, clients must add themselves to
+                  waitqueue above */
+  uint32 priority;
 } quest_tss;
 
 extern char *kernel_version;

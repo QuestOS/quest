@@ -2,9 +2,9 @@
 #include"cpuid.h"
 #include"kernel.h"
 
-void cpuid_get_brand_string(char *str, int n) 
+void cpuid_get_brand_string(char *str, uint32 n) 
 {
-  int eax, ebx, ecx, edx;
+  uint32 eax, ebx, ecx, edx;
   char buf[I386_CPUID_BRAND_STRING_LENGTH], *ptr = buf;
 
   if (n < 1) return;

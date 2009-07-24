@@ -24,7 +24,7 @@
 #define LAPIC_ADDR_DEFAULT  0xFEE00000uL
 #define IOAPIC_ADDR_DEFAULT 0xFEC00000uL
 
-volatile int mp_enabled=0, mp_num_cpus=1, mp_apic_mode=0, mp_ISA_PC=0;
+volatile bool mp_enabled=0, mp_num_cpus=1, mp_apic_mode=0, mp_ISA_PC=0;
 
 uint32 mp_LAPIC_addr = LAPIC_ADDR_DEFAULT;
 #define MP_LAPIC_READ(x)   (*((volatile uint32 *) (mp_LAPIC_addr+(x))))
@@ -33,26 +33,26 @@ uint32 mp_LAPIC_addr = LAPIC_ADDR_DEFAULT;
 #define MAX_IOAPICS MAX_CPUS
 uint32 mp_IOAPIC_addr = IOAPIC_ADDR_DEFAULT;
 static mp_IOAPIC_info mp_IOAPICs[MAX_IOAPICS];
-static int mp_num_IOAPICs = 0;
+static uint32 mp_num_IOAPICs = 0;
 #define MP_IOAPIC_READ(x)   (*((volatile uint32 *) (mp_IOAPIC_addr+(x))))
 #define MP_IOAPIC_WRITE(x,y) (*((volatile uint32 *) (mp_IOAPIC_addr+(x))) = (y))
 
 #define MAX_INT_OVERRIDES 128
 static mp_int_override mp_overrides[MAX_INT_OVERRIDES];
-static int mp_num_overrides = 0;
+static uint32 mp_num_overrides = 0;
 
 /* Mapping from CPU # to APIC ID */
 uint8 CPU_to_APIC[MAX_CPUS];
 uint8 APIC_to_CPU[MAX_CPUS];
 
-static int mp_ACPI_enabled = 0;
+static bool mp_ACPI_enabled = 0;
 
 /* I hard-code a check for re-routing of the timer IRQ, but this
  * should probably be folded into a more general interrupt routing
  * system. */
-static int mp_timer_IOAPIC_irq = 0;
-static int mp_timer_IOAPIC_id = 0;
-int mp_ISA_bus_id = 0;
+static uint32 mp_timer_IOAPIC_irq = 0;
+static uint32 mp_timer_IOAPIC_id = 0;
+uint32 mp_ISA_bus_id = 0;
 
 static int process_acpi_tables(void);
 static int acpi_add_processor(ACPI_MADT_LOCAL_APIC *);
@@ -61,7 +61,7 @@ static int process_mp_config(struct mp_config *);
 static int add_processor(struct mp_config_processor_entry *);
 static struct mp_fp *probe_mp_fp(uint32, uint32);
 static void smp_setup_LAPIC_timer(void);
-int boot_cpu(uint8, uint8);
+uint32 boot_cpu(uint8, uint8);
 
 /* ACPICA early initialization requires some static space be set aside
  * for ACPI tables -- and there is no dynamic memory allocation
@@ -75,7 +75,7 @@ static ACPI_TABLE_DESC TableArray[ACPI_MAX_INIT_TABLES];
 /* Returns number of CPUs successfully booted. */
 int smp_init(void) {
   struct mp_fp *ptr;
-  int phys_id, log_dest;
+  uint32 phys_id, log_dest;
 
   mp_apic_mode = 1;
 
@@ -718,7 +718,7 @@ extern uint8 ap_stack_ptr[];     /* we give the AP a stack pointer through this 
 
 /* For some reason, if this function is 'static', and -O is on, then
  * qemu fails. */
-int boot_cpu(uint8 apic_id, uint8 APIC_version) {
+uint32 boot_cpu(uint8 apic_id, uint8 APIC_version) {
   int success = 1;
   volatile int to;
   uint32 bootaddr, accept_status;

@@ -117,7 +117,7 @@ int send_ipi(uint32, uint32);
 mp_IOAPIC_info *IOAPIC_lookup(uint8);
 uint32 IRQ_to_GSI(uint32 bus, uint32 irq);
 int IOAPIC_map_GSI(uint32 GSI, uint8 vec, uint64 flags);
-extern int mp_ISA_bus_id;
+extern uint32 mp_ISA_bus_id;
 
 
 static inline uint8 checksum(uint8 *ptr, int length) {

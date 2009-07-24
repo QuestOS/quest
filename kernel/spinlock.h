@@ -7,7 +7,7 @@ struct _spinlock {
 };
 typedef struct _spinlock spinlock;
 
-extern volatile int mp_enabled;
+extern volatile bool mp_enabled;
 
 static inline void spinlock_lock(spinlock *lock) {
   extern void com1_putc(char);
@@ -27,7 +27,7 @@ static inline void spinlock_lock(spinlock *lock) {
 }
 
 static inline void spinlock_unlock(spinlock *lock) {
-  int x = 0;
+  uint32 x = 0;
   uint32 *addr = &lock->lock;
   extern void com1_putc(char);
   extern void com1_puts(char *);

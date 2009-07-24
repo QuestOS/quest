@@ -837,7 +837,7 @@ extern void _interrupt3e(void) {
 /* IRQ0 system timer interrupt handler: simply updates the system clock
    tick for now */
 void _timer( void ) {
-  extern volatile int mp_enabled, mp_ISA_PC;
+  extern volatile bool mp_enabled, mp_ISA_PC;
   
 #ifdef DEBUG_PIT
   com1_printf("tick: %u\n", tick);
