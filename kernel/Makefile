@@ -2,21 +2,37 @@ GRUBLIB = /usr/lib/grub/*-pc/
 CC = gcc
 ATSCC = atscc 
 ATSOPT = atsopt
-CFLAGS = -m32 -fno-builtin -nostdinc -Iacpi/include -I. -I../libc/include -g -Wall $(EXTRA_CFLAGS)
-CPPFLAGS = -D_QUEST -Wa,--32 -MMD 
-ATSFLAGS = -I. -Iacpi/include -I../libc/include -g -D_ATS_PRELUDE_NONE -D_ATS_DYNLOADFUN_NONE -D_ATS_STALOADFUN_NONE -DATS_TYPES_H -DATS_EXCEPTION_H -DATS_MEMORY_H -D_QUEST
+CFLAGS = -m32 -fno-builtin -nostdinc -g -Wall $(EXTRA_CFLAGS)
+CPPFLAGS = -D_QUEST -Wa,--32 -MMD -Iinclude -Iinclude/drivers/acpi -I. -I../libc/include 
+ATSFLAGS = -I. -Iinclude -Iinclude/drivers/acpi -I../libc/include -g -D_ATS_PRELUDE_NONE -D_ATS_DYNLOADFUN_NONE -D_ATS_STALOADFUN_NONE -DATS_TYPES_H -DATS_EXCEPTION_H -DATS_MEMORY_H -D_QUEST
 INDENT = indent
 INDENTFLAGS = -gnu -br -ce --no-tabs
-OBJS = boot.o init.o boot-smp.o smp.o interrupt.o interrupt_handler.o \
-	kernel.o diskio.o cpuid.o \
-	fsys.o fsys_ext2fs.o fsys_iso9660.o sched.o sound.o \
-	quest-acpica.o printf.o mem.o ata.o 
-ACPI_SRCS = $(shell ls acpi/*.c)
+
+OBJS =  boot/boot.o boot/init.o kernel.o \
+	interrupt.o interrupt_handler.o \
+	smp/boot-smp.o smp/smp.o \
+	sched/sched.o \
+	mem/mem.o \
+	util/cpuid.o util/printf.o \
+	drivers/ata/ata.o drivers/ata/diskio.o \
+	fs/fsys.o \
+	fs/ext2/fsys_ext2fs.o \
+	fs/iso9660/fsys_iso9660.o \
+	drivers/sb16/sound.o \
+	drivers/acpi/quest-acpica.o  
+
+CFILES = $(patsubst %.o,%.c,$(OBJS))
+DFILES = $(patsubst %.o,%.d,$(OBJS))
+MAPFILES = $(patsubst %.o,%.map,$(OBJS))
+
+ACPI_SRCS = $(shell ls drivers/acpica/*.c)
 ACPI_OBJS = $(patsubst %.c,%.o,$(ACPI_SRCS))
 MNT_POINT=/mnt/quest
-PROGS = quest terminal_server shell exec race test1 test2 test3 test4 test5 test6
+PROGS = quest terminal_server shell \
+	tests/exec tests/race tests/test1 tests/test2 \
+	tests/test3 tests/test4 tests/test5 tests/test6
 
-.PHONY: all tags clean cleanacpi vmware cleanall
+.PHONY: all tags clean cleanacpi vmware cleanall indent
 
 all: $(PROGS)
 
@@ -51,14 +67,14 @@ quest.iso: quest $(PROGS)
 		-boot-info-table -o $@ iso
 
 indent:
-	$(INDENT) $(INDENTFLAGS) *.c *.h
+	(for f in $(CFILES); do [ -f "$$f" ] && $(INDENT) $(INDENTFLAGS) "$$f"; done)
 
 tags:
 	etags -o TAGS *.c acpi/*.c 
 	ctags -o tags *.c acpi/*.c
 
 clean:
-	-rm -f *.o *.d $(PROGS) *~
+	-rm -f $(OBJS) $(DFILES) $(MAPFILES) $(PROGS)
 
 cleanacpi:
 	-rm -f $(ACPI_OBJS)

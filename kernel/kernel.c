@@ -1,7 +1,7 @@
-#include "i386.h"
+#include "arch/i386.h"
 #include "kernel.h"
-#include "spinlock.h"
-#include "printf.h"
+#include "smp/spinlock.h"
+#include "util/printf.h"
 
 extern uint32 _kernelstart;
 

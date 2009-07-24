@@ -9,10 +9,10 @@ PHDRS {
 SECTIONS {
   /* Bootstrap physical section, at virtual and physical address 0x100000 */
   . = 0x100000 + SIZEOF_HEADERS;
-  .physicaltext : { boot.o init.o (.text) } : physical
-  .physicalrodata : { boot.o init.o (.rodata) } : physical
-  .physicaldata : { boot.o init.o (.data) } : physical
-  .physicalbss : { boot.o init.o (.bss COMMON) } : physical
+  .physicaltext : { boot/boot.o boot/init.o (.text) } : physical
+  .physicalrodata : { boot/boot.o boot/init.o (.rodata) } : physical
+  .physicaldata : { boot/boot.o boot/init.o (.data) } : physical
+  .physicalbss : { boot/boot.o boot/init.o (.bss COMMON) } : physical
   _physicalkernelstart = ALIGN(0x1000);
   _bootstrap_pages = (_physicalkernelstart - 0x100000) / 0x1000;
 

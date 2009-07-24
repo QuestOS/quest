@@ -4,13 +4,13 @@
  *
  */
 
-#include "i386.h"
+#include "arch/i386.h"
 #include "kernel.h"
-#include "elf.h"
-#include "filesys.h"
-#include "smp.h"
-#include "apic.h"
-#include "printf.h"
+#include "util/elf.h"
+#include "fs/filesys.h"
+#include "smp/smp.h"
+#include "smp/apic.h"
+#include "util/printf.h"
 
 //#define DEBUG_PIT
 
