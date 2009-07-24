@@ -1,11 +1,14 @@
 GRUBLIB = /usr/lib/grub/*-pc/
 CC = gcc
+ATSCC = atscc 
+ATSOPT = atsopt
 CFLAGS = -m32 -fno-builtin -nostdinc -Iacpi/include -I. -I../libc/include -g -Wall $(EXTRA_CFLAGS)
 CPPFLAGS = -D_QUEST -Wa,--32 -MMD 
+ATSFLAGS = -I. -Iacpi/include -I../libc/include -g -D_ATS_PRELUDE_NONE -D_ATS_DYNLOADFUN_NONE -D_ATS_STALOADFUN_NONE -DATS_TYPES_H -DATS_EXCEPTION_H -DATS_MEMORY_H -D_QUEST
 OBJS = boot.o init.o boot-smp.o smp.o interrupt.o interrupt_handler.o \
 	kernel.o diskio.o cpuid.o \
 	fsys.o fsys_ext2fs.o fsys_iso9660.o sched.o sound.o \
-	quest-acpica.o printf.o mem.o ata.o
+	quest-acpica.o printf.o mem.o ata.o 
 ACPI_SRCS = $(shell ls acpi/*.c)
 ACPI_OBJS = $(patsubst %.c,%.o,$(ACPI_SRCS))
 MNT_POINT=/mnt/quest
@@ -23,6 +26,9 @@ quest: $(OBJS) $(ACPI_OBJS)
 	$(LD) -o $@ $< -T module.ld -Map $@.map
 
 %: %.c
+
+%.o: %.dats
+	$(ATSCC) $(ATSFLAGS) -fno-builtin -m32 -o $@ -c $^
 
 install: $(PROGS)
 	cp $(PROGS) $(MNT_POINT)/boot
