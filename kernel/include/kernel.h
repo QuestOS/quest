@@ -168,7 +168,7 @@ extern tss idleTSS[MAX_CPUS];
 
 extern uint16 idleTSS_selector[MAX_CPUS];
 
-typedef unsigned int pid_t;
+typedef uint16 task_id;
 
 extern spinlock screen_lock;
 
