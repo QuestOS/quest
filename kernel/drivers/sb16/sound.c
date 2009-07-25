@@ -415,7 +415,7 @@ initialise_sound (void)
   sb_read_raw ("/boot/welcome.raw");
 
   /* For now, just 4KB for buffer */
-  dma_buffer_virt_base = (unsigned) MapVirtualPage (dma_buffer_phys_base | 3);
+  dma_buffer_virt_base = (unsigned) map_virtual_page (dma_buffer_phys_base | 3);
   sb_dsp_detect_base_address (&dsp_base_address);
   sb_dsp_detect_irq_number (dsp_base_address, &dsp_irq_number);
   sb_dsp_detect_dma (dsp_base_address,
