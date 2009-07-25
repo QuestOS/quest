@@ -78,7 +78,7 @@ DuplicateTSS (unsigned ebp,
   unsigned pa;
 
 
-  pa = AllocatePhysicalPage (); /* --??-- For now, whole page per tss */
+  pa = alloc_phys_frame (); /* --??-- For now, whole page per tss */
   /* --??-- Error checking in the future */
 
   /* Establish space for a new TSS: +3 declares present and r/w */
@@ -87,7 +87,7 @@ DuplicateTSS (unsigned ebp,
    * return value for child
    */
 
-  pTSS = MapVirtualPage (pa + 3);
+  pTSS = map_virtual_page (pa + 3);
 
   /* Clear virtual page before use.
      NOTE: This implicitly clears EAX used as the return value 
@@ -341,7 +341,7 @@ HandleSyscall0 (int eax, int ebx)
     /* Somebody else is waiting for the server -- wake them up (and leave
        the busy flag set).  This will eventually cause the schedule() call
        in the waiting task to return (see above). */
-    runqueue_append (LookupTSS (head)->priority, head);
+    runqueue_append (lookup_TSS (head)->priority, head);
   else
     /* We were the last task using the server; mark it as available.
        Clearing this flag must be atomic with the queue_remove_head()
@@ -374,7 +374,7 @@ _fork (unsigned ebp, unsigned *esp)
   lock_kernel ();
 
   /* is this a leak? */
-  child_directory = MapVirtualPage ((tmp_dir = AllocatePhysicalPage ()) | 3);
+  child_directory = map_virtual_page ((tmp_dir = alloc_phys_frame ()) | 3);
 
   /* 
    * This ugly bit of assembly is designed to obtain the value of EIP
@@ -411,23 +411,23 @@ _fork (unsigned ebp, unsigned *esp)
    */
   phys_addr = get_pdbr ();      /* Parent page dir base address */
 
-  virt_addr = MapVirtualPage ((unsigned) phys_addr | 3);        /* Temporary virtual address */
+  virt_addr = map_virtual_page ((unsigned) phys_addr | 3);        /* Temporary virtual address */
 
   for (i = 0; i < 0x3FF; i++) { /* Walk user-level regions of pgd */
 
     if (virt_addr[i] &&         /* Valid page table found, and */
         !(virt_addr[i] & 0x80)) {       /* not 4MB page */
       child_page_table =
-        MapVirtualPage ((tmp_page_table = AllocatePhysicalPage ()) | 3);
-      parent_page_table = MapVirtualPage ((virt_addr[i] & 0xFFFFF000) | 3);
+        map_virtual_page ((tmp_page_table = alloc_phys_frame ()) | 3);
+      parent_page_table = map_virtual_page ((virt_addr[i] & 0xFFFFF000) | 3);
 
       /* Copy parent's page table mappings to child */
       for (j = 0; j < 1024; j++) {
         if (parent_page_table[j]) {     /* --??-- Assume non-zero means present */
           child_page =
-            MapVirtualPage ((tmp_page = AllocatePhysicalPage ()) | 3);
+            map_virtual_page ((tmp_page = alloc_phys_frame ()) | 3);
           parent_page =
-            MapVirtualPage ((parent_page_table[j] & 0xFFFFF000) | 3);
+            map_virtual_page ((parent_page_table[j] & 0xFFFFF000) | 3);
 
           /* --??-- TODO: Copy-on-write style forking and support
              for physical page frame sharing */
@@ -435,8 +435,8 @@ _fork (unsigned ebp, unsigned *esp)
 
           child_page_table[j] = tmp_page | (parent_page_table[j] & 0xFFF);
 
-          UnmapVirtualPage (child_page);
-          UnmapVirtualPage (parent_page);
+          unmap_virtual_page (child_page);
+          unmap_virtual_page (parent_page);
         } else {
           child_page_table[j] = 0;
         }
@@ -445,8 +445,8 @@ _fork (unsigned ebp, unsigned *esp)
       /* Create page directory for child */
       child_directory[i] = tmp_page_table | (virt_addr[i] & 0xFFF);
 
-      UnmapVirtualPage (child_page_table);
-      UnmapVirtualPage (parent_page_table);
+      unmap_virtual_page (child_page_table);
+      unmap_virtual_page (parent_page_table);
 
     } else {
       child_directory[i] = 0;
@@ -457,11 +457,11 @@ _fork (unsigned ebp, unsigned *esp)
   child_directory[1023] = virt_addr[1023];
   child_directory[1019] = virt_addr[1019];
 
-  UnmapVirtualPage (virt_addr);
+  unmap_virtual_page (virt_addr);
 
   /* Inherit priority from parent */
-  priority = LookupTSS (child_gdt_index)->priority =
-    LookupTSS (str ())->priority;
+  priority = lookup_TSS (child_gdt_index)->priority =
+    lookup_TSS (str ())->priority;
 
   runqueue_append (priority, child_gdt_index);
 
@@ -496,7 +496,7 @@ int
 _exec (char *filename, char *argv[], unsigned *curr_stack)
 {
 
-  uint32 *plPageDirectory = MapVirtualPage ((unsigned) get_pdbr () | 3);
+  uint32 *plPageDirectory = map_virtual_page ((unsigned) get_pdbr () | 3);
   uint32 *plPageTable;
   uint32 pStack;
   Elf32_Ehdr *pe = (Elf32_Ehdr *) 0xFF400000;   /* 4MB below KERN_STK virt address */
@@ -505,11 +505,11 @@ _exec (char *filename, char *argv[], unsigned *curr_stack)
   int filesize;
   /* Temporary storage for frame pointers for a file image up to 4MB
      discounting bss */
-  uint32 phys_addr = AllocatePhysicalPage () | 3;
+  uint32 phys_addr = alloc_phys_frame () | 3;
   /* frame_map is a 1024 bit bitmap to mark frames not needed for 
      file of specific size when not all sections need loading into RAM */
   uint32 frame_map[32];
-  uint32 *frame_ptr = MapVirtualPage (phys_addr);
+  uint32 *frame_ptr = map_virtual_page (phys_addr);
   uint32 *tmp_page;
   int i, j, c;
   char command_args[80];
@@ -526,8 +526,8 @@ _exec (char *filename, char *argv[], unsigned *curr_stack)
   /* Read filename from disk -- essentially a basic open call */
   if ((filesize = vfs_dir (filename)) < 0) {    /* Error */
     BITMAP_SET (mm_table, phys_addr >> 12);
-    UnmapVirtualPage (plPageDirectory);
-    UnmapVirtualPage (frame_ptr);
+    unmap_virtual_page (plPageDirectory);
+    unmap_virtual_page (frame_ptr);
     unlock_kernel ();
     return -1;
   }
@@ -539,7 +539,7 @@ _exec (char *filename, char *argv[], unsigned *curr_stack)
   for (i = 0; i < 1019; i++) {  /* Skip freeing kernel pg table mapping and
                                    kernel stack space. */
     if (plPageDirectory[i]) {   /* Present in currrent address space */
-      tmp_page = MapVirtualPage (plPageDirectory[i] | 3);
+      tmp_page = map_virtual_page (plPageDirectory[i] | 3);
       for (j = 0; j < 1024; j++) {
         if (tmp_page[j]) {      /* Present in current address space */
           if ((j < 0x200) || (j > 0x20F) || i) {        /* --??-- Don't free
@@ -549,19 +549,19 @@ _exec (char *filename, char *argv[], unsigned *curr_stack)
           }
         }
       }
-      UnmapVirtualPage (tmp_page);
+      unmap_virtual_page (tmp_page);
       BITMAP_SET (mm_table, plPageDirectory[i] >> 12);
       plPageDirectory[i] = 0;
     }
   }
 
   /* Allocate space for new page table */
-  plPageDirectory[0] = AllocatePhysicalPage () | 7;
-  plPageTable = MapVirtualPage (plPageDirectory[0]);
+  plPageDirectory[0] = alloc_phys_frame () | 7;
+  plPageTable = map_virtual_page (plPageDirectory[0]);
   memset (plPageTable, 0, 0x1000);
 
   for (i = 0; i < filesize; i += 4096) {
-    frame_ptr[i >> 12] = AllocatePhysicalPage () | 3;
+    frame_ptr[i >> 12] = alloc_phys_frame () | 3;
   }
 
 #ifdef DEBUG
@@ -599,15 +599,15 @@ _exec (char *filename, char *argv[], unsigned *curr_stack)
              zero-padded, but unfortunately the page may be
              shared with the next phdr.  We copy it to avoid any
              conflicts. */
-          unsigned frame = AllocatePhysicalPage ();
-          char *buf = MapVirtualPage (frame | 3);
+          unsigned frame = alloc_phys_frame ();
+          char *buf = map_virtual_page (frame | 3);
           int partial = (pph->p_offset + pph->p_filesz) & 0xFFF;
 
           memcpy (buf, (char *) pe + (pph->p_offset & ~0xFFF) +
                   (j << 12), partial);
           memset (buf + partial, 0, 0x1000 - partial);
 
-          UnmapVirtualPage (buf);
+          unmap_virtual_page (buf);
 
           plPageTable[((uint32) pph->p_vaddr >> 12) + j] = frame | 7;
         } else {
@@ -624,11 +624,11 @@ _exec (char *filename, char *argv[], unsigned *curr_stack)
        * memset call to clear physical frame(s)
        */
       for (; j < c; j++) {
-        uint32 page_frame = (uint32) AllocatePhysicalPage ();
-        void *virt_page = MapVirtualPage (page_frame | 3);
+        uint32 page_frame = (uint32) alloc_phys_frame ();
+        void *virt_page = map_virtual_page (page_frame | 3);
         plPageTable[((uint32) pph->p_vaddr >> 12) + j] = page_frame | 7;
         memset (virt_page, 0, 0x1000);
-        UnmapVirtualPage (virt_page);
+        unmap_virtual_page (virt_page);
       }
     }
 
@@ -647,16 +647,16 @@ _exec (char *filename, char *argv[], unsigned *curr_stack)
 
   /* map stack and clear its contents -- Here, setup 16 pages for stack */
   for (i = 0; i < 16; i++) {
-    pStack = AllocatePhysicalPage ();
+    pStack = alloc_phys_frame ();
     plPageTable[1023 - i] = pStack | 7;
     invalidate_page ((void *) ((1023 - i) << 12));
   }
   memset ((void *) 0x3F0000, 0, 0x10000);       /* Clear 16 page stack */
 
   plPageDirectory[1021] = 0;
-  UnmapVirtualPage (plPageDirectory);
-  UnmapVirtualPage (plPageTable);
-  UnmapVirtualPage (frame_ptr);
+  unmap_virtual_page (plPageDirectory);
+  unmap_virtual_page (plPageTable);
+  unmap_virtual_page (frame_ptr);
   BITMAP_SET (mm_table, phys_addr >> 12);
 
   flush_tlb_all ();
@@ -776,14 +776,14 @@ _meminfo (unsigned eax, unsigned edx)
   case 1:{
       void *virt;
       /* shared_mem_alloc() */
-      frame = AllocatePhysicalPage ();
+      frame = alloc_phys_frame ();
       if (frame < 0)
         return -1;
       /* use 'frame' as identifier of shared memory region
        * obvious security flaw -- but its just for testing, atm */
-      virt = MapVirtualPage (frame | 3);
+      virt = map_virtual_page (frame | 3);
       memset ((void *) virt, 0, 0x1000);
-      UnmapVirtualPage (virt);
+      unmap_virtual_page (virt);
       return frame;
     }
   case 2:{
@@ -797,8 +797,8 @@ _meminfo (unsigned eax, unsigned edx)
         return -1;
       /* Now find a userspace page to map to this frame */
       pgd = (unsigned) get_pdbr ();
-      pgd_virt = MapVirtualPage (pgd | 3);
-      ptab1_virt = MapVirtualPage (pgd_virt[0] | 3);
+      pgd_virt = map_virtual_page (pgd | 3);
+      ptab1_virt = map_virtual_page (pgd_virt[0] | 3);
       /* Going to assume I can just use the first page table for this */
       addr = -1;
       for (i = 1; i < 1024; i++) {
@@ -809,19 +809,19 @@ _meminfo (unsigned eax, unsigned edx)
           break;
         }
       }
-      UnmapVirtualPage (ptab1_virt);
-      UnmapVirtualPage (pgd_virt);
+      unmap_virtual_page (ptab1_virt);
+      unmap_virtual_page (pgd_virt);
       return addr;
     }
   case 3:{
       /* shared_mem_detach() */
       i = (edx >> 12) & 0x3FF;  /* index into page table */
       pgd = (unsigned) get_pdbr ();
-      pgd_virt = MapVirtualPage (pgd | 3);
-      ptab1_virt = MapVirtualPage (pgd_virt[0] | 3);
+      pgd_virt = map_virtual_page (pgd | 3);
+      ptab1_virt = map_virtual_page (pgd_virt[0] | 3);
       ptab1_virt[i] = 0;
-      UnmapVirtualPage (ptab1_virt);
-      UnmapVirtualPage (pgd_virt);
+      unmap_virtual_page (ptab1_virt);
+      unmap_virtual_page (pgd_virt);
       return 0;
     }
   case 4:{
@@ -870,7 +870,7 @@ _interrupt3e (void)
   } else {
     lock_kernel ();
     /* add the current task to the back of the run queue */
-    runqueue_append (LookupTSS (str ())->priority, str ());
+    runqueue_append (lookup_TSS (str ())->priority, str ());
     /* with kernel locked, go ahead and schedule */
     schedule ();
     unlock_kernel ();
@@ -905,7 +905,7 @@ _timer (void)
       return;
     } else {
       /* add the current task to the back of the run queue */
-      runqueue_append (LookupTSS (str ())->priority, str ());
+      runqueue_append (lookup_TSS (str ())->priority, str ());
       /* with kernel locked, go ahead and schedule */
       schedule ();
     }
@@ -921,7 +921,7 @@ _timer (void)
 
   /***********************************************************
    * lock_kernel();                                          *
-   * runqueue_append( LookupTSS( str() )->priority, str() ); *
+   * runqueue_append( lookup_TSS( str() )->priority, str() ); *
    * locked_schedule();                                      *
    ***********************************************************/
 }
@@ -955,13 +955,13 @@ __exit (int status)
      future. */
 
   phys_addr = get_pdbr ();
-  virt_addr = MapVirtualPage ((unsigned) phys_addr | 3);
+  virt_addr = map_virtual_page ((unsigned) phys_addr | 3);
 
   /* Free user-level virtual address space */
   for (i = 0; i < 1023; i++) {
     if (virt_addr[i]            /* Free page directory entry */
         &&!(virt_addr[i] & 0x80)) {     /* and not 4MB page */
-      tmp_page = MapVirtualPage (virt_addr[i] | 3);
+      tmp_page = map_virtual_page (virt_addr[i] | 3);
       for (j = 0; j < 1024; j++) {
         if (tmp_page[j]) {      /* Free frame */
           if ((j < 0x200) || (j > 0x20F) || i) {        /* --??-- Skip releasing
@@ -970,12 +970,12 @@ __exit (int status)
           }
         }
       }
-      UnmapVirtualPage (tmp_page);
+      unmap_virtual_page (tmp_page);
       BITMAP_SET (mm_table, virt_addr[i] >> 12);
     }
   }
   BITMAP_SET (mm_table, (unsigned) phys_addr >> 12);    /* Free up page for page directory */
-  UnmapVirtualPage (virt_addr);
+  unmap_virtual_page (virt_addr);
 
   /* --??-- Need to release TSS used by exiting process. Here, we need a way
      to index GDT based on current PID returned from original fork call.
@@ -988,11 +988,11 @@ __exit (int status)
 
   /* Remove space for tss -- but first we need to construct the linear
      address of where it is in memory from the TSS descriptor */
-  ptss = LookupTSS (tss);
+  ptss = lookup_TSS (tss);
 
   /* All tasks waiting for us now belong on the runqueue. */
   while ((waiter = queue_remove_head (&ptss->waitqueue)))
-    runqueue_append (LookupTSS (waiter)->priority, waiter);
+    runqueue_append (lookup_TSS (waiter)->priority, waiter);
 
   BITMAP_SET (mm_table,
               kern_page_table[((unsigned) ptss >> 12) & 0x3FF] >> 12);
@@ -1000,7 +1000,7 @@ __exit (int status)
   /* Remove tss descriptor entry in GDT */
   memset (ad + (tss >> 3), 0, sizeof (descriptor));
 
-  UnmapVirtualPage (ptss);
+  unmap_virtual_page (ptss);
 
   schedule ();
   /* never return */
@@ -1016,7 +1016,7 @@ _waitpid (int pid)
 
   lock_kernel ();
 
-  ptss = LookupTSS (pid);
+  ptss = lookup_TSS (pid);
 
   if (ptss) {
     /* Destination task exists.  Add ourselves to the queue of tasks
@@ -1043,7 +1043,7 @@ _sched_setparam (int pid, const struct sched_param *p)
 
   lock_kernel ();
 
-  ptss = LookupTSS (pid);
+  ptss = lookup_TSS (pid);
 
   if (ptss) {
     if (p->sched_priority == -1)        /* Assume window-constrained task */
@@ -1051,7 +1051,7 @@ _sched_setparam (int pid, const struct sched_param *p)
     else
       ptss->priority = p->sched_priority;
 
-    runqueue_append ((LookupTSS (str ()))->priority, str ());
+    runqueue_append ((lookup_TSS (str ()))->priority, str ());
 
     schedule ();
     unlock_kernel ();
