@@ -47,7 +47,7 @@ char *pchVideo = (char *) KERN_SCR;
 /* NB: If limit is not a multiple of the system word size then all bits in
    table beyond limit must be set to zero */
 int
-bitmap_find_first_set (unsigned int *table, unsigned int limit)
+bitmap_find_first_set (uint32 *table, uint32 limit)
 {
 
   int i;
