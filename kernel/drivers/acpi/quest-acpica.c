@@ -387,7 +387,7 @@ AcpiOsReleaseObject (ACPI_CACHE_T * Cache, void *Object)
  * Interrupt handlers
  */
 
-ACPI_OSD_HANDLER acpi_service_routine;
+ACPI_OSD_HANDLER acpi_service_routine = NULL;
 void *acpi_service_routine_context;
 
 ACPI_STATUS
