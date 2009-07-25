@@ -1,6 +1,6 @@
 #include "arch/i386.h"
 #include "kernel.h"
-#include"types.h"
+#include "types.h"
 
 /* Declare space for bitmap (physical) memory usage table.
  * PHYS_INDEX_MAX entries of 32-bit integers each for a 4K page => 4GB
