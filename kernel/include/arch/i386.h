@@ -305,4 +305,26 @@ ffs (unsigned int word)
     var |= var##_lo;                                            \
   }
 
+static inline void *
+memset (void *p, int ch, uint32 cb)
+{
+
+  asm volatile ("cld; rep stosb"
+                :"=D" (p), "=a" (ch), "=c" (cb)
+                :"0" (p), "1" (ch), "2" (cb)
+                :"memory","flags");
+  return p;
+}
+
+static inline void *
+memcpy (void *pDest, const void *pSrc, uint32 cb)
+{
+  asm volatile ("cld; rep movsb"
+                :"=c" (cb), "=D" (pDest), "=S" (pSrc)
+                :"0" (cb), "1" (pDest), "2" (pSrc)
+                :"memory","flags");
+  return pDest;
+}
+
+
 #endif
