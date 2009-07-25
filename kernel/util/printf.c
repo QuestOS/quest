@@ -220,3 +220,15 @@ printf (const char *fmt, ...)
   spinlock_unlock (&screen_lock);
   va_end (args);
 }
+
+
+void
+_printf (const char *fmt, ...)
+{
+  va_list args;
+  va_start (args, fmt);
+
+  fun_vprintf (_putc, fmt, args);
+
+  va_end (args);
+}
