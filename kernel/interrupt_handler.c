@@ -271,14 +271,9 @@ HandleInterrupt (uint32 fs_gs, uint32 ds_es, uint32 ulInt, uint32 ulCode)
 
   if (ulInt < 0x20)
     /* unhandled exception - die */
-    /* asm volatile( "xorl %eax, %eax; movl %eax, %cr0" ); */
     while (1);
 
   send_eoi ();
-    /******************************************************
-     * asm volatile( "movb $0x20, %al; out %al, $0xA0" ); *
-     * asm volatile( "movb $0x20, %al; out %al, $0x20" ); *
-     ******************************************************/
 }
 
 
@@ -563,12 +558,6 @@ _exec (char *filename, char *argv[], uint32 *curr_stack)
   for (i = 0; i < filesize; i += 4096) {
     frame_ptr[i >> 12] = AllocatePhysicalPage () | 3;
   }
-
-#ifdef DEBUG
-  /* Test that mm_table is setup correct */
-  for (i = 320; i < 640; i++)
-    putchar (BITMAP_TST (mm_table, i) ? '1' : '0');
-#endif
 
   /* Temporary dir entry for mapping file image into virtual address space */
   plPageDirectory[(uint32) pe >> 22] = phys_addr;
@@ -857,7 +846,10 @@ _interrupt29 (void)
 {
   extern ACPI_OSD_HANDLER acpi_service_routine;
   extern void *acpi_service_routine_context;
-  return acpi_service_routine (acpi_service_routine_context);
+  if (acpi_service_routine)
+    return acpi_service_routine (acpi_service_routine_context);
+  else
+    return 0;
 }
 
 extern void
@@ -917,20 +909,6 @@ _timer (void)
       schedule ();
     }
   }
-
-#if 0
-  send_ipi (0xFF, 0x3E          /* vector 0x3E */
-            | LAPIC_ICR_LEVELASSERT     /* always assert */
-            | LAPIC_ICR_DM_LOGICAL      /* logical destination */
-            | 0x0               /* fixed delivery mode */
-    );
-#endif
-
-  /***********************************************************
-   * lock_kernel();                                          *
-   * runqueue_append( LookupTSS( str() )->priority, str() ); *
-   * locked_schedule();                                      *
-   ***********************************************************/
 }
 
 void
