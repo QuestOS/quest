@@ -78,7 +78,7 @@ extern void *MapContiguousVirtualPages (uint32 phys_frame, uint32 count);
 extern void UnmapVirtualPages (void *virt_addr, uint32 count);
 extern void *get_phys_addr (void *virt_addr);
 extern quest_tss *LookupTSS (uint16 selector);
-extern int bitmap_find_first_set (unsigned int *table, unsigned int limit);
+extern int bitmap_find_first_set (uint32 *table, uint32 limit);
 
 extern void panic (char *sz) __attribute__ ((noreturn));
 
@@ -95,7 +95,7 @@ extern void com1_putc (char);
 extern void com1_puts (char *);
 extern void com1_putx (uint32);
 
-extern void runqueue_append (unsigned int prio, uint16 selector);
+extern void runqueue_append (uint32 prio, uint16 selector);
 extern void queue_append (uint16 * queue, uint16 selector);
 extern uint16 queue_remove_head (uint16 * queue);
 extern void schedule (void);
