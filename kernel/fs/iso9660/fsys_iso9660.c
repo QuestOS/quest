@@ -63,7 +63,7 @@ iso9660_walk_tree (uint32 bus, uint32 drive,
   }
 
   if (d->flag_dir) {
-    unsigned frame = AllocatePhysicalPage ();
+    uint32 frame = AllocatePhysicalPage ();
     uint8 *sector = MapVirtualPage (frame | 3);
 
     len = atapi_drive_read_sector (bus, drive, d->first_sector, sector);
