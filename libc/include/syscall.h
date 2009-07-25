@@ -11,20 +11,26 @@ struct sched_param
   int k;                        /* window of requests  */
 };
 
+#define CLOBBERS1 "%ebx","%ecx","%edx","%esi","%edi"
+#define CLOBBERS2 "%ecx","%edx","%esi","%edi"
+#define CLOBBERS3 "%ebx","%edx","%esi","%edi"
+#define CLOBBERS4 "%ebx","%ecx","%esi","%edi"
+#define CLOBBERS5 "%edx","%esi","%edi"
+
 
 /* Syscall 0 used as a test syscall 
  *
  * Simply passes character arguments to the kernel for use in 
  * writing to video RAM
  */
+
 static inline void
 putchar (int c)
 {
 
-  asm volatile ("movl $0, %%eax\n" "int $0x30\n"::"b" (c));
+  asm volatile ("int $0x30\n"::"a" (0x0), "b" (c):CLOBBERS2);
 
 }
-
 
 static inline int
 fork (void)
@@ -32,7 +38,7 @@ fork (void)
 
   int retval;
 
-  asm volatile ("int $0x31\n":"=a" (retval));
+  asm volatile ("int $0x31\n":"=a" (retval)::CLOBBERS1);
 
   return retval;
 }
@@ -42,7 +48,7 @@ static inline void
 switch_to (unsigned pid)
 {
 
-  asm volatile ("int $0x32\n"::"a" (pid));
+  asm volatile ("int $0x32\n"::"a" (pid):CLOBBERS1);
 
 }
 
@@ -51,7 +57,7 @@ static inline void
 exec (char *file, char *argv[])
 {
 
-  asm volatile ("int $0x33\n"::"a" (file), "b" (argv));
+  asm volatile ("int $0x33\n"::"a" (file), "b" (argv):CLOBBERS2);
 }
 
 
@@ -72,7 +78,7 @@ open (const char *pathname, int flags)
 
   int c;
 
-  asm volatile ("int $0x35\n":"=a" (c):"a" (pathname), "b" (flags));
+  asm volatile ("int $0x35\n":"=a" (c):"a" (pathname), "b" (flags):CLOBBERS2);
 
   return c;
 }
@@ -84,7 +90,7 @@ read (char *pathname, void *buf, int count)
   int c;
 
   asm volatile ("int $0x36\n":"=a" (c):"a" (pathname), "b" (buf),
-                "c" (count));
+                "c" (count):CLOBBERS5);
 
   return c;
 }
@@ -96,7 +102,7 @@ uname (char *name)
 
   int c;
 
-  asm volatile ("int $0x37\n":"=a" (c):"a" (name));
+  asm volatile ("int $0x37\n":"=a" (c):"a" (name):CLOBBERS1);
 
   return c;
 }
@@ -108,7 +114,7 @@ meminfo (void)
 
   unsigned c;
 
-  asm volatile ("int $0x38\n":"=a" (c):"a" (0));
+  asm volatile ("int $0x38\n":"=a" (c):"a" (0):CLOBBERS1);
 
   return c;
 }
@@ -118,7 +124,7 @@ shared_mem_alloc (void)
 {
   unsigned c;
 
-  asm volatile ("int $0x38\n":"=a" (c):"a" (1));
+  asm volatile ("int $0x38\n":"=a" (c):"a" (1):CLOBBERS1);
 
   return c;
 }
@@ -128,7 +134,7 @@ shared_mem_attach (unsigned id)
 {
   unsigned c;
 
-  asm volatile ("int $0x38\n":"=a" (c):"a" (2), "d" (id));
+  asm volatile ("int $0x38\n":"=a" (c):"a" (2), "d" (id):CLOBBERS4);
 
   return (void *) c;
 }
@@ -138,7 +144,7 @@ shared_mem_detach (void *addr)
 {
   unsigned c;
 
-  asm volatile ("int $0x38\n":"=a" (c):"a" (3), "d" ((unsigned) addr));
+  asm volatile ("int $0x38\n":"=a" (c):"a" (3), "d" ((unsigned) addr):CLOBBERS4);
 
   return c;
 }
@@ -148,7 +154,7 @@ shared_mem_free (unsigned id)
 {
   unsigned c;
 
-  asm volatile ("int $0x38\n":"=a" (c):"a" (4), "d" (id));
+  asm volatile ("int $0x38\n":"=a" (c):"a" (4), "d" (id):CLOBBERS4);
 
   return c;
 }
@@ -172,7 +178,7 @@ static inline void
 _exit (int status)
 {
 
-  asm volatile ("int $0x3a\n"::"a" (status));
+  asm volatile ("int $0x3a\n"::"a" (status):CLOBBERS1);
 
   while (1);                    /* Shouldn't get here but stops gcc warning */
 }
@@ -183,7 +189,7 @@ waitpid (int pid)
 
   int ret;
 
-  asm volatile ("int $0x3B\n":"=a" (ret):"a" (pid));
+  asm volatile ("int $0x3B\n":"=a" (ret):"a" (pid):CLOBBERS1);
 
   return ret;
 }
@@ -195,7 +201,7 @@ sched_setparam (int pid, const struct sched_param *p)
 
   int ret;
 
-  asm volatile ("int $0x3C\n":"=a" (ret):"a" (pid), "b" (p));
+  asm volatile ("int $0x3C\n":"=a" (ret):"a" (pid), "b" (p):CLOBBERS2);
 
   return ret;
 }
