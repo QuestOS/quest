@@ -64,18 +64,18 @@ dispatch_vector (uint32 vec)
 
 /* Duplicate parent TSS -- used with fork */
 static uint16
-DuplicateTSS (unsigned ebp,
-              unsigned *esp,
-              unsigned child_eip,
-              unsigned child_ebp,
-              unsigned child_esp,
-              unsigned child_eflags, unsigned child_directory)
+DuplicateTSS (uint32 ebp,
+              uint32 *esp,
+              uint32 child_eip,
+              uint32 child_ebp,
+              uint32 child_esp,
+              uint32 child_eflags, uint32 child_directory)
 {
 
   int i;
   descriptor *ad = (descriptor *) KERN_GDT;
   tss *pTSS;
-  unsigned pa;
+  uint32 pa;
 
 
   pa = AllocatePhysicalPage (); /* --??-- For now, whole page per tss */
@@ -130,7 +130,7 @@ DuplicateTSS (unsigned ebp,
   pTSS->usGS = 0x10;
   pTSS->usIOMap = 0xFFFF;
   pTSS->usSS0 = 0x10;           /* Kernel stack segment */
-  pTSS->ulESP0 = (unsigned) KERN_STK + 0x1000;
+  pTSS->ulESP0 = (uint32) KERN_STK + 0x1000;
 
 
   /* Return the index into the GDT for the segment */
@@ -358,18 +358,18 @@ HandleSyscall0 (int eax, int ebx)
  * inherited by child
  */
 task_id
-_fork (unsigned ebp, unsigned *esp)
+_fork (uint32 ebp, uint32 *esp)
 {
 
   uint16 child_gdt_index;
   void *phys_addr;
-  unsigned *virt_addr;
+  uint32 *virt_addr;
   int i, j;
-  unsigned *child_directory, *child_page_table, *parent_page_table;
+  uint32 *child_directory, *child_page_table, *parent_page_table;
   void *child_page, *parent_page;
-  unsigned tmp_dir, tmp_page, tmp_page_table;
-  unsigned priority;
-  unsigned eflags, eip, this_esp, this_ebp;
+  uint32 tmp_dir, tmp_page, tmp_page_table;
+  uint32 priority;
+  uint32 eflags, eip, this_esp, this_ebp;
 
   lock_kernel ();
 
@@ -411,7 +411,7 @@ _fork (unsigned ebp, unsigned *esp)
    */
   phys_addr = get_pdbr ();      /* Parent page dir base address */
 
-  virt_addr = MapVirtualPage ((unsigned) phys_addr | 3);        /* Temporary virtual address */
+  virt_addr = MapVirtualPage ((uint32) phys_addr | 3);        /* Temporary virtual address */
 
   for (i = 0; i < 0x3FF; i++) { /* Walk user-level regions of pgd */
 
@@ -493,10 +493,10 @@ strncpy (char *s1, const char *s2, int length)
  * populated by program image on disk
  */
 int
-_exec (char *filename, char *argv[], unsigned *curr_stack)
+_exec (char *filename, char *argv[], uint32 *curr_stack)
 {
 
-  uint32 *plPageDirectory = MapVirtualPage ((unsigned) get_pdbr () | 3);
+  uint32 *plPageDirectory = MapVirtualPage ((uint32) get_pdbr () | 3);
   uint32 *plPageTable;
   uint32 pStack;
   Elf32_Ehdr *pe = (Elf32_Ehdr *) 0xFF400000;   /* 4MB below KERN_STK virt address */
@@ -571,7 +571,7 @@ _exec (char *filename, char *argv[], unsigned *curr_stack)
 #endif
 
   /* Temporary dir entry for mapping file image into virtual address space */
-  plPageDirectory[(unsigned) pe >> 22] = phys_addr;
+  plPageDirectory[(uint32) pe >> 22] = phys_addr;
 
   flush_tlb_all ();
 
@@ -599,7 +599,7 @@ _exec (char *filename, char *argv[], unsigned *curr_stack)
              zero-padded, but unfortunately the page may be
              shared with the next phdr.  We copy it to avoid any
              conflicts. */
-          unsigned frame = AllocatePhysicalPage ();
+          uint32 frame = AllocatePhysicalPage ();
           char *buf = MapVirtualPage (frame | 3);
           int partial = (pph->p_offset + pph->p_filesz) & 0xFFF;
 
@@ -667,21 +667,21 @@ _exec (char *filename, char *argv[], unsigned *curr_stack)
   /* Push onto stack argument vector for when we call _start in our "libc"
      library. Here, we work with user-level virtual addresses for when we
      return to user. */
-  *(unsigned *) (0x400000 - 84) = 0;    /* argv[1] -- not used right now */
-  *(unsigned *) (0x400000 - 88) = 0x400000 - 80;        /* argv[0] */
-  *(unsigned *) (0x400000 - 92) = 0x400000 - 88;        /* argv */
-  *(unsigned *) (0x400000 - 96) = 1;    /* argc -- hard-coded right now */
+  *(uint32 *) (0x400000 - 84) = 0;    /* argv[1] -- not used right now */
+  *(uint32 *) (0x400000 - 88) = 0x400000 - 80;        /* argv[0] */
+  *(uint32 *) (0x400000 - 92) = 0x400000 - 88;        /* argv */
+  *(uint32 *) (0x400000 - 96) = 1;    /* argc -- hard-coded right now */
 
   /* Dummy return address placed here for the simulated "call" to our
      library */
-  *(unsigned *) (0x400000 - 100) = 0;   /* NULL return address -- never
+  *(uint32 *) (0x400000 - 100) = 0;   /* NULL return address -- never
                                            used */
 
   /* Patch up kernel stack with new values so that we can start new program
      on return to user-level  */
   curr_stack[0] = 0x00230023;   /* fs/gs selectors */
   curr_stack[1] = 0x00230023;   /* ds/es selectors */
-  curr_stack[2] = (unsigned int) pEntry;        /* eip */
+  curr_stack[2] = (uint32) pEntry;        /* eip */
   curr_stack[3] = 0x1B;         /* cs selector */
   /* --??-- Temporarily set IOPL 3 in exec()ed program for VGA/keyboard testing */
   curr_stack[4] = F_1 | F_IF | 0x3000;  /* EFLAGS */
@@ -762,16 +762,16 @@ _uname (char *name)
 }
 
 
-unsigned
-_meminfo (unsigned eax, unsigned edx)
+uint32
+_meminfo (uint32 eax, uint32 edx)
 {
 
   int i, j = 0;
 
-  unsigned frame;
-  unsigned pgd;
-  unsigned *pgd_virt, *ptab1_virt;
-  unsigned addr;
+  uint32 frame;
+  uint32 pgd;
+  uint32 *pgd_virt, *ptab1_virt;
+  uint32 addr;
 
   switch (eax) {
   case 0:
@@ -803,7 +803,7 @@ _meminfo (unsigned eax, unsigned edx)
         /* unallocated frame */
         return -1;
       /* Now find a userspace page to map to this frame */
-      pgd = (unsigned) get_pdbr ();
+      pgd = (uint32) get_pdbr ();
       pgd_virt = MapVirtualPage (pgd | 3);
       ptab1_virt = MapVirtualPage (pgd_virt[0] | 3);
       /* Going to assume I can just use the first page table for this */
@@ -823,7 +823,7 @@ _meminfo (unsigned eax, unsigned edx)
   case 3:{
       /* shared_mem_detach() */
       i = (edx >> 12) & 0x3FF;  /* index into page table */
-      pgd = (unsigned) get_pdbr ();
+      pgd = (uint32) get_pdbr ();
       pgd_virt = MapVirtualPage (pgd | 3);
       ptab1_virt = MapVirtualPage (pgd_virt[0] | 3);
       ptab1_virt[i] = 0;
@@ -844,7 +844,7 @@ _meminfo (unsigned eax, unsigned edx)
 }
 
 
-unsigned
+uint32
 _time (void)
 {
 
@@ -852,7 +852,7 @@ _time (void)
 }
 
 /* ACPI System Control Interrupt -- IRQ 9 usually */
-extern unsigned
+extern uint32
 _interrupt29 (void)
 {
   extern ACPI_OSD_HANDLER acpi_service_routine;
@@ -946,12 +946,12 @@ __exit (int status)
 {
 
   void *phys_addr;
-  unsigned *virt_addr;
-  unsigned *tmp_page;
+  uint32 *virt_addr;
+  uint32 *tmp_page;
   int i, j;
   task_id tss;
   descriptor *ad = (descriptor *) KERN_GDT;
-  unsigned *kern_page_table = (unsigned *) KERN_PGT;
+  uint32 *kern_page_table = (uint32 *) KERN_PGT;
   quest_tss *ptss;
   int waiter;
 
@@ -962,7 +962,7 @@ __exit (int status)
      future. */
 
   phys_addr = get_pdbr ();
-  virt_addr = MapVirtualPage ((unsigned) phys_addr | 3);
+  virt_addr = MapVirtualPage ((uint32) phys_addr | 3);
 
   /* Free user-level virtual address space */
   for (i = 0; i < 1023; i++) {
@@ -981,7 +981,7 @@ __exit (int status)
       BITMAP_SET (mm_table, virt_addr[i] >> 12);
     }
   }
-  BITMAP_SET (mm_table, (unsigned) phys_addr >> 12);    /* Free up page for page directory */
+  BITMAP_SET (mm_table, (uint32) phys_addr >> 12);    /* Free up page for page directory */
   UnmapVirtualPage (virt_addr);
 
   /* --??-- Need to release TSS used by exiting process. Here, we need a way
@@ -1002,7 +1002,7 @@ __exit (int status)
     runqueue_append (LookupTSS (waiter)->priority, waiter);
 
   BITMAP_SET (mm_table,
-              kern_page_table[((unsigned) ptss >> 12) & 0x3FF] >> 12);
+              kern_page_table[((uint32) ptss >> 12) & 0x3FF] >> 12);
 
   /* Remove tss descriptor entry in GDT */
   memset (ad + (tss >> 3), 0, sizeof (descriptor));
@@ -1073,7 +1073,7 @@ _sched_setparam (task_id pid, const struct sched_param *p)
 
 #if 0
 static void *tlb_shootdown_page = NULL;
-static unsigned tlb_shootdown_count = 0;
+static uint32 tlb_shootdown_count = 0;
 static spinlock tlb_shootdown_lock = SPINLOCK_INIT;
 
 extern void
@@ -1087,7 +1087,7 @@ invlpg_shootdown (void *va)
 
 }
 
-extern unsigned
+extern uint32
 invlpg_handler (uint8 vec)
 {
   asm volatile ("invlpg %0"::"m" (*(char *) tlb_shootdown_page));
@@ -1095,7 +1095,7 @@ invlpg_handler (uint8 vec)
   return 0;
 }
 
-extern unsigned
+extern uint32
 flush_tlb_handler (uint8 vec)
 {
   asm volatile ("movl %%cr3, %%eax\n"
