@@ -3,9 +3,6 @@
 #include "smp/spinlock.h"
 #include "util/printf.h"
 
-extern uint32 _kernelstart;
-
-
 /* Declare space for a stack */
 uint32 ul_stack[NR_MODS][1024] __attribute__ ((aligned (4096)));
 
@@ -34,13 +31,6 @@ uint16 dummyTSS_selector;
 /* Each CPU gets an IDLE task -- something to do when nothing else */
 tss idleTSS[MAX_CPUS];
 uint16 idleTSS_selector[MAX_CPUS];
-
-/* Declare space for bitmap (physical) memory usage table.
- * PHYS_INDEX_MAX entries of 32-bit integers each for a 4K page => 
- * 4GB memory limit when PHYS_INDEX_MAX=32768
- */
-uint32 mm_table[PHYS_INDEX_MAX] __attribute__ ((aligned (4096)));
-uint32 mm_limit;                /* Actual physical page limit */
 
 char *pchVideo = (char *) KERN_SCR;
 
@@ -180,230 +170,6 @@ com1_putx (uint32 l)
       com1_putc ('0' + li);
 }
 
-
-
-/* Find free page in mm_table 
- *
- * Returns physical address rather than virtual, since we
- * we don't want user-level pages mapped into kernel page tables in all cases
- */
-uint32
-AllocatePhysicalPage (void)
-{
-
-  int i;
-
-  for (i = 0; i < mm_limit; i++)
-    if (BITMAP_TST (mm_table, i)) {     /* Free page */
-      BITMAP_CLR (mm_table, i);
-      return (i << 12);         /* physical byte address of free page/frame */
-    }
-
-  return -1;                    /* Error -- no free page? */
-}
-
-uint32
-AllocatePhysicalPages (uint32 count)
-{
-
-  int i, j;
-
-  for (i = 0; i < mm_limit - count + 1; i++) {
-    for (j = 0; j < count; j++) {
-      if (!BITMAP_TST (mm_table, i + j)) {      /* Is not free page? */
-        i = i + j;
-        goto keep_searching;
-      }
-    }
-    /* found window: */
-    for (j = 0; j < count; j++) {
-      BITMAP_CLR (mm_table, i + j);
-    }
-    return (i << 12);           /* physical byte address of free frames */
-  keep_searching:
-    ;
-  }
-  return -1;                    /* Error -- no free page? */
-}
-
-void
-FreePhysicalPage (uint32 frame)
-{
-  BITMAP_SET (mm_table, frame >> 12);
-}
-
-void
-FreePhysicalPages (uint32 frame, uint32 count)
-{
-  int i;
-  frame >>= 12;
-  for (i = 0; i < count; i++)
-    BITMAP_SET (mm_table, frame + i);
-}
-
-
-/* Find free virtual page and map it to a corresponding physical frame 
- *
- * Returns virtual address
- *
- */
-void *
-MapVirtualPage (uint32 phys_frame)
-{
-
-  uint32 *page_table = (uint32 *) KERN_PGT;
-  int i;
-  void *va;
-
-  for (i = 0; i < 0x400; i++)
-    if (!page_table[i]) {       /* Free page */
-      page_table[i] = phys_frame;
-
-      va = (char *) &_kernelstart + (i << 12);
-
-      /* Invalidate page in case it was cached in the TLB */
-      invalidate_page (va);
-
-      return va;
-    }
-
-  return NULL;                  /* Invalid address */
-}
-
-/* Map contiguous physical to virtual memory */
-void *
-MapContiguousVirtualPages (uint32 phys_frame, uint32 count)
-{
-  uint32 *page_table = (uint32 *) KERN_PGT;
-  int i, j;
-  void *va;
-
-  if (count == 0)
-    return NULL;
-
-  for (i = 0; i < 0x400 - count + 1; i++) {
-    if (!page_table[i]) {       /* Free page */
-      for (j = 0; j < count; j++) {
-        if (page_table[i + j]) {
-          /* Not enough pages in this window */
-          i = i + j;
-          goto keep_searching;
-        }
-      }
-
-      for (j = 0; j < count; j++) {
-        page_table[i + j] = phys_frame + j * 0x1000;
-      }
-
-      va = (char *) &_kernelstart + (i << 12);
-
-      /* Invalidate page in case it was cached in the TLB */
-      for (j = 0; j < count; j++) {
-        invalidate_page (va + j * 0x1000);
-      }
-
-      return va;
-    }
-  keep_searching:
-    ;
-  }
-
-  return NULL;                  /* Invalid address */
-}
-
-/* Map non-contiguous physical memory to contiguous virtual memory */
-void *
-MapVirtualPages (uint32 * phys_frames, uint32 count)
-{
-  uint32 *page_table = (uint32 *) KERN_PGT;
-  int i, j;
-  void *va;
-
-  if (count == 0)
-    return NULL;
-
-  for (i = 0; i < 0x400 - count + 1; i++) {
-    if (!page_table[i]) {       /* Free page */
-      for (j = 0; j < count; j++) {
-        if (page_table[i + j]) {
-          /* Not enough pages in this window */
-          i = i + j;
-          goto keep_searching;
-        }
-      }
-
-      for (j = 0; j < count; j++) {
-        page_table[i + j] = phys_frames[j];
-      }
-
-      va = (char *) &_kernelstart + (i << 12);
-
-      /* Invalidate page in case it was cached in the TLB */
-      for (j = 0; j < count; j++) {
-        invalidate_page (va + j * 0x1000);
-      }
-
-      return va;
-    }
-  keep_searching:
-    ;
-  }
-
-  return NULL;                  /* Invalid address */
-}
-
-
-/* 
- * Release previously mapped virtual page 
- */
-void
-UnmapVirtualPage (void *virt_addr)
-{
-
-  uint32 *page_table = (uint32 *) KERN_PGT;
-
-  page_table[((uint32) virt_addr >> 12) & 0x3FF] = 0;
-
-  /* Invalidate page in case it was cached in the TLB */
-  invalidate_page (virt_addr);
-}
-
-void
-UnmapVirtualPages (void *virt_addr, uint32 count)
-{
-  int j;
-  for (j = 0; j < count; j++)
-    UnmapVirtualPage (virt_addr + j * 0x1000);
-}
-
-void *
-get_phys_addr (void *virt_addr)
-{
-
-  void *pa;
-  uint32 phys_frame;
-  uint32 va = (uint32) virt_addr;
-
-  uint32 *kernel_pdbr = (uint32 *) get_pdbr (); /* --WARN-- Assumes
-                                                 * virtual and phys addrs
-                                                 * are the same. Okay to
-                                                 * use at boot time up
-                                                 * until we activate the
-                                                 * first dynamically
-                                                 * created address space
-                                                 */
-  uint32 *kernel_ptbr;
-
-  kernel_ptbr = (uint32 *) (kernel_pdbr[va >> 22] & 0xFFFFF000);
-
-  phys_frame = kernel_ptbr[(va >> 12) & 0x3FF] & 0xFFFFF000;
-
-  pa = (void *) (phys_frame + (va & 0x00000FFF));
-
-  return pa;
-}
-
-
 __attribute__ ((noreturn))
      void panic (char *sz)
 {
@@ -418,7 +184,7 @@ __attribute__ ((noreturn))
 
 
 extern quest_tss *
-LookupTSS (uint16 selector)
+lookup_TSS (uint16 selector)
 {
 
   descriptor *ad = (descriptor *) KERN_GDT;
