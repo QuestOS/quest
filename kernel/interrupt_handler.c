@@ -357,7 +357,7 @@ HandleSyscall0 (int eax, int ebx)
  * esp argument used to find info about parent's eip and other registers
  * inherited by child
  */
-pid_t
+task_id
 _fork (unsigned ebp, unsigned *esp)
 {
 
@@ -718,10 +718,17 @@ _getchar (void)
 
 
 void
-_switch_to (unsigned pid)
+_switch_to (uint32 pid)
 {
 
-  jmp_gate (pid);
+  /* This would cause a #PF in SMP situation, usually: */
+  /*******************
+   * jmp_gate (pid); *
+   *******************/
+  
+  /* Stick to this */
+  uint32 _waitpid(task_id);
+  _waitpid(pid);
 }
 
 
@@ -942,7 +949,7 @@ __exit (int status)
   unsigned *virt_addr;
   unsigned *tmp_page;
   int i, j;
-  uint16 tss;
+  task_id tss;
   descriptor *ad = (descriptor *) KERN_GDT;
   unsigned *kern_page_table = (unsigned *) KERN_PGT;
   quest_tss *ptss;
@@ -1008,8 +1015,8 @@ __exit (int status)
 }
 
 
-extern int
-_waitpid (int pid)
+extern uint32
+_waitpid (task_id pid)
 {
 
   quest_tss *ptss;
@@ -1036,7 +1043,7 @@ _waitpid (int pid)
 
 
 extern int
-_sched_setparam (int pid, const struct sched_param *p)
+_sched_setparam (task_id pid, const struct sched_param *p)
 {
 
   quest_tss *ptss;
