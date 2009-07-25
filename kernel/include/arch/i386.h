@@ -229,15 +229,20 @@ static inline void
 insw (uint16 usPort, void *buf, int count)
 {
 
-  asm volatile ("rep insw"::"d" (usPort), "D" (buf), "c" (count));
+  asm volatile ("cld; rep insw"
+                :"=c" (count), "=D" (buf)
+                :"0" (count), "1" (buf), "d" (usPort)
+                :"memory","flags");
 }
 
 
 static inline void
 outsw (uint16 usPort, void *buf, int count)
 {
-
-  asm volatile ("rep outsw"::"d" (usPort), "S" (buf), "c" (count));
+  asm volatile ("cld; rep outsw"
+                :"=S" (buf), "=c" (count)
+                :"0" (buf), "1" (count), "d" (usPort)
+                :"flags");
 }
 
 
