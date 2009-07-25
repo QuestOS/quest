@@ -759,8 +759,8 @@ boot_cpu (uint8 apic_id, uint8 APIC_version)
   uint32 bootaddr, accept_status;
 
   /* Get a page for the AP's C stack */
-  uint32 page_frame = (uint32) AllocatePhysicalPage ();
-  uint32 *virt_addr = MapVirtualPage (page_frame | 3);
+  uint32 page_frame = (uint32) alloc_phys_frame ();
+  uint32 *virt_addr = map_virtual_page (page_frame | 3);
 
   /* Set up the boot code for the APs */
 #define TEST_BOOTED(x) (*((volatile uint32 *)(x+status_code-patch_code_start)))
