@@ -1,6 +1,7 @@
 #include "types.h"
 #include "drivers/sb16/sound.h"
 #include "kernel.h"
+#include "mem/mem.h"
 #include "fs/filesys.h"
 #include "smp/smp.h"
 

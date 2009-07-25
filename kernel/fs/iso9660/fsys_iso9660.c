@@ -1,4 +1,5 @@
 #include "kernel.h"
+#include "mem/mem.h"
 #include "fs/filesys.h"
 #include "arch/i386.h"
 #include "util/printf.h"

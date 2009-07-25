@@ -6,6 +6,7 @@
 
 #include "arch/i386.h"
 #include "kernel.h"
+#include "mem/mem.h"
 #include "util/elf.h"
 #include "fs/filesys.h"
 #include "smp/smp.h"

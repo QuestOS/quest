@@ -63,20 +63,8 @@ typedef struct _quest_tss
 } quest_tss;
 
 extern char *kernel_version;
-extern uint32 mm_table[];       /* Bitmap for free/mapped physical pages */
-extern uint32 mm_limit;         /* Actual physical page limit */
 extern uint16 runqueue[];       /* TSS of next runnable task; 0 if none */
 
-extern uint32 alloc_phys_frame (void);
-extern uint32 alloc_phys_frames (uint32);
-extern void free_phys_frame (uint32);
-extern void free_phys_frames (uint32, uint32);
-extern void *map_virtual_page (uint32 phys_frame);
-extern void unmap_virtual_page (void *virt_addr);
-extern void *map_virtual_pages (uint32 * phys_frames, uint32 count);
-extern void *map_contiguous_virtual_pages (uint32 phys_frame, uint32 count);
-extern void unmap_virtual_pages (void *virt_addr, uint32 count);
-extern void *get_phys_addr (void *virt_addr);
 extern quest_tss *lookup_TSS (uint16 selector);
 extern int bitmap_find_first_set (unsigned int *table, unsigned int limit);
 
