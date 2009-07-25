@@ -1,6 +1,7 @@
 #include "arch/i386.h"
 #include "kernel.h"
 #include "smp/smp.h"
+#include "smp/apic.h"
 #include "util/printf.h"
 
 //#define DEBUG_SCHED

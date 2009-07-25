@@ -129,6 +129,15 @@ extern uint8 idt_ptr[];
 
 extern uint8 sched_enabled;
 
+static inline uint8
+checksum (uint8 * ptr, int length)
+{
+  uint8 sum = 0;
+  while (length-- > 0)
+    sum += *ptr++;
+  return sum;
+}
+
 #endif /* __ASSEMBLER__ */
 #endif
 

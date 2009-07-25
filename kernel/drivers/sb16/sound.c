@@ -4,6 +4,7 @@
 #include "mem/mem.h"
 #include "fs/filesys.h"
 #include "smp/smp.h"
+#include "smp/apic.h"
 
 PRIVATE uint16 dsp_version;     // Version of the Digital Sound Processor
 

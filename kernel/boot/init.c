@@ -471,11 +471,10 @@ init (multiboot * pmb)
    * care about the state and it will be discarded. */
   ltr (dummyTSS_selector);
 
-  /* Slight misnomer, the APs do not begin actually operating until
-   * the PIT fires the first IRQ after interrupts are re-enabled.
-   * That's why it is safe to utilize the dummy TSS without locking
-   * the kernel yet. */
-  smp_enable ();
+  /* The APs do not begin actually operating until the PIT fires the
+   * first IRQ after interrupts are re-enabled.  That's why it is safe
+   * to utilize the dummy TSS without locking the kernel yet. */
+  smp_secondary_init ();
 
   printf ("ATA_INIT\n");
   /* Initialize ATA/ATAPI subsystem */

@@ -55,7 +55,6 @@ get_vector_handler (uint8 vec)
 uint32
 dispatch_vector (uint32 vec)
 {
-  extern volatile int mp_apic_mode;
   vector_handler func = vector_handlers[(uint8) vec];
   if (!mp_apic_mode && PIC2_BASE_IRQ <= vec && vec < (PIC2_BASE_IRQ + 8))
     outb (0x20, 0xA0);          /* send to 8259A slave PIC too */
@@ -886,7 +885,8 @@ _interrupt3e (void)
 void
 _timer (void)
 {
-  extern volatile bool mp_enabled, mp_ISA_PC;
+  extern volatile bool mp_enabled;
+  extern bool mp_ISA_PC;
 
 #ifdef DEBUG_PIT
   com1_printf ("tick: %u\n", tick);

@@ -2,6 +2,7 @@
 #include "arch/i386.h"
 #include "util/printf.h"
 #include "smp/smp.h"
+#include "smp/apic.h"
 #include "kernel.h"
 
 //#define DEBUG_ATA
@@ -318,7 +319,6 @@ ata_poll_for_irq (uint32 bus)
 void
 ata_init (void)
 {
-  extern volatile int mp_ISA_PC;
   uint32 bus, drive, i;
 
   i = 0;

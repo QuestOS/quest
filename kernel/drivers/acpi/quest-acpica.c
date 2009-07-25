@@ -124,6 +124,7 @@
 #include"util/printf.h"
 #include"mem/mem.h"
 #include"smp/smp.h"
+#include"smp/apic.h"
 
 
 /*
