@@ -12,7 +12,7 @@ OBJS =  boot/boot.o boot/init.o kernel.o \
 	interrupt.o interrupt_handler.o \
 	smp/boot-smp.o smp/smp.o \
 	sched/sched.o \
-	mem/mem.o \
+	mem/physical.o mem/virtual.o mem/mem.o \
 	util/cpuid.o util/printf.o \
 	drivers/ata/ata.o drivers/ata/diskio.o \
 	fs/fsys.o \
