@@ -314,7 +314,7 @@ AcpiOsMapMemory (ACPI_PHYSICAL_ADDRESS Where, ACPI_SIZE Length)
   ACPI_SIZE num_frames = ((end_frame - start_frame) >> 12) + 1;
   void *virt = MapContiguousVirtualPages (start_frame | 3, num_frames);
   if (virt)
-    return (void *) ((unsigned) virt | (Where & 0xFFF));        /* mask back in the offset */
+    return (void *) ((uint32) virt | (Where & 0xFFF));        /* mask back in the offset */
   else
     return NULL;
 }
@@ -323,8 +323,8 @@ AcpiOsMapMemory (ACPI_PHYSICAL_ADDRESS Where, ACPI_SIZE Length)
 void
 AcpiOsUnmapMemory (void *LogicalAddress, ACPI_SIZE Size)
 {
-  unsigned start_addr = (unsigned) LogicalAddress & (~0xFFF);
-  unsigned end_addr = ((unsigned) LogicalAddress + Size) & (~0xFFF);
+  uint32 start_addr = (uint32) LogicalAddress & (~0xFFF);
+  uint32 end_addr = ((uint32) LogicalAddress + Size) & (~0xFFF);
   ACPI_SIZE num_pages = ((end_addr - start_addr) >> 12) + 1;
 
   return UnmapVirtualPages ((void *) start_addr, num_pages);
