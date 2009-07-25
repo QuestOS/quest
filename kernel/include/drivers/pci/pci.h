@@ -8,12 +8,12 @@
 
 typedef struct _pci_config_addr
 {
-  unsigned regNum:8;
-  unsigned funcNum:3;
-  unsigned devNum:5;
-  unsigned busNum:8;
-  unsigned reserved:7;
-  unsigned enable:1;
+  uint32 regNum:8;
+  uint32 funcNum:3;
+  uint32 devNum:5;
+  uint32 busNum:8;
+  uint32 reserved:7;
+  uint32 enable:1;
 } pci_config_addr;
 
 static inline void
