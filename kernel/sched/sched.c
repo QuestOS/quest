@@ -8,7 +8,7 @@
 uint16 runqueue[MAX_PRIO_QUEUES];
 uint16 waitqueue[MAX_PRIO_QUEUES];      /* For tasks having expired
                                            their current quanta */
-static unsigned int runq_bitmap[(MAX_PRIO_QUEUES + 31) / 32];
+static uint32 runq_bitmap[(MAX_PRIO_QUEUES + 31) / 32];
 
 static spinlock kernel_lock = SPINLOCK_INIT;
 
@@ -43,7 +43,7 @@ queue_append (uint16 * queue, uint16 selector)
 
 
 extern void
-runqueue_append (unsigned int prio, uint16 selector)
+runqueue_append (uint32 prio, uint16 selector)
 {
 #ifdef DEBUG_SCHED
   com1_printf ("runqueue_append(%x, %x)\n", prio, selector);
