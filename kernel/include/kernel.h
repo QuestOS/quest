@@ -69,7 +69,7 @@ extern quest_tss *lookup_TSS (uint16 selector);
 
 extern void panic (char *sz) __attribute__ ((noreturn));
 
-extern void runqueue_append (unsigned int prio, uint16 selector);
+extern void runqueue_append (uint32 prio, uint16 selector);
 extern void queue_append (uint16 * queue, uint16 selector);
 extern uint16 queue_remove_head (uint16 * queue);
 extern void schedule (void);
@@ -121,7 +121,7 @@ extern tss idleTSS[MAX_CPUS];
 
 extern uint16 idleTSS_selector[MAX_CPUS];
 
-typedef unsigned int pid_t;
+typedef uint16 task_id;
 
 extern spinlock screen_lock;
 

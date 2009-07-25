@@ -29,9 +29,9 @@ PRIVATE uint8 driver_dma_length[4] = { 0xC2, 0xC6, 0xCA, 0xCE };
 PRIVATE uint8 driver_dma_address[4] = { 0xC0, 0xC4, 0xC8, 0xCC };
 
 /* Virtual address of DMA buffer */
-static unsigned dma_buffer_virt_base;
+static uint32 dma_buffer_virt_base;
 /* Base physical address of a 64KB DMA buffer */
-unsigned dma_buffer_phys_base;
+uint32 dma_buffer_phys_base;
 
 static int filesize;
 static char filebuffer[0x10000];
@@ -417,7 +417,7 @@ initialise_sound (void)
   sb_read_raw ("/boot/welcome.raw");
 
   /* For now, just 4KB for buffer */
-  dma_buffer_virt_base = (unsigned) map_virtual_page (dma_buffer_phys_base | 3);
+  dma_buffer_virt_base = (uint32) map_virtual_page (dma_buffer_phys_base | 3);
   sb_dsp_detect_base_address (&dsp_base_address);
   sb_dsp_detect_irq_number (dsp_base_address, &dsp_irq_number);
   sb_dsp_detect_dma (dsp_base_address,

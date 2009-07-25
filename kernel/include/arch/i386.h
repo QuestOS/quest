@@ -57,40 +57,40 @@ typedef struct _tss
   uint16 usES, usReserved4, usCS, usReserved5, usSS, usReserved6,
     usDS, usReserved7, usFS, usReserved8, usGS, usReserved9;
   uint16 usLDT, usReserved10;
-  unsigned int fTrap:1;
-  unsigned int uReserved11:15;
+  uint32 fTrap:1;
+  uint32 uReserved11:15;
   uint16 usIOMap;
 } tss;
 
 /* Bit-field definitions for a segment descriptor */
 typedef struct _descriptor
 {
-  unsigned int uLimit0:16;      /* limit (bits 0-15) */
-  unsigned int pBase0:16;       /* base (bits 0-15) */
-  unsigned int pBase1:8;        /* base (bits 16-23) */
-  unsigned int uType:5;         /* type */
-  unsigned int uDPL:2;          /* privilege level */
-  unsigned int fPresent:1;      /* present */
-  unsigned int uLimit1:4;       /* limit (bits 16-19) */
-  unsigned int f:1;             /* available */
-  unsigned int f0:1;            /* reserved */
-  unsigned int fX:1;            /* varies (32-bit) */
-  unsigned int fGranularity:1;  /* granularity */
-  unsigned int pBase2:8;        /* base (bits 24-31) */
+  uint32 uLimit0:16;      /* limit (bits 0-15) */
+  uint32 pBase0:16;       /* base (bits 0-15) */
+  uint32 pBase1:8;        /* base (bits 16-23) */
+  uint32 uType:5;         /* type */
+  uint32 uDPL:2;          /* privilege level */
+  uint32 fPresent:1;      /* present */
+  uint32 uLimit1:4;       /* limit (bits 16-19) */
+  uint32 f:1;             /* available */
+  uint32 f0:1;            /* reserved */
+  uint32 fX:1;            /* varies (32-bit) */
+  uint32 fGranularity:1;  /* granularity */
+  uint32 pBase2:8;        /* base (bits 24-31) */
 } descriptor;
 
 typedef struct _idt_descriptor
 {
-  unsigned int pBase0:16;       /* Offset (bits 0-15) */
-  unsigned int pSeg:16;         /* Segment */
-  unsigned int fReserved:5;     /* reserved */
-  unsigned int fZero0:3;        /* zeroed */
-  unsigned int fType:3;         /* 0x6 = interrupt, 0x7 = trap */
-  unsigned int f32bit:1;        /* 1 = 32 bit size of gate, 0 = 16 bit */
-  unsigned int fZero1:1;        /* zeroed */
-  unsigned int uDPL:2;          /* Descriptor privilege level */
-  unsigned int fPresent:1;      /* present bit */
-  unsigned int pBase1:16;       /* Offset (bits 16-31) */
+  uint32 pBase0:16;       /* Offset (bits 0-15) */
+  uint32 pSeg:16;         /* Segment */
+  uint32 fReserved:5;     /* reserved */
+  uint32 fZero0:3;        /* zeroed */
+  uint32 fType:3;         /* 0x6 = interrupt, 0x7 = trap */
+  uint32 f32bit:1;        /* 1 = 32 bit size of gate, 0 = 16 bit */
+  uint32 fZero1:1;        /* zeroed */
+  uint32 uDPL:2;          /* Descriptor privilege level */
+  uint32 fPresent:1;      /* present bit */
+  uint32 pBase1:16;       /* Offset (bits 16-31) */
 } idt_descriptor;
 
 
@@ -186,7 +186,7 @@ static inline void
 flush_tlb_all ()
 {
 
-  unsigned int tmpreg;
+  uint32 tmpreg;
 
   asm volatile ("movl %%cr3, %0\n" "movl %0, %%cr3":"=&r" (tmpreg):);
 
@@ -289,8 +289,8 @@ ltr (uint16 us)
 }
 
 
-static inline unsigned int
-ffs (unsigned int word)
+static inline uint32
+ffs (uint32 word)
 {
   asm volatile ("bsfl %1,%0":"=r" (word):"rm" (word));
   return word;
