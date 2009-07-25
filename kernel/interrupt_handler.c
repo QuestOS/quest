@@ -221,53 +221,24 @@ HandleInterrupt (uint32 fs_gs, uint32 ds_es, uint32 ulInt, uint32 ulCode)
 #define _putchar com1_putc
 #define _putx com1_putx
 #define _print com1_puts
+#define _printf com1_printf
 
-  _putchar ('I');
-  _putx (ulInt);
-  _putchar (' ');
-  _putchar ('c');
-  _putx (ulCode);
-  _putchar (' ');
-  if (ulInt < 32)
-    _print (exception_messages[ulInt]);
-  _putchar ('\n');
-
-  _putchar ('A');
-  _putx (eax);
-  _putchar ('\n');
-  _putchar ('B');
-  _putx (ebx);
-  _putchar ('\n');
-  _putchar ('C');
-  _putx (ecx);
-  _putchar ('\n');
-  _putchar ('D');
-  _putx (edx);
-  _putchar ('\n');
-  _putchar ('S');
-  _putx (esi);
-  _putchar ('\n');
-  _putchar ('D');
-  _putx (edi);
-  _putchar ('\n');
-  _putchar ('B');
-  _putx (ebp);
-  _putchar ('\n');
-  _putchar ('S');
-  _putx (esp);
-  _putchar ('\n');
-  _putchar ('I');
-  _putx (eip);
-  _putchar ('\n');
-  _putchar ('F');
-  _putx (eflags);
-  _putchar ('\n');
-  com1_printf ("CR0 %.8X CR2 %.8X CR3 %.8X TR %.4X\n", cr0, cr2, cr3, tr);
+  _printf ("INT=%.2X CODE=%.8X %s\n", 
+           ulInt, ulCode, exception_messages[ulInt]);
+  _printf ("EAX=%.8X ESI=%.8X\n", eax, esi);
+  _printf ("EBX=%.8X EDI=%.8X\n", ebx, edi);
+  _printf ("ECX=%.8X EBP=%.8X\n", ecx, ebp);
+  _printf ("EDX=%.8X ESP=%.8X\n", edx, esp);
+  _printf ("EFL=%.8X EIP=%.8X\n", eflags, eip);
+  _printf ("CR0=%.8X CR2=%.8X\nCR3=%.8X TR=%.4X\n", cr0, cr2, cr3, tr);
   stacktrace ();
-  spinlock_unlock (&screen_lock);
+
 #undef _putx
 #undef _putchar
 #undef _print
+#undef _printf
+
+  spinlock_unlock (&screen_lock);
 
   if (ulInt < 0x20)
     /* unhandled exception - die */
