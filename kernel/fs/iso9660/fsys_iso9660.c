@@ -63,8 +63,8 @@ iso9660_walk_tree (uint32 bus, uint32 drive,
   }
 
   if (d->flag_dir) {
-    unsigned frame = AllocatePhysicalPage ();
-    uint8 *sector = MapVirtualPage (frame | 3);
+    unsigned frame = alloc_phys_frame ();
+    uint8 *sector = map_virtual_page (frame | 3);
 
     len = atapi_drive_read_sector (bus, drive, d->first_sector, sector);
     if (len < 0) {
@@ -75,8 +75,8 @@ iso9660_walk_tree (uint32 bus, uint32 drive,
          d = (iso9660_dir_record *) ((uint8 *) d + d->length)) {
       iso9660_walk_tree (bus, drive, d, depth + 1);
     }
-    UnmapVirtualPage (sector);
-    FreePhysicalPage (frame);
+    unmap_virtual_page (sector);
+    free_phys_frame (frame);
   }
 }
 
@@ -84,8 +84,8 @@ iso9660_walk_tree (uint32 bus, uint32 drive,
 int
 iso9660_mount (uint32 bus, uint32 drive, iso9660_mounted_info * mi)
 {
-  uint32 frame = AllocatePhysicalPage ();
-  uint8 *page = MapVirtualPage (frame | 3);
+  uint32 frame = alloc_phys_frame ();
+  uint8 *page = map_virtual_page (frame | 3);
   int len;
 
   /* The first 16 sectors (0-15) are empty. */
@@ -148,8 +148,8 @@ iso9660_mount (uint32 bus, uint32 drive, iso9660_mounted_info * mi)
   mi->root_dir_data_length =
     ((iso9660_dir_record *) (page + 156))->data_length;
 
-  UnmapVirtualPage (page);
-  FreePhysicalPage (frame);
+  unmap_virtual_page (page);
+  free_phys_frame (frame);
   return 0;
 }
 
@@ -211,8 +211,8 @@ iso9660_search_dir (iso9660_mounted_info * mi,
   uint8 *page;
   int len = end - start;
 
-  frame = AllocatePhysicalPage ();
-  page = MapVirtualPage (frame | 3);
+  frame = alloc_phys_frame ();
+  page = map_virtual_page (frame | 3);
 
   /* only handles 1 sector atm */
   if (atapi_drive_read_sector (mi->bus, mi->drive, d->first_sector, page) < 0)
@@ -237,12 +237,12 @@ iso9660_search_dir (iso9660_mounted_info * mi,
 
   *de = *d;
 
-  UnmapVirtualPage (page);
-  FreePhysicalPage (frame);
+  unmap_virtual_page (page);
+  free_phys_frame (frame);
   return 0;
 error:
-  UnmapVirtualPage (page);
-  FreePhysicalPage (frame);
+  unmap_virtual_page (page);
+  free_phys_frame (frame);
   return -1;
 }
 
@@ -295,8 +295,8 @@ iso9660_read (iso9660_handle * h, uint8 * buf, uint32 len)
   uint32 frame;
   uint8 *page;
 
-  frame = AllocatePhysicalPage ();
-  page = MapVirtualPage (frame | 3);
+  frame = alloc_phys_frame ();
+  page = map_virtual_page (frame | 3);
 
   while (count < len) {
     n = atapi_drive_read_sector (mi->bus, mi->drive, h->sector, page);
@@ -318,12 +318,12 @@ iso9660_read (iso9660_handle * h, uint8 * buf, uint32 len)
   }
 
 
-  UnmapVirtualPage (page);
-  FreePhysicalPage (frame);
+  unmap_virtual_page (page);
+  free_phys_frame (frame);
   return count;
 error:
-  UnmapVirtualPage (page);
-  FreePhysicalPage (frame);
+  unmap_virtual_page (page);
+  free_phys_frame (frame);
   return -1;
 }
 
