@@ -23,13 +23,13 @@ SECTIONS {
   .text : AT ( _physicalkernelstart ) { *(.text) } : virtualtext
   . = ALIGN(4);
   .rodata : AT ( ( LOADADDR(.text) + SIZEOF(.text) + 3 ) & 0xFFFFFFFC )
-    { *(.rodata) } : virtualtext
+    { *(.rodata*) } : virtualtext
   . = ALIGN(0x1000);
    _kernel_readwrite = .;
-  .data : AT ( ( LOADADDR(.rodata) + SIZEOF(.rodata) + 0xFFF ) &
-    0xFFFFF000 ) { *(.data) } : virtualdata
+  .data : AT ( ( LOADADDR(.rodata) + SIZEOF(.rodata) + 0xFFF ) & 0xFFFFF000 ) 
+             { *(.data) } : virtualdata
   .bss : AT ( LOADADDR(.data) + SIZEOF(.data) )
-    { *(.bss) *(COMMON) } : virtualdata
+            { *(.bss) *(COMMON) } : virtualdata
   _kernelend = ALIGN(0x1000);
   _readwrite_pages = ( _kernelend - _kernel_readwrite ) / 0x1000;
   _readonly_pages = ( _kernel_readwrite - _kernelstart ) / 0x1000;
