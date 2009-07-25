@@ -251,7 +251,6 @@ int
 iso9660_open (iso9660_mounted_info * mi, char *pathname, iso9660_handle * h)
 {
   int len = 0, start = 0, end;
-  char *last;
   iso9660_dir_record d, de;
   d.first_sector = mi->root_dir_sector;
   d.data_length = mi->root_dir_data_length;
@@ -264,9 +263,8 @@ iso9660_open (iso9660_mounted_info * mi, char *pathname, iso9660_handle * h)
   for (;;) {
     end = len;
     if (iso9660_parse_first_component (pathname, &start, &end) == 0) {
-      /* Reached last component */
-      if (last)
-        last = &(pathname[start]);
+      if (start == end)
+        return -1;
 
       if ((iso9660_search_dir (mi, &d, pathname, start, end, &de)) < 0) {
         return -1;
