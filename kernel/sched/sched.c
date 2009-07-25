@@ -25,7 +25,7 @@ queue_append (uint16 * queue, uint16 selector)
     if (*queue == selector)
       return;                   /* already on queue */
 
-    for (tssp = LookupTSS (*queue); tssp->next; tssp = LookupTSS (tssp->next))
+    for (tssp = lookup_TSS (*queue); tssp->next; tssp = lookup_TSS (tssp->next))
       if (tssp->next == selector)
         /* already on queue */
         return;
@@ -36,7 +36,7 @@ queue_append (uint16 * queue, uint16 selector)
   } else
     *queue = selector;
 
-  tssp = LookupTSS (selector);
+  tssp = lookup_TSS (selector);
   tssp->next = 0;
 
 }
@@ -66,7 +66,7 @@ queue_remove_head (uint16 * queue)
   if (!(head = *queue))
     return 0;
 
-  tssp = LookupTSS (head);
+  tssp = lookup_TSS (head);
 
   *queue = tssp->next;
 
@@ -77,7 +77,7 @@ extern void
 wakeup (uint16 selector)
 {
   quest_tss *tssp;
-  tssp = LookupTSS (selector);
+  tssp = lookup_TSS (selector);
   runqueue_append (tssp->priority, selector);
 }
 
@@ -87,7 +87,7 @@ wakeup_queue (uint16 * q)
   uint16 head;
 
   while ((head = queue_remove_head (q)))
-    runqueue_append (LookupTSS (head)->priority, head);
+    runqueue_append (lookup_TSS (head)->priority, head);
 }
 
 uint8 sched_enabled = 0;
@@ -113,7 +113,7 @@ schedule (void)
       quest_tss *tssp;
       int sel = runqueue[prio];
       while (sel) {
-        tssp = LookupTSS (sel);
+        tssp = lookup_TSS (sel);
         com1_printf (" %x", sel);
         sel = tssp->next;
       }
