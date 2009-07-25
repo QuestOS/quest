@@ -12,6 +12,9 @@ static unsigned int runq_bitmap[(MAX_PRIO_QUEUES + 31) / 32];
 
 static spinlock kernel_lock = SPINLOCK_INIT;
 
+static int bitmap_find_first_set (unsigned int *table, unsigned int limit);
+
+
 extern void
 queue_append (uint16 * queue, uint16 selector)
 {
@@ -164,4 +167,19 @@ void
 unlock_kernel (void)
 {
   spinlock_unlock (&kernel_lock);
+}
+
+/* NB: If limit is not a multiple of the system word size then all bits in
+   table beyond limit must be set to zero */
+static int
+bitmap_find_first_set (unsigned int *table, unsigned int limit)
+{
+
+  int i;
+
+  for (i = 0; i < (limit >> 5); i++)
+    if (table[i])
+      return ffs (table[i]) + (i << 5);
+
+  return -1;
 }

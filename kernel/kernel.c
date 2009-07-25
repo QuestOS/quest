@@ -37,24 +37,8 @@ uint16 idleTSS_selector[MAX_CPUS];
 
 char *pchVideo = (char *) KERN_SCR;
 
-/* NB: If limit is not a multiple of the system word size then all bits in
-   table beyond limit must be set to zero */
-int
-bitmap_find_first_set (unsigned int *table, unsigned int limit)
-{
-
-  int i;
-
-  for (i = 0; i < (limit >> 5); i++)
-    if (table[i])
-      return ffs (table[i]) + (i << 5);
-
-  return -1;
-}
-
 void panic (char *sz)
 {
-
   print ("kernel panic: ");
   print (sz);
 

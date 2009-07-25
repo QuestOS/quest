@@ -66,7 +66,6 @@ extern char *kernel_version;
 extern uint16 runqueue[];       /* TSS of next runnable task; 0 if none */
 
 extern quest_tss *lookup_TSS (uint16 selector);
-extern int bitmap_find_first_set (unsigned int *table, unsigned int limit);
 
 extern void panic (char *sz) __attribute__ ((noreturn));
 
