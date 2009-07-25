@@ -13,7 +13,7 @@ OBJS =  boot/boot.o boot/init.o kernel.o \
 	smp/boot-smp.o smp/smp.o \
 	sched/sched.o \
 	mem/physical.o mem/virtual.o mem/pow2.o \
-	util/cpuid.o util/printf.o \
+	util/cpuid.o util/printf.o util/screen.o util/debug.o \
 	drivers/ata/ata.o drivers/ata/diskio.o \
 	fs/fsys.o \
 	fs/ext2/fsys_ext2fs.o \

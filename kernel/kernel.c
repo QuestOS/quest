@@ -2,6 +2,9 @@
 #include "kernel.h"
 #include "smp/spinlock.h"
 #include "util/printf.h"
+#include "util/screen.h"
+#include "util/debug.h"
+
 
 /* Declare space for a stack */
 uint32 ul_stack[NR_MODS][1024] __attribute__ ((aligned (4096)));
@@ -49,129 +52,7 @@ bitmap_find_first_set (unsigned int *table, unsigned int limit)
   return -1;
 }
 
-
-spinlock screen_lock = { 0 };
-
-
-int
-_putchar (int ch)
-{
-
-  static int x, y;
-
-  if (ch == '\n') {
-    x = 0;
-    y++;
-
-    if (y > 24)
-      y = 0;
-
-    return (int) (uint8) ch;
-  }
-
-  pchVideo[y * 160 + x * 2] = ch;
-  pchVideo[y * 160 + x * 2 + 1] = 7;
-  x++;
-
-  return (int) (uint8) ch;
-}
-
-int
-putchar (int ch)
-{
-  int x;
-  spinlock_lock (&screen_lock);
-  x = _putchar (ch);
-  spinlock_unlock (&screen_lock);
-  return x;
-}
-
-int
-print (char *pch)
-{
-  spinlock_lock (&screen_lock);
-  while (*pch)
-    _putchar (*pch++);
-  spinlock_unlock (&screen_lock);
-  return 0;
-}
-
-
-void
-putx (uint32 l)
-{
-
-  int i, li;
-
-  spinlock_lock (&screen_lock);
-  for (i = 7; i >= 0; i--)
-    if ((li = (l >> (i << 2)) & 0x0F) > 9)
-      _putchar ('A' + li - 0x0A);
-    else
-      _putchar ('0' + li);
-  spinlock_unlock (&screen_lock);
-}
-
-int
-_print (char *pch)
-{
-  while (*pch)
-    _putchar (*pch++);
-  return 0;
-}
-
-
-void
-_putx (uint32 l)
-{
-
-  int i, li;
-
-  for (i = 7; i >= 0; i--)
-    if ((li = (l >> (i << 2)) & 0x0F) > 9)
-      _putchar ('A' + li - 0x0A);
-    else
-      _putchar ('0' + li);
-}
-
-void
-com1_putc (char c)
-{
-#ifdef COM1_TO_SCREEN
-  _putchar (c);
-#else
-  if (c == '\n') {
-    /* output CR before NL */
-    while (!(inb (PORT1 + 5) & 0x20));  /* check line status register, empty transmitter bit */
-    outb ('\r', PORT1);
-  }
-
-  while (!(inb (PORT1 + 5) & 0x20));    /* check line status register, empty transmitter bit */
-  outb (c, PORT1);
-#endif
-}
-
-void
-com1_puts (char *p)
-{
-  while (*p)
-    com1_putc (*p++);
-}
-
-void
-com1_putx (uint32 l)
-{
-  int i, li;
-
-  for (i = 7; i >= 0; i--)
-    if ((li = (l >> (i << 2)) & 0x0F) > 9)
-      com1_putc ('A' + li - 0x0A);
-    else
-      com1_putc ('0' + li);
-}
-
-__attribute__ ((noreturn))
-     void panic (char *sz)
+void panic (char *sz)
 {
 
   print ("kernel panic: ");
@@ -180,7 +61,6 @@ __attribute__ ((noreturn))
   cli ();
   hlt ();
 }
-
 
 
 extern quest_tss *
@@ -192,22 +72,6 @@ lookup_TSS (uint16 selector)
   return (quest_tss *) (ad[selector >> 3].pBase0 |
                         (ad[selector >> 3].pBase1 << 16) |
                         (ad[selector >> 3].pBase2 << 24));
-}
-
-void
-stacktrace (void)
-{
-  uint32 esp, ebp;
-  extern void com1_putc (char);
-  extern void com1_puts (char *);
-  extern void com1_putx (uint32);
-  asm volatile ("movl %%esp, %0":"=r" (esp));
-  asm volatile ("movl %%ebp, %0":"=r" (ebp));
-  com1_printf ("Stacktrace:\n");
-  while (ebp >= KERN_STK && ebp <= KERN_STK + 0x1000) {
-    com1_printf ("%0.8X\n", *((uint32 *) (ebp + 4)));
-    ebp = *((uint32 *) ebp);
-  }
 }
 
 void

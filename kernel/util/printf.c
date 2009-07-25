@@ -1,6 +1,9 @@
-#include"types.h"
-#include"kernel.h"
-#include"acpi.h"                /* Use ACPICA's va_* macros */
+#include "types.h"
+#include "kernel.h"
+#include "acpi.h"                /* Use ACPICA's va_* macros */
+#include "util/screen.h"
+#include "util/debug.h"
+
 
 void
 closure_vprintf (void putc_clo (void *, char), void *data, const char *fmt,

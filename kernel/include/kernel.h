@@ -70,19 +70,6 @@ extern int bitmap_find_first_set (unsigned int *table, unsigned int limit);
 
 extern void panic (char *sz) __attribute__ ((noreturn));
 
-extern char *pchVideo;
-extern int putchar (int ch);
-extern int print (char *pch);
-extern void putx (uint32 l);
-/* unlocked: */
-extern int _putchar (int ch);
-extern int _print (char *pch);
-extern void _putx (uint32 l);
-
-extern void com1_putc (char);
-extern void com1_puts (char *);
-extern void com1_putx (uint32);
-
 extern void runqueue_append (unsigned int prio, uint16 selector);
 extern void queue_append (uint16 * queue, uint16 selector);
 extern uint16 queue_remove_head (uint16 * queue);

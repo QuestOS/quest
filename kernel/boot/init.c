@@ -7,6 +7,8 @@
 #include "mem/mem.h"
 #include "drivers/ata/ata.h"
 #include "util/printf.h"
+#include "util/screen.h"
+#include "util/debug.h"
 
 extern descriptor idt[];
 

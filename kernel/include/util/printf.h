@@ -1,7 +1,10 @@
 #ifndef _PRINTF_H_
 #define _PRINTF_H_
 
-#include"acpi.h"
+#include "acpi.h"
+#include "util/screen.h"
+#include "util/debug.h"
+
 
 void closure_vprintf (void putc_clo (void *, char), void *data,
                       const char *fmt, va_list args);

@@ -13,6 +13,9 @@
 #include "drivers/acpi/acmacros.h"
 #include "drivers/acpi/acexcep.h"
 #include "util/printf.h"
+#include "util/screen.h"
+#include "util/debug.h"
+
 
 #define DEBUG_SMP 1
 

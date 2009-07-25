@@ -12,6 +12,9 @@
 #include "smp/smp.h"
 #include "smp/apic.h"
 #include "util/printf.h"
+#include "util/screen.h"
+#include "util/debug.h"
+
 
 //#define DEBUG_PIT
 
