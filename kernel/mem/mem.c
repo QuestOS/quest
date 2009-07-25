@@ -59,7 +59,7 @@ pow2_add_free_block (uint8 * ptr, uint8 index)
         hdr = hdr->next;
       } else {
         /* End of the list -- make a new header */
-        hdr->next = MapVirtualPage (AllocatePhysicalPage () | 3);
+        hdr->next = map_virtual_page (alloc_phys_frame () | 3);
         memset (hdr->next, 0, 0x1000);
         hdr = hdr->next;
       }
@@ -105,8 +105,8 @@ pow2_get_free_block (uint8 index)
         /* grab new pages */
         int i;
         for (i = 0; i < POW2_MAX_POW_FRAMES; i++)
-          pow2_tmp_phys_frames[i] = AllocatePhysicalPage () | 3;
-        return MapVirtualPages (pow2_tmp_phys_frames, POW2_MAX_POW_FRAMES);
+          pow2_tmp_phys_frames[i] = alloc_phys_frame () | 3;
+        return map_virtual_pages (pow2_tmp_phys_frames, POW2_MAX_POW_FRAMES);
       }
     } else if (hdr->count < POW2_MAX_COUNT || hdr->next == NULL) {
       /* There are free blocks ready to go */
@@ -115,8 +115,8 @@ pow2_get_free_block (uint8 index)
         /* We followed a next pointer to get here. */
         uint32 frame = (uint32) get_phys_addr ((void *) hdr);
         prev->next = NULL;
-        UnmapVirtualPage ((void *) hdr);
-        FreePhysicalPage (frame);
+        unmap_virtual_page ((void *) hdr);
+        free_phys_frame (frame);
       }
       return ptr;
     } else {
@@ -133,12 +133,12 @@ pow2_insert_used_table (uint8 * ptr, uint8 index)
 {
   if (pow2_used_count >= (pow2_used_table_pages * 0x400)) {
     uint32 count = pow2_used_table_pages + 1;
-    uint32 frames = AllocatePhysicalPages (count), old_frames;
-    void *virt = MapContiguousVirtualPages (frames | 3, count);
+    uint32 frames = alloc_phys_frames (count), old_frames;
+    void *virt = map_contiguous_virtual_pages (frames | 3, count);
     memcpy (virt, pow2_used_table, sizeof (uint32) * pow2_used_count);
     old_frames = (uint32) get_phys_addr (pow2_used_table);
-    UnmapVirtualPages ((void *) pow2_used_table, pow2_used_table_pages);
-    FreePhysicalPages (old_frames, pow2_used_table_pages);
+    unmap_virtual_pages ((void *) pow2_used_table, pow2_used_table_pages);
+    free_phys_frames (old_frames, pow2_used_table_pages);
     pow2_used_table = (uint32 *) virt;
     pow2_used_table_pages = count;
   }
@@ -204,10 +204,10 @@ pow2_init (void)
 {
   int i;
   for (i = 0; i < POW2_TABLE_LEN; i++) {
-    pow2_table[i] = MapVirtualPage (AllocatePhysicalPage () | 3);
+    pow2_table[i] = map_virtual_page (alloc_phys_frame () | 3);
     memset (pow2_table[i], 0, 0x1000);
   }
-  pow2_used_table = MapVirtualPage (AllocatePhysicalPage () | 3);
+  pow2_used_table = map_virtual_page (alloc_phys_frame () | 3);
   memset (pow2_used_table, 0, 0x1000);
   pow2_used_count = 0;
   pow2_used_table_pages = 1;
