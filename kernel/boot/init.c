@@ -83,7 +83,7 @@ AllocIdleTSS (int cpu_num)
   pTSS->ulEFlags = F_1 | F_IOPL0;
 
   pTSS->ulESP =
-    (unsigned) MapVirtualPage (AllocatePhysicalPage () | 3) + 0x1000;
+    (unsigned) map_virtual_page (alloc_phys_frame () | 3) + 0x1000;
   pTSS->ulEBP = pTSS->ulESP;
   pTSS->usCS = 0x08;
   pTSS->usES = 0x10;
@@ -208,11 +208,11 @@ LoadModule (multiboot_module * pmm, int mod_num)
        * memset call to clear physical frame(s)
        */
       for (; j <= c; j++) {
-        uint32 page_frame = (uint32) AllocatePhysicalPage ();
-        void *virt_addr = MapVirtualPage (page_frame | 3);
+        uint32 page_frame = (uint32) alloc_phys_frame ();
+        void *virt_addr = map_virtual_page (page_frame | 3);
         memset (virt_addr, 0, 0x1000);
         plPageTable[((uint32) pph->p_vaddr >> 12) + j] = page_frame + 7;
-        UnmapVirtualPage (virt_addr);
+        unmap_virtual_page (virt_addr);
       }
     }
 
@@ -232,7 +232,7 @@ LoadModule (multiboot_module * pmm, int mod_num)
   if (mod_num == 1)
     plPageTable[512] = (uint32) 0x000B8000 | 7;
 
-  stack_virt_addr = MapVirtualPage ((uint32) pStack | 3);
+  stack_virt_addr = map_virtual_page ((uint32) pStack | 3);
 
   /* This sets up the module's stack with command-line args from grub */
   memcpy ((char *) stack_virt_addr + 0x1000 - 80, pmm->string, 80);
@@ -244,7 +244,7 @@ LoadModule (multiboot_module * pmm, int mod_num)
      library */
   *(unsigned *) ((char *) stack_virt_addr + 0x1000 - 100) = 0;  /* NULL return address -- never used */
 
-  UnmapVirtualPage (stack_virt_addr);
+  unmap_virtual_page (stack_virt_addr);
 
   return AllocTSS (plPageDirectory, pEntry, mod_num);
 }
@@ -422,7 +422,7 @@ init (multiboot * pmb)
   while (1);
 #endif
 
-  /* Now safe to call AllocatePhysicalPage() as all free/allocated memory is 
+  /* Now safe to call alloc_phys_frame() as all free/allocated memory is 
    *  marked in the mm_table 
    */
 
@@ -449,7 +449,7 @@ init (multiboot * pmb)
 
   for (i = 0; i < pmb->mods_count; i++) {
     tss[i] = LoadModule (pmb->mods_addr + i, i);
-    LookupTSS (tss[i])->priority = MIN_PRIO;
+    lookup_TSS (tss[i])->priority = MIN_PRIO;
   }
 
   /* Initialise soundcard, if one exists */
