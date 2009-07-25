@@ -10,8 +10,8 @@
 
 extern descriptor idt[];
 
-extern unsigned _readwrite_pages, _readonly_pages, _bootstrap_pages;
-extern unsigned _kernelstart, _physicalkernelstart;
+extern uint32 _readwrite_pages, _readonly_pages, _bootstrap_pages;
+extern uint32 _kernelstart, _physicalkernelstart;
 
 extern void initialise_sound (void);
 
@@ -83,7 +83,7 @@ AllocIdleTSS (int cpu_num)
   pTSS->ulEFlags = F_1 | F_IOPL0;
 
   pTSS->ulESP =
-    (unsigned) MapVirtualPage (AllocatePhysicalPage () | 3) + 0x1000;
+    (uint32) MapVirtualPage (AllocatePhysicalPage () | 3) + 0x1000;
   pTSS->ulEBP = pTSS->ulESP;
   pTSS->usCS = 0x08;
   pTSS->usES = 0x10;
@@ -94,7 +94,7 @@ AllocIdleTSS (int cpu_num)
   pTSS->usIOMap = 0xFFFF;
   /***********************************************
    * pTSS->usSS0 = 0x10;                         *
-   * pTSS->ulESP0 = (unsigned)KERN_STK + 0x1000; *
+   * pTSS->ulESP0 = (uint32)KERN_STK + 0x1000; *
    ***********************************************/
 
   /* Return the index into the GDT for the segment */
@@ -151,7 +151,7 @@ AllocTSS (void *pPageDirectory, void *pEntry, int mod_num)
   pTSS->usGS = 0x23;
   pTSS->usIOMap = 0xFFFF;
   pTSS->usSS0 = 0x10;
-  pTSS->ulESP0 = (unsigned) KERN_STK + 0x1000;
+  pTSS->ulESP0 = (uint32) KERN_STK + 0x1000;
 
   /* Return the index into the GDT for the segment */
   return i << 3;
@@ -173,10 +173,10 @@ LoadModule (multiboot_module * pmm, int mod_num)
   uint32 *stack_virt_addr;
 
   /* Populate ring 3 page directory with kernel mappings */
-  memcpy (&plPageDirectory[1023], (void *) (((unsigned) get_pdbr ()) + 4092),
+  memcpy (&plPageDirectory[1023], (void *) (((uint32) get_pdbr ()) + 4092),
           4);
   /* LAPIC/IOAPIC mappings */
-  memcpy (&plPageDirectory[1019], (void *) (((unsigned) get_pdbr ()) + 4076),
+  memcpy (&plPageDirectory[1019], (void *) (((uint32) get_pdbr ()) + 4076),
           4);
 
   /* Populate ring 3 page directory with entries for its private address
@@ -236,13 +236,13 @@ LoadModule (multiboot_module * pmm, int mod_num)
 
   /* This sets up the module's stack with command-line args from grub */
   memcpy ((char *) stack_virt_addr + 0x1000 - 80, pmm->string, 80);
-  *(unsigned *) ((char *) stack_virt_addr + 0x1000 - 84) = 0;   /* argv[1] */
-  *(unsigned *) ((char *) stack_virt_addr + 0x1000 - 88) = 0x400000 - 80;       /* argv[0] */
-  *(unsigned *) ((char *) stack_virt_addr + 0x1000 - 92) = 0x400000 - 88;       /* argv */
-  *(unsigned *) ((char *) stack_virt_addr + 0x1000 - 96) = 1;   /* argc -- hard-coded right now */
+  *(uint32 *) ((char *) stack_virt_addr + 0x1000 - 84) = 0;   /* argv[1] */
+  *(uint32 *) ((char *) stack_virt_addr + 0x1000 - 88) = 0x400000 - 80;       /* argv[0] */
+  *(uint32 *) ((char *) stack_virt_addr + 0x1000 - 92) = 0x400000 - 88;       /* argv */
+  *(uint32 *) ((char *) stack_virt_addr + 0x1000 - 96) = 1;   /* argc -- hard-coded right now */
   /* Dummy return address placed here for the simulated "call" to our
      library */
-  *(unsigned *) ((char *) stack_virt_addr + 0x1000 - 100) = 0;  /* NULL return address -- never used */
+  *(uint32 *) ((char *) stack_virt_addr + 0x1000 - 100) = 0;  /* NULL return address -- never used */
 
   UnmapVirtualPage (stack_virt_addr);
 
@@ -384,8 +384,8 @@ init (multiboot * pmb)
    */
   for (i = 0;
        i <
-       (unsigned) &_bootstrap_pages + (unsigned) &_readwrite_pages +
-       (unsigned) &_readonly_pages; i++)
+       (uint32) &_bootstrap_pages + (uint32) &_readwrite_pages +
+       (uint32) &_readonly_pages; i++)
     BITMAP_CLR (mm_table, 256 + i);     /* Kernel starts at 256th physical frame
                                          * See quest.ld
                                          */
