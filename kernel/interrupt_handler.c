@@ -53,7 +53,7 @@ dispatch_vector (uint32 vec)
 {
   extern volatile int mp_apic_mode;
   vector_handler func = vector_handlers[(uint8) vec];
-  if (!mp_apic_mode && PIC2_BASE_IRQ <= vec && vec <= (PIC2_BASE_IRQ + 8))
+  if (!mp_apic_mode && PIC2_BASE_IRQ <= vec && vec < (PIC2_BASE_IRQ + 8))
     outb (0x20, 0xA0);          /* send to 8259A slave PIC too */
   send_eoi ();
   if (func)
