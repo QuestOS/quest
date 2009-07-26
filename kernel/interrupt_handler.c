@@ -67,12 +67,13 @@ dispatch_vector (uint32 vec)
 
 /* Duplicate parent TSS -- used with fork */
 static uint16
-DuplicateTSS (uint32 ebp,
-              uint32 *esp,
-              uint32 child_eip,
-              uint32 child_ebp,
-              uint32 child_esp,
-              uint32 child_eflags, uint32 child_directory)
+duplicate_TSS (uint32 ebp,
+               uint32 *esp,
+               uint32 child_eip,
+               uint32 child_ebp,
+               uint32 child_esp,
+               uint32 child_eflags, 
+               uint32 child_directory)
 {
 
   int i;
@@ -176,7 +177,7 @@ char *exception_messages[] = {
 };
 
 extern void
-HandleInterrupt (uint32 fs_gs, uint32 ds_es, uint32 ulInt, uint32 ulCode)
+handle_interrupt (uint32 fs_gs, uint32 ds_es, uint32 ulInt, uint32 ulCode)
 {
 
   uint32 eax, ebx, ecx, edx, esi, edi, eflags, eip, esp, ebp;
@@ -265,7 +266,7 @@ _interrupt3f (void)
 
 
 void
-HandleSyscall0 (int eax, int ebx)
+handle_syscall0 (int eax, int ebx)
 {
 
   quest_tss *pTSS = (quest_tss *) ul_tss[1];    /* --??-- tss index hard-coded to 1 for now */
@@ -373,7 +374,7 @@ _fork (uint32 ebp, uint32 *esp)
    * begin running at the program point after `call 1f' in the above inline asm. */
 
   child_gdt_index =
-    DuplicateTSS (ebp, esp, eip, this_ebp, this_esp, eflags, tmp_dir);
+    duplicate_TSS (ebp, esp, eip, this_ebp, this_esp, eflags, tmp_dir);
 
   /* Allocate physical memory for new address space 
    *
