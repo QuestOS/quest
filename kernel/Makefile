@@ -71,8 +71,8 @@ indent:
 	(for f in $(CFILES); do [ -f "$$f" ] && $(INDENT) $(INDENTFLAGS) "$$f"; done)
 
 tags:
-	etags -o TAGS *.c acpi/*.c 
-	ctags -o tags *.c acpi/*.c
+	find . -name '*.[ch]' | xargs etags -o TAGS 
+	find . -name '*.[ch]' | xargs ctags -o tags
 
 clean:
 	-rm -f $(OBJS) $(DFILES) $(MAPFILES) $(PROGS) quest.iso quest.map
