@@ -15,7 +15,7 @@ extern descriptor idt[];
 extern uint32 _readwrite_pages, _readonly_pages, _bootstrap_pages;
 extern uint32 _kernelstart, _physicalkernelstart;
 
-extern void initialise_sound (void);
+extern void init_sound (void);
 
 /* We use this function to create a dummy TSS so that when we issue a
    switch_to/jmp_gate e.g. at the end of init() or __exit(), we have a
@@ -254,7 +254,7 @@ load_module (multiboot_module * pmm, int mod_num)
 
 /* Programmable interrupt controller settings */
 void
-initialise_pic (void)
+init_pic (void)
 {
 
   /* Remap IRQs to int 0x20-0x2F 
@@ -279,7 +279,7 @@ initialise_pic (void)
 
 /* Programmable interval timer settings */
 void
-initialise_pit (void)
+init_pit (void)
 {
 
   outb (0x34, 0x43);            /* 8254 (control word) - counter 0, mode 2 */
@@ -431,10 +431,10 @@ init (multiboot * pmb)
   init_interrupt_handlers ();
 
   /* Initialise the programmable interrupt controller (PIC) */
-  initialise_pic ();
+  init_pic ();
 
   /* Initialise the programmable interval timer (PIT) */
-  initialise_pit ();
+  init_pit ();
 
   /* Start up other processors, which may allocate pages for stacks */
   num_cpus = smp_init ();
@@ -455,7 +455,7 @@ init (multiboot * pmb)
   }
 
   /* Initialise soundcard, if one exists */
-  //initialise_sound ();
+  //init_sound ();
 
   pow2_init ();                 /* initialize power-of-2 memory allocator */
 
