@@ -53,9 +53,10 @@ install: $(PROGS)
 	cp $(PROGS) welcome.raw $(MNT_POINT)/boot
 	sync
 
-vmware: install
+vmware: install quest.iso
 	qemu-img convert c.img -O vmdk c-img.vmdk
-	cp c-img.vmdk /mnt/hgfs/shared/quest
+	cp c-img.vmdk /mnt/hgfs/shared/quest/
+	cp quest.iso /mnt/hgfs/shared/quest/
 
 quest.iso: quest $(PROGS)
 	mkdir -p iso/boot/grub 
