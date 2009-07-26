@@ -130,15 +130,9 @@ schedule (void)
       return;
     }
 
-
-
     jmp_gate (next);
   } else {                      /* Replenish timeslices for expired
                                    tasks */
-    /***************************************
-     * com1_putx(LAPIC_get_physical_ID()); *
-     * com1_puts(" is bored\n");           *
-     ***************************************/
 
     /* 
      * If a task calls schedule() and is selected from the runqueue,
@@ -150,7 +144,6 @@ schedule (void)
 #ifdef DEBUG_SCHED
     com1_printf ("CPU %x: idling\n", phys_id);
 #endif
-
 
     /* Only switch tasks to IDLE if we are not already running IDLE. */
     if (str () != idle_sel)
