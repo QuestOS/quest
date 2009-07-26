@@ -21,7 +21,7 @@ extern void initialise_sound (void);
    switch_to/jmp_gate e.g. at the end of init() or __exit(), we have a
    valid previous TSS for the processor to store state info */
 static uint16
-CreateDummyTSS (void)
+alloc_dummy_TSS (void)
 {
 
   int i;
@@ -52,7 +52,7 @@ CreateDummyTSS (void)
 }
 
 static uint16
-AllocIdleTSS (int cpu_num)
+alloc_idle_TSS (int cpu_num)
 {
   int i;
   descriptor *ad = (idt + 256); /* Get address of GDT from IDT address */
@@ -107,7 +107,7 @@ AllocIdleTSS (int cpu_num)
 
 /* Allocate a basic TSS */
 static uint16
-AllocTSS (void *pPageDirectory, void *pEntry, int mod_num)
+alloc_TSS (void *pPageDirectory, void *pEntry, int mod_num)
 {
 
   int i;
@@ -162,7 +162,7 @@ AllocTSS (void *pPageDirectory, void *pEntry, int mod_num)
 
 /* Create an address space for boot modules */
 static uint16
-LoadModule (multiboot_module * pmm, int mod_num)
+load_module (multiboot_module * pmm, int mod_num)
 {
 
   uint32 *plPageDirectory = get_phys_addr (pg_dir[mod_num]);
@@ -248,7 +248,7 @@ LoadModule (multiboot_module * pmm, int mod_num)
 
   unmap_virtual_page (stack_virt_addr);
 
-  return AllocTSS (plPageDirectory, pEntry, mod_num);
+  return alloc_TSS (plPageDirectory, pEntry, mod_num);
 }
 
 
@@ -450,7 +450,7 @@ init (multiboot * pmb)
     panic ("No modules available");
 
   for (i = 0; i < pmb->mods_count; i++) {
-    tss[i] = LoadModule (pmb->mods_addr + i, i);
+    tss[i] = load_module (pmb->mods_addr + i, i);
     lookup_TSS (tss[i])->priority = MIN_PRIO;
   }
 
@@ -460,11 +460,11 @@ init (multiboot * pmb)
   pow2_init ();                 /* initialize power-of-2 memory allocator */
 
   /* Dummy TSS used when CPU needs somewhere to write scratch values */
-  dummyTSS_selector = CreateDummyTSS ();
+  dummyTSS_selector = alloc_dummy_TSS ();
 
   /* Create IDLE tasks */
   for (i = 0; i < num_cpus; i++)
-    idleTSS_selector[i] = AllocIdleTSS (i);
+    idleTSS_selector[i] = alloc_idle_TSS (i);
 
   /* Load the dummy TSS so that when the CPU executes jmp_gate it has
    * a place to write the state of the CPU -- even though we don't
