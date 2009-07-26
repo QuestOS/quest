@@ -389,7 +389,7 @@ sb_read_raw (char *pathname)
 
 
 void
-initialise_sound (void)
+init_sound (void)
 {
 
   int i;
