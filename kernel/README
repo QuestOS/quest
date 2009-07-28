@@ -1,31 +1,58 @@
-Compile and Install:
+COMPILE AND INSTALL:
 ~~~~~~~~~~~~~~~~~~~~
 
-# Compile libc
+# First, compile libc
 $ make -C ../libc
 
-# Make a mount point
-$ sudo mkdir /mnt/quest
+# Then choose one of the following methods:
 
-# Mount the disk image:
-$ sudo mount -t ext2 -o loop,offset=32256 c.img /mnt/quest
+Compile onto a Hard Drive image:
+--------------------------------
 
-# Clean, compile, and install into the disk image:
-$ make clean quest && sudo make install
+  # Make a mount point
+  $ sudo mkdir /mnt/quest
 
-# Run QEMU with GDB-stub support
-$ qemu -s -smp 4 -soundhw sb16 c.img
+  # Mount the disk image:
+  $ sudo mount -t ext2 -o loop,offset=32256 c.img /mnt/quest
 
-# Run BOCHS
-$ bochs -q -f bochsrc-smp
+  # Clean, compile, and install into the disk image:
+  $ make clean quest && sudo make install
 
-Inside QuestOS:
+Or, compile onto a CD-ROM image:
+--------------------------------
+
+  # Requires the program 'mkisofs'
+  $ make clean quest.iso
+
+Using the emulators:
+--------------------
+
+  # Run QEMU with GDB-stub support
+  $ qemu -s -smp 4 c.img
+
+  # Or, CD-ROM image
+  $ qemu -s -smp 4 -cdrom quest.iso
+
+  # Run BOCHS
+  $ bochs -q -f bochsrc-smp
+
+  # Or, CD-ROM image
+  $ bochs -q -f bochsrc-cdrom
+
+INSIDE QUESTOS:
 ~~~~~~~~~~~~~~~
 
-# Play Pacman!
+# Play Pacman! (probably broken)
 > /boot/mame
 
-Using GDB-stub support
+# Testing fork/exec and SMP:
+> /boot/test1
+...
+> /boot/test6
+
+# Backspace doesn't work.  Sorry.
+
+USING GDB-STUB SUPPORT
 ~~~~~~~~~~~~~~~~~~~~~~
 
 If you are using QEMU or BOCHS with GDB-stub support then you can run gdb and
