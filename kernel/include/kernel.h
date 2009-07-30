@@ -4,25 +4,13 @@
 #define HZ 100
 #define MAX_CPUS 8
 
-/* Define some constants for virtual addresses */
-#define KERN_STK 0xFF800000     /* Kernel stack */
-#define KERN_IDT 0xFFFEF000     /* Kernel IDT */
-#define KERN_GDT 0xFFFEF800     /* kernel GDT */
-#define KERN_SCR 0xFFFF0000     /* Screen (kernel virtual) memory  */
-#define KERN_PGT 0xFFFF1000     /* kernel page table */
-
-#define PHYS_INDEX_MAX 32768
+#include "kernel-defs.h"
 
 /* Bitmap utility functions for e.g., physical memory map and also
    scheduling priority queues */
 #define BITMAP_SET(table,index) ((table)[(index)>>5] |= (1 << ((index) & 31)))
 #define BITMAP_CLR(table,index) ((table)[(index)>>5] &= ~(1 << ((index) & 31)))
 #define BITMAP_TST(table,index) ((table)[(index)>>5] & (1 << ((index) & 31)))
-
-#define NULL 0
-
-#define NR_MODS 10              /* Establish support for modules loaded by
-                                   grub at boot time */
 
 /* Don't let preprocessed assemby files (*.S) include these lines */
 #ifndef __ASSEMBLER__

@@ -1,8 +1,7 @@
 #ifndef _SCHED_H_
 #define _SCHED_H_
 
-#define MAX_PRIO_QUEUES 32      /* NOTE: linux uses 140 */
-#define MIN_PRIO ( MAX_PRIO_QUEUES - 1 )
+#include "sched/sched-defs.h"
 
 extern void runqueue_append (uint32 prio, uint16 selector);
 extern void queue_append (uint16 * queue, uint16 selector);
