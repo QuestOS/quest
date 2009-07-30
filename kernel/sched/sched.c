@@ -11,8 +11,6 @@ uint16 waitqueue[MAX_PRIO_QUEUES];      /* For tasks having expired
                                            their current quanta */
 static uint32 runq_bitmap[(MAX_PRIO_QUEUES + 31) / 32];
 
-static spinlock kernel_lock = SPINLOCK_INIT;
-
 static int bitmap_find_first_set (uint32 *table, uint32 limit);
 
 
@@ -151,17 +149,6 @@ schedule (void)
   }
 }
 
-void
-lock_kernel (void)
-{
-  spinlock_lock (&kernel_lock);
-}
-
-void
-unlock_kernel (void)
-{
-  spinlock_unlock (&kernel_lock);
-}
 
 /* NB: If limit is not a multiple of the system word size then all bits in
    table beyond limit must be set to zero */

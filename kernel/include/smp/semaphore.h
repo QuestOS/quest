@@ -2,6 +2,7 @@
 #define _SEMAPHORE_H_
 #include "kernel.h"
 #include "smp/spinlock.h"
+#include "sched/sched.h"
 
 struct _semaphore
 {

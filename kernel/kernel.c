@@ -5,6 +5,7 @@
 #include "util/screen.h"
 #include "util/debug.h"
 
+static spinlock kernel_lock = SPINLOCK_INIT;
 
 /* Declare space for a stack */
 uint32 ul_stack[NR_MODS][1024] __attribute__ ((aligned (4096)));
@@ -46,6 +47,17 @@ void panic (char *sz)
   hlt ();
 }
 
+void
+lock_kernel (void)
+{
+  spinlock_lock (&kernel_lock);
+}
+
+void
+unlock_kernel (void)
+{
+  spinlock_unlock (&kernel_lock);
+}
 
 extern quest_tss *
 lookup_TSS (uint16 selector)

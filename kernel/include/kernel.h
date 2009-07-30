@@ -24,9 +24,6 @@
 #define NR_MODS 10              /* Establish support for modules loaded by
                                    grub at boot time */
 
-#define MAX_PRIO_QUEUES 32      /* NOTE: linux uses 140 */
-#define MIN_PRIO ( MAX_PRIO_QUEUES - 1 )
-
 /* Don't let preprocessed assemby files (*.S) include these lines */
 #ifndef __ASSEMBLER__
 #include "arch/i386.h"
@@ -69,12 +66,6 @@ extern quest_tss *lookup_TSS (uint16 selector);
 
 extern void panic (char *sz) __attribute__ ((noreturn));
 
-extern void runqueue_append (uint32 prio, uint16 selector);
-extern void queue_append (uint16 * queue, uint16 selector);
-extern uint16 queue_remove_head (uint16 * queue);
-extern void schedule (void);
-extern void wakeup (uint16);
-extern void wakeup_queue (uint16 *);
 extern void lock_kernel (void);
 extern void unlock_kernel (void);
 
