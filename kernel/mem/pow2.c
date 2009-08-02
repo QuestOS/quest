@@ -67,26 +67,9 @@ pow2_add_free_block (uint8 * ptr, uint8 index)
   }
 }
 
-static uint8 *pow2_get_free_block (uint8 index);
-
-/* mutual recursion -- lets try it.
- * I'm calculating 20-24 bytes per frame and a maximum of
- * 7*2 calls, so 308 bytes of stack needed at most */
-static void
-pow2_split_block (uint8 index)
-{
-  uint8 *ptr1, *ptr2;
-
-  ptr1 = pow2_get_free_block (index);
-  ptr2 = ptr1 + (1 << (index - 1));
-
-  pow2_add_free_block (ptr1, index - 1);
-  pow2_add_free_block (ptr2, index - 1);
-}
-
 /* Trying to avoid making the frame-size of pow2_get_free_block any
- * larger than it is -- because of mutual recursion -- and this is
- * used in a re-entrantly safe fashion. */
+ * larger than it is -- because of recursion -- and this is used in a
+ * re-entrantly safe fashion. */
 static uint32 pow2_tmp_phys_frames[POW2_MAX_POW_FRAMES];
 
 static uint8 *
@@ -100,7 +83,21 @@ pow2_get_free_block (uint8 index)
       /* no free blocks -- get one */
       /* hdr->count can only be 0 for first in chain */
       if (index < POW2_MAX_POW) {
-        pow2_split_block (index + 1);
+        uint8 *ptr1, *ptr2;
+
+        /* Recursive call: 32 bytes per frame, 11 calls deep, 352
+         * bytes of stack worst-case.  Should be acceptable, for
+         * now. */
+        ptr1 = pow2_get_free_block (index + 1);
+        ptr2 = ptr1 + (1 << (index));
+
+        pow2_add_free_block (ptr1, index);
+
+        /* It is safe to return ptr2 here because if there were no
+         * free blocks upon entering this section of code, then there
+         * is no need to check 'prev' and possibly zero its next
+         * pointer. */
+        return ptr2;
       } else {
         /* grab new pages */
         int i;
