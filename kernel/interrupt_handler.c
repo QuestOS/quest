@@ -343,7 +343,6 @@ _fork (uint32 ebp, uint32 *esp)
 
   lock_kernel ();
 
-  /* is this a leak? */
   child_directory = map_virtual_page ((tmp_dir = alloc_phys_frame ()) | 3);
 
   /* 
@@ -428,6 +427,8 @@ _fork (uint32 ebp, uint32 *esp)
   child_directory[1019] = virt_addr[1019];
 
   unmap_virtual_page (virt_addr);
+
+  unmap_virtual_page (child_directory);
 
   /* Inherit priority from parent */
   priority = lookup_TSS (child_gdt_index)->priority =
