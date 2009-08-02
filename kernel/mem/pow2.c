@@ -159,7 +159,7 @@ pow2_remove_used_table (uint8 * ptr, uint8 * index)
 }
 
 static uint8
-pow2_compute_index (uint16 size)
+pow2_compute_index (uint32 size)
 {
   int i;
   if (size <= POW2_MIN_SIZE)
@@ -169,13 +169,13 @@ pow2_compute_index (uint16 size)
   else {
     size--;
     /* bit scan reverse -- find most significant set bit */
-    asm volatile ("bsr %1,%0":"=r" (i):"r" (size));
+    asm volatile ("bsrl %1,%0":"=r" (i):"r" (size));
     return (i + 1);
   }
 }
 
 int
-pow2_alloc (uint16 size, uint8 ** ptr)
+pow2_alloc (uint32 size, uint8 ** ptr)
 {
   uint8 index = pow2_compute_index (size);
   spinlock_lock (&pow2_lock);
