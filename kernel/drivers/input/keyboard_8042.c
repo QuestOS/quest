@@ -49,3 +49,11 @@ init_keyboard_8042 (void)
     set_vector_handler (KEYBOARD_VECTOR, kbd_irq_handler);
   }
 }
+
+uint8
+keyboard_8042_next (void)
+{
+  uint8 ch;
+  circular_remove (&keyb_buffer, &ch);
+  return ch;
+}

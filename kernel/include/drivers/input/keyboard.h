@@ -10,4 +10,7 @@
 #define KEYBOARD_DATA_PORT 0x60
 #define KEYBOARD_STATUS_PORT 0x64
 
+void init_keyboard_8042 (void);
+uint8 keyboard_8042_next (void);
+
 #endif
