@@ -14,6 +14,7 @@
 #include "util/printf.h"
 #include "util/screen.h"
 #include "util/debug.h"
+#include "drivers/input/keyboard.h"
 
 
 //#define DEBUG_PIT
@@ -663,22 +664,13 @@ _getchar (void)
 
   char c;
 
-  static char scancode[128] =
-    "\0\e1234567890-=\177\tqwertyuiop[]\n\0asdfghjkl;'`\0\\zxcvbnm,./\0*\0 \0\0\0\0\0\0\0\0\0\0\0\0\000789-456+1230.\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0";
+  lock_kernel ();
 
-  sti ();                       /* This is so that we can get soundcard
-                                 * interrupts during initial boot, while the
-                                 * shell is waiting for keyboard input */
+  c = keyboard_8042_next ();
+  
+  unlock_kernel ();
 
-  /* Poll keyboard status register at port 0x64 checking bit 0 to see if
-   * output buffer is full. We continue to poll if the msb of port 0x60
-   * (data port) is set, as this indicates out-of-band data or a release
-   * keystroke
-   */
-  while (!(inb (0x64) & 0x1) || ((c = inb (0x60)) & 0x80));
-
-  return scancode[(int) c];
-
+  return c;
 }
 
 

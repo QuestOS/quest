@@ -9,6 +9,7 @@
 #include "util/printf.h"
 #include "util/screen.h"
 #include "util/debug.h"
+#include "drivers/input/keyboard.h"
 
 extern descriptor idt[];
 
@@ -454,6 +455,7 @@ init (multiboot * pmb)
     lookup_TSS (tss[i])->priority = MIN_PRIO;
   }
 
+
   /* Initialise soundcard, if one exists */
   //init_sound ();
 
@@ -475,6 +477,9 @@ init (multiboot * pmb)
    * first IRQ after interrupts are re-enabled.  That's why it is safe
    * to utilize the dummy TSS without locking the kernel yet. */
   smp_secondary_init ();
+
+  /* Initialize interrupt-driven keyboard driver */
+  init_keyboard_8042 ();
 
   printf ("ATA_INIT\n");
   /* Initialize ATA/ATAPI subsystem */
