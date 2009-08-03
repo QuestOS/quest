@@ -2,6 +2,7 @@
 #define _SMP_H_
 
 #include "types.h"
+#include "kernel.h"
 
 #define MP_BOOTADDR 0x70000
 
