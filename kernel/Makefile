@@ -15,6 +15,7 @@ OBJS =  boot/boot.o boot/init.o kernel.o \
 	mem/physical.o mem/virtual.o mem/pow2.o \
 	util/cpuid.o util/printf.o util/screen.o util/debug.o util/circular.o \
 	drivers/ata/ata.o drivers/ata/diskio.o \
+	drivers/input/keyboard_8042.o \
 	fs/fsys.o \
 	fs/ext2/fsys_ext2fs.o \
 	fs/iso9660/fsys_iso9660.o \
