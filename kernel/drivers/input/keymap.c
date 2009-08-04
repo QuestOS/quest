@@ -12,25 +12,41 @@ keymap_getchar (void)
 {
   int i;
   key_event e;
-  bool shifted;
+  bool shiftmod, ctrlmod, altmod;
   uint8 char_code = 0;
 
   while (!char_code) {
     keyboard_8042_next (&e);
 
-    shifted = FALSE;  
+    shiftmod = ctrlmod = altmod = FALSE;  
     for (i=0; i<KEY_EVENT_MAX; i++) {
-      if (e.keys[i].present) {
-        if ((e.keys[i].scancode == 0x2A || e.keys[i].scancode == 0x36) &&
-            e.keys[i].pressed)
-          shifted = TRUE;
-        else if (e.keys[i].scancode < 128 && e.keys[i].latest && e.keys[i].pressed) 
-          char_code = e.keys[i].scancode;
+      if (e.keys[i].present && e.keys[i].pressed) {
+        switch (e.keys[i].scancode) {
+        case 0x2A:              /* LSHIFT */
+        case 0x36:              /* RSHIFT */
+          shiftmod = TRUE; 
+          break;
+
+        case 0x1D:              /* LCTRL */
+        case 0xE01D:            /* RCTRL */
+          ctrlmod = TRUE;
+          break;
+
+        case 0x38:              /* LALT */
+        case 0xE038:            /* RALT */
+          altmod = TRUE;
+          break;
+
+        default:
+          if(e.keys[i].scancode < 128 && e.keys[i].latest) 
+            char_code = e.keys[i].scancode;
+          break;
+        }
       }
     }
   }
   
-  if (shifted)
+  if (shiftmod)
     return ucase_scancode[char_code];
   else
     return lcase_scancode[char_code];
