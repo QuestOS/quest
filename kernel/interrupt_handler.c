@@ -14,7 +14,7 @@
 #include "util/printf.h"
 #include "util/screen.h"
 #include "util/debug.h"
-#include "drivers/input/keyboard.h"
+#include "drivers/input/keymap.h"
 
 
 //#define DEBUG_PIT
@@ -666,7 +666,7 @@ _getchar (void)
 
   lock_kernel ();
 
-  c = keyboard_8042_next ();
+  c = keymap_getchar ();
   
   unlock_kernel ();
 

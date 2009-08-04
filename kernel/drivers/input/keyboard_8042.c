@@ -6,71 +6,133 @@
 #include "util/circular.h"
 #include "util/printf.h"
 
-static char lcase_scancode[128] =
-    "\0\e1234567890-=\177\tqwertyuiop[]\n\0asdfghjkl;'`\0\\zxcvbnm,./\0*\0 \0\0\0\0\0\0\0\0\0\0\0\0\000789-456+1230.\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0";
-static char ucase_scancode[128] =
-    "\0\e1234567890-=\177\tQWERTYUIOP[]\n\0ASDFGHJKL;'`\0\\ZXCVBNM,./\0*\0 \0\0\0\0\0\0\0\0\0\0\0\0\000789-456+1230.\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0";
-
 static circular keyb_buffer;
-static uint8 buffer_space[KEYBOARD_BUFFER_SIZE];
+static key_event buffer_space[KEYBOARD_BUFFER_SIZE];
 
-static bool escaped, shifted;
+static key_event cur_event;
+static uint8 escape;
+
+static inline void
+clean_entry (int i)
+{
+  cur_event.keys[i].scancode = 0;
+  cur_event.keys[i].present  = 0;          
+  cur_event.keys[i].release  = 0;
+  cur_event.keys[i].pressed  = 0;
+  cur_event.keys[i].latest   = 0;
+}
 
 static uint32
 kbd_irq_handler (uint8 vec)
 {
-  uint8 ch;
   uint8 code;
+  int i;
 
   code = inb (KEYBOARD_DATA_PORT);
 
-  if (escaped) {
-    code += 0x100;
-    escaped = FALSE;
+  if (escape) {
+    code |= (escape << 8);
+    escape = 0;
   }
 
-  switch (code) {
-  case 0x2A:
-  case 0x36:
-    shifted = TRUE;
-    break;
-  case 0xAA:
-  case 0xB6:
-    shifted = FALSE;
-    break;
-  case 0xE0:
-    escaped = TRUE;
-    break;
-  default:
+  if (code == 0xE0 || code == 0xE1) 
+    escape = code;
+  else if (code & 0x80) {
+    /* Release key */
 
-    if (!(code & 0x80)) {
-      /* not an oob or released keystroke */
-      if (shifted)
-        ch = ucase_scancode[(int) code];
-      else
-        ch = lcase_scancode[(int) code];
-      if (circular_insert_nowait (&keyb_buffer, &ch) < 0) {
-        lock_kernel();
-        com1_printf ("keyboard_8042: dropped keystroke: %X (%c)\n", code, ch);
-        unlock_kernel();
+    code &= (~0x80);          /* unset "release" bit */
+    for (i=0; i<KEY_EVENT_MAX; i++) {
+      if (cur_event.keys[i].present == 1 &&
+          cur_event.keys[i].scancode == code) {
+
+        /* found previously inserted entry in event buffer: */
+        cur_event.keys[i].release = 1;
+        cur_event.keys[i].pressed = 0;
+        cur_event.keys[i].latest  = 1;
+
+        /* enqueue release event */
+        if (circular_insert_nowait (&keyb_buffer, (void *)&cur_event) < 0) {
+          lock_kernel();
+          com1_printf ("keyboard_8042: dropped break code: %X\n", code);
+          unlock_kernel();
+        }
+          
+        clean_entry (i);      /* remove it from cur_event */
+
+        break;
       }
     }
 
-    break;
-  }
+    if (i == KEY_EVENT_MAX) {
+      lock_kernel();
+      com1_printf ("keyboard_8042: spurious break code: %X\n", code);
+      unlock_kernel();
+    }
 
+  } else {
+    /* Press key */
+
+    for (i=0; i<KEY_EVENT_MAX; i++) {
+      /* First, see if it is already in the table: e.g. repeating
+       * keystrokes will send a stream of 'make' codes with no 'break'
+       * codes. */
+      if (cur_event.keys[i].present == 1 &&
+          cur_event.keys[i].scancode == code) {
+        break;
+      }
+    }
+
+    if (i == KEY_EVENT_MAX) {
+      /* It wasn't in the table already, so, find an empty entry */
+      for (i=0; i<KEY_EVENT_MAX; i++) {
+        if (cur_event.keys[i].present == 0) {
+          break;
+        }
+      }
+    }
+      
+    if (i == KEY_EVENT_MAX) {
+      /* no free entry */
+      lock_kernel();
+      com1_printf ("keyboard_8042: too many keys: %X\n", code);
+      unlock_kernel();
+
+    } else {
+      /* operate on entry: 0 <= i < KEY_EVENT_MAX */
+
+      cur_event.keys[i].scancode = code;
+      cur_event.keys[i].present  = 1;
+      cur_event.keys[i].pressed  = 1;
+      cur_event.keys[i].latest   = 1;
+
+      /* enqueue press event */
+      if (circular_insert_nowait (&keyb_buffer, (void *)&cur_event) < 0) {
+        lock_kernel();
+        com1_printf ("keyboard_8042: dropped make code: %X\n", code);
+        unlock_kernel();
+      }
+          
+      cur_event.keys[i].latest = 0;
+    }
+  }
+ 
   return 0;
 }
 
 void
 init_keyboard_8042 (void)
 {
-  escaped = shifted = FALSE;
+  int i;
+
+  escape = 0;
+
+  for (i=0; i<KEY_EVENT_MAX; i++)
+    clean_entry (i);
 
   circular_init (&keyb_buffer, 
                  (void *)buffer_space, 
                  KEYBOARD_BUFFER_SIZE, 
-                 sizeof (uint8));
+                 sizeof (key_event));
 
   if (mp_ISA_PC) {
     set_vector_handler (KEYBOARD_IRQ, kbd_irq_handler);
@@ -81,10 +143,8 @@ init_keyboard_8042 (void)
   }
 }
 
-uint8
-keyboard_8042_next (void)
+void
+keyboard_8042_next (key_event *e)
 {
-  uint8 ch;
-  circular_remove (&keyb_buffer, &ch);
-  return ch;
+  circular_remove (&keyb_buffer, (void *)e);
 }
