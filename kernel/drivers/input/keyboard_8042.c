@@ -135,7 +135,7 @@ init_keyboard_8042 (void)
                  sizeof (key_event));
 
   if (mp_ISA_PC) {
-    set_vector_handler (KEYBOARD_IRQ, kbd_irq_handler);
+    set_vector_handler (KEYBOARD_IRQ + PIC1_BASE_IRQ, kbd_irq_handler);
   } else {
     IOAPIC_map_GSI (IRQ_to_GSI (mp_ISA_bus_id, KEYBOARD_IRQ),
                     KEYBOARD_VECTOR, 0xFF00000000000800LL);
