@@ -6,11 +6,15 @@
 #include "util/circular.h"
 #include "util/printf.h"
 
-static char scancode[128] =
+static char lcase_scancode[128] =
     "\0\e1234567890-=\177\tqwertyuiop[]\n\0asdfghjkl;'`\0\\zxcvbnm,./\0*\0 \0\0\0\0\0\0\0\0\0\0\0\0\000789-456+1230.\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0";
+static char ucase_scancode[128] =
+    "\0\e1234567890-=\177\tQWERTYUIOP[]\n\0ASDFGHJKL;'`\0\\ZXCVBNM,./\0*\0 \0\0\0\0\0\0\0\0\0\0\0\0\000789-456+1230.\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0";
 
 static circular keyb_buffer;
 static uint8 buffer_space[KEYBOARD_BUFFER_SIZE];
+
+static bool escaped, shifted;
 
 static uint32
 kbd_irq_handler (uint8 vec)
@@ -20,14 +24,39 @@ kbd_irq_handler (uint8 vec)
 
   code = inb (KEYBOARD_DATA_PORT);
 
-  if (!(code & 0x80)) {
-    /* not an oob or released keystroke */
-    ch = scancode[(int) code];
-    if (circular_insert_nowait (&keyb_buffer, &ch) < 0) {
-      lock_kernel();
-      com1_printf ("keyboard_8042: dropped keystroke: %X (%c)\n", code, ch);
-      unlock_kernel();
+  if (escaped) {
+    code += 0x100;
+    escaped = FALSE;
+  }
+
+  switch (code) {
+  case 0x2A:
+  case 0x36:
+    shifted = TRUE;
+    break;
+  case 0xAA:
+  case 0xB6:
+    shifted = FALSE;
+    break;
+  case 0xE0:
+    escaped = TRUE;
+    break;
+  default:
+
+    if (!(code & 0x80)) {
+      /* not an oob or released keystroke */
+      if (shifted)
+        ch = ucase_scancode[(int) code];
+      else
+        ch = lcase_scancode[(int) code];
+      if (circular_insert_nowait (&keyb_buffer, &ch) < 0) {
+        lock_kernel();
+        com1_printf ("keyboard_8042: dropped keystroke: %X (%c)\n", code, ch);
+        unlock_kernel();
+      }
     }
+
+    break;
   }
 
   return 0;
@@ -36,6 +65,8 @@ kbd_irq_handler (uint8 vec)
 void
 init_keyboard_8042 (void)
 {
+  escaped = shifted = FALSE;
+
   circular_init (&keyb_buffer, 
                  (void *)buffer_space, 
                  KEYBOARD_BUFFER_SIZE, 
