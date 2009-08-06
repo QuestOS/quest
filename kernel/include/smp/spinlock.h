@@ -2,6 +2,9 @@
 #define _SPINLOCK_H_
 #include"smp/atomic.h"
 
+//#define DEBUG_SPINLOCK
+#define DEBUG_MAX_SPIN 1000000
+
 struct _spinlock
 {
   uint32 lock;
@@ -19,6 +22,11 @@ spinlock_lock (spinlock * lock)
   uint8 LAPIC_get_physical_ID (void);
 
   if (mp_enabled) {
+#ifdef DEBUG_SPINLOCK
+    int count = 0;
+    extern void panic (char *);
+    extern void com1_printf (const char *, ...);
+#endif
     int x = 1;
     uint32 *addr = &lock->lock;
     for (;;) {
@@ -27,6 +35,13 @@ spinlock_lock (spinlock * lock)
       if (x == 0)
         break;
       asm volatile ("pause");
+#ifdef DEBUG_SPINLOCK
+      count++;
+      if (count > DEBUG_MAX_SPIN) {
+        com1_printf ("DEADLOCK (CPU %d)\n", LAPIC_get_physical_ID ());
+        panic ("DEADLOCK\n");
+      }
+#endif
     }
   }
 }
