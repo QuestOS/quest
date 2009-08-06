@@ -16,7 +16,7 @@
 #include "util/debug.h"
 #include "drivers/input/keymap.h"
 
-
+//#define DEBUG_SYSCALL
 //#define DEBUG_PIT
 
 static char kernel_ver[] = "0.1a";
@@ -342,6 +342,9 @@ _fork (uint32 ebp, uint32 *esp)
   uint32 priority;
   uint32 eflags, eip, this_esp, this_ebp;
 
+#ifdef DEBUG_SYSCALL
+  com1_printf ("_fork (%X, %p)\n", ebp, esp);
+#endif
   lock_kernel ();
 
   child_directory = map_virtual_page ((tmp_dir = alloc_phys_frame ()) | 3);
@@ -486,6 +489,9 @@ _exec (char *filename, char *argv[], uint32 *curr_stack)
   int i, j, c;
   char command_args[80];
 
+#ifdef DEBUG_SYSCALL
+  com1_printf ("_exec (%s, ..., %p)\n", filename, curr_stack);
+#endif
   lock_kernel ();
 
   /* --??-- Checks should be added here for valid argv[0] etc...
@@ -494,7 +500,9 @@ _exec (char *filename, char *argv[], uint32 *curr_stack)
    */
   strncpy (command_args, argv[0], 80);
 
-
+#ifdef DEBUG_SYSCALL
+  com1_printf ("_exec: vfs_dir\n");
+#endif
   /* Read filename from disk -- essentially a basic open call */
   if ((filesize = vfs_dir (filename)) < 0) {    /* Error */
     BITMAP_SET (mm_table, phys_addr >> 12);
@@ -508,6 +516,9 @@ _exec (char *filename, char *argv[], uint32 *curr_stack)
    *
    * Reuse page directory
    */
+#ifdef DEBUG_SYSCALL
+  com1_printf ("_exec: setup page directory\n");
+#endif
   for (i = 0; i < 1019; i++) {  /* Skip freeing kernel pg table mapping and
                                    kernel stack space. */
     if (plPageDirectory[i]) {   /* Present in currrent address space */
@@ -541,6 +552,9 @@ _exec (char *filename, char *argv[], uint32 *curr_stack)
 
   flush_tlb_all ();
 
+#ifdef DEBUG_SYSCALL
+  com1_printf ("_exec: vfs read\n");
+#endif
   /* Read into virtual address corresponding to plPageDirectory[1021] */
   if (filesize != vfs_read ((void *) pe, filesize))
     panic ("File size mismatch on read");
@@ -550,6 +564,9 @@ _exec (char *filename, char *argv[], uint32 *curr_stack)
 
   memset (frame_map, 0, 32 * sizeof (uint32));
 
+#ifdef DEBUG_SYSCALL
+  com1_printf ("_exec: walk ELF header\n");
+#endif
   /* Walk ELF header */
   for (i = 0; i < pe->e_phnum; i++) {
     if (pph->p_type == PT_LOAD) {
