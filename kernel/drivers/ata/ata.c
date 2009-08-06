@@ -312,7 +312,7 @@ ata_poll_for_irq (uint32 bus)
   enable_idt ();
 #endif
 
-  tsc_delay_usec (100000);      /* wait 100 milliseconds */
+  tsc_delay_usec (500000);      /* wait 500 milliseconds */
 }
 
 
@@ -376,6 +376,7 @@ atapi_drive_read_sector (uint32 bus, uint32 drive, uint32 lba, uint8 * buffer)
   uint8 status;
   uint16 size;
   ata_grab ();
+
 #ifdef DEBUG_ATA
   com1_printf ("atapi_drive_read_sector(%X,%X,%X,%p)\n", bus, drive, lba,
                buffer);
@@ -410,13 +411,45 @@ atapi_drive_read_sector (uint32 bus, uint32 drive, uint32 lba, uint8 * buffer)
   else
     ata_poll_for_irq (bus);
 
+  /* Wait for DRQ to set */
+  while (!(inb (ATA_COMMAND (bus)) & 0x08))
+    asm volatile ("pause");
+
   /* Read actual size */
   size =
     (((uint16) inb (ATA_ADDRESS3 (bus))) << 8) |
     (uint16) (inb (ATA_ADDRESS2 (bus)));
 
+#ifdef DEBUG_ATA
+  com1_printf ("atapi_drive_read_sector(%X,%X,%X,%p): size = %X\n", 
+               bus, drive, lba, buffer, size);
+#endif
+
+  /* Workaround possible size-reporting bug in hardware */
+  if (size > ATAPI_SECTOR_SIZE) 
+    size = ATAPI_SECTOR_SIZE;
+
   /* Read data */
   insw (ATA_DATA (bus), buffer, size / 2);
+
+  if (sched_enabled)
+    schedule ();
+  else
+    ata_poll_for_irq (bus);
+
+  /* Read actual size */
+  size =
+    (((uint16) inb (ATA_ADDRESS3 (bus))) << 8) |
+    (uint16) (inb (ATA_ADDRESS2 (bus)));
+
+#ifdef DEBUG_ATA
+  com1_printf ("atapi_drive_read_sector(%X,%X,%X,%p): size = %X\n", 
+               bus, drive, lba, buffer, size);
+#endif
+
+  /* Wait for BSY and DRQ to clear */
+  while ((status = inb (ATA_COMMAND (bus))) & 0x88) 
+    asm volatile ("pause");
 
   ata_release ();
   return size;
