@@ -6,11 +6,19 @@
 #include "util/circular.h"
 #include "util/printf.h"
 
+/* Circular buffer storing incoming keyboard events. */
 static circular keyb_buffer;
 static key_event buffer_space[KEYBOARD_BUFFER_SIZE];
 
+/* Current state of the keyboard. */
 static key_event cur_event;
+
+/* Did we just receive an escape scancode, and if so, which one?  Not
+ * to be confused with ESC key. */
 static uint8 escape;
+
+/* Scancodes are normally 1 byte, except when the code E0 or E1 is
+ * received: that is the first byte of a 2-byte scancode. */
 
 static inline void
 clean_entry (int i)
@@ -22,6 +30,7 @@ clean_entry (int i)
   cur_event.keys[i].latest   = 0;
 }
 
+/* Process the keyboard IRQ. */
 static uint32
 kbd_irq_handler (uint8 vec)
 {
@@ -31,6 +40,7 @@ kbd_irq_handler (uint8 vec)
   code = inb (KEYBOARD_DATA_PORT);
 
   if (escape) {
+    /* Received 2-byte scancode. */
     code |= (escape << 8);
     escape = 0;
   }
@@ -41,6 +51,9 @@ kbd_irq_handler (uint8 vec)
     /* Release key */
 
     code &= (~0x80);          /* unset "release" bit */
+
+    /* If a key is released, there should be a Press event in the
+     * cur_event buffer already. */
     for (i=0; i<KEY_EVENT_MAX; i++) {
       if (cur_event.keys[i].present == 1 &&
           cur_event.keys[i].scancode == code) {
@@ -63,6 +76,7 @@ kbd_irq_handler (uint8 vec)
       }
     }
 
+    /* No previous Press event found. */
     if (i == KEY_EVENT_MAX) {
       lock_kernel();
       com1_printf ("keyboard_8042: spurious break code: %X\n", code);
@@ -119,6 +133,7 @@ kbd_irq_handler (uint8 vec)
   return 0;
 }
 
+/* Setup the circular buffer and the IRQ handler. */
 void
 init_keyboard_8042 (void)
 {
@@ -143,6 +158,7 @@ init_keyboard_8042 (void)
   }
 }
 
+/* Retrieve the next key event or block. */
 void
 keyboard_8042_next (key_event *e)
 {

@@ -7,6 +7,8 @@ static char lcase_scancode[128] =
 static char ucase_scancode[128] =
     "\0\e1234567890-=\177\tQWERTYUIOP[]\n\0ASDFGHJKL;'`\0\\ZXCVBNM,./\0*\0 \0\0\0\0\0\0\0\0\0\0\0\0\000789-456+1230.\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0";
 
+/* Retrieve the next keyboard event and translate it into an ASCII
+ * char, or block. */
 uint8
 keymap_getchar (void)
 {

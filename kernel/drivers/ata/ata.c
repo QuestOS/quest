@@ -98,9 +98,12 @@ ata_release (void)
   ata_current_task = 0;
 }
 
+/* ATA specifies a 400ns delay after drive switching -- often
+ * implemented as 4 Alternative Status queries. */
 #define ATA_SELECT_DELAY(bus) \
   {inb(ATA_DCR(bus));inb(ATA_DCR(bus));inb(ATA_DCR(bus));inb(ATA_DCR(bus));}
 
+/* Soft-reset the ATA bus. */
 void
 ata_sreset (uint32 bus)
 {
@@ -108,6 +111,8 @@ ata_sreset (uint32 bus)
   outb (0x00, ATA_DCR (bus));
 }
 
+/* Tell the bus controller to select master or slave drive for
+ * subsequent operations. */
 void
 ata_drive_select (uint32 bus, uint32 drive)
 {
@@ -115,12 +120,13 @@ ata_drive_select (uint32 bus, uint32 drive)
   ATA_SELECT_DELAY (bus);
 }
 
+/* Use the ATA IDENTIFY command to find out what kind of drive is
+ * attached to the given bus/slot. */
 uint32
 ata_identify (uint32 bus, uint32 drive)
 {
   uint8 status;
   uint16 buffer[256];
-  int i, j;
 
   ata_drive_select (bus, drive);
 
@@ -135,6 +141,7 @@ ata_identify (uint32 bus, uint32 drive)
   }
 
   if (status & 0x1) {
+    /* Drive does not support IDENTIFY.  Probably a CD-ROM. */
     goto guess_identity;
   }
 
@@ -156,14 +163,20 @@ ata_identify (uint32 bus, uint32 drive)
   /* Read 256 words */
   insw (ATA_DATA (bus), buffer, 256);
 
-  com1_printf ("IDENTIFY (bus: %X drive: %X) command output:\n", bus, drive);
-  /* dump to com1 */
-  for (i = 0; i < 32; i++) {
-    for (j = 0; j < 8; j++) {
-      com1_printf ("%.4X ", buffer[i * 32 + j]);
+#ifdef DEBUG_ATA
+  {
+    int i, j;
+
+    com1_printf ("IDENTIFY (bus: %X drive: %X) command output:\n", bus, drive);
+    /* dump to com1 */
+    for (i = 0; i < 32; i++) {
+      for (j = 0; j < 8; j++) {
+        com1_printf ("%.4X ", buffer[i * 32 + j]);
+      }
+      com1_printf ("\n");
     }
-    com1_printf ("\n");
   }
+#endif
 
   if (buffer[83] & (1 << 10))
     com1_printf ("LBA48 mode supported.\n");
@@ -197,6 +210,8 @@ guess_identity:{
 
 static void ata_poll_for_irq (uint32);
 
+/* Read a sector from the bus/drive using LBA into the given buffer
+ * and return bytes read. */
 int
 ata_drive_read_sector (uint32 bus, uint32 drive, uint32 lba, uint8 * buffer)
 {
@@ -227,6 +242,8 @@ ata_drive_read_sector (uint32 bus, uint32 drive, uint32 lba, uint8 * buffer)
   return 512;
 }
 
+/* Write a sector to the bus/drive using LBA from the given buffer
+ * and return bytes written. */
 int
 ata_drive_write_sector (uint32 bus, uint32 drive, uint32 lba, uint8 * buffer)
 {
@@ -260,7 +277,10 @@ ata_drive_write_sector (uint32 bus, uint32 drive, uint32 lba, uint8 * buffer)
   return 512;
 }
 
+/* Count number of times IRQs are triggered. */
 static uint32 ata_primary_irq_count = 0, ata_secondary_irq_count = 0;
+
+/* IRQ handler for both drive controllers. */
 static uint32
 ata_irq_handler (uint8 vec)
 {
@@ -273,13 +293,16 @@ ata_irq_handler (uint8 vec)
     ata_primary_irq_count++;
   else
     ata_secondary_irq_count++;
+
+  /* Unblock the task waiting for the IRQ. */
   if (ata_current_task)
     wakeup (ata_current_task);
+
   unlock_kernel ();
   return 0;
 }
 
-
+/* Temporary handler for timer IRQ. */
 void
 ata_poll_for_irq_timer_handler (void)
 {
@@ -288,6 +311,10 @@ ata_poll_for_irq_timer_handler (void)
   asm volatile ("iret");
 }
 
+/* Use this function if ATA IRQs are expected but scheduling is not
+ * ready yet.  The original intention of this function was to disable
+ * all but the disk IRQ and then wait for it to arrive.  This didn't
+ * work out, so for the time being, it is just a hard-coded delay. */
 static void
 ata_poll_for_irq (uint32 bus)
 {
@@ -315,7 +342,7 @@ ata_poll_for_irq (uint32 bus)
   tsc_delay_usec (500000);      /* wait 500 milliseconds */
 }
 
-
+/* Initialize and identify the ATA drives in the system. */
 void
 ata_init (void)
 {
@@ -367,11 +394,17 @@ ata_init (void)
 /* ************************************************** */
 /* ATAPI */
 
+/* ATAPI is essentially SCSI commands over ATA. */
+
+/* The default and seemingly universal sector size for CD-ROMs. */
 #define ATAPI_SECTOR_SIZE 2048
 
+/* Use the ATAPI protocol to read a single sector from the given
+ * bus/drive into the buffer. */
 int
 atapi_drive_read_sector (uint32 bus, uint32 drive, uint32 lba, uint8 * buffer)
 {
+  /* 0xA8 is READ SECTORS command byte. */
   uint8 read_cmd[12] = { 0xA8, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0 };
   uint8 status;
   uint16 size;
@@ -386,7 +419,7 @@ atapi_drive_read_sector (uint32 bus, uint32 drive, uint32 lba, uint8 * buffer)
   outb (0x0, ATA_FEATURES (bus));       /* PIO mode */
   outb (ATAPI_SECTOR_SIZE & 0xFF, ATA_ADDRESS2 (bus));
   outb (ATAPI_SECTOR_SIZE >> 8, ATA_ADDRESS3 (bus));
-  outb (0xA0, ATA_COMMAND (bus));       /* PACKET command */
+  outb (0xA0, ATA_COMMAND (bus));       /* ATA PACKET command */
 
   while ((status = inb (ATA_COMMAND (bus))) & 0x80)     /* BUSY */
     asm volatile ("pause");
@@ -406,6 +439,7 @@ atapi_drive_read_sector (uint32 bus, uint32 drive, uint32 lba, uint8 * buffer)
   /* Send ATAPI/SCSI command */
   outsw (ATA_DATA (bus), (uint16 *) read_cmd, 6);
 
+  /* Wait for IRQ. */
   if (sched_enabled)
     schedule ();
   else
@@ -432,12 +466,14 @@ atapi_drive_read_sector (uint32 bus, uint32 drive, uint32 lba, uint8 * buffer)
   /* Read data */
   insw (ATA_DATA (bus), buffer, size / 2);
 
+  /* Wait for IRQ indicating next transfer ready.  It will be a
+   * zero-byte transfer but we must still wait for the IRQ.*/
   if (sched_enabled)
     schedule ();
   else
     ata_poll_for_irq (bus);
 
-  /* Read actual size */
+  /* Read "actual" size */
   size =
     (((uint16) inb (ATA_ADDRESS3 (bus))) << 8) |
     (uint16) (inb (ATA_ADDRESS2 (bus)));
@@ -446,6 +482,15 @@ atapi_drive_read_sector (uint32 bus, uint32 drive, uint32 lba, uint8 * buffer)
   com1_printf ("atapi_drive_read_sector(%X,%X,%X,%p): size = %X\n", 
                bus, drive, lba, buffer, size);
 #endif
+
+  /* At this point we already have read all our data, but the hardware
+   * may still report the same size value as before.  It is up to us
+   * to know that this second IRQ fired but there is no more data to
+   * be read. */
+
+  /* To be sure, if the hardware sends me less than a sector at a
+   * time, the above code is broken.  Not sure that will be an
+   * issue. */
 
   /* Wait for BSY and DRQ to clear */
   while ((status = inb (ATA_COMMAND (bus))) & 0x88) 

@@ -6,28 +6,38 @@ Boot:
 Multiboot-compliant bootloader.  Sets up the first 4 entries in GDT
 the usual way: kernel code, kernel data, user code, user data.
 Enables 4MB pages and uses that to map the first 4MB, and APICs @ 0xFEC.
-Writes entry for the kernel page-table at 0xFFC.
+Writes entry for the kernel page-table at index 0xFFC in the page global dir.
 
 Calls into init.c: init().  Uses the Multiboot structure to setup the
 free-frame bitmap.  Uses the "loadable module" Multiboot specification
-to load additional functionality.  Initializes SMP, sound, filesystem.
-Loads a dummy TSS and queues the shell module on the scheduler's
-runqueue.  Calls schedule().
+to load additional functionality.  Initializes SMP, sound, ATA, filesystem.
+Loads a dummy TSS and far jumps into the shell module.  This enables
+interrupts and switches the system to usermode, after which the normal
+scheduling takes over.
+
 
 
 SMP:
 
-smp_init() probes for the Intel Multiprocessor Specification table and
-parses it.  Then it boots the Application Processors (AP) with the
-code in boot-smp.S and they enter ap_init() in smp.c.  They re-use the
+smp_init() tries to early-initialize ACPICA the Intel reference
+implementation of ACPI.  If that fails it probes for the Intel
+Multiprocessor Specification table and parses it. 
+
+Either way it is looking for info on the configuration of the system.
+Number of enabled processors, buses, interrupt routing, etc.
+
+Then it boots the Application Processors (AP) with the code in
+boot-smp.S and they enter ap_init() in smp.c.  They re-use the
 Bootstrap Processor's (BSP) GDT and IDT.  Local APICs are configured
 so that each processor has a logical destination address mask 0x1,
-0x2, 0x4, up to 0x80 (so MAX_CPUS = 8 for now).  
+0x2, 0x4, up to 0x80 (so MAX_CPUS = 8 for now).
 
-smp_enable() will disable the 8529A and enable the IO-APIC with
-entries programmed such that IRQ0 maps to vector 0x20, IRQ1 to vector
-0x21, and so on.  Except that IRQ2 is disabled for now because it
-seems to be firing constantly for no reason.
+smp_secondary_init() will disable the 8529A and enable the IO-APIC but
+program it with no routing.  Later drivers will add routing for IRQs
+they use.  Also it will complete the ACPICA init sequence if possible.
+
+If there is no IO-APIC then mp_ISA_mode will be enabled and drivers
+will be expected to utilize the 8259A PIC instead.
 
 This is not ideal, the choice of vectors should use more priority
 levels.  CPUs assign priority to an interrupt vector based on the most
@@ -36,27 +46,29 @@ website suggests mapping two IRQs per priority level.
 
 Each CPU can set the Task Priority Register (TPR) in its LAPIC to mask
 out interrupts.  Right now the BSP has TPR=0x0 and the APs have
-TPR=0x20.  So the BSP is receiving pretty much every interrupt
-exclusively.
+TPR=0x20.  So the BSP is receiving pretty much every IRQ exclusively.
 
 End-of-Interrupt (EOI) is now in a function send_eoi() which either
 prods the 8259A or the LAPIC depending on whether MP is enabled.
-
-Each CPU also gets its own DummyTSS entry, so it can save state.
 
 The IO-APIC and Local APIC registers are memory-mapped by default to
 0xFEC00000 and 0xFEE00000 so these regions need to be identity mapped
 in the page directory.  This is accomplished with a 4MB page @ entry
 0xFEC.  Whenever new page directories are created this needs to be
 setup along with the kernel page tables.  I modified exec and
-LoadModule accordingly.
+load_module accordingly.
 
 The Intel MP tables (or the ACPI tables) are supposed to specify the
 configuration of the IO-APIC(s) and this needs to be handled properly.
-Right now I just assume its the default, with no devices of interest.
+This is handled to some extent now, though not well tested.  It tries
+to understand and obey any interrupt routing entries present.  For
+example, IRQ0 timer is often re-routed to Global System Interrupt 2,
+and this is handled.
 
 There's a rudimentary implementation of spinlocks in spinlock.h using
 atomic operations defined in atomic.h.
+
+The global kernel lock and task switches across SMP are dealt with:
 
 Assertion: whenever a process is put back on the runqueue, it has
 first grabbed the kernel lock.  Therefore, whenever it wakes up again,
@@ -71,3 +83,44 @@ the kernel and then proceeds to IRET to userspace.
 
 Now, whenever the kernel invokes schedule() to sleep, whatever wakes
 up will unlock the kernel.
+
+There is only a single dummy TSS and its only purpose is to be a
+scratch pad when there is no current task and we need to switch to a
+task.  It is considered a resource protected by the kernel lock
+because only one CPU can use it at a time.
+
+Each CPU gets its own dedicated IDLE task.  Since it is now possible
+for a CPU to have nothing to do.  Idle task is a kernelspace process
+that sets interrupts enabled and loops on the HLT instruction.  It is
+kernelspace because when it is first started it needs to unlock the
+kernel.
+
+Drivers:
+
+The keyboard driver is now interrupt driven.  I have separated keymap
+translation from keyboard event handling.  The keyboard IRQ handler
+queues a special struct (on a circular buffer) which captures the
+current state of the keyboard.  This is pulled off the buffer and
+translated into a char whenever getchar is called.
+
+ATA drivers have been moved into their own file.  These are PIO and
+IRQ driven.  There is support for probing attached devices, and also
+for reading from ATAPI drives.
+
+Filesystems:
+
+Supports rudimentary file operations: dir and read.  dir acts like
+open but there is only one process-global file handle variable.  The
+reason for this is because ext2 support is ripped from GRUB and this
+is what they do.
+
+The ISO9660 fs support is enough to support these operations.  Luckily
+this format is generally pretty simple because file contents are
+stored in consecutive sectors.
+
+There is a simple VFS stub which switches FS based on probing of boot
+drive.
+
+
+
+

@@ -14,6 +14,9 @@ circular_unlock (circular *c)
   spinlock_unlock (&c->lock);
 }
 
+/* Insert an element of any size into the circular buffer.  If buffer
+ * is full, check if CIRCULAR_FLAG_NOWAIT is set.  If so, return -1,
+ * else block. */
 static sint32
 generic_circular_insert (circular *c, void *elt, uint32 flags)
 {
@@ -34,6 +37,8 @@ generic_circular_insert (circular *c, void *elt, uint32 flags)
     }
   }
 
+  /* copy the elt into the insertion point and advance the insertion
+   * pointer to the next slot. */
   memcpy (c->insert_ptr, elt, c->elt_size);
   c->insert_ptr += c->elt_size;
   if (c->insert_ptr >= c->buffer_end)
@@ -46,6 +51,9 @@ generic_circular_insert (circular *c, void *elt, uint32 flags)
   return ret;
 }
 
+/* Remove an element of any size from the circular buffer and copy to
+ * the pointer out_elt.  If buffer is empty, check if
+ * CIRCULAR_FLAG_NOWAIT is set.  If so, return -1, else block. */
 static sint32
 generic_circular_remove (circular *c, void *out_elt, uint32 flags)
 {
@@ -66,6 +74,8 @@ generic_circular_remove (circular *c, void *out_elt, uint32 flags)
     }
   }
 
+  /* copy from the removal point into out_elt and advance the removal
+   * pointer to the next slot. */
   memcpy (out_elt, c->remove_ptr, c->elt_size);
   c->remove_ptr += c->elt_size;
   if (c->remove_ptr >= c->buffer_end)
@@ -90,6 +100,7 @@ circular_init (circular *c, void *buffer, sint32 num_elts, sint32 elt_size)
   c->num_elts   = num_elts;
   c->elt_size   = elt_size;
   c->cur_count  = 0;
+  /* Leave possibility of specialized routines being used here. */
   c->insert     = generic_circular_insert;
   c->remove     = generic_circular_remove;
   spinlock_init (&c->lock);
