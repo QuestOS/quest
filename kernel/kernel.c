@@ -38,6 +38,7 @@ uint16 idleTSS_selector[MAX_CPUS];
 
 char *pchVideo = (char *) KERN_SCR;
 
+/* PANIC!!!!! */
 void panic (char *sz)
 {
   print ("kernel panic: ");
@@ -47,6 +48,7 @@ void panic (char *sz)
   hlt ();
 }
 
+/* Global kernel lock */
 void
 lock_kernel (void)
 {
@@ -59,6 +61,8 @@ unlock_kernel (void)
   spinlock_unlock (&kernel_lock);
 }
 
+/* Retrieve the pointer to the TSS structure for the task by
+ * reconstructing it from the GDT descriptor entry. */
 extern quest_tss *
 lookup_TSS (uint16 selector)
 {
@@ -70,6 +74,7 @@ lookup_TSS (uint16 selector)
                         (ad[selector >> 3].pBase2 << 24));
 }
 
+/* Idle loop for CPU IDLE task */
 void
 idle_task (void)
 {
@@ -80,6 +85,7 @@ idle_task (void)
   }
 }
 
+/* Mask out every IDT entry. */
 void
 disable_idt (void)
 {
@@ -93,6 +99,7 @@ disable_idt (void)
   }
 }
 
+/* Unmask every valid IDT entry. */
 void
 enable_idt (void)
 {
@@ -106,6 +113,7 @@ enable_idt (void)
   }
 }
 
+/* Unmask an IDT entry. */
 void
 enable_idt_entry (uint16 i)
 {
@@ -114,6 +122,8 @@ enable_idt_entry (uint16 i)
     ptr[i].fPresent = 1;
 }
 
+/* Setup an IDT entry given the address of a function and an
+ * appropriate descriptor privilege level. */
 void
 set_idt_descriptor_by_addr (uint8 n, void *addr, uint8 dpl)
 {
@@ -132,26 +142,16 @@ set_idt_descriptor_by_addr (uint8 n, void *addr, uint8 dpl)
   ptr[n].fPresent = 1;          /* re-enable */
 }
 
+/* Read an IDT entry into the pointer. */
 void
 get_idt_descriptor (uint8 n, idt_descriptor * d)
 {
   idt_descriptor *ptr = *((idt_descriptor **) (idt_ptr + 2));
 
   *d = ptr[n];
-#if 0
-  d->pBase1 = ptr[n].pBase1;
-  d->pBase0 = ptr[n].pBase0;
-  d->pSeg = ptr[n].pSeg;
-  d->f0 = ptr[n].f0;
-  d->fReserved = ptr[n].fReserved;
-  d->fType = ptr[n].fType;
-  d->f32bit = ptr[n].f32bit;
-  d->uDPL = ptr[n].uDPL;
-  d->fPresent = ptr[n].fPresent;
-#endif
 }
 
-
+/* Write an IDT entry from a given entry. */
 void
 set_idt_descriptor (uint8 n, idt_descriptor * d)
 {
@@ -160,6 +160,7 @@ set_idt_descriptor (uint8 n, idt_descriptor * d)
   ptr[n] = *d;
 }
 
+/* Spin for a given amount of microsec. */
 void
 tsc_delay_usec (uint32 usec)
 {

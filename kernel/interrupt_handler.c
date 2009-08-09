@@ -25,25 +25,31 @@ uint32 tick;                    /* Software clock tick */
 
 extern uint32 ul_tss[][1024];
 
+/* Table of functions handling interrupt vectors. */
 static vector_handler vector_handlers[256];
+
+/* Default function filling above table. */
 static uint32
 default_vector_handler (uint8 vec)
 {
   return 0;
 }
 
+/* Program an entry in the table. */
 void
 set_vector_handler (uint8 vec, vector_handler func)
 {
   vector_handlers[vec] = func;
 }
 
+/* Reset an entry to the default. */
 void
 clr_vector_handler (uint8 vec)
 {
   vector_handlers[vec] = default_vector_handler;
 }
 
+/* Obtain a pointer to the handler. */
 vector_handler
 get_vector_handler (uint8 vec)
 {
@@ -53,6 +59,8 @@ get_vector_handler (uint8 vec)
     return default_vector_handler;
 }
 
+/* This is the function invoked by the CPU which then dispatches to
+ * the handler in the table. */
 uint32
 dispatch_vector (uint32 vec)
 {
@@ -94,9 +102,7 @@ duplicate_TSS (uint32 ebp,
 
   pTSS = map_virtual_page (pa + 3);
 
-  /* Clear virtual page before use.
-     NOTE: This implicitly clears EAX used as the return value 
-     for the child indicating a pid of 0 */
+  /* Clear virtual page before use. */
   memset (pTSS, 0, 4096);
 
   /* Search 2KB GDT for first free entry */
@@ -177,6 +183,8 @@ char *exception_messages[] = {
   "Reserved"
 };
 
+/* Generic CPU fault exception handler -- dumps some info to the
+ * screen and serial port, then panics. */
 extern void
 handle_interrupt (uint32 fs_gs, uint32 ds_es, uint32 ulInt, uint32 ulCode)
 {
@@ -247,25 +255,12 @@ handle_interrupt (uint32 fs_gs, uint32 ds_es, uint32 ulInt, uint32 ulCode)
 
   if (ulInt < 0x20)
     /* unhandled exception - die */
-    while (1);
+    panic ("Unhandled exception");
 
   send_eoi ();
 }
 
-
-extern void
-_interrupt3f (void)
-{
-  uint8 phys_id = LAPIC_get_physical_ID ();
-  spinlock_lock (&screen_lock);
-  _print ("CPU ");
-  _putx (phys_id);
-  _print (" received IPI vector=0x3f\n");
-  spinlock_unlock (&screen_lock);
-  send_eoi ();
-}
-
-
+/* Syscall: putchar */
 void
 handle_syscall0 (int eax, int ebx)
 {
@@ -323,10 +318,10 @@ handle_syscall0 (int eax, int ebx)
 }
 
 
-/* Used for handling fork calls
+/* Syscall: fork
  *
- * esp argument used to find info about parent's eip and other registers
- * inherited by child
+ * esp argument used to find info about parent's eip and other
+ * registers inherited by child
  */
 task_id
 _fork (uint32 ebp, uint32 *esp)
@@ -464,7 +459,7 @@ strncpy (char *s1, const char *s2, int length)
 /* --??-- TODO: Rewrite _exec to create a temporary new address space
  before overwriting the old one in case of errors */
 
-/* _exec: replace address space of caller with new memory areas, in part
+/* Syscall: _exec: replace address space of caller with new memory areas, in part
  * populated by program image on disk
  */
 int
@@ -503,7 +498,7 @@ _exec (char *filename, char *argv[], uint32 *curr_stack)
 #ifdef DEBUG_SYSCALL
   com1_printf ("_exec: vfs_dir\n");
 #endif
-  /* Read filename from disk -- essentially a basic open call */
+  /* Find file on disk -- essentially a basic open call */
   if ((filesize = vfs_dir (filename)) < 0) {    /* Error */
     BITMAP_SET (mm_table, phys_addr >> 12);
     unmap_virtual_page (plPageDirectory);
@@ -675,6 +670,7 @@ _exec (char *filename, char *argv[], uint32 *curr_stack)
   return 0;
 }
 
+/* Syscall: getchar */
 char
 _getchar (void)
 {
@@ -690,7 +686,7 @@ _getchar (void)
   return c;
 }
 
-
+/* Syscall: switch to other task -- deprecated */
 void
 _switch_to (uint32 pid)
 {
@@ -706,7 +702,8 @@ _switch_to (uint32 pid)
 }
 
 
-/* --??-- Flags not used for now...a crude open call as it stands  */
+/* Syscall: open --??-- Flags not used for now...a crude open call as
+ * it stands  */
 int
 _open (char *pathname, int flags)
 {
@@ -715,7 +712,7 @@ _open (char *pathname, int flags)
 
 }
 
-
+/* Syscall: read --??-- proess-global file handle */
 int
 _read (char *pathname, void *buf, int count)
 {
@@ -724,7 +721,7 @@ _read (char *pathname, void *buf, int count)
 
 }
 
-
+/* Syscall: uname */
 int
 _uname (char *name)
 {
@@ -735,7 +732,7 @@ _uname (char *name)
   return 0;
 }
 
-
+/* Syscalls: meminfo, shared mem alloc, attach, detach, and free. */
 uint32
 _meminfo (uint32 eax, uint32 edx)
 {
@@ -817,7 +814,7 @@ _meminfo (uint32 eax, uint32 edx)
   }
 }
 
-
+/* Syscall: time */
 uint32
 _time (void)
 {
@@ -837,6 +834,8 @@ _interrupt29 (void)
     return 0;
 }
 
+/* LAPIC timer handler -- used to implement scheduler quantum on a
+ * per-CPU basis. */
 extern void
 _interrupt3e (void)
 {
@@ -897,14 +896,7 @@ _timer (void)
   }
 }
 
-void
-_keyboard (void)
-{
-  /* ignore for now */
-  send_eoi ();
-}
-
-
+/* Syscall: _exit */
 void
 __exit (int status)
 {
@@ -978,7 +970,7 @@ __exit (int status)
   panic ("__exit: unreachable");
 }
 
-
+/* Syscall: waitpid */
 extern uint32
 _waitpid (task_id pid)
 {
@@ -1070,6 +1062,7 @@ flush_tlb_handler (uint8 vec)
 
 #endif
 
+/* Initialize the vector handling table. */
 extern void
 init_interrupt_handlers (void)
 {

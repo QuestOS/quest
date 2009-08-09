@@ -74,7 +74,6 @@
 	.globl syscallb
 	.globl syscallc
 	.globl timer
-        .globl keyboard
 	.globl soundcard
 	
 	/* FIXME these are temporary debugging aids... ultimately these
@@ -429,18 +428,6 @@ timer:
 	popal
 
 	iret
-
-/* IRQ1 - keyboard (bochs behavior is different from qemu, atm) */
-keyboard:
-        pushal
-        SREGS_SAVE
-
-        call _keyboard
-
-        REGS_RESTORE
-        popal
-        iret
-        
         
 /* IRQ5 - soundcard --??-- in future, don't hardcode to specific IRQ */
 soundcard:	
@@ -491,14 +478,6 @@ interrupt3e:
         popal
         iret
 
-        .global interrupt3f
-interrupt3f:
-        pushal
-	SREGS_SAVE
-	call _interrupt3f
-	REGS_RESTORE
-        popal
-        iret
 
 #define EXC(n)                 \
         .globl interrupt##n;   \
@@ -566,6 +545,7 @@ INT(3a)
 INT(3b)
 INT(3c)
 INT(3d)
+INT(3f)
 
 INT(40)
 INT(41)
