@@ -32,15 +32,15 @@ ap_stack_ptr:                  /* C stack for AP */
         xorw %dx, %dx
         movw %dx, %ds
 
-	movl %cr4, %eax /* EAX is temporary for CR4 */
-	orl $0x10, %eax /* Set PSE bit of CR4 */
-	movl %eax, %cr4
+        movl %cr4, %eax /* EAX is temporary for CR4 */
+        orl $0x10, %eax /* Set PSE bit of CR4 */
+        movl %eax, %cr4
 
-	movl $pgd, %eax
-	movl %eax, %cr3
-	movl %cr0, %eax /* need to set bit 31 of CR0 - see 3-18 in Manual vol 3 */
-	orl $0x80000001, %eax
-	movl %eax, %cr0 /* and enter protected mode as well */
+        movl $pgd, %eax
+        movl %eax, %cr3
+        movl %cr0, %eax /* need to set bit 31 of CR0 - see 3-18 in Manual vol 3 */
+        orl $0x80000001, %eax
+        movl %eax, %cr0 /* and enter protected mode as well */
 
         /* flush icache */
         ljmpl $0x08, $ap_pmode - patch_code_start + MP_BOOTADDR
@@ -48,15 +48,15 @@ ap_stack_ptr:                  /* C stack for AP */
         .align 0x10
         .code32
 ap_pmode:  
-	movw $0x10, %ax /* Set DS-SS to refer to KERNEL DS */
-	movw %ax, %ds
-	movw %ax, %es
-	movw %ax, %fs
-	movw %ax, %gs
-	movw %ax, %ss
+        movw $0x10, %ax /* Set DS-SS to refer to KERNEL DS */
+        movw %ax, %ds
+        movw %ax, %es
+        movw %ax, %fs
+        movw %ax, %gs
+        movw %ax, %ss
                 
-	xorw %ax, %ax
-	lldt %ax        
+        xorw %ax, %ax
+        lldt %ax        
 
 
         /* setup our stack */
@@ -73,6 +73,6 @@ ap_pmode:
         lcall $0x8, $ap_init
         
 patch_gdt_ptr:  
-	.short 0x7FF     /* length in bytes - 256 descriptors */
-	.long  KERN_GDT   /* linear address */
+        .short 0x7FF     /* length in bytes - 256 descriptors */
+        .long  KERN_GDT   /* linear address */
 patch_code_end: 
