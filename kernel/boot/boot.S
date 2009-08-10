@@ -1,3 +1,5 @@
+/* -*- Mode: asm; comment-start: "\/*"; comment-end: "*\/"; indent-tabs-mode: nil -*- */
+
 /*
  * boot.S
  *
@@ -469,3 +471,5 @@ INT(fd)
 INT(fe)
 INT(ff)
 #undef INT
+
+/* vi: set et sw=8 sts=8: */

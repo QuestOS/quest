@@ -1,3 +1,5 @@
+/* -*- Mode: asm; comment-start: "\/*"; comment-end: "*\/"; indent-tabs-mode: nil -*- */
+
 #include "kernel.h"
 #include "smp/smp.h"
         .text
@@ -76,3 +78,5 @@ patch_gdt_ptr:
         .short 0x7FF     /* length in bytes - 256 descriptors */
         .long  KERN_GDT   /* linear address */
 patch_code_end: 
+
+/* vi: set et sw=8 sts=8: */

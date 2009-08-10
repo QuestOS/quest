@@ -1,3 +1,4 @@
+/* -*- Mode: asm; comment-start: "\/*"; comment-end: "*\/"; indent-tabs-mode: nil -*- */
 
 /*
  *
@@ -5,37 +6,39 @@
  *
  */
 
-/* The movw $0x10...in SREGS_SAVE forces subsequent operation on the 
-        kernel data segment by loading the appropriate segment registers */
-#define SREGS_SAVE \
-        pushw %ds; \
-        pushw %es; \
-        pushw %fs; \
-        pushw %gs; \
-                  \
-        pushl %edx; \
+/* The movw $0x10...in SREGS_SAVE forces subsequent operation on the
+ * kernel data segment by loading the appropriate segment
+ * registers */
+
+#define SREGS_SAVE       \
+        pushw %ds;       \
+        pushw %es;       \
+        pushw %fs;       \
+        pushw %gs;       \
+                         \
+        pushl %edx;      \
         movw $0x10, %dx; \
-        movw %dx, %ds; \
-        movw %dx, %es; \
-        movw %dx, %fs; \
-        movw %dx, %gs; \
-                        \
+        movw %dx, %ds;   \
+        movw %dx, %es;   \
+        movw %dx, %fs;   \
+        movw %dx, %gs;   \
+                         \
         popl %edx
 
-#define REGS_RESTORE \
-        pushfl; \
+#define REGS_RESTORE                                           \
+        pushfl;                                                \
         popl %edx; /* Get eflags into edx and clear NT flag */ \
-        andl $0xFFFFBFFF, %edx; \
-        pushl %edx; \
-        popfl; \
-                        \
-        popw %gs; \
-        popw %fs; \
-        popw %es; \
+        andl $0xFFFFBFFF, %edx;                                \
+        pushl %edx;                                            \
+        popfl;                                                 \
+                                                               \
+        popw %gs;                                              \
+        popw %fs;                                              \
+        popw %es;                                              \
         popw %ds; 
 
 #define SREGS_RESTORE \
-        REGS_RESTORE \
+        REGS_RESTORE  \
         iret;
 
         
@@ -741,3 +744,5 @@ INT(fd)
 INT(fe)
 INT(ff)
 #undef INT
+
+/* vi: set et sw=8 sts=8: */
