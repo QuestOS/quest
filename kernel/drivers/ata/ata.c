@@ -216,6 +216,7 @@ int
 ata_drive_read_sector (uint32 bus, uint32 drive, uint32 lba, uint8 * buffer)
 {
   uint8 status;
+  int ret;
   ata_grab ();
   outb (drive | 0x40 /* LBA */  | ((lba >> 24) & 0x0F),
         ATA_DRIVE_SELECT (bus));
@@ -234,12 +235,16 @@ ata_drive_read_sector (uint32 bus, uint32 drive, uint32 lba, uint8 * buffer)
   while (!(status = inb (ATA_COMMAND (bus)) & 0x8) && !(status & 0x1))
     asm volatile ("pause");
   if (status & 0x1) {
-    ata_release ();
-    return -1;
+    ret = -1;
+    goto cleanup;
   }
   insw (ATA_DATA (bus), buffer, 256);
+
+  ret = 512;
+  
+ cleanup:
   ata_release ();
-  return 512;
+  return ret;
 }
 
 /* Write a sector to the bus/drive using LBA from the given buffer
@@ -248,7 +253,7 @@ int
 ata_drive_write_sector (uint32 bus, uint32 drive, uint32 lba, uint8 * buffer)
 {
   uint8 status;
-  int i;
+  int i, ret;
   outb (drive | 0x40 /* LBA */  | ((lba >> 24) & 0x0F),
         ATA_DRIVE_SELECT (bus));
   ATA_SELECT_DELAY (bus);
@@ -260,8 +265,8 @@ ata_drive_write_sector (uint32 bus, uint32 drive, uint32 lba, uint8 * buffer)
   while (!(status = inb (ATA_COMMAND (bus)) & 0x8) && !(status & 0x1))
     asm volatile ("pause");
   if (status & 0x1) {
-    ata_release ();
-    return -1;
+    ret = -1;
+    goto cleanup;
   }
 
   /* ``Do not use REP OUTSW to transfer data. There must be a tiny
@@ -273,8 +278,12 @@ ata_drive_write_sector (uint32 bus, uint32 drive, uint32 lba, uint8 * buffer)
     outw (((uint16 *) buffer)[i], ATA_DATA (bus));
 
   outb (0xE7, ATA_COMMAND (bus));       /* FLUSH */
+
+  ret = 512;
+
+ cleanup:
   ata_release ();
-  return 512;
+  return ret;
 }
 
 /* Count number of times IRQs are triggered. */
@@ -407,7 +416,7 @@ atapi_drive_read_sector (uint32 bus, uint32 drive, uint32 lba, uint8 * buffer)
   /* 0xA8 is READ SECTORS command byte. */
   uint8 read_cmd[12] = { 0xA8, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0 };
   uint8 status;
-  uint16 size;
+  int size;
   ata_grab ();
 
 #ifdef DEBUG_ATA
@@ -427,8 +436,10 @@ atapi_drive_read_sector (uint32 bus, uint32 drive, uint32 lba, uint8 * buffer)
   while (!((status = inb (ATA_COMMAND (bus))) & 0x8) && !(status & 0x1))
     asm volatile ("pause");
   /* DRQ or ERROR set */
-  if (status & 0x1)
-    return -1;                  /* error */
+  if (status & 0x1) {
+    size = -1;
+    goto cleanup;
+  }
 
   read_cmd[9] = 1;              /* 1 sector */
   read_cmd[2] = (lba >> 0x18) & 0xFF;   /* most sig. byte of LBA */
@@ -451,8 +462,8 @@ atapi_drive_read_sector (uint32 bus, uint32 drive, uint32 lba, uint8 * buffer)
 
   /* Read actual size */
   size =
-    (((uint16) inb (ATA_ADDRESS3 (bus))) << 8) |
-    (uint16) (inb (ATA_ADDRESS2 (bus)));
+    (((int) inb (ATA_ADDRESS3 (bus))) << 8) |
+    (int) (inb (ATA_ADDRESS2 (bus)));
 
 #ifdef DEBUG_ATA
   com1_printf ("atapi_drive_read_sector(%X,%X,%X,%p): size = %X\n", 
@@ -475,8 +486,8 @@ atapi_drive_read_sector (uint32 bus, uint32 drive, uint32 lba, uint8 * buffer)
 
   /* Read "actual" size */
   size =
-    (((uint16) inb (ATA_ADDRESS3 (bus))) << 8) |
-    (uint16) (inb (ATA_ADDRESS2 (bus)));
+    (((int) inb (ATA_ADDRESS3 (bus))) << 8) |
+    (int) (inb (ATA_ADDRESS2 (bus)));
 
 #ifdef DEBUG_ATA
   com1_printf ("atapi_drive_read_sector(%X,%X,%X,%p): size = %X\n", 
@@ -496,6 +507,7 @@ atapi_drive_read_sector (uint32 bus, uint32 drive, uint32 lba, uint8 * buffer)
   while ((status = inb (ATA_COMMAND (bus))) & 0x88) 
     asm volatile ("pause");
 
+ cleanup:
   ata_release ();
   return size;
 }
