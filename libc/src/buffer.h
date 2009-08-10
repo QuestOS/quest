@@ -19,3 +19,5 @@ typedef struct frec {
   frec_p next;
 } frec_t;			/* Free record type.                      */
 
+
+/* vi: set et sw=2 sts=2: */

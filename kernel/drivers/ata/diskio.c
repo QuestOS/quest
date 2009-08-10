@@ -124,3 +124,5 @@ WriteSectorLBA (void *offset, uint32 lba)
   ata_drive_write_sector (ATA_BUS_PRIMARY, ATA_DRIVE_MASTER, lba,
                           (uint8 *) offset);
 }
+
+/* vi: set et sw=2 sts=2: */

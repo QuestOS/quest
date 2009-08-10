@@ -187,3 +187,5 @@ tsc_delay_usec (uint32 usec)
     asm volatile ("pause");
   }
 }
+
+/* vi: set et sw=2 sts=2: */

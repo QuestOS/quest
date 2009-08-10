@@ -33,3 +33,5 @@ void init_keyboard_8042 (void);
 void keyboard_8042_next (key_event *);
 
 #endif
+
+/* vi: set et sw=2 sts=2: */

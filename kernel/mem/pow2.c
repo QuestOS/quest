@@ -211,3 +211,5 @@ pow2_init (void)
   pow2_used_count = 0;
   pow2_used_table_pages = 1;
 }
+
+/* vi: set et sw=2 sts=2: */

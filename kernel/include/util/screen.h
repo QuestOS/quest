@@ -13,3 +13,5 @@ extern int _print (char *pch);
 extern void _putx (uint32 l);
 
 #endif
+
+/* vi: set et sw=2 sts=2: */

@@ -33,3 +33,5 @@ void cpuid_get_brand_string (char *, uint32);
 bool cpuid_vmx_support (void);
 
 #endif
+
+/* vi: set et sw=2 sts=2: */

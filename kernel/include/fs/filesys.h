@@ -116,3 +116,5 @@ typedef enum
 } grub_error_t;
 
 #endif
+
+/* vi: set et sw=2 sts=2: */

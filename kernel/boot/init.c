@@ -518,3 +518,5 @@ init (multiboot * pmb)
   /* never return */
   panic ("BSP: unreachable");
 }
+
+/* vi: set et sw=2 sts=2: */

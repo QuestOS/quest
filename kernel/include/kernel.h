@@ -139,3 +139,5 @@ checksum (uint8 * ptr, int length)
  * c-continued-brace-offset: 0
  * End:
  */
+
+/* vi: set et sw=2 sts=2: */

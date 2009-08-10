@@ -989,3 +989,5 @@ ext2fs_dir (char *dirname)
   }
   /* never get here */
 }
+
+/* vi: set et sw=2 sts=2: */

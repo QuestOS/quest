@@ -486,3 +486,5 @@ void _start ( int argc, char *argv[] ) {
   mem_init();
   exit ( main( argc, argv ) );
 }
+
+/* vi: set et sw=2 sts=2: */

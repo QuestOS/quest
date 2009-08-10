@@ -65,3 +65,5 @@ semaphore_destroy (semaphore * sem)
 
 
 #endif
+
+/* vi: set et sw=2 sts=2: */

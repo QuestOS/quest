@@ -166,3 +166,5 @@ bitmap_find_first_set (uint32 *table, uint32 limit)
 
   return -1;
 }
+
+/* vi: set et sw=2 sts=2: */

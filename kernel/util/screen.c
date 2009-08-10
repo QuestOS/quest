@@ -86,3 +86,5 @@ _putx (uint32 l)
     else
       _putchar ('0' + li);
 }
+
+/* vi: set et sw=2 sts=2: */

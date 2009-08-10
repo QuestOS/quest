@@ -8,3 +8,5 @@ extern void com1_puts (char *);
 extern void com1_putx (uint32);
 
 #endif
+
+/* vi: set et sw=2 sts=2: */

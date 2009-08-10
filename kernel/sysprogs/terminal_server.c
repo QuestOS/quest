@@ -120,3 +120,5 @@ main ()
   return 0;
 
 }
+
+/* vi: set et sw=2 sts=2: */

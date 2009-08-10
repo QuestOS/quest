@@ -68,3 +68,5 @@ free_phys_frames (uint32 frame, uint32 count)
   for (i = 0; i < count; i++)
     BITMAP_SET (mm_table, frame + i);
 }
+
+/* vi: set et sw=2 sts=2: */

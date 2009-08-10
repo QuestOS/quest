@@ -12,3 +12,5 @@ extern void free_phys_frame (uint32);
 extern void free_phys_frames (uint32, uint32);
 
 #endif
+
+/* vi: set et sw=2 sts=2: */

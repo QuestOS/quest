@@ -1076,3 +1076,5 @@ init_interrupt_handlers (void)
    * set_vector_handler(0xfe, flush_tlb_handler); *
    ************************************************/
 }
+
+/* vi: set et sw=2 sts=2: */

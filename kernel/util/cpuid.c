@@ -48,3 +48,5 @@ cpuid_vmx_support (void)
   cpuid (1, 0, NULL, NULL, &ecx, NULL);
   return (ecx & (1 << 5));
 }
+
+/* vi: set et sw=2 sts=2: */

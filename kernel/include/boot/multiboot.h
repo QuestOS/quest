@@ -68,3 +68,5 @@ typedef struct _multiboot
 } multiboot;
 
 #endif
+
+/* vi: set et sw=2 sts=2: */

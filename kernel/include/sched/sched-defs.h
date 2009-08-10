@@ -7,3 +7,5 @@
 #define MIN_PRIO ( MAX_PRIO_QUEUES - 1 )
 
 #endif
+
+/* vi: set et sw=2 sts=2: */

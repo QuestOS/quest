@@ -15,3 +15,5 @@ extern int atoi(const char *nptr);
 
 extern int rand( void );
 extern __attribute__((noreturn)) void exit( int status );
+
+/* vi: set et sw=2 sts=2: */

@@ -17,3 +17,5 @@ void printf (const char *fmt, ...);
 void _printf (const char *fmt, ...);
 
 #endif
+
+/* vi: set et sw=2 sts=2: */

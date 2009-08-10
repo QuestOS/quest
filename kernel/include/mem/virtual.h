@@ -12,3 +12,5 @@ extern void unmap_virtual_pages (void *virt_addr, uint32 count);
 extern void *get_phys_addr (void *virt_addr);
 
 #endif
+
+/* vi: set et sw=2 sts=2: */

@@ -513,3 +513,5 @@ atapi_drive_read_sector (uint32 bus, uint32 drive, uint32 lba, uint8 * buffer)
   ata_release ();
   return size;
 }
+
+/* vi: set et sw=2 sts=2: */

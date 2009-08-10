@@ -363,3 +363,5 @@ IOAPIC_map_GSI (uint32 GSI, uint8 vector, uint64 flags)
   return GSI;
 }
 
+
+/* vi: set et sw=2 sts=2: */

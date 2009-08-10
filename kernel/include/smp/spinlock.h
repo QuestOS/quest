@@ -72,3 +72,5 @@ spinlock_init (spinlock * lock)
 #define SPINLOCK_INIT {0}
 
 #endif
+
+/* vi: set et sw=2 sts=2: */

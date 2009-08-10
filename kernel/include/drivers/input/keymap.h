@@ -7,3 +7,5 @@
 uint8 keymap_getchar (void);
 
 #endif
+
+/* vi: set et sw=2 sts=2: */

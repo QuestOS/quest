@@ -207,3 +207,5 @@ sched_setparam (int pid, const struct sched_param *p)
 
   return ret;
 }
+
+/* vi: set et sw=2 sts=2: */

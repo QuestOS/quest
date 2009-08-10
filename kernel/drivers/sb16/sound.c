@@ -428,3 +428,5 @@ init_sound (void)
   sb_speaker_on ();
   sb_install_driver (11025, FALSE);
 }
+
+/* vi: set et sw=2 sts=2: */

@@ -217,3 +217,5 @@ bool sb_mixer_register_get (uint8 index, uint8 * value);
 bool sb_install_driver (uint16 frequency, bool use_stereo);
 // bool sb_read_raw (char *filename, SAMPLE *sample);
 #endif
+
+/* vi: set et sw=2 sts=2: */

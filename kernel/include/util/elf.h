@@ -2061,3 +2061,5 @@ typedef Elf32_Addr Elf32_Conflict;
 #define R_CRIS_NUM		20
 
 #endif
+
+/* vi: set et sw=2 sts=2: */

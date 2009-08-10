@@ -39,3 +39,5 @@ circular_remove (circular *c, void *out_elt)
 void circular_init (circular *c, void *buffer, sint32 num_elts, sint32 elt_size);
 
 #endif
+
+/* vi: set et sw=2 sts=2: */

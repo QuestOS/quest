@@ -43,3 +43,5 @@ uint32 IRQ_to_GSI (uint32 bus, uint32 irq);
 #endif /* ifndef __ASSEMBLER__ */
 
 #endif
+
+/* vi: set et sw=2 sts=2: */

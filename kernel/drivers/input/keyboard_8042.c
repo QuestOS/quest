@@ -166,3 +166,5 @@ keyboard_8042_next (key_event *e)
 {
   circular_remove (&keyb_buffer, (void *)e);
 }
+
+/* vi: set et sw=2 sts=2: */

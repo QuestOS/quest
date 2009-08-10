@@ -316,3 +316,5 @@ DisplayOneDevice (ACPI_HANDLE ObjHandle, UINT32 Level, void *Context,
 
 /* End ACPI support */
 
+
+/* vi: set et sw=2 sts=2: */

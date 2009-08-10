@@ -109,3 +109,5 @@ circular_init (circular *c, void *buffer, sint32 num_elts, sint32 elt_size)
   c->ins_waitq  = 0;
   c->rem_waitq  = 0;
 }
+
+/* vi: set et sw=2 sts=2: */

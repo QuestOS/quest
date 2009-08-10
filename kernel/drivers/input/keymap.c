@@ -55,3 +55,5 @@ keymap_getchar (void)
   else
     return lcase_scancode[char_code];
 }
+
+/* vi: set et sw=2 sts=2: */

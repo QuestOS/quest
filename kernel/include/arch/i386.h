@@ -330,3 +330,5 @@ memcpy (void *pDest, const void *pSrc, uint32 cb)
 
 
 #endif
+
+/* vi: set et sw=2 sts=2: */

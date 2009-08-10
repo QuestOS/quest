@@ -26,3 +26,6 @@ typedef signed char bool;
 #endif // [#ifndef __ASSEMBLER__]
 
 #endif
+
+
+/* vi: set et sw=2 sts=2: */

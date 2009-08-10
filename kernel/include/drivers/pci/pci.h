@@ -97,3 +97,5 @@ pci_write_dword (pci_config_addr * a, uint32 v)
 }
 
 #endif
+
+/* vi: set et sw=2 sts=2: */

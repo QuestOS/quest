@@ -291,3 +291,5 @@ add_processor (struct mp_config_processor_entry *proc)
 }
 
 /* End Intel Multiprocessing Specification implementation */
+
+/* vi: set et sw=2 sts=2: */

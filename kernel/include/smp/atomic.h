@@ -25,3 +25,5 @@ atomic_xchg_dword (uint32 * addr, uint32 x)
 }
 
 #endif
+
+/* vi: set et sw=2 sts=2: */

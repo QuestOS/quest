@@ -25,3 +25,5 @@ uint32 IOAPIC_num_entries (void);
 extern uint32 mp_ISA_bus_id;
 
 #endif 
+
+/* vi: set et sw=2 sts=2: */

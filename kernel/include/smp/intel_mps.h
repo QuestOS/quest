@@ -100,3 +100,5 @@ struct mp_config
 } PACKED;
 
 #endif
+
+/* vi: set et sw=2 sts=2: */

@@ -18,3 +18,5 @@
                                    grub at boot time */
 
 #endif
+
+/* vi: set et sw=2 sts=2: */
