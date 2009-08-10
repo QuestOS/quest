@@ -122,22 +122,4 @@ checksum (uint8 * ptr, int length)
 #endif /* __ASSEMBLER__ */
 #endif
 
-/*
- * Overrides for Emacs
- * Emacs will notice this stuff at the end of the file and automatically
- * adjust the settings for this buffer only.  This must remain at the end
- * of the file.
- *
----------------------------------------------------------------------------
- * Local variables:
- * c-indent-level: 4
- * c-brace-imaginary-offset: 0
- * c-brace-offset: -4
- * c-argdecl-indent: 4
- * c-label-offset: -4
- * c-continued-statement-offset: 4
- * c-continued-brace-offset: 0
- * End:
- */
-
 /* vi: set et sw=2 sts=2: */
