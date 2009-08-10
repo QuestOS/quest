@@ -1,4 +1,4 @@
-/* -*- Mode: C; c-file-style: "gnu"; c-basic-offset: 2 -*- */
+/* -*- Mode: C; c-file-style: "gnu"; c-basic-offset: 2; indent-tabs-mode: nil -*- */
 
 /* Based on:
  * http://www.uruk.org/mps/, http://www.osdev.org/, http://www.osdever.net/ 

@@ -1,4 +1,4 @@
-/* -*- Mode: C; c-file-style: "gnu"; c-basic-offset: 2 -*- */
+/* -*- Mode: C; c-file-style: "gnu"; c-basic-offset: 2; indent-tabs-mode: nil -*- */
 
 #define MAXBLKS 128       /* --??-- Max blocks (holes) in free memory.   */
 

@@ -1,4 +1,4 @@
-/* -*- Mode: C; c-file-style: "gnu"; c-basic-offset: 2 -*- */
+/* -*- Mode: C; c-file-style: "gnu"; c-basic-offset: 2; indent-tabs-mode: nil -*- */
 
 #ifndef __SOUND_H__
 #define __SOUND_H__
