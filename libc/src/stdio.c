@@ -15,8 +15,8 @@
 #define ceil(size, align) (( size ) + ( align ) - 1 ) / ( align )
 #define rdtsc(x)      __asm__ __volatile__("rdtsc \n\t" : "=A" (*(x)))
 
-static frec_p frhead;		/* Free record-list head.                  */
-static frec_p frecs;		/* Allocatable records from free-list.     */
+static frec_p frhead;           /* Free record-list head.                  */
+static frec_p frecs;            /* Allocatable records from free-list.     */
 
 static void MergeRecords (frec_p frp);
 static void DelRecord (frec_p prev_frp, frec_p frp);
@@ -78,42 +78,42 @@ int printf (const char *format, ...) {
   while ((c = *format++) != 0)
     {
       if (c != '%') {
-	putchar (c);
-	count++;
+        putchar (c);
+        count++;
       }
       else
-	{
-	  char *p;
-	  
-	  c = *format++;
-	  switch (c)
-	    {
-	    case 'd':
-	    case 'u':
-	    case 'x':
-	      itoa (buf, c, *((int *) arg++));
-	      p = buf;
-	      goto string;
-	      break;
+        {
+          char *p;
+          
+          c = *format++;
+          switch (c)
+            {
+            case 'd':
+            case 'u':
+            case 'x':
+              itoa (buf, c, *((int *) arg++));
+              p = buf;
+              goto string;
+              break;
 
-	    case 's':
-	      p = *arg++;
-	      if (! p)
-		p = "(null)";
+            case 's':
+              p = *arg++;
+              if (! p)
+                p = "(null)";
 
-	    string:
-	      while (*p) {
-		putchar (*p++);
-		count++;
-	      }
-	      break;
+            string:
+              while (*p) {
+                putchar (*p++);
+                count++;
+              }
+              break;
 
-	    default:
-	      putchar (*((int *) arg++));
-	      count++;
-	      break;
-	    }
-	}
+            default:
+              putchar (*((int *) arg++));
+              count++;
+              break;
+            }
+        }
     }
   return count;
 }
@@ -130,42 +130,42 @@ int sprintf (char *str, const char *format, ...) {
   while ((c = *format++) != 0)
     {
       if (c != '%') {
-	*str++ = c;
-	count++;
+        *str++ = c;
+        count++;
       }
       else
-	{
-	  char *p;
-	  
-	  c = *format++;
-	  switch (c)
-	    {
-	    case 'd':
-	    case 'u':
-	    case 'x':
-	      itoa (buf, c, *((int *) arg++));
-	      p = buf;
-	      goto string;
-	      break;
+        {
+          char *p;
+          
+          c = *format++;
+          switch (c)
+            {
+            case 'd':
+            case 'u':
+            case 'x':
+              itoa (buf, c, *((int *) arg++));
+              p = buf;
+              goto string;
+              break;
 
-	    case 's':
-	      p = *arg++;
-	      if (! p)
-		p = "(null)";
+            case 's':
+              p = *arg++;
+              if (! p)
+                p = "(null)";
 
-	    string:
-	      while (*p) {
-		*str++ = *p++;
-		count++;
-	      }
-	      break;
+            string:
+              while (*p) {
+                *str++ = *p++;
+                count++;
+              }
+              break;
 
-	    default:
-	      *str++ = (*((int *) arg++));
-	      count++;
-	      break;
-	    }
-	}
+            default:
+              *str++ = (*((int *) arg++));
+              count++;
+              break;
+            }
+        }
     }
   
   *str = '\0';
@@ -174,14 +174,14 @@ int sprintf (char *str, const char *format, ...) {
 }
 
 
-static char arena[1000000];	/* --??-- To configure later for d.m.a. */
+static char arena[1000000];     /* --??-- To configure later for d.m.a. */
 
 void mem_init ( void ) {
   void *memset( void *p, int ch, size_t cb );
   addrs_t baseptr;
   frec_p frp;
 
-  int size = 800000;		/* --??-- (See above) */
+  int size = 800000;            /* --??-- (See above) */
 
   memset(arena, 0, 1000000);
 
@@ -204,8 +204,8 @@ void *malloc (size_t size) {
   frec_p frp, prev_frp;
   addrs_t frstart;
 
-  size += 8;			/* Allocate space for tracking size 
-				   of actual allocation */
+  size += 8;                    /* Allocate space for tracking size 
+                                   of actual allocation */
 
   prev_frp = frp = frhead;
 
@@ -216,11 +216,11 @@ void *malloc (size_t size) {
       frstart = frp->fbp;
       frp->fbp += (int)(ALIGN * ceil(size, ALIGN));
       frp->size -= (int)(ALIGN * ceil(size, ALIGN));
-      *((int *)frstart) = size;	/* Store size allocated */
+      *((int *)frstart) = size; /* Store size allocated */
       
       /* If block is only partially allocated then return. */
       if (frp->size)
-	return (frstart+8);
+        return (frstart+8);
 
       /* Complete block is allocated. Adjust free record list. */
       DelRecord (prev_frp, frp);
@@ -251,7 +251,7 @@ void free (void *addr) {
   frec_p frp, new_frp, prev_frp;
   size_t size;
 
-  addr -= 8;			/* Decrement address to find size field */
+  addr -= 8;                    /* Decrement address to find size field */
 
   size = *((int *) addr );
 
@@ -346,7 +346,7 @@ int atoi(const char *nptr) {
 
 clock_t clock( void ) {
 
-  return( time() * 10000 );	/* Time returned in microseconds */
+  return( time() * 10000 );     /* Time returned in microseconds */
 }
 
 size_t strlen( const char *s ) {
@@ -419,7 +419,7 @@ int memcmp( const void *p1, const void *p2, size_t cb ) {
 /* --??-- Needs future enhancement. Right now, strongly tied to fopen */
 static int fp;
 static int filesize;
-static char tmp_buf[8192];		/* Ugly! */
+static char tmp_buf[8192];              /* Ugly! */
 
 size_t fread(void *ptr, size_t size, size_t nmemb, FILE *stream) {
   

@@ -233,12 +233,12 @@ struct ext2_dir_entry
 
 /* linux/ext2_fs.h */
 #define EXT2_ADDR_PER_BLOCK(s)          (EXT2_BLOCK_SIZE(s) / sizeof (__u32))
-#define EXT2_ADDR_PER_BLOCK_BITS(s)		(log2(EXT2_ADDR_PER_BLOCK(s)))
+#define EXT2_ADDR_PER_BLOCK_BITS(s)             (log2(EXT2_ADDR_PER_BLOCK(s)))
 
 /* linux/ext2_fs.h */
 #define EXT2_BLOCK_SIZE_BITS(s)        ((s)->s_log_block_size + 10)
 /* kind of from ext2/super.c */
-#define EXT2_BLOCK_SIZE(s)	(1 << EXT2_BLOCK_SIZE_BITS(s))
+#define EXT2_BLOCK_SIZE(s)      (1 << EXT2_BLOCK_SIZE_BITS(s))
 /* linux/ext2fs.h */
 #define EXT2_DESC_PER_BLOCK(s) \
      (EXT2_BLOCK_SIZE(s) / sizeof (struct ext2_group_desc))
@@ -247,7 +247,7 @@ struct ext2_dir_entry
 #define S_IFLNK  0120000
 #define S_IFREG  0100000
 #define S_IFDIR  0040000
-#define S_ISLNK(m)	(((m) & S_IFMT) == S_IFLNK)
+#define S_ISLNK(m)      (((m) & S_IFMT) == S_IFLNK)
 #define S_ISREG(m)      (((m) & S_IFMT) == S_IFREG)
 #define S_ISDIR(m)      (((m) & S_IFMT) == S_IFDIR)
 
