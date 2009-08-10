@@ -1,3 +1,5 @@
+/* -*- Mode: C -*- */
+
 #ifndef _FILESYS_H_
 #define _FILESYS_H_
 

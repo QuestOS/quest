@@ -1,3 +1,5 @@
+/* -*- Mode: C -*- */
+
 #ifndef _KERNEL_DEFS_H_
 #define _KERNEL_DEFS_H_
 

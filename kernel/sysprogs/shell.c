@@ -1,4 +1,4 @@
-
+/* -*- Mode: C -*- */
 #include "syscall.h"
 
 void

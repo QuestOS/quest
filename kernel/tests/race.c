@@ -1,3 +1,5 @@
+/* -*- Mode: C -*- */
+
 #include <stdio.h>
 
 int

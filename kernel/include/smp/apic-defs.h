@@ -1,3 +1,5 @@
+/* -*- Mode: C -*- */
+
 /*
  *  <Insert copyright here : it must be BSD-like so everyone can use it>
  *

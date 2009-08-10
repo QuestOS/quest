@@ -1,3 +1,5 @@
+/* -*- Mode: C -*- */
+
 #include"fs/filesys.h"
 #include"kernel.h"
 

@@ -1,3 +1,5 @@
+/* -*- Mode: C -*- */
+
 
 /* --??-- Future development: possbily break this file into separate
    files for time, string maipulation, etc etc functionality */

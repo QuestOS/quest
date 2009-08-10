@@ -1,3 +1,5 @@
+/* -*- Mode: C -*- */
+
 /*
  *
  * Interrupt handler code: interrupt_handler.c

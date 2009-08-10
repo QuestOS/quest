@@ -1,3 +1,5 @@
+/* -*- Mode: C -*- */
+
 #include "kernel.h"
 #include "util/printf.h"
 

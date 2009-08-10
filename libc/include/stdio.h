@@ -1,3 +1,5 @@
+/* -*- Mode: C -*- */
+
 #include "syscall.h"
 
 #ifndef NULL

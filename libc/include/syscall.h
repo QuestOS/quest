@@ -1,3 +1,5 @@
+/* -*- Mode: C -*- */
+
 
 
 struct sched_param

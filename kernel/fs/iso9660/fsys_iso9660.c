@@ -1,3 +1,5 @@
+/* -*- Mode: C -*- */
+
 #include "kernel.h"
 #include "mem/mem.h"
 #include "fs/filesys.h"

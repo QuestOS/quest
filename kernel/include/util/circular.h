@@ -1,3 +1,5 @@
+/* -*- Mode: C -*- */
+
 #ifndef _CIRCULAR_H_
 #define _CIRCULAR_H_
 #include "types.h"

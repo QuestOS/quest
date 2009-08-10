@@ -1,3 +1,5 @@
+/* -*- Mode: C -*- */
+
 #include "types.h"
 #include "drivers/sb16/sound.h"
 #include "kernel.h"

@@ -1,3 +1,5 @@
+/* -*- Mode: C -*- */
+
 #ifndef _INTEL_MPS_H_
 #define _INTEL_MPS_H_
 

@@ -1,3 +1,5 @@
+/* -*- Mode: C -*- */
+
 #ifndef _VIRTUAL_H_
 #define _VIRTUAL_H_
 #include "types.h"

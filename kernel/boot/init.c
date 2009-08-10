@@ -1,3 +1,5 @@
+/* -*- Mode: C -*- */
+
 #include "boot/multiboot.h"
 #include "arch/i386.h"
 #include "util/cpuid.h"

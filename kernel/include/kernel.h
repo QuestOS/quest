@@ -1,3 +1,5 @@
+/* -*- Mode: C -*- */
+
 #ifndef _KERNEL_H_
 #define _KERNEL_H_
 #define PIT_FREQ 1193181        /* in Hz */

@@ -1,3 +1,5 @@
+/* -*- Mode: C -*- */
+
 #ifndef _SCHED_DEFS_H_
 #define _SCHED_DEFS_H_
 

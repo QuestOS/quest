@@ -1,3 +1,5 @@
+/* -*- Mode: C -*- */
+
 #ifndef __I386_H__
 #define __I386_H__
 #include"types.h"

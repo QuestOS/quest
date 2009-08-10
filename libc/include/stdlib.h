@@ -1,3 +1,5 @@
+/* -*- Mode: C -*- */
+
 
 #ifndef _SIZE_T
 typedef int size_t;

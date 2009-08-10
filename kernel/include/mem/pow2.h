@@ -1,3 +1,5 @@
+/* -*- Mode: C -*- */
+
 #ifndef _POW2_H_
 #define _POW2_H_
 #include "types.h"

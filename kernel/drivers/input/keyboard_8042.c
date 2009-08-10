@@ -1,3 +1,5 @@
+/* -*- Mode: C -*- */
+
 #include "drivers/input/keyboard.h"
 #include "arch/i386.h"
 #include "sched/sched.h"

@@ -1,3 +1,5 @@
+/* -*- Mode: C -*- */
+
 #include"arch/i386.h"
 #include"util/cpuid.h"
 #include"kernel.h"

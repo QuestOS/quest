@@ -1,3 +1,5 @@
+/* -*- Mode: C -*- */
+
 #include "drivers/ata/ata.h"
 #include "arch/i386.h"
 #include "util/printf.h"

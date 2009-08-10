@@ -1,3 +1,5 @@
+/* -*- Mode: C -*- */
+
 #include "arch/i386.h"
 #include "kernel.h"
 #include "mem/mem.h"

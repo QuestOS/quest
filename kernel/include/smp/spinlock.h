@@ -1,3 +1,5 @@
+/* -*- Mode: C -*- */
+
 #ifndef _SPINLOCK_H_
 #define _SPINLOCK_H_
 #include"smp/atomic.h"

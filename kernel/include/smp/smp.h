@@ -1,3 +1,5 @@
+/* -*- Mode: C -*- */
+
 #ifndef _SMP_H_
 #define _SMP_H_
 

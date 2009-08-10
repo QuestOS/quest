@@ -1,3 +1,5 @@
+/* -*- Mode: C -*- */
+
 #define MAXBLKS 128       /* --??-- Max blocks (holes) in free memory.   */
 
 #ifndef FALSE

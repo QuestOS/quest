@@ -1,3 +1,5 @@
+/* -*- Mode: C -*- */
+
 /* Based on:
  * http://www.uruk.org/mps/, http://www.osdev.org/, http://www.osdever.net/ 
  * and the Intel Multiprocessing Specification v1.4.

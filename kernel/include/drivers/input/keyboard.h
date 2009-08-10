@@ -1,3 +1,5 @@
+/* -*- Mode: C -*- */
+
 #ifndef _KEYBOARD_H_
 #define _KEYBOARD_H_
 #include "types.h"

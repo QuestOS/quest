@@ -1,3 +1,5 @@
+/* -*- Mode: C -*- */
+
 #include "mem/physical.h"
 #include "kernel.h"
 

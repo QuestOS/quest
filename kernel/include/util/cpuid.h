@@ -1,3 +1,5 @@
+/* -*- Mode: C -*- */
+
 #ifndef CPUID_H_
 #define CPUID_H_
 #include "types.h"

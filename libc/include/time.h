@@ -1,3 +1,5 @@
+/* -*- Mode: C -*- */
+
 
 #define CLOCKS_PER_SEC 1000000
 

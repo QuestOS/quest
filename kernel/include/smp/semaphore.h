@@ -1,3 +1,5 @@
+/* -*- Mode: C -*- */
+
 #ifndef _SEMAPHORE_H_
 #define _SEMAPHORE_H_
 #include "kernel.h"

@@ -1,3 +1,5 @@
+/* -*- Mode: C -*- */
+
 #ifndef _PHYSICAL_H_
 #define _PHYSICAL_H_
 #include "types.h"

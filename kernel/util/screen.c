@@ -1,3 +1,5 @@
+/* -*- Mode: C -*- */
+
 #include "smp/spinlock.h"
 #include "util/screen.h"
 #include "util/debug.h"

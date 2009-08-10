@@ -1,3 +1,5 @@
+/* -*- Mode: C -*- */
+
 #include "arch/i386.h"
 #include "sched/sched.h"
 #include "util/circular.h"

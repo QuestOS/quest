@@ -1,3 +1,5 @@
+/* -*- Mode: C -*- */
+
 #include "types.h"
 #include "kernel.h"
 #include "acpi.h"                /* Use ACPICA's va_* macros */

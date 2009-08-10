@@ -1,3 +1,5 @@
+/* -*- Mode: C -*- */
+
 #ifndef _ATOMIC_H_
 #define _ATOMIC_H_
 
