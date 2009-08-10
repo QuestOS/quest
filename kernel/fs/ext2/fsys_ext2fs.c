@@ -1,4 +1,4 @@
-/* -*- Mode: C -*- */
+/* -*- Mode: C; c-file-style: "gnu"; c-basic-offset: 2 -*- */
 
 /* $Id: fsys_ext2fs.c,v 1.8 2005/09/16 18:16:27 gtw Exp $ */
 

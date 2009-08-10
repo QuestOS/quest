@@ -1,4 +1,4 @@
-/* -*- Mode: C -*- */
+/* -*- Mode: C; c-file-style: "gnu"; c-basic-offset: 2 -*- */
 
 #ifndef CPUID_H_
 #define CPUID_H_

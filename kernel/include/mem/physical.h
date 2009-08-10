@@ -1,4 +1,4 @@
-/* -*- Mode: C -*- */
+/* -*- Mode: C; c-file-style: "gnu"; c-basic-offset: 2 -*- */
 
 #ifndef _PHYSICAL_H_
 #define _PHYSICAL_H_

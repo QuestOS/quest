@@ -1,4 +1,4 @@
-/* -*- Mode: C -*- */
+/* -*- Mode: C; c-file-style: "gnu"; c-basic-offset: 2 -*- */
 
 #ifndef _APIC_H_
 #define _APIC_H_
