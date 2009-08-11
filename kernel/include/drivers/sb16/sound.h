@@ -1,5 +1,3 @@
-/* -*- Mode: C; c-file-style: "gnu"; c-basic-offset: 2; indent-tabs-mode: nil -*- */
-
 #ifndef __SOUND_H__
 #define __SOUND_H__
 
@@ -217,5 +215,14 @@ bool sb_mixer_register_get (uint8 index, uint8 * value);
 bool sb_install_driver (uint16 frequency, bool use_stereo);
 // bool sb_read_raw (char *filename, SAMPLE *sample);
 #endif
+
+/* 
+ * Local Variables:
+ * indent-tabs-mode: nil
+ * mode: C
+ * c-file-style: "gnu"
+ * c-basic-offset: 2
+ * End: 
+ */
 
 /* vi: set et sw=2 sts=2: */

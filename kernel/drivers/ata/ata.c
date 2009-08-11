@@ -1,5 +1,3 @@
-/* -*- Mode: C; c-file-style: "gnu"; c-basic-offset: 2; indent-tabs-mode: nil -*- */
-
 #include "drivers/ata/ata.h"
 #include "arch/i386.h"
 #include "util/printf.h"
@@ -513,5 +511,14 @@ atapi_drive_read_sector (uint32 bus, uint32 drive, uint32 lba, uint8 * buffer)
   ata_release ();
   return size;
 }
+
+/* 
+ * Local Variables:
+ * indent-tabs-mode: nil
+ * mode: C
+ * c-file-style: "gnu"
+ * c-basic-offset: 2
+ * End: 
+ */
 
 /* vi: set et sw=2 sts=2: */

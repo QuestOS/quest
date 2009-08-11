@@ -1,5 +1,3 @@
-/* -*- Mode: C; c-file-style: "gnu"; c-basic-offset: 2; indent-tabs-mode: nil -*- */
-
 /*
  *
  * Interrupt handler code: interrupt_handler.c
@@ -1076,5 +1074,14 @@ init_interrupt_handlers (void)
    * set_vector_handler(0xfe, flush_tlb_handler); *
    ************************************************/
 }
+
+/* 
+ * Local Variables:
+ * indent-tabs-mode: nil
+ * mode: C
+ * c-file-style: "gnu"
+ * c-basic-offset: 2
+ * End: 
+ */
 
 /* vi: set et sw=2 sts=2: */

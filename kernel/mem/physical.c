@@ -1,5 +1,3 @@
-/* -*- Mode: C; c-file-style: "gnu"; c-basic-offset: 2; indent-tabs-mode: nil -*- */
-
 #include "mem/physical.h"
 #include "kernel.h"
 
@@ -68,5 +66,14 @@ free_phys_frames (uint32 frame, uint32 count)
   for (i = 0; i < count; i++)
     BITMAP_SET (mm_table, frame + i);
 }
+
+/* 
+ * Local Variables:
+ * indent-tabs-mode: nil
+ * mode: C
+ * c-file-style: "gnu"
+ * c-basic-offset: 2
+ * End: 
+ */
 
 /* vi: set et sw=2 sts=2: */

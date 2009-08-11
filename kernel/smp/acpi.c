@@ -1,5 +1,3 @@
-/* -*- Mode: C; c-file-style: "gnu"; c-basic-offset: 2; indent-tabs-mode: nil -*- */
-
 #include "arch/i386.h"
 #include "kernel.h"
 #include "mem/mem.h"
@@ -316,5 +314,14 @@ DisplayOneDevice (ACPI_HANDLE ObjHandle, UINT32 Level, void *Context,
 
 /* End ACPI support */
 
+
+/* 
+ * Local Variables:
+ * indent-tabs-mode: nil
+ * mode: C
+ * c-file-style: "gnu"
+ * c-basic-offset: 2
+ * End: 
+ */
 
 /* vi: set et sw=2 sts=2: */

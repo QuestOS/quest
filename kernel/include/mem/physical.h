@@ -1,5 +1,3 @@
-/* -*- Mode: C; c-file-style: "gnu"; c-basic-offset: 2; indent-tabs-mode: nil -*- */
-
 #ifndef _PHYSICAL_H_
 #define _PHYSICAL_H_
 #include "types.h"
@@ -12,5 +10,14 @@ extern void free_phys_frame (uint32);
 extern void free_phys_frames (uint32, uint32);
 
 #endif
+
+/* 
+ * Local Variables:
+ * indent-tabs-mode: nil
+ * mode: C
+ * c-file-style: "gnu"
+ * c-basic-offset: 2
+ * End: 
+ */
 
 /* vi: set et sw=2 sts=2: */

@@ -1,5 +1,3 @@
-/* -*- Mode: C; c-file-style: "gnu"; c-basic-offset: 2; indent-tabs-mode: nil -*- */
-
 #include "drivers/input/keyboard.h"
 #include "arch/i386.h"
 #include "sched/sched.h"
@@ -166,5 +164,14 @@ keyboard_8042_next (key_event *e)
 {
   circular_remove (&keyb_buffer, (void *)e);
 }
+
+/* 
+ * Local Variables:
+ * indent-tabs-mode: nil
+ * mode: C
+ * c-file-style: "gnu"
+ * c-basic-offset: 2
+ * End: 
+ */
 
 /* vi: set et sw=2 sts=2: */

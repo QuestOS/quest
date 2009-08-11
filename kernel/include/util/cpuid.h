@@ -1,5 +1,3 @@
-/* -*- Mode: C; c-file-style: "gnu"; c-basic-offset: 2; indent-tabs-mode: nil -*- */
-
 #ifndef CPUID_H_
 #define CPUID_H_
 #include "types.h"
@@ -33,5 +31,14 @@ void cpuid_get_brand_string (char *, uint32);
 bool cpuid_vmx_support (void);
 
 #endif
+
+/* 
+ * Local Variables:
+ * indent-tabs-mode: nil
+ * mode: C
+ * c-file-style: "gnu"
+ * c-basic-offset: 2
+ * End: 
+ */
 
 /* vi: set et sw=2 sts=2: */

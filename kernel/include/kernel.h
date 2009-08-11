@@ -1,5 +1,3 @@
-/* -*- Mode: C; c-file-style: "gnu"; c-basic-offset: 2; indent-tabs-mode: nil -*- */
-
 #ifndef _KERNEL_H_
 #define _KERNEL_H_
 #define PIT_FREQ 1193181        /* in Hz */
@@ -121,5 +119,14 @@ checksum (uint8 * ptr, int length)
 
 #endif /* __ASSEMBLER__ */
 #endif
+
+/* 
+ * Local Variables:
+ * indent-tabs-mode: nil
+ * mode: C
+ * c-file-style: "gnu"
+ * c-basic-offset: 2
+ * End: 
+ */
 
 /* vi: set et sw=2 sts=2: */

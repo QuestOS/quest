@@ -1,5 +1,3 @@
-/* -*- Mode: C; c-file-style: "gnu"; c-basic-offset: 2; indent-tabs-mode: nil -*- */
-
 #include "arch/i386.h"
 #include "sched/sched.h"
 #include "util/circular.h"
@@ -109,5 +107,14 @@ circular_init (circular *c, void *buffer, sint32 num_elts, sint32 elt_size)
   c->ins_waitq  = 0;
   c->rem_waitq  = 0;
 }
+
+/* 
+ * Local Variables:
+ * indent-tabs-mode: nil
+ * mode: C
+ * c-file-style: "gnu"
+ * c-basic-offset: 2
+ * End: 
+ */
 
 /* vi: set et sw=2 sts=2: */

@@ -1,5 +1,3 @@
-/* -*- Mode: C; c-file-style: "gnu"; c-basic-offset: 2; indent-tabs-mode: nil -*- */
-
 #ifndef _APIC_H_
 #define _APIC_H_
 
@@ -25,5 +23,14 @@ uint32 IOAPIC_num_entries (void);
 extern uint32 mp_ISA_bus_id;
 
 #endif 
+
+/* 
+ * Local Variables:
+ * indent-tabs-mode: nil
+ * mode: C
+ * c-file-style: "gnu"
+ * c-basic-offset: 2
+ * End: 
+ */
 
 /* vi: set et sw=2 sts=2: */

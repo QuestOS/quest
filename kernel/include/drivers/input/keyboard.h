@@ -1,5 +1,3 @@
-/* -*- Mode: C; c-file-style: "gnu"; c-basic-offset: 2; indent-tabs-mode: nil -*- */
-
 #ifndef _KEYBOARD_H_
 #define _KEYBOARD_H_
 #include "types.h"
@@ -33,5 +31,14 @@ void init_keyboard_8042 (void);
 void keyboard_8042_next (key_event *);
 
 #endif
+
+/* 
+ * Local Variables:
+ * indent-tabs-mode: nil
+ * mode: C
+ * c-file-style: "gnu"
+ * c-basic-offset: 2
+ * End: 
+ */
 
 /* vi: set et sw=2 sts=2: */

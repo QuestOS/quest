@@ -1,5 +1,3 @@
-/* -*- Mode: C; c-file-style: "gnu"; c-basic-offset: 2; indent-tabs-mode: nil -*- */
-
 #include "boot/multiboot.h"
 #include "arch/i386.h"
 #include "util/cpuid.h"
@@ -518,5 +516,14 @@ init (multiboot * pmb)
   /* never return */
   panic ("BSP: unreachable");
 }
+
+/* 
+ * Local Variables:
+ * indent-tabs-mode: nil
+ * mode: C
+ * c-file-style: "gnu"
+ * c-basic-offset: 2
+ * End: 
+ */
 
 /* vi: set et sw=2 sts=2: */

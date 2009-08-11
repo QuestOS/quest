@@ -1,5 +1,3 @@
-/* -*- Mode: C; c-file-style: "gnu"; c-basic-offset: 2; indent-tabs-mode: nil -*- */
-
 #include "types.h"
 #include "drivers/sb16/sound.h"
 #include "kernel.h"
@@ -428,5 +426,14 @@ init_sound (void)
   sb_speaker_on ();
   sb_install_driver (11025, FALSE);
 }
+
+/* 
+ * Local Variables:
+ * indent-tabs-mode: nil
+ * mode: C
+ * c-file-style: "gnu"
+ * c-basic-offset: 2
+ * End: 
+ */
 
 /* vi: set et sw=2 sts=2: */

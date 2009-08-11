@@ -1,5 +1,3 @@
-/* -*- Mode: C; c-file-style: "gnu"; c-basic-offset: 2; indent-tabs-mode: nil -*- */
-
 
 
 #include "arch/i386.h"
@@ -124,5 +122,14 @@ WriteSectorLBA (void *offset, uint32 lba)
   ata_drive_write_sector (ATA_BUS_PRIMARY, ATA_DRIVE_MASTER, lba,
                           (uint8 *) offset);
 }
+
+/* 
+ * Local Variables:
+ * indent-tabs-mode: nil
+ * mode: C
+ * c-file-style: "gnu"
+ * c-basic-offset: 2
+ * End: 
+ */
 
 /* vi: set et sw=2 sts=2: */

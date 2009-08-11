@@ -1,5 +1,3 @@
-/* -*- Mode: C; c-file-style: "gnu"; c-basic-offset: 2; indent-tabs-mode: nil -*- */
-
 #include "kernel.h"
 #include "mem/mem.h"
 #include "smp/spinlock.h"
@@ -211,5 +209,14 @@ pow2_init (void)
   pow2_used_count = 0;
   pow2_used_table_pages = 1;
 }
+
+/* 
+ * Local Variables:
+ * indent-tabs-mode: nil
+ * mode: C
+ * c-file-style: "gnu"
+ * c-basic-offset: 2
+ * End: 
+ */
 
 /* vi: set et sw=2 sts=2: */

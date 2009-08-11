@@ -1,5 +1,3 @@
-/* -*- Mode: C; c-file-style: "gnu"; c-basic-offset: 2; indent-tabs-mode: nil -*- */
-
 #ifndef _SPINLOCK_H_
 #define _SPINLOCK_H_
 #include"smp/atomic.h"
@@ -72,5 +70,14 @@ spinlock_init (spinlock * lock)
 #define SPINLOCK_INIT {0}
 
 #endif
+
+/* 
+ * Local Variables:
+ * indent-tabs-mode: nil
+ * mode: C
+ * c-file-style: "gnu"
+ * c-basic-offset: 2
+ * End: 
+ */
 
 /* vi: set et sw=2 sts=2: */

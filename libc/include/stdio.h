@@ -1,5 +1,3 @@
-/* -*- Mode: C; c-file-style: "gnu"; c-basic-offset: 2; indent-tabs-mode: nil -*- */
-
 #include "syscall.h"
 
 #ifndef NULL
@@ -29,5 +27,14 @@ extern size_t fread(void *ptr, size_t size, size_t nmemb, FILE *stream);
 extern size_t   fwrite(const  void  *ptr,  size_t  size,  size_t  nmemb,  FILE *stream);
 
 extern int puts( const char *s );
+
+/* 
+ * Local Variables:
+ * indent-tabs-mode: nil
+ * mode: C
+ * c-file-style: "gnu"
+ * c-basic-offset: 2
+ * End: 
+ */
 
 /* vi: set et sw=2 sts=2: */

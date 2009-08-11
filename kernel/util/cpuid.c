@@ -1,5 +1,3 @@
-/* -*- Mode: C; c-file-style: "gnu"; c-basic-offset: 2; indent-tabs-mode: nil -*- */
-
 #include"arch/i386.h"
 #include"util/cpuid.h"
 #include"kernel.h"
@@ -48,5 +46,14 @@ cpuid_vmx_support (void)
   cpuid (1, 0, NULL, NULL, &ecx, NULL);
   return (ecx & (1 << 5));
 }
+
+/* 
+ * Local Variables:
+ * indent-tabs-mode: nil
+ * mode: C
+ * c-file-style: "gnu"
+ * c-basic-offset: 2
+ * End: 
+ */
 
 /* vi: set et sw=2 sts=2: */

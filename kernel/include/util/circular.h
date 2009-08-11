@@ -1,5 +1,3 @@
-/* -*- Mode: C; c-file-style: "gnu"; c-basic-offset: 2; indent-tabs-mode: nil -*- */
-
 #ifndef _CIRCULAR_H_
 #define _CIRCULAR_H_
 #include "types.h"
@@ -39,5 +37,14 @@ circular_remove (circular *c, void *out_elt)
 void circular_init (circular *c, void *buffer, sint32 num_elts, sint32 elt_size);
 
 #endif
+
+/* 
+ * Local Variables:
+ * indent-tabs-mode: nil
+ * mode: C
+ * c-file-style: "gnu"
+ * c-basic-offset: 2
+ * End: 
+ */
 
 /* vi: set et sw=2 sts=2: */

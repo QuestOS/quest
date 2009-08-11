@@ -1,5 +1,3 @@
-/* -*- Mode: C; c-file-style: "gnu"; c-basic-offset: 2; indent-tabs-mode: nil -*- */
-
 #ifndef _ATA_H_
 #define _ATA_H_
 #include "types.h"
@@ -49,5 +47,14 @@ int atapi_drive_read_sector (uint32 bus, uint32 drive, uint32 lba,
                              uint8 * buffer);
 
 #endif
+
+/* 
+ * Local Variables:
+ * indent-tabs-mode: nil
+ * mode: C
+ * c-file-style: "gnu"
+ * c-basic-offset: 2
+ * End: 
+ */
 
 /* vi: set et sw=2 sts=2: */

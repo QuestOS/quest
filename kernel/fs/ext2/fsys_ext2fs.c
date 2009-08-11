@@ -1,5 +1,3 @@
-/* -*- Mode: C; c-file-style: "gnu"; c-basic-offset: 2; indent-tabs-mode: nil -*- */
-
 /* $Id: fsys_ext2fs.c,v 1.8 2005/09/16 18:16:27 gtw Exp $ */
 
 /*
@@ -989,5 +987,14 @@ ext2fs_dir (char *dirname)
   }
   /* never get here */
 }
+
+/* 
+ * Local Variables:
+ * indent-tabs-mode: nil
+ * mode: C
+ * c-file-style: "gnu"
+ * c-basic-offset: 2
+ * End: 
+ */
 
 /* vi: set et sw=2 sts=2: */

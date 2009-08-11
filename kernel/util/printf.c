@@ -1,5 +1,3 @@
-/* -*- Mode: C; c-file-style: "gnu"; c-basic-offset: 2; indent-tabs-mode: nil -*- */
-
 #include "types.h"
 #include "kernel.h"
 #include "acpi.h"                /* Use ACPICA's va_* macros */
@@ -237,5 +235,14 @@ _printf (const char *fmt, ...)
 
   va_end (args);
 }
+
+/* 
+ * Local Variables:
+ * indent-tabs-mode: nil
+ * mode: C
+ * c-file-style: "gnu"
+ * c-basic-offset: 2
+ * End: 
+ */
 
 /* vi: set et sw=2 sts=2: */

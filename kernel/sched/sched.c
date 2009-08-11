@@ -1,5 +1,3 @@
-/* -*- Mode: C; c-file-style: "gnu"; c-basic-offset: 2; indent-tabs-mode: nil -*- */
-
 #include "arch/i386.h"
 #include "kernel.h"
 #include "smp/smp.h"
@@ -166,5 +164,14 @@ bitmap_find_first_set (uint32 *table, uint32 limit)
 
   return -1;
 }
+
+/* 
+ * Local Variables:
+ * indent-tabs-mode: nil
+ * mode: C
+ * c-file-style: "gnu"
+ * c-basic-offset: 2
+ * End: 
+ */
 
 /* vi: set et sw=2 sts=2: */

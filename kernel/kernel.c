@@ -1,5 +1,3 @@
-/* -*- Mode: C; c-file-style: "gnu"; c-basic-offset: 2; indent-tabs-mode: nil -*- */
-
 #include "arch/i386.h"
 #include "kernel.h"
 #include "smp/spinlock.h"
@@ -187,5 +185,14 @@ tsc_delay_usec (uint32 usec)
     asm volatile ("pause");
   }
 }
+
+/* 
+ * Local Variables:
+ * indent-tabs-mode: nil
+ * mode: C
+ * c-file-style: "gnu"
+ * c-basic-offset: 2
+ * End: 
+ */
 
 /* vi: set et sw=2 sts=2: */
