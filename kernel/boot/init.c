@@ -456,9 +456,6 @@ init (multiboot * pmb)
   }
 
 
-  /* Initialise soundcard, if one exists */
-  //init_sound ();
-
   pow2_init ();                 /* initialize power-of-2 memory allocator */
 
   /* Dummy TSS used when CPU needs somewhere to write scratch values */
@@ -505,6 +502,9 @@ init (multiboot * pmb)
     if (i == 4)
       printf ("Unsupported boot device=%X.\n", boot_device);
   }
+
+  /* Initialise soundcard, if one exists */
+  init_sound ();
 
   smp_enable_scheduling ();
 

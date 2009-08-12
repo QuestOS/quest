@@ -5,6 +5,7 @@
 #include "fs/filesys.h"
 #include "smp/smp.h"
 #include "smp/apic.h"
+#include "util/printf.h"
 
 PRIVATE uint16 dsp_version;     // Version of the Digital Sound Processor
 
@@ -39,7 +40,7 @@ static char filebuffer[0x10000];
 bool
 sb_dsp_reset (uint16 base_address)
 {
-  int i;
+  int i, timeout;
   // int      start_time;
 
   // Write a 1 to the SB RESET port
@@ -52,11 +53,20 @@ sb_dsp_reset (uint16 base_address)
   // Write a 0 to the SB RESET port
   outb (0, base_address + SB_DSP_RESET);
 
+  timeout = 1000;
+
   // Read the byte from the DATA_AVAILABLE port until bit 7 = 1
-  while ((inb (base_address + SB_DSP_READ_BUFFER_STATUS) < 0x80));
+  while (timeout > 0 && (inb (base_address + SB_DSP_READ_BUFFER_STATUS) < 0x80))
+    timeout--;
+
+  if (timeout <= 0)
+    return SB_RESET_DSP;
+
+  timeout = 1000;
 
   // Poll for a ready byte (AAh) from the READ DATA port
-  while (((i = inb (base_address + SB_DSP_READ_DATA)) != 0xAA));
+  while (timeout > 0 && ((i = inb (base_address + SB_DSP_READ_DATA)) != 0xAA))
+    timeout--;
 
   if (i != 0xAA)
     return (SB_RESET_DSP);
@@ -418,13 +428,21 @@ init_sound (void)
 
   /* For now, just 4KB for buffer */
   dma_buffer_virt_base = (uint32) map_virtual_page (dma_buffer_phys_base | 3);
-  sb_dsp_detect_base_address (&dsp_base_address);
+  if (sb_dsp_detect_base_address (&dsp_base_address) != SB_OK) 
+    goto fail;
   sb_dsp_detect_irq_number (dsp_base_address, &dsp_irq_number);
   sb_dsp_detect_dma (dsp_base_address,
                      &dsp_dma_channel_8, &dsp_dma_channel_16);
   sb_dsp_get_version (&dsp_version);
   sb_speaker_on ();
   sb_install_driver (11025, FALSE);
+  com1_printf ("SB16 initialized.\n");
+  return;
+
+ fail:
+  com1_printf ("SB16 not detected.\n");
+  unmap_virtual_page ((void *)dma_buffer_virt_base);
+  free_phys_frames (dma_buffer_phys_base, 0x10);
 }
 
 /* 
