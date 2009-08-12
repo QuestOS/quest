@@ -348,7 +348,7 @@ ata_poll_for_irq (uint32 bus)
   enable_idt ();
 #endif
 
-  tsc_delay_usec (500000);      /* wait 500 milliseconds */
+  tsc_delay_usec (50000);      /* wait 50 milliseconds */
 }
 
 /* Initialize and identify the ATA drives in the system. */
