@@ -1,0 +1,137 @@
+./boot/init.c
+  Entry into C from bootloader
+
+./boot/boot.S
+  Multiboot-compliant bootloader: sets up GDT, page dir, and IDT.
+
+./smp/smp.c
+  General SMP routines.
+
+./smp/boot-smp.S
+  Patch code to boot Application Processors.
+
+./smp/apic.c
+  Local and IO APIC manipulation routines.
+
+./smp/acpi.c
+  ACPI configuration table support.
+
+./smp/intel.c
+  Intel MP Specification table support.
+
+./sched/sched.c
+  Scheduler.
+
+./drivers/ata/diskio.c
+  Interface to ATA driver used by EXT2 FS driver.
+
+./drivers/ata/ata.c
+  ATA and ATAPI detection, reading, and writing.
+
+./drivers/input/keymap.c
+  Translation of key events into characters.
+
+./drivers/input/keyboard_8042.c
+  Intel 8042 keyboard driver.
+
+./drivers/sb16/sound.c
+  SB16 sound driver.
+
+./drivers/acpi/quest-acpica.c
+  Glue-code for ACPICA to be able to make use of Quest kernel services.
+
+./util/cpuid.c
+  Some functions to query the CPUID instruction.
+
+./util/printf.c
+  A simple printf implementation and a version for COM1 output as well.
+
+./util/debug.c
+  Debugging utilities like serial port logging and stack tracing.
+
+./util/screen.c
+  putchar, putx, and print to the screen directly.
+
+./util/circular.c
+  Circular buffers with locking and blocking support.
+
+./interrupt.S
+  ASM stubs for interrupt handlers to invoke C code.
+
+./interrupt_handler.c
+  System call and hardware trap handlers.
+
+./kernel.c
+  Misc kernel functionality.
+
+./fs/iso9660/fsys_iso9660.c
+  Basic ISO9660 fs support.
+
+./fs/ext2/fsys_ext2fs.c
+  Basic ext2 fs support ripped from GRUB.
+
+./fs/fsys.c
+  A simple VFS-style set of fs-agnostic routines.
+
+./mem/physical.c
+  Physical memory manager.
+
+./mem/virtual.c
+  Kernel page table virtual memory manager.
+
+./mem/pow2.c
+  A not-quite-buddy system allocator.  Allocates chunks of sizes in a range of
+  powers of two.
+
+./sysprogs/shell.c
+  Shell task
+
+./sysprogs/terminal_server.c
+  Terminal server task
+
+./tests/test1.c
+./tests/test2.c
+  Simple fork parent/child tests.
+
+./tests/test3.c
+./tests/test4.c
+  Simple shared mem tests.
+
+./tests/test5.c
+  5 forked processes printing numbers to the screen.
+
+./tests/test6.c
+  Parent/child create race condition on a piece of shared memory.
+  Each tries to add/sub the value of CPUID from the same location, 1000 times.
+
+./include/kernel.h
+./include/boot/multiboot.h
+./include/arch/i386.h
+./include/drivers/ata/ata.h
+./include/drivers/pci/pci.h
+./include/drivers/input/keymap.h
+./include/drivers/input/keyboard.h
+./include/drivers/sb16/sound.h
+./include/smp/semaphore.h
+./include/smp/smp.h
+./include/smp/apic.h
+./include/smp/spinlock.h
+./include/smp/intel_mps.h
+./include/smp/apic-defs.h
+./include/smp/atomic.h
+./include/sched/sched.h
+./include/sched/sched-defs.h
+./include/util/cpuid.h
+./include/util/elf.h
+./include/util/circular-defs.h
+./include/util/circular.h
+./include/util/printf.h
+./include/util/screen.h
+./include/util/debug.h
+./include/types.h
+./include/fs/filesys.h
+./include/kernel-defs.h
+./include/mem/virtual.h
+./include/mem/pow2.h
+./include/mem/physical.h
+./include/mem/mem.h
