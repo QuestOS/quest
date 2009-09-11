@@ -3,6 +3,7 @@
 
 #include "types.h"
 #include "smp/apic-defs.h"
+#include "smp/smp.h"
 
 uint8 LAPIC_get_physical_ID (void);
 void LAPIC_set_logical_destination (uint32);
