@@ -26,7 +26,7 @@ alloc_dummy_TSS (void)
 {
 
   int i;
-  descriptor *ad = (idt + 256); /* Get address of GDT from IDT address */
+  descriptor *ad = (descriptor *)KERN_GDT;
 
   /* Search 2KB GDT for first free entry */
   for (i = 1; i < 256; i++)
@@ -56,7 +56,7 @@ static uint16
 alloc_idle_TSS (int cpu_num)
 {
   int i;
-  descriptor *ad = (idt + 256); /* Get address of GDT from IDT address */
+  descriptor *ad = (descriptor *)KERN_GDT;
   tss *pTSS = (tss *) (&idleTSS[cpu_num]);
   void idle_task (void);
 
