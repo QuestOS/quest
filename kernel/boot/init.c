@@ -16,6 +16,9 @@ extern descriptor idt[];
 extern uint32 _readwrite_pages, _readonly_pages, _bootstrap_pages;
 extern uint32 _kernelstart, _physicalkernelstart;
 
+/* initial C stack */
+uint32 stack[1024] __attribute__ ((aligned (0x1000)));
+
 extern void init_sound (void);
 
 /* We use this function to create a dummy TSS so that when we issue a

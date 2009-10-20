@@ -11,15 +11,11 @@
 
 #include "kernel.h"
 
-        .globl stack /* export kernel stack symbol */
         .globl initial_gdt
         
         .bss
         .align 0x1000 /* align page directory on 4K boundary - 2-12 Manual vol 3 */
         .comm pgd, 0x1000   /* setup 4Kbytes for page global directory */
-
-        .align 0x1000 
-        .comm stack, 0x1000 /* setup 4Kbytes for stack in bss */
 
         .align 0x1000
         .comm idt, 0x1000   /* setup 4Kbytes for IDT+GDT */
@@ -27,6 +23,9 @@
         .align 0x1000 
         .comm kern_pg_table, 0x1000 /* setup 4Kbytes for kernel page table */
 
+        .align 0x1000
+        .comm tmp_stack, 0x1000
+        
         .data
         .align 4
 initial_gdt:
@@ -84,7 +83,7 @@ real_start:
         outw %ax, (%dx)
         
         /* set up stack */
-        movl $stack+0x1000, %esp /* setup 4Kbyte stack */
+        movl $tmp_stack+0x1000, %esp /* setup temp stack */
 
         /* save multiboot parameter, for eventual call to C code */
         pushl %ebx
@@ -201,6 +200,9 @@ real_start:
         
         lidt idt_ptr
 
+        popl %ebx
+        movl $stack+0x1000, %esp      /* setup real C stack */
+        pushl %ebx                      /* pass GRUB multiboot info */
         call init /* start of C code */
 
 int_table:
