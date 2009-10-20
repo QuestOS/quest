@@ -24,9 +24,6 @@
         .align 0x1000
         .comm idt, 0x1000   /* setup 4Kbytes for IDT+GDT */
 
-        .align 0x1000
-        .comm lapic_pg_table, 0x1000  /* page table for mapping LAPIC */
-        
         .align 0x1000 
         .comm kern_pg_table, 0x1000 /* setup 4Kbytes for kernel page table */
 
