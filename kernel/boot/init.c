@@ -458,6 +458,9 @@ init (multiboot * pmb)
     lookup_TSS (tss[i])->priority = MIN_PRIO;
   }
 
+  /* Remove identity mapping of first 4MB */
+  *((uint32 *)get_pdbr()) = 0;
+  flush_tlb_all ();
 
   pow2_init ();                 /* initialize power-of-2 memory allocator */
 

@@ -242,6 +242,8 @@ ap_init (void)
   log_dest = 0x01000000 << phys_id;
   LAPIC_set_logical_destination(log_dest);
 
+  asm volatile ("lidt idt_ptr");        /* Set the IDT */
+
   /* Spin-wait for all processors to come online, and the system to
    * enter MP mode. */
   while (!mp_enabled)
@@ -259,8 +261,6 @@ ap_init (void)
    * a place to write the state of the CPU -- even though we don't
    * care about the state and it will be discarded. */
   ltr (dummyTSS_selector);
-
-  asm volatile ("lidt idt_ptr");        /* Set the IDT */
 
   /* The IDLE task runs in kernelspace, therefore it is capable of
    * unlocking the kernel and manually enabling interrupts.  This

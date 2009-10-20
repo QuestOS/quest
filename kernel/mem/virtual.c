@@ -148,22 +148,17 @@ get_phys_addr (void *virt_addr)
   void *pa;
   uint32 phys_frame;
   uint32 va = (uint32) virt_addr;
+  
+  uint32 phys_pdbr = (uint32) get_pdbr (), phys_ptbr;
+  uint32 *virt_pdbr, *virt_ptbr;
 
-  uint32 *kernel_pdbr = (uint32 *) get_pdbr (); /* --WARN-- Assumes
-                                                 * virtual and phys addrs
-                                                 * are the same. Okay to
-                                                 * use at boot time up
-                                                 * until we activate the
-                                                 * first dynamically
-                                                 * created address space
-                                                 */
-  uint32 *kernel_ptbr;
-
-  kernel_ptbr = (uint32 *) (kernel_pdbr[va >> 22] & 0xFFFFF000);
-
-  phys_frame = kernel_ptbr[(va >> 12) & 0x3FF] & 0xFFFFF000;
-
+  virt_pdbr = map_virtual_page (phys_pdbr | 3);
+  phys_ptbr = (virt_pdbr[va >> 22] & 0xFFFFF000);
+  virt_ptbr = map_virtual_page (phys_ptbr | 3);
+  phys_frame = virt_ptbr[(va >> 12) & 0x3FF] & 0xFFFFF000;
   pa = (void *) (phys_frame + (va & 0x00000FFF));
+  unmap_virtual_page (virt_ptbr);
+  unmap_virtual_page (virt_pdbr);
 
   return pa;
 }
