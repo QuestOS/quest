@@ -1,4 +1,5 @@
-GRUBLIB = /usr/lib/grub/*-pc/
+GRUBLIB = grub/x86_64-pc
+LD = ld -melf_i386
 CC = gcc
 ATSCC = atscc 
 ATSOPT = atsopt
