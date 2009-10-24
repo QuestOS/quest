@@ -19,6 +19,10 @@
 #define F_NT 0x4000             /* nested task */
 #define F_RF 0x10000            /* resume */
 #define F_VM 0x20000            /* virtual 8086 mode */
+#define F_AC 0x40000            /* alignment check */
+#define F_VIF 0x80000           /* virtual interrupt flag */
+#define F_VIP 0x100000          /* virtual interrupt pending */
+#define F_ID 0x200000           /* identification flag */
 
 /* Page table entry bits */
 #define PTE_P 0x01              /* present */
