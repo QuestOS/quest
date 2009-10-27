@@ -1,0 +1,15 @@
+display_library: term
+# display_library: x #, options="gui_debug"
+megs: 32
+boot: cdrom
+ata0-master: type=disk, path="linux.img", mode=flat, cylinders=101, heads=16, spt=63
+ata1-master: type=cdrom, path="quest.iso", status=inserted
+log: bochsout.txt
+debug: action=report
+info: action=report
+error: action=report
+panic: action=ask
+debugger_log: bochsdbg.txt
+cpu: count=4, ips=10000000
+# sb16: midimode=1, midi=/dev/null, wavemode=1, wave=/dev/null, loglevel=5, dmatimer=600000, log=sb16.log
+com1: enabled=1, mode=file, dev=serial.txt
