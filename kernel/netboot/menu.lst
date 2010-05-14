@@ -1,0 +1,8 @@
+timeout 0
+default 0
+
+title Quest
+kernel (nd)/quest
+module (nd)/shell
+module (nd)/terminal_server
+

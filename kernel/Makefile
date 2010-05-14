@@ -1,4 +1,5 @@
 GRUBLIB = grub/x86_64-pc
+TFTPDIR=tftp
 LD = ld -melf_i386
 CC = gcc
 ATSCC = atscc 
@@ -36,7 +37,7 @@ PROGS = quest \
 	tests/exec tests/race tests/test1 tests/test2 \
 	tests/test3 tests/test4 tests/test5 tests/test6
 
-.PHONY: all tags clean cleanacpi vmware cleanall indent
+.PHONY: all tags clean cleanacpi vmware cleanall indent netboot
 
 all: $(PROGS)
 
@@ -80,7 +81,7 @@ tags:
 
 clean:
 	-rm -f $(OBJS) $(DFILES) $(MAPFILES) $(PROGS) quest.iso quest.map
-	-rm -rf iso
+	-rm -rf iso tftp
 
 cleanacpi:
 	-rm -f $(ACPI_OBJS)
@@ -94,6 +95,9 @@ endef
 
 $(foreach obj,$(ACPI_OBJS),$(eval $(call ACPI_template,$(obj))))
 
-
+netboot: quest.iso
+	mkdir -p $(TFTPDIR)/boot/grub
+	cp $(GRUBLIB)/nbgrub quest shell terminal_server $(TFTPDIR)
+	cp netboot/menu.lst $(TFTPDIR)/boot/grub
 
 -include *.d

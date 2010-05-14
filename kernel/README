@@ -24,6 +24,12 @@ Or, compile onto a CD-ROM image:
   # Requires the program 'mkisofs'
   $ make clean quest.iso
 
+Or, compile for netboot:
+------------------------
+
+  # Build and install into tftp/
+  $ make clean netboot
+
 Using the emulators:
 --------------------
 
@@ -38,6 +44,16 @@ Using the emulators:
 
   # Or, CD-ROM image
   $ bochs -q -f bochsrc-cdrom
+
+  # Netboot
+  $ qemu -fda netboot/gpxe.dsk \
+              -net nic,model=pcnet \
+              -net user,tftp=tftp,bootfile=nbgrub \
+              -cdrom quest.iso
+  #   the options above have the following meanings:
+  #   -net nic,model=pcnet    Emulate a PCnet network card
+  #   -net user,...           QEMU sets up a firewall with TFTP and DHCP
+  #   -cdrom quest.iso        Just to have a file-system with programs...
 
 INSIDE QUESTOS:
 ~~~~~~~~~~~~~~~
