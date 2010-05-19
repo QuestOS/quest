@@ -416,7 +416,7 @@ atapi_drive_read_sector (uint32 bus, uint32 drive, uint32 lba, uint8 * buffer)
   /* 0xA8 is READ SECTORS command byte. */
   uint8 read_cmd[12] = { 0xA8, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0 };
   uint8 status;
-  int size;
+  int size, fake_size;
   ata_grab ();
 
 #ifdef DEBUG_ATA
@@ -484,14 +484,14 @@ atapi_drive_read_sector (uint32 bus, uint32 drive, uint32 lba, uint8 * buffer)
   else
     ata_poll_for_irq (bus);
 
-  /* Read "actual" size */
-  size =
+  /* Read size of "fake" transfer (may be 0) */
+  fake_size =
     (((int) inb (ATA_ADDRESS3 (bus))) << 8) |
     (int) (inb (ATA_ADDRESS2 (bus)));
 
 #ifdef DEBUG_ATA
   com1_printf ("atapi_drive_read_sector(%X,%X,%X,%p): size = %X\n", 
-               bus, drive, lba, buffer, size);
+               bus, drive, lba, buffer, fake_size);
 #endif
 
   /* At this point we already have read all our data, but the hardware
