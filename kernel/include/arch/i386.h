@@ -326,6 +326,19 @@ memcpy (void *pDest, const void *pSrc, uint32 cb)
   return pDest;
 }
 
+static inline uint32
+strlen (const char *s)
+{
+  uint32 i=0;
+  while (*(s++)) i++;
+  return i;
+}
+
+static inline void *
+strcpy (char *dest, const char *src)
+{
+  return memcpy (dest, src, strlen (src) + 1);
+}
 
 #endif
 

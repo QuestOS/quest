@@ -1,11 +1,24 @@
 #include "kernel.h"
 #include "util/printf.h"
 
+void putDebugChar (int c)
+{
+  while (!(inb (PORT1 + 5) & 0x20));    /* check line status register, empty transmitter bit */
+  outb (c, PORT1);
+}
+
+int getDebugChar (void)
+{
+  while (!(inb (PORT1 + 5) & 1));
+  return inb (PORT1);
+}
+
 void
 com1_putc (char c)
 {
 #ifdef COM1_TO_SCREEN
   _putchar (c);
+#elif defined(ENABLE_GDBSTUB)
 #else
   if (c == '\n') {
     /* output CR before NL */

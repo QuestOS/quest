@@ -508,6 +508,14 @@ init (multiboot * pmb)
 
   smp_enable_scheduling ();
 
+#ifdef ENABLE_GDBSTUB
+  {
+    void set_debug_traps (void);
+    set_debug_traps ();
+    BREAKPOINT ();
+  }
+#endif  
+
   /* The Shell module is in userspace and therefore interrupts will be
    * enabled after this point.  Then, kernel locking will become
    * necessary. */

@@ -23,7 +23,8 @@ OBJS =  boot/boot.o boot/init.o kernel.o \
 	fs/ext2/fsys_ext2fs.o \
 	fs/iso9660/fsys_iso9660.o \
 	drivers/sb16/sound.o \
-	drivers/acpi/quest-acpica.o  
+	drivers/acpi/quest-acpica.o \
+	kdb/i386-stub.o
 
 CFILES = $(patsubst %.o,%.c,$(OBJS))
 DFILES = $(patsubst %.o,%.d,$(OBJS))

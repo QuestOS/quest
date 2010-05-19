@@ -55,6 +55,9 @@ Using the emulators:
   #   -net user,...           QEMU sets up a firewall with TFTP and DHCP
   #   -cdrom quest.iso        Just to have a file-system with programs...
 
+  # QEMU with TCP serial-port for GDB-stub
+  $ qemu -cdrom quest.iso -serial tcp::1234,server
+
 INSIDE QUESTOS:
 ~~~~~~~~~~~~~~~
 
@@ -85,4 +88,8 @@ Currently, BOCHS does not support GDB-stub AND SMP at the same time.  It has an
 internal debugger that can be enabled with SMP however.  There is an
 undocumented command: "set $cpu <n>" which allows you to switch processors in
 the BOCHS debugger.
+
+Examining gdb-stub packets: 
+  sudo tcpdump -s 256 -i lo 'tcp port 1234 and (((ip[2:2] - ((ip[0]&0xf)<<2)) - ((tcp[12]&0xf0)>>2)) != 0)' -w tcp.dump
+  sudo tcpdump -X -r tcp.dump|less
 
