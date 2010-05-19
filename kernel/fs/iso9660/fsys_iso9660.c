@@ -67,14 +67,31 @@ iso9660_walk_tree (uint32 bus, uint32 drive,
     uint32 frame = alloc_phys_frame ();
     uint8 *sector = map_virtual_page (frame | 3);
 
-    len = atapi_drive_read_sector (bus, drive, d->first_sector, sector);
-    if (len < 0) {
-      panic ("CD ROM READ ERROR\n");
-    }
+    uint32 secnum = d->first_sector;
+    uint32 num_bytes = d->data_length;
+    uint32 count;
 
-    for (d = (iso9660_dir_record *) sector; d->length;
-         d = (iso9660_dir_record *) ((uint8 *) d + d->length)) {
+    for (count = 0; count < num_bytes;) {
+      if (count % ATAPI_SECTOR_SIZE == 0) {
+        // if 2048-byte aligned get next sector
+        len = atapi_drive_read_sector (bus, drive, secnum, sector);
+        if (len < 0) {
+          panic ("CD ROM READ ERROR\n");
+        }
+        secnum++;
+        d = (iso9660_dir_record *) sector;
+      }
+
       iso9660_walk_tree (bus, drive, d, depth + 1);
+
+      count += d->length;
+      d = (iso9660_dir_record *) ((uint8 *) d + d->length);
+
+      // skip zeroes
+      while (*((uint8 *)d) == 0 && (count % ATAPI_SECTOR_SIZE) != 0) {
+        d = (iso9660_dir_record *) (((uint8 *)d) + 1);
+        count++;
+      }
     }
     unmap_virtual_page (sector);
     free_phys_frame (frame);
@@ -215,25 +232,37 @@ iso9660_search_dir (iso9660_mounted_info * mi,
   frame = alloc_phys_frame ();
   page = map_virtual_page (frame | 3);
 
-  /* only handles 1 sector atm */
-  if (atapi_drive_read_sector (mi->bus, mi->drive, d->first_sector, page) < 0)
-    goto error;
+  uint32 secnum = d->first_sector;
+  uint32 num_bytes = d->data_length;
+  uint32 count;
 
-  for (d = (iso9660_dir_record *) page;
-       d->length; d = (iso9660_dir_record *) ((uint8 *) d + d->length)) {
+  for (count = 0; count < num_bytes;) {
+    if (count % ATAPI_SECTOR_SIZE == 0) {
+      // if 2048-byte aligned get next sector
+      if (atapi_drive_read_sector (mi->bus, mi->drive, secnum, page) < 0) {
+        panic ("CD ROM READ ERROR\n");
+      }
+      secnum++;
+      d = (iso9660_dir_record *) page;
+    }
 
     if (iso9660_filename_compare (pathname + start, len,
                                   (char *) d->identifier,
-                                  d->identifier_length) != 0)
-      goto try_next;
+                                  d->identifier_length) == 0)
+      break;                    /* found it */
 
-    break;                      /* found it */
 
-  try_next:
-    ;
+    count += d->length;
+    d = (iso9660_dir_record *) ((uint8 *) d + d->length);
+
+    // skip zeroes
+    while (*((uint8 *)d) == 0 && (count % ATAPI_SECTOR_SIZE) != 0) {
+      d = (iso9660_dir_record *) (((uint8 *)d) + 1);
+      count++;
+    }
   }
 
-  if (!d->length)
+  if (count >= num_bytes)
     goto error;
 
   *de = *d;
@@ -241,7 +270,7 @@ iso9660_search_dir (iso9660_mounted_info * mi,
   unmap_virtual_page (page);
   free_phys_frame (frame);
   return 0;
-error:
+ error:
   unmap_virtual_page (page);
   free_phys_frame (frame);
   return -1;

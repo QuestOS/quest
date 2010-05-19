@@ -38,6 +38,9 @@ extern ata_info pata_drives[4];
 #define ATA_DRIVE_MASTER    0xA0
 #define ATA_DRIVE_SLAVE     0xB0
 
+/* The default and seemingly universal sector size for CD-ROMs. */
+#define ATAPI_SECTOR_SIZE 2048
+
 void ata_init (void);
 int ata_drive_read_sector (uint32 bus, uint32 drive, uint32 lba,
                            uint8 * buffer);

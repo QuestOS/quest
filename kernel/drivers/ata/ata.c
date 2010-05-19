@@ -405,9 +405,6 @@ ata_init (void)
 
 /* ATAPI is essentially SCSI commands over ATA. */
 
-/* The default and seemingly universal sector size for CD-ROMs. */
-#define ATAPI_SECTOR_SIZE 2048
-
 /* Use the ATAPI protocol to read a single sector from the given
  * bus/drive into the buffer. */
 int
