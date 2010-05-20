@@ -89,8 +89,8 @@ idle_task (void)
 void
 disable_idt (void)
 {
-  uint16 len = *((uint16 *) idt_ptr);
-  idt_descriptor *ptr = *((idt_descriptor **) (idt_ptr + 2));
+  uint16 len = KERN_IDT_LEN;
+  idt_descriptor *ptr = (idt_descriptor *) KERN_IDT;
   uint16 i;
 
   for (i = 0; i < (len >> 3); i++) {
@@ -103,8 +103,8 @@ disable_idt (void)
 void
 enable_idt (void)
 {
-  uint16 len = *((uint16 *) idt_ptr);
-  idt_descriptor *ptr = *((idt_descriptor **) (idt_ptr + 2));
+  uint16 len = KERN_IDT_LEN;
+  idt_descriptor *ptr = (idt_descriptor *) KERN_IDT;
   uint16 i;
 
   for (i = 0; i < (len >> 3); i++) {
@@ -117,7 +117,7 @@ enable_idt (void)
 void
 enable_idt_entry (uint16 i)
 {
-  idt_descriptor *ptr = *((idt_descriptor **) (idt_ptr + 2));
+  idt_descriptor *ptr = (idt_descriptor *) KERN_IDT;
   if (ptr[i].pBase0)
     ptr[i].fPresent = 1;
 }
@@ -127,7 +127,7 @@ enable_idt_entry (uint16 i)
 void
 set_idt_descriptor_by_addr (uint8 n, void *addr, uint8 dpl)
 {
-  idt_descriptor *ptr = *((idt_descriptor **) (idt_ptr + 2));
+  idt_descriptor *ptr = (idt_descriptor *) KERN_IDT;
 
   ptr[n].fPresent = 0;          /* disable */
   ptr[n].pBase1 = ((uint32) addr & 0xFFFF0000) >> 16;
@@ -146,7 +146,7 @@ set_idt_descriptor_by_addr (uint8 n, void *addr, uint8 dpl)
 void
 get_idt_descriptor (uint8 n, idt_descriptor * d)
 {
-  idt_descriptor *ptr = *((idt_descriptor **) (idt_ptr + 2));
+  idt_descriptor *ptr = (idt_descriptor *) KERN_IDT;
 
   *d = ptr[n];
 }
@@ -155,7 +155,7 @@ get_idt_descriptor (uint8 n, idt_descriptor * d)
 void
 set_idt_descriptor (uint8 n, idt_descriptor * d)
 {
-  idt_descriptor *ptr = *((idt_descriptor **) (idt_ptr + 2));
+  idt_descriptor *ptr = (idt_descriptor *) KERN_IDT;
 
   ptr[n] = *d;
 }
