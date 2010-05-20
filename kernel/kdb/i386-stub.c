@@ -609,6 +609,17 @@ mem2hex (mem, buf, count, may_fault)
 {
   int i;
   unsigned char ch;
+  extern char *_start;
+
+  if (mem == (char *)&_start) {
+    /* Special-case this address because GDB absolutely insists on
+     * inserting a breakpoint at _start.  For us though it becomes
+     * inaccessible after boot. */
+    *buf++ = 'C';
+    *buf++ = 'C';
+    *buf = 0;
+    return buf;
+  }
 
   if (may_fault)
     _mem_fault_routine = set_mem_err;
@@ -637,6 +648,9 @@ hex2mem (buf, mem, count, may_fault)
 {
   int i;
   unsigned char ch;
+  extern char *_start;
+
+  if (mem == (char *)&_start) return mem + 1;
 
   if (may_fault)
     _mem_fault_routine = set_mem_err;
