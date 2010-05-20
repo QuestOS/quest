@@ -231,10 +231,12 @@ handle_interrupt (uint32 fs_gs, uint32 ds_es, uint32 ulInt, uint32 ulCode)
     _print (exception_messages[ulInt]);
   _putchar ('\n');
 
+#ifndef ENABLE_GDBSTUB
 #define _putchar com1_putc
 #define _putx com1_putx
 #define _print com1_puts
 #define _printf com1_printf
+#endif
 
   _printf ("INT=%.2X CODE=%.8X %s\n", 
            ulInt, ulCode, exception_messages[ulInt]);
@@ -246,10 +248,12 @@ handle_interrupt (uint32 fs_gs, uint32 ds_es, uint32 ulInt, uint32 ulCode)
   _printf ("CR0=%.8X CR2=%.8X\nCR3=%.8X TR=%.4X\n", cr0, cr2, cr3, tr);
   stacktrace ();
 
+#ifndef ENABLE_GDBSTUB
 #undef _putx
 #undef _putchar
 #undef _print
 #undef _printf
+#endif
 
   spinlock_unlock (&screen_lock);
 
