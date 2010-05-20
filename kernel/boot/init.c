@@ -333,6 +333,8 @@ init (multiboot * pmb)
 
   initialize_serial_port ();
 
+  pchVideo = (char *)KERN_SCR;
+
   /* clear screen */
   for (i = 0; i < 80 * 25; i++) {
     pchVideo[i * 2] = ' ';
