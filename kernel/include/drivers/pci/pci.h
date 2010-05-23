@@ -1,7 +1,10 @@
 #ifndef _PCI_H_
 #define _PCI_H_
 
-#include"types.h"
+#include "arch/i386.h"
+#include "types.h"
+
+void pci_init (void);
 
 #define PCI_CONFIG_ADDRESS 0xCF8
 #define PCI_CONFIG_DATA    0xCFC

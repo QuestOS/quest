@@ -1,7 +1,7 @@
 #ifndef _KERNEL_H_
 #define _KERNEL_H_
 
-#define ENABLE_GDBSTUB          /* the remote debugger via GDB */
+//#define ENABLE_GDBSTUB          /* the remote debugger via GDB */
 #define BREAKPOINT() asm("   int $3");
 
 #define PIT_FREQ 1193181        /* in Hz */

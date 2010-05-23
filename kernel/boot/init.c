@@ -6,6 +6,7 @@
 #include "smp/smp.h"
 #include "mem/mem.h"
 #include "drivers/ata/ata.h"
+#include "drivers/pci/pci.h"
 #include "util/printf.h"
 #include "util/screen.h"
 #include "util/debug.h"
@@ -486,7 +487,9 @@ init (multiboot * pmb)
   /* Initialize interrupt-driven keyboard driver */
   init_keyboard_8042 ();
 
-  printf ("ATA_INIT\n");
+  /* Initialize PCI */
+  pci_init ();
+
   /* Initialize ATA/ATAPI subsystem */
   ata_init ();
 
