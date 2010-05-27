@@ -99,6 +99,8 @@ main ()
 
   int arg;
 
+  asm volatile ("movl %%ebx, %0":"=m" (arg));
+
   splash_screen ();
 
   /* Setup cursor to be a full block in foreground colour */
@@ -108,11 +110,11 @@ main ()
   outb (0x0E, 0x3D5);           /* CRTC Cursor end data */
 
   while (1) {
-    asm volatile ("movl %%ebx, %0":"=m" (arg));
-
     _putchar (arg, 7);
 
     asm volatile ("iret");
+
+    asm volatile ("movl %%ebx, %0":"=m" (arg));
   }
 
   return 0;
