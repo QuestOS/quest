@@ -11,11 +11,11 @@ struct sched_param
   int k;                        /* window of requests  */
 };
 
-#define CLOBBERS1 "%ebx","%ecx","%edx","%esi","%edi"
-#define CLOBBERS2 "%ecx","%edx","%esi","%edi"
-#define CLOBBERS3 "%ebx","%edx","%esi","%edi"
-#define CLOBBERS4 "%ebx","%ecx","%esi","%edi"
-#define CLOBBERS5 "%edx","%esi","%edi"
+#define CLOBBERS1 "memory","cc","%ebx","%ecx","%edx","%esi","%edi"
+#define CLOBBERS2 "memory","cc","%ecx","%edx","%esi","%edi"
+#define CLOBBERS3 "memory","cc","%ebx","%edx","%esi","%edi"
+#define CLOBBERS4 "memory","cc","%ebx","%ecx","%esi","%edi"
+#define CLOBBERS5 "memory","cc","%edx","%esi","%edi"
 
 
 /* Syscall 0 used as a test syscall 
