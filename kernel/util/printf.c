@@ -122,12 +122,16 @@ closure_vprintf (void putc_clo (void *, char), void *data, const char *fmt,
         case 's':{
             /* string argument */
             char *s = va_arg (args, char *);
-            if (precision > 0)
-              while (*s && precision-- > 0)
-                putc (*s++);
-            else
-              while (*s)
-                putc (*s++);
+            if (s) {
+              if (precision > 0)
+                while (*s && precision-- > 0)
+                  putc (*s++);
+              else
+                while (*s)
+                  putc (*s++);
+            } else {
+              putc ('('); putc ('n'); putc ('u'); putc ('l'); putc ('l'); putc (')');
+            }
             goto directive_finished;
           }
         case 'c':{
