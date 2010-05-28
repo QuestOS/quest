@@ -30,6 +30,10 @@
 #define RX_RING_BUF_SIZE MAX_FRAME_SIZE   /* multiple of 16 */
 #define TX_RING_BUF_SIZE MAX_FRAME_SIZE   /* multiple of 16 */
 
+/* CSR4: features */
+/* 0x915: bits 0 (JABM), 2 (TXSTRTM), 4 (RCVCCOM), 8 (MFCOM), 11 (APAD_XMIT) set */
+#define CSR4_FEATURES 0x915
+
 /* ************************************************** */
 
 /* PCnet data structures shared by hardware */
@@ -115,11 +119,10 @@ struct pcnet_interface {
   struct pcnet_rx_head rx_ring[RX_RING_SIZE];
   struct pcnet_tx_head tx_ring;
   struct pcnet_init_block init_block;
-  uint32 padding;
   uint8 rbuf[RX_RING_SIZE][RX_RING_BUF_SIZE] ALIGNED(16);
   uint8 tbuf[TX_RING_BUF_SIZE] ALIGNED(16);
   sint32 rx_idx;
-};
+} PACKED;
 
 /* ************************************************** */
 
@@ -134,7 +137,12 @@ static struct { uint16 vendor, device; } compatible_ids[] = {
 static uint device_index, io_base, irq_line, irq_pin, version;
 
 static struct pcnet_interface* card;
-static uint card_phys;
+static uint card_phys, frame_count;
+
+/* Virtual-to-Physical */
+#define V2P(ty,p) ((ty)((((uint) (p)) - ((uint) card))+card_phys))
+/* Physical-to-Virtual */
+#define P2V(ty,p) ((ty)((((uint) (p)) - card_phys)+((uint) card)))
 
 static uint8 eth_addr[ETH_ADDR_LEN];
 
@@ -196,9 +204,7 @@ probe (void)
     }
   }
 
-  /* CSR4: features */
-  /* 0x915: bits 0 (JABM), 2 (TXSTRTM), 4 (RCVCCOM), 8 (MFCOM), 11 (APAD_XMIT) set */
-#define CSR4_FEATURES 0x915
+  /* set CSR4 (features) */
   outw (4, ADDR); (void) inw (ADDR);
   outw (CSR4_FEATURES, DATA);
 
@@ -219,6 +225,76 @@ probe (void)
         eth_addr[3], eth_addr[4], eth_addr[5]);
 
   return TRUE;
+}
+
+static void
+reset (void)
+{
+  uint i, phys_init;
+
+  (void) inw (RESET);           /* read is sufficient to reset */
+
+  /* enable auto-select of media (BCR2 bit 1: ASEL) */
+  outw (2, ADDR); (void) inw (ADDR);
+  outw (inw (BUS) | 2, BUS);
+
+  /* setup station hardware address */
+  for (i=0; i<ETH_ADDR_LEN; i++)
+    card->init_block.phys_addr[i] = eth_addr[i];
+
+  /* preset rx ring headers */
+  for (i=0; i<RX_RING_SIZE; i++) {
+    card->rx_ring[i].rmd1.buf_length = -RX_RING_BUF_SIZE;
+    card->rx_ring[i].rmd0.rbadr = V2P (uint32, card->rbuf[i]);
+    card->rx_ring[i].rmd1.own = 1;
+  }
+  card->tx_ring.rmd1.buf_length = -TX_RING_BUF_SIZE;
+  card->tx_ring.rmd0.tbadr = V2P (uint32, card->tbuf);
+
+  card->rx_idx = 0;
+  card->init_block.mode = 0;      /* enable Rx and Tx */
+  card->init_block.filter[0] = card->init_block.filter[1] = 0;
+
+  /* multiple Rx buffers and one Tx buffer */
+  card->init_block.rx_ring = V2P (uint32, card->rx_ring);
+  card->init_block.tx_ring = V2P (uint32, &card->tx_ring);
+  card->init_block.rlen = NUM_RX_BUFFERS_LOG2;
+  card->init_block.tlen = 0;
+
+  phys_init = V2P (uint, &card->init_block);
+
+  DLOG ("phys_init=%p rx_ring=%p tx_ring=%p rbuf[0]=%p tbuf=%p",
+        phys_init, card->init_block.rx_ring, card->init_block.tx_ring,
+        V2P (uint, card->rbuf[0]), V2P (uint, card->tbuf));
+
+  outw (0, ADDR); (void) inw (ADDR);
+  outw (4, DATA);               /* STOP */
+
+  /* tell card where init block is found (physically) */
+
+  /* CSR1=low 16-bits */
+  outw (1, ADDR); (void) inw (ADDR);
+  outw ((uint16) phys_init, DATA);
+
+  /* CSR2=high 16-bits */
+  outw (2, ADDR); (void) inw (ADDR);
+  outw ((uint16) (phys_init >> 16), DATA);
+
+  /* CSR4 (features) */
+  outw (4, ADDR); (void) inw (ADDR);
+  outw (CSR4_FEATURES, DATA);
+
+  outw (0, ADDR); (void) inw (ADDR);
+  outw (4, DATA);               /* INIT */
+
+  /* check for IDON (init done) */
+  for (i=10000; i > 0; i--)
+    if (inw (DATA) & 0x100)
+      break;
+  if (i <= 0)
+    DLOG ("reset: INIT timed out");
+
+  outw (0x42, DATA);            /* START + INTERRUPT enable */
 }
 
 bool
