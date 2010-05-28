@@ -6,7 +6,7 @@
 #include "util/printf.h"
 #include "smp/smp.h"
 #include "smp/apic.h"
-#include "mem/pow2.h"
+#include "mem/physical.h"
 #include "mem/virtual.h"
 #include "kernel.h"
 
@@ -235,7 +235,7 @@ pcnet_init (void)
 
   if (device_index == (uint)(~0)) {
     DLOG ("Unable to detect compatible device.");
-    goto give_up;
+    goto abort;
   }
 
   DLOG ("Found device_index=%d sizeof (pcnet_interface)=%d",
@@ -243,38 +243,59 @@ pcnet_init (void)
 
   if (!pci_decode_bar (device_index, 0, &mem_addr, &io_base, &mask)) {
     DLOG ("Invalid PCI configuration or BAR0 not found");
-    goto give_up;
+    goto abort;
   }
 
   if (io_base == 0) {
     DLOG ("Memory-mapped I/O not implemented");
-    goto give_up;
+    goto abort;
   }
 
   DLOG ("Using io_base=%.04X", io_base);
 
   if (!pci_get_interrupt (device_index, &irq_line, &irq_pin)) {
     DLOG ("Unable to get IRQ");
-    goto give_up;
+    goto abort;
   }
 
   DLOG ("Using IRQ line=%.02X pin=%X", irq_line, irq_pin);
 
-  if (pow2_alloc (sizeof (struct pcnet_interface), (uint8 **)&card) == 0) {
-    DLOG ("Unable to allocate memory");
-    goto give_up;
+  /* I need contiguous physical and virtual memory here */
+
+  frame_count = sizeof (struct pcnet_interface) >> 12;
+  if (sizeof (struct pcnet_interface) & 0xFFF)
+    frame_count++;
+
+  card_phys = alloc_phys_frames (frame_count);
+
+  if (card_phys == -1) {
+    DLOG ("Unable to allocate physical memory");
+    goto abort;
   }
 
-  card_phys = (uint) get_phys_addr (card);
-  DLOG ("DMA region at virt=%p phys=%p", card, card_phys);
+  card = (struct pcnet_interface *)
+    map_contiguous_virtual_pages (card_phys | 3, frame_count);
+
+  if (card == NULL) {
+    DLOG ("Unable to allocate virtual memory");
+    goto abort_phys;
+  }
+
+  DLOG ("DMA region at virt=%p phys=%p count=%d", card, card_phys, frame_count);
 
   if (!probe ()) {
-    pow2_free ((uint8 *) card);
-    goto give_up;
+    DLOG ("probe failed");
+    goto abort_virt;
   }
 
+  reset ();
+
   return TRUE;
- give_up:
+ abort_virt:
+  unmap_virtual_pages (card, frame_count);
+ abort_phys:
+  free_phys_frames (card_phys, frame_count);
+ abort:
   return FALSE;
 }
 
