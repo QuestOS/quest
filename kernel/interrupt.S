@@ -280,7 +280,8 @@ syscall0:
         pushl %ebx
         pushl %eax
         call handle_syscall0
-        addl $8, %esp
+        popl  %eax
+        popl  %ebx              /* preserve */
 
         SREGS_RESTORE
 
@@ -338,7 +339,8 @@ syscall5:
         pushl %ebx              /* flags */
         pushl %eax              /* pathname */
         call _open
-        addl $8, %esp   
+        addl $4, %esp
+        popl %ebx               /* preserve */
         
         SREGS_RESTORE           
         
@@ -351,7 +353,9 @@ syscall6:
         pushl %ebx              /* buf */
         pushl %eax              /* pathname */
         call _read
-        addl $12, %esp  
+        addl $4, %esp
+        popl %ebx
+        popl %ecx               /* preserve */
         
         SREGS_RESTORE
 
@@ -372,7 +376,8 @@ syscall8:
         pushl %edx
         pushl %eax
         call _meminfo
-        addl $8, %esp
+        addl $4, %esp
+        popl %edx               /* preserve */
         
         SREGS_RESTORE
 
@@ -412,7 +417,8 @@ syscallc:
         pushl %ebx
         pushl %eax
         call _sched_setparam
-        addl $8, %esp           
+        addl $4, %esp
+        popl  %ebx              /* preserve */
         
         SREGS_RESTORE   
 
