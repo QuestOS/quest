@@ -1,7 +1,8 @@
 #ifndef _PCNET_H_
 #define _PCNET_H_
 #include "types.h"
+#include "drivers/net/ethernet.h"
 
-void pcnet_init (void);
+bool pcnet_init (void);
 
 #endif
