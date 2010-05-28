@@ -22,6 +22,10 @@ typedef signed long int sint32;
 typedef signed long long int sint64;
 
 typedef signed char bool;
+
+typedef unsigned long uint;
+typedef signed long sint;
+
 #endif // [#ifndef __ASSEMBLER__]
 
 #endif
