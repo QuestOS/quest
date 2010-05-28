@@ -1,5 +1,5 @@
 default 0
-timeout 2
+timeout 0
 
 title quest
 # root (hd0,0)
