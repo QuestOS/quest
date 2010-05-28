@@ -171,3 +171,81 @@ pci_init (void)
   DLOG("init");
   probe ();
 }
+
+bool
+pci_get_device (uint n, pci_device *dev)
+{
+  if (n < num_devices) {
+    *dev = devices[n];
+    return TRUE;
+  }
+  return FALSE;
+}
+
+bool
+pci_find_device (uint16 vendor, uint16 device,
+                 uint8 classcode, uint8 subclass,
+                 uint start_index,
+                 uint* index)
+{
+#ifdef DEBUG_PCI
+  DLOG ("find_device (%p,%p,%p,%p,%p) num_devices=%d", 
+        vendor, device, classcode, subclass, start_index, num_devices);
+#endif
+  uint i;
+  for (i=start_index; i<num_devices; i++) {
+    if ((vendor == 0xFFFF    || vendor == devices[i].vendor) &&
+        (device == 0xFFFF    || device == devices[i].device) &&
+        (classcode == 0xFF   || classcode == devices[i].classcode) &&
+        (subclass == 0xFF    || subclass == devices[i].subclass)) {
+      *index = i;
+      return TRUE;
+    }
+  }
+  return FALSE;
+}
+
+bool
+pci_decode_bar (uint index, uint bar_index,
+                uint* mem_addr, uint* io_addr, uint* mask)
+{
+  pci_device *dev;
+  pci_bar *bar;
+
+  if (index >= num_devices) return FALSE;
+
+  dev = &devices[index];
+
+  if (dev->headerType == 0) {
+    /* there are 6 BARs */
+    if (bar_index >= 6) return FALSE;
+
+    bar = &dev->bar[bar_index];
+
+    if (bar->raw & 0x1) {
+      /* IO port */
+      *io_addr = bar->ioBAR.ioPort << 2;
+      *mem_addr = 0;
+      *mask = bar->mask;
+    } else {
+      /* Memory-mapped */
+      *io_addr = 0;
+      *mem_addr = bar->memBAR.baseAddr << 4;
+      *mask = bar->mask;
+    }
+
+    return TRUE;
+  }
+
+  return FALSE;
+}
+
+bool
+pci_get_interrupt (uint index, uint* line, uint* pin)
+{
+  if (index >= num_devices) return FALSE;
+
+  *line = devices[index].data[0xF] & 0xFF;
+  *pin = (devices[index].data[0xF] >> 8) & 0xFF;
+  return TRUE;
+}

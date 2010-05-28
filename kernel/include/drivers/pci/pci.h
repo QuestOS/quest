@@ -4,7 +4,35 @@
 #include "arch/i386.h"
 #include "types.h"
 
+
+/* ************************************************** */
+
+/* PCI interface */
+
+/* Initialize and probe for devices */
 void pci_init (void);
+
+/* Search for device by vendor, device, classcode, or subclass.  The
+ * value (~0) is treated as a wildcard.  'start_index' allows you to
+ * skip over devices, for example, if you are looking for multiple
+ * matches. */
+bool pci_find_device (uint16 vendor, uint16 device,
+                      uint8 classcode, uint8 subclass,
+                      uint start_index,
+                      uint* index);
+
+/* Decode a Base Address Register for the given device.  The value
+ * will be written into either the mem_addr or the io_addr
+ * parameters. */
+bool pci_decode_bar (uint index, uint bar_index,
+                     uint* mem_addr, uint* io_addr, uint* mask);
+
+/* Get the interrupt line and pin from the PCI configuration info, for
+ * the given device. */
+bool pci_get_interrupt (uint index, uint* line, uint* pin);
+
+
+/* ************************************************** */
 
 #define PCI_CONFIG_ADDRESS 0xCF8
 #define PCI_CONFIG_DATA    0xCFC
