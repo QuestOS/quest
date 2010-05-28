@@ -488,10 +488,17 @@ _exec (char *filename, char *argv[], uint32 *curr_stack)
   int i, j, c;
   char command_args[80];
 
-#ifdef DEBUG_SYSCALL
-  com1_printf ("_exec (%s, ..., %p)\n", filename, curr_stack);
-#endif
+  if (!argv || !argv[0]) {
+    BITMAP_SET (mm_table, phys_addr >> 12);
+    unmap_virtual_page (plPageDirectory);
+    unmap_virtual_page (frame_ptr);
+    return -1;
+  }
+
   lock_kernel ();
+#ifdef DEBUG_SYSCALL
+  com1_printf ("_exec (%s, [%s,...], %p)\n", filename, argv[0], curr_stack);
+#endif
 
   /* --??-- Checks should be added here for valid argv[0] etc...
      Allocate space for argument vector passed via exec call.
