@@ -1,4 +1,3 @@
-
 /******************************************************************************
  *
  * Name: quest-acpica.c - Quest interface for ACPICA
@@ -529,15 +528,15 @@ AcpiOsReadPciConfiguration (ACPI_PCI_ID * PciId,
   pci_config_addr_init (&a, PciId->Bus, PciId->Device, PciId->Function, Reg);
   switch (Width) {
   case 8:
-    pci_read_byte (&a, &v8);
+    v8 = pci_read_byte (a);
     *((ACPI_INTEGER *) Value) = (ACPI_INTEGER) v8;
     break;
   case 16:
-    pci_read_word (&a, &v16);
+    v16 = pci_read_word (a);
     *((ACPI_INTEGER *) Value) = (ACPI_INTEGER) v16;
     break;
   case 32:
-    pci_read_dword (&a, &v32);
+    v32 = pci_read_dword (a);
     *((ACPI_INTEGER *) Value) = (ACPI_INTEGER) v32;
     break;
   default:
@@ -556,13 +555,13 @@ AcpiOsWritePciConfiguration (ACPI_PCI_ID * PciId,
   pci_config_addr_init (&a, PciId->Bus, PciId->Device, PciId->Function, Reg);
   switch (Width) {
   case 8:
-    pci_write_byte (&a, (uint8) Value);
+    pci_write_byte (a, (uint8) Value);
     break;
   case 16:
-    pci_write_word (&a, (uint16) Value);
+    pci_write_word (a, (uint16) Value);
     break;
   case 32:
-    pci_write_dword (&a, (uint32) Value);
+    pci_write_dword (a, (uint32) Value);
     break;
   default:
     return AE_BAD_PARAMETER;
@@ -686,13 +685,13 @@ AcpiOsCloseDirectory (void *DirHandle)
   return;
 }
 
-/* 
+/*
  * Local Variables:
  * indent-tabs-mode: nil
  * mode: C
  * c-file-style: "gnu"
  * c-basic-offset: 2
- * End: 
+ * End:
  */
 
 /* vi: set et sw=2 sts=2: */
