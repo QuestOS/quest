@@ -9,6 +9,7 @@
 #define FALSE 0
 #define PRIVATE static
 #define PACKED __attribute__ ((packed))
+#define SQUELCH_UNUSED __attribute__((unused))
 
 typedef unsigned char uint8;
 typedef unsigned short int uint16;
