@@ -7,6 +7,7 @@
 #include "mem/mem.h"
 #include "drivers/ata/ata.h"
 #include "drivers/pci/pci.h"
+#include "drivers/net/pcnet.h"
 #include "util/printf.h"
 #include "util/screen.h"
 #include "util/debug.h"
@@ -489,6 +490,9 @@ init (multiboot * pmb)
 
   /* Initialize PCI */
   pci_init ();
+
+  /* Initialize PCnet card */
+  pcnet_init ();
 
   /* Initialize ATA/ATAPI subsystem */
   ata_init ();
