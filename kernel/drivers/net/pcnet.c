@@ -30,6 +30,8 @@
 #define RX_RING_BUF_SIZE MAX_FRAME_SIZE   /* multiple of 16 */
 #define TX_RING_BUF_SIZE MAX_FRAME_SIZE   /* multiple of 16 */
 
+#define PCNET_VECTOR 0x4B
+
 /* CSR4: features */
 /* 0x915: bits 0 (JABM), 2 (TXSTRTM), 4 (RCVCCOM), 8 (MFCOM), 11 (APAD_XMIT) set */
 #define CSR4_FEATURES 0x915
@@ -300,10 +302,24 @@ reset (void)
   DLOG ("reset: complete.  CSR0=%p", inw (DATA));
 }
 
+static uint32
+pcnet_irq_handler (uint8 vec)
+{
+  lock_kernel ();
+  DLOG ("irq: vec=%x", vec);
+  unlock_kernel ();
+  return 0;
+}
+
 bool
 pcnet_init (void)
 {
   uint i, mem_addr, mask;
+
+  if (mp_ISA_PC) {
+    DLOG ("Cannot operate without PCI support");
+    goto abort;
+  }
 
   for (i=0; compatible_ids[i].vendor != 0xFFFF; i++)
     if (pci_find_device (compatible_ids[i].vendor, compatible_ids[i].device,
@@ -366,6 +382,11 @@ pcnet_init (void)
     DLOG ("probe failed");
     goto abort_virt;
   }
+
+  /* Map IRQ to handler */
+  IOAPIC_map_GSI (IRQ_to_GSI (mp_ISA_bus_id, irq_line),
+                  PCNET_VECTOR, 0xFF00000000000800LL);
+  set_vector_handler (PCNET_VECTOR, pcnet_irq_handler);
 
   reset ();
 
