@@ -305,8 +305,35 @@ reset (void)
 static uint32
 pcnet_irq_handler (uint8 vec)
 {
+  uint16 csr0;
   lock_kernel ();
-  DLOG ("irq: vec=%x", vec);
+
+  outw (0, ADDR); (void) inw (ADDR);
+  csr0 = inw (DATA);
+
+  DLOG ("IRQ: vec=%.02X csr0=%.04X", vec, csr0);
+
+  /* acknowledge interrupt sources */
+  outw (csr0 & ~0x004f, DATA);
+
+  if (csr0 & 0x8000) {          /* ERR */
+    if (csr0 & 0x1000)          /* MISS */
+      DLOG ("IRQ: missed packet");
+    if (csr0 & 0x2000)          /* CERR */
+      DLOG ("IRQ: collision detected");
+  }
+
+  if (csr0 & 0x400)             /* RINT */
+    ;
+  if (csr0 & 0x200)             /* TINT */
+    ;
+
+  /* ack anything further and set IENA */
+  outw (0, ADDR); (void) inw (ADDR);
+  outw (0x7940, DATA);
+
+  DLOG ("IRQ: finished. csr0=%.04X", inw (DATA));
+
   unlock_kernel ();
   return 0;
 }
