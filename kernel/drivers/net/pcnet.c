@@ -285,7 +285,7 @@ reset (void)
   outw (CSR4_FEATURES, DATA);
 
   outw (0, ADDR); (void) inw (ADDR);
-  outw (4, DATA);               /* INIT */
+  outw (1, DATA);               /* INIT */
 
   /* check for IDON (init done) */
   for (i=10000; i > 0; i--)
