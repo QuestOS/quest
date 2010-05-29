@@ -294,7 +294,10 @@ reset (void)
   if (i <= 0)
     DLOG ("reset: INIT timed out");
 
-  outw (0x42, DATA);            /* START + INTERRUPT enable */
+  outw (0x142, DATA);            /* assert START + clear IDON + set IENA
+                                  * (interrupt enable) */
+
+  DLOG ("reset: complete.  CSR0=%p", inw (DATA));
 }
 
 bool
