@@ -131,29 +131,29 @@ probe (void)
 
           for (i=0; i<0x10; i++)
             devices[num_devices].data[i] =
-              // BTW, misaligned read from PCI config space causes
-              // VMware to crash. :)
+              /* BTW, misaligned read from PCI config space causes
+               * VMware to crash. :) */
               READ (bus, slot, func, i<<2, dword);
 
           if (header == 0) {
-            // 6 BARs
+            /* 6 BARs */
             for (i=0; i<6; i++) {
               devices[num_devices].bar[i].raw = devices[num_devices].data[4+i];
               if (devices[num_devices].bar[i].raw != 0) {
-                // Save raw data
+                /* Save raw data */
                 uint32 raw = devices[num_devices].bar[i].raw;
 #ifdef DEBUG_PCI
                 DLOG ("  BAR%d raw: %p", i, devices[num_devices].bar[i].raw);
 #endif
-                // Fill with 1s
+                /* Fill with 1s */
                 WRITE (bus, slot, func, 0x10 + i*4, dword, ~0);
-                // Read back mask
+                /* Read back mask */
                 uint32 mask = READ (bus, slot, func, 0x10 + i*4, dword);
 #ifdef DEBUG_PCI
                 DLOG ("  BAR%d mask: %p", i, mask);
 #endif
                 devices[num_devices].bar[i].mask = mask;
-                // Restore raw data
+                /* Restore raw data */
                 WRITE (bus, slot, func, 0x10 + i*4, dword, raw);
               }
             }
@@ -189,7 +189,7 @@ pci_find_device (uint16 vendor, uint16 device,
                  uint* index)
 {
 #ifdef DEBUG_PCI
-  DLOG ("find_device (%p,%p,%p,%p,%p) num_devices=%d", 
+  DLOG ("find_device (%p,%p,%p,%p,%p) num_devices=%d",
         vendor, device, classcode, subclass, start_index, num_devices);
 #endif
   uint i;
