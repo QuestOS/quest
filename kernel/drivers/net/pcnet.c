@@ -312,6 +312,12 @@ pcnet_irq_handler (uint8 vec)
   csr0 = inw (DATA);
 
   DLOG ("IRQ: vec=%.02X csr0=%.04X", vec, csr0);
+  DLOG ("IRQ: rx_ring=%.01x %p %.01x %p %.01x %p %.01x %p",
+        card->rx_ring[0].rmd1.own, card->rx_ring[0].rmd0.rbadr,
+        card->rx_ring[1].rmd1.own, card->rx_ring[1].rmd0.rbadr,
+        card->rx_ring[2].rmd1.own, card->rx_ring[2].rmd0.rbadr,
+        card->rx_ring[3].rmd1.own, card->rx_ring[3].rmd0.rbadr);
+
 
   /* acknowledge interrupt sources */
   outw (csr0 & ~0x004f, DATA);
@@ -324,9 +330,9 @@ pcnet_irq_handler (uint8 vec)
   }
 
   if (csr0 & 0x400)             /* RINT */
-    ;
+    DLOG ("IRQ: RINT");
   if (csr0 & 0x200)             /* TINT */
-    ;
+    DLOG ("IRQ: TINT");
 
   /* ack anything further and set IENA */
   outw (0, ADDR); (void) inw (ADDR);
