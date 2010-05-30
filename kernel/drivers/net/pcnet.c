@@ -1,4 +1,4 @@
-// AMD 79C90 PCnet32/LANCE NIC driver
+/* AMD 79C90 PCnet32/LANCE NIC driver */
 
 #include "drivers/pci/pci.h"
 #include "drivers/net/pcnet.h"
@@ -302,6 +302,57 @@ reset (void)
   DLOG ("reset: complete.  CSR0=%p", inw (DATA));
 }
 
+static void
+handle_rint (void)
+{
+  uint32 entry;
+  uint32* ptr;
+
+  DLOG ("IRQ: RINT");
+
+  entry = card->rx_idx & RX_RING_MOD_MASK;
+
+  while (card->rx_ring[entry].rmd1.own == 0) {
+    if (card->rx_ring[entry].rmd1.enp == 1 &&
+        card->rx_ring[entry].rmd1.stp == 1) {
+      /* full packet awaits */
+      ptr = P2V (uint32*, card->rx_ring[entry].rmd0.rbadr);
+
+      DLOG ("  recv entry=%d rmd1=%p msglen=%x",
+            entry, card->rx_ring[entry].rmd1.raw,
+            card->rx_ring[entry].rmd2.msg_length);
+      DLOG ("    %.08X %.08X %.08X %.08X",
+            ptr[0], ptr[1], ptr[2], ptr[3]);
+
+      /* ... do something with packet */
+
+    } else {
+      /* not a full packet -- error */
+      DLOG ("  recv error not full packet entry=%d rmd1=%p",
+            entry, card->rx_ring[entry].rmd1.raw);
+    }
+
+    /* clear errors */
+    card->rx_ring[entry].rmd1.raw &= 0x030fffff;
+    /* clear msg_length */
+    card->rx_ring[entry].rmd2.raw = 0;
+    /* set length */
+    card->rx_ring[entry].rmd1.buf_length = -RX_RING_BUF_SIZE;
+    /* set OWN */
+    card->rx_ring[entry].rmd1.own = 1;
+
+    /* check next entry */
+    entry = (++card->rx_idx) & RX_RING_MOD_MASK;
+  }
+
+}
+
+static void
+handle_tint (void)
+{
+  DLOG ("IRQ: TINT");
+}
+
 static uint32
 pcnet_irq_handler (uint8 vec)
 {
@@ -330,9 +381,9 @@ pcnet_irq_handler (uint8 vec)
   }
 
   if (csr0 & 0x400)             /* RINT */
-    DLOG ("IRQ: RINT");
+    handle_rint ();
   if (csr0 & 0x200)             /* TINT */
-    DLOG ("IRQ: TINT");
+    handle_tint ();
 
   /* ack anything further and set IENA */
   outw (0, ADDR); (void) inw (ADDR);
