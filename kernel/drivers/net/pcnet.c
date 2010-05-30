@@ -389,11 +389,11 @@ pcnet_init (void)
   DLOG ("Using IRQ line=%.02X pin=%X", irq_line, irq_pin);
 
   /* I need contiguous physical and virtual memory here */
-
   frame_count = sizeof (struct pcnet_interface) >> 12;
   if (sizeof (struct pcnet_interface) & 0xFFF)
-    frame_count++;
+    frame_count++;              /* round up */
 
+  /* Obtain contiguous physical frames. */
   card_phys = alloc_phys_frames (frame_count);
 
   if (card_phys == -1) {
@@ -401,6 +401,7 @@ pcnet_init (void)
     goto abort;
   }
 
+  /* Map contiguous virtual pages to contiguous physical frames. */
   card = (struct pcnet_interface *)
     map_contiguous_virtual_pages (card_phys | 3, frame_count);
 
@@ -408,6 +409,9 @@ pcnet_init (void)
     DLOG ("Unable to allocate virtual memory");
     goto abort_phys;
   }
+
+  /* zero the acquired memory */
+  memset (card, 0, sizeof (struct pcnet_interface));
 
   DLOG ("DMA region at virt=%p phys=%p count=%d", card, card_phys, frame_count);
 
