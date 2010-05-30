@@ -3,25 +3,6 @@
 
 static char *pchVideo = (char *) 0x000200000;   /* in middle of page table */
 
-static inline unsigned char
-inb (unsigned short usPort)
-{
-
-  unsigned char uch;
-
-  asm volatile ("inb %1,%0":"=a" (uch):"Nd" (usPort));
-  return uch;
-}
-
-
-static inline void
-outb (unsigned char uch, unsigned short usPort)
-{
-
-  asm volatile ("outb %0,%1"::"a" (uch), "Nd" (usPort));
-}
-
-
 static int
 _putchar (int ch, int attribute)
 {

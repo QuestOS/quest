@@ -11,6 +11,16 @@ ATSFLAGS = -IATS include -I. -Iinclude -Iinclude/drivers/acpi -I../libc/include 
 INDENT = indent
 INDENTFLAGS = -gnu -br -ce --no-tabs
 
+##################################################
+
+MNT_POINT=/mnt/quest
+PROGS = quest \
+	sysprogs/terminal_server sysprogs/shell \
+	tests/exec tests/race tests/test1 tests/test2 \
+	tests/test3 tests/test4 tests/test5 tests/test6
+
+##################################################
+
 OBJS =  boot/boot.o boot/init.o kernel.o \
 	interrupt.o interrupt_handler.o \
 	smp/boot-smp.o smp/smp.o smp/intel.o smp/acpi.o smp/apic.o \
@@ -32,19 +42,61 @@ CFILES = $(patsubst %.o,%.c,$(OBJS))
 DFILES = $(patsubst %.o,%.d,$(OBJS))
 MAPFILES = $(patsubst %.o,%.map,$(OBJS))
 
+##################################################
+
 ACPI_SRCS = $(shell ls drivers/acpica/*.c)
 ACPI_OBJS = $(patsubst %.c,%.o,$(ACPI_SRCS))
-MNT_POINT=/mnt/quest
-PROGS = quest \
-	sysprogs/terminal_server sysprogs/shell \
-	tests/exec tests/race tests/test1 tests/test2 \
-	tests/test3 tests/test4 tests/test5 tests/test6
 
-.PHONY: all tags clean cleanacpi vmware cleanall indent netboot
+##################################################
+
+LIBLWIP = lwip.a
+
+LWIP_CFILES = \
+  lwip/api/netbuf.c \
+  lwip/api/api_msg.c \
+  lwip/api/tcpip.c \
+  lwip/api/sockets.c \
+  lwip/api/netdb.c \
+  lwip/api/netifapi.c \
+  lwip/api/err.c \
+  lwip/api/api_lib.c \
+  lwip/core/dhcp.c \
+  lwip/core/tcp_in.c \
+  lwip/core/pbuf.c \
+  lwip/core/netif.c \
+  lwip/core/tcp.c \
+  lwip/core/dns.c \
+  lwip/core/stats.c \
+  lwip/core/tcp_out.c \
+  lwip/core/raw.c \
+  lwip/core/sys.c \
+  lwip/core/mem.c \
+  lwip/core/ipv4/inet.c \
+  lwip/core/ipv4/ip.c \
+  lwip/core/ipv4/icmp.c \
+  lwip/core/ipv4/ip_addr.c \
+  lwip/core/ipv4/igmp.c \
+  lwip/core/ipv4/autoip.c \
+  lwip/core/ipv4/ip_frag.c \
+  lwip/core/ipv4/inet_chksum.c \
+  lwip/core/init.c \
+  lwip/core/memp.c \
+  lwip/core/udp.c \
+  lwip/netif/ethernetif.c \
+  lwip/netif/slipif.c \
+  lwip/netif/loopif.c \
+  lwip/netif/etharp.c
+
+LWIP_OBJS = $(patsubst %.c,%.o,$(LWIP_CFILES))
+LWIP_DEPS = $(patsubst %.c,%.d,$(LWIP_CFILES))
+
+##################################################
+
+.PHONY: all tags clean cleanacpi cleanlwip vmware cleanall indent netboot
 
 all: $(PROGS)
 
-quest: $(OBJS) $(ACPI_OBJS)
+quest: $(OBJS) $(ACPI_OBJS) $(LWIP_OBJS)
 	rm -f quest
 	$(LD) -Map quest.map -T ldscripts/quest.ld -o $@ $^ 
 
@@ -89,7 +141,7 @@ clean:
 cleanacpi:
 	-rm -f $(ACPI_OBJS)
 
-cleanall: clean cleanacpi
+cleanall: clean cleanacpi cleanlwip
 
 define ACPI_template
 $(1): $(patsubst %.o,%.c,$(1))
@@ -102,5 +154,18 @@ netboot: quest.iso
 	mkdir -p $(TFTPDIR)/boot/grub
 	cp $(GRUBLIB)/nbgrub quest shell terminal_server $(TFTPDIR)
 	cp netboot/menu.lst $(TFTPDIR)/boot/grub
+
+##################################################
+# LWIP
+
+$(LIBLWIP): $(LWIP_OBJS)
+	$(AR) r $@ $(LWIP_OBJS)
+	ranlib $@
+
+cleanlwip:
+	-rm -f $(LWIP_OBJS) $(LWIP_DEPS) $(LIBLWIP)
+
+##################################################
+
 
 -include *.d
