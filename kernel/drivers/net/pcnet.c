@@ -302,6 +302,34 @@ reset (void)
   DLOG ("reset: complete.  CSR0=%p", inw (DATA));
 }
 
+extern sint
+pcnet_transmit (uint8* buf, sint len)
+{
+  DLOG ("pcnet_transmit (%p, %d)", buf, len);
+  if (card->tx_ring.rmd1.own != 0) {
+    /* we don't control the transmit buffer at the moment */
+    return 0;
+  } else if (len > MAX_FRAME_SIZE) {
+    /* too big */
+    return -1;
+  } else {
+    /* copy into transmission buffer */
+    memcpy (card->tbuf, buf, len);
+    /* set tbuf length */
+    card->tx_ring.rmd1.buf_length = -len;
+    /* clear misc. info */
+    card->tx_ring.rmd2.raw = 0;
+    /* this is a single packet, start and end */
+    card->tx_ring.rmd1.stp = card->tx_ring.rmd1.enp = 1;
+    /* pass ownership to NIC */
+    card->tx_ring.rmd1.own = 1;
+    /* trigger a send poll */
+    outw (0, ADDR); (void) inw (ADDR);
+    outw (0x48, DATA);
+  }
+  return len;
+}
+
 static void
 handle_rint (void)
 {
@@ -348,7 +376,6 @@ handle_rint (void)
     /* check next entry */
     entry = (++card->rx_idx) & RX_RING_MOD_MASK;
   }
-
 }
 
 static void
