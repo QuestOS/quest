@@ -46,6 +46,7 @@ MAPFILES = $(patsubst %.o,%.map,$(OBJS))
 
 ACPI_SRCS = $(shell ls drivers/acpica/*.c)
 ACPI_OBJS = $(patsubst %.c,%.o,$(ACPI_SRCS))
+ACPI_DEPS = $(patsubst %.c,%.d,$(ACPI_SRCS))
 
 ##################################################
 
@@ -139,7 +140,7 @@ clean:
 	-rm -rf iso tftp
 
 cleanacpi:
-	-rm -f $(ACPI_OBJS)
+	-rm -f $(ACPI_OBJS) $(ACPI_DEPS)
 
 cleanall: clean cleanacpi cleanlwip
 
