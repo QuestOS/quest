@@ -169,4 +169,4 @@ cleanlwip:
 ##################################################
 
 
--include *.d
+-include $(shell find . -name '*.d')
