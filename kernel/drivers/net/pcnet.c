@@ -336,7 +336,7 @@ pcnet_drop_packet (uint8* packet, uint len)
   DLOG ("dropping packet (%p, %d)", packet, len);
 }
 
-pcnet_dispatch_t pcnet_dispatch_packet = pcnet_drop_packet;
+static ethernet_device pcnet_ethdev;
 
 static void
 handle_rint (void)
@@ -365,7 +365,11 @@ handle_rint (void)
             ptr[0], ptr[1], ptr[2], ptr[3]);
 
       /* do something with packet */
-      pcnet_dispatch_packet ((uint8*)ptr, card->rx_ring[entry].rmd2.msg_length);
+      if (pcnet_ethdev.recv_func)
+        pcnet_ethdev.recv_func (&pcnet_ethdev, (uint8*)ptr, 
+                                card->rx_ring[entry].rmd2.msg_length);
+      else
+        pcnet_drop_packet ((uint8*)ptr, card->rx_ring[entry].rmd2.msg_length);
     } else {
       /* not a full packet -- error */
       DLOG ("  recv error not full packet entry=%d rmd1=%p",
@@ -520,6 +524,16 @@ pcnet_init (void)
   set_vector_handler (PCNET_VECTOR, pcnet_irq_handler);
 
   reset ();
+
+  /* Register network device with net subsystem */
+  pcnet_ethdev.recv_func = NULL;
+  pcnet_ethdev.send_func = pcnet_transmit;
+  pcnet_ethdev.get_hwaddr_func = pcnet_get_hwaddr;
+
+  if (!net_register_device (&pcnet_ethdev)) {
+    DLOG ("registration failed");
+    goto abort_virt;
+  }
 
   return TRUE;
  abort_virt:

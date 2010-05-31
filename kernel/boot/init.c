@@ -491,11 +491,15 @@ init (multiboot * pmb)
   /* Initialize PCI */
   pci_init ();
 
-  /* Initialize PCnet card */
+  /* Initialize LWIP/network subsystem */
+  net_init ();
+
+  /* Initialize PCnet card (depends on network) */
   pcnet_init ();
 
-  /* Initialize LWIP/network subsystem */
-  { void net_init (void); net_init (); }
+  /* hard-code the configuration for now */
+  net_set_default ("en0");
+  net_dhcp_start ("en0");
 
   /* Initialize ATA/ATAPI subsystem */
   ata_init ();

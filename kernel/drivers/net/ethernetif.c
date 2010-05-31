@@ -78,6 +78,7 @@ struct ethernetif {
   /* current location and size of received buffer */
   uint8* cur_buf;
   uint cur_len;
+  ethernet_device *dev;
 };
 
 /* Forward declarations. */
@@ -286,15 +287,9 @@ ethernetif_input(struct netif *netif)
 err_t
 ethernetif_init(struct netif *netif)
 {
-  struct ethernetif *ethernetif;
+  struct ethernetif *ethernetif = netif->state;
 
   LWIP_ASSERT("netif != NULL", (netif != NULL));
-
-  ethernetif = (struct ethernetif*) (mem_malloc(sizeof(struct ethernetif)));
-  if (ethernetif == NULL) {
-   LWIP_DEBUGF(NETIF_DEBUG, ("ethernetif_init: out of memory\n"));
-   return ERR_MEM;
-  }
 
 #if LWIP_NETIF_HOSTNAME
   /* Initialize interface hostname */
@@ -308,9 +303,9 @@ ethernetif_init(struct netif *netif)
    */
   NETIF_INIT_SNMP(netif, snmp_ifType_ethernet_csmacd, LINK_SPEED_OF_YOUR_NETIF_IN_BPS);
 
-  netif->state = ethernetif;
   netif->name[0] = IFNAME0;
   netif->name[1] = IFNAME1;
+  netif->num = ethernetif->dev->num;
   /* We directly use etharp_output() here to save a function call.
    * You can instead declare your own function an call etharp_output()
    * from it if you have to do some checks before sending (e.g. if link
@@ -326,24 +321,33 @@ ethernetif_init(struct netif *netif)
   return ERR_OK;
 }
 
+static void
+dispatch(ethernet_device *dev, uint8* buf, sint len)
+{
+  struct ethernetif *ethernetif = dev->netif.state;
+  ethernetif->cur_buf = buf;
+  ethernetif->cur_len = len;
+  ethernetif_input (&dev->netif);
+}
+
 /* ************************************************** */
 
 /* Demo Echo server on port 7 */
 
-static void 
+static void
 echo_close (struct tcp_pcb* pcb)
 {
   tcp_close (pcb);
 }
 
-static err_t 
+static err_t
 echo_sent (void* arg, struct tcp_pcb* pcb, u16_t len)
 {
   DLOG ("echo_sent (%p, %p, %p)", arg, pcb, len);
   return ERR_OK;
 }
 
-static err_t 
+static err_t
 echo_send (struct tcp_pcb* pcb, struct pbuf* p)
 {
   err_t wr_err = ERR_OK;
@@ -367,7 +371,7 @@ echo_send (struct tcp_pcb* pcb, struct pbuf* p)
   return ERR_OK;
 }
 
-static err_t 
+static err_t
 echo_recv (void* arg, struct tcp_pcb* pcb, struct pbuf* p, err_t err)
 {
   err_t ret_err = ERR_OK;
@@ -385,7 +389,7 @@ echo_recv (void* arg, struct tcp_pcb* pcb, struct pbuf* p, err_t err)
   return ret_err;
 }
 
-static err_t 
+static err_t
 echo_accept (void* arg, struct tcp_pcb* pcb, err_t err)
 {
   DLOG ("echo_accept (%p, (%p, %d, %d), %p)",
@@ -409,69 +413,110 @@ echo_init (void)
 
 /* external init routine */
 
-static struct netif netif;
-
-void dispatch(uint8* buf, uint len)
+void
+net_init(void)
 {
-  struct ethernetif *ethernetif = netif.state;
-  ethernetif->cur_buf = buf;
-  ethernetif->cur_len = len;
-  ethernetif_input (&netif);
+  lwip_init ();
+  echo_init ();
 }
 
-void init_interface(bool dhcp, char *myip_s, char *gwip_s, char *netmask_s)
+static uint ethernet_device_count = 0;
+
+bool
+net_register_device (ethernet_device *dev)
+{
+  struct ethernetif *ethernetif;
+
+  ethernetif = (struct ethernetif*) mem_malloc (sizeof(struct ethernetif));
+  if (ethernetif == NULL) {
+    LWIP_DEBUGF(NETIF_DEBUG, ("ethernetif_init: out of memory\n"));
+    return FALSE;
+  }
+
+  dev->num = ethernet_device_count++;
+  dev->recv_func = dispatch;
+
+  DLOG ("net_register_device num=%d", dev->num);
+
+  ethernetif->dev = dev;
+
+  if (netif_add (&dev->netif, IP_ADDR_ANY, IP_ADDR_ANY, IP_ADDR_ANY,
+                 (void *)ethernetif, ethernetif_init, ethernet_input) == NULL) {
+    ethernet_device_count--;
+    mem_free (ethernetif);
+    DLOG ("netif_add failed");
+    return FALSE;
+  }
+
+  return TRUE;
+}
+
+/* devname is something like "enX" where X is a number */
+
+/* set device as default interface */
+bool
+net_set_default (char *devname)
+{
+  struct netif *netif = netif_find (devname);
+  if (netif) {
+    netif_set_default (netif);
+    return TRUE;
+  }
+  return FALSE;
+}
+
+/* start dhcp on device (and set "up" on device) */
+bool
+net_dhcp_start (char *devname)
+{
+  struct netif *netif = netif_find (devname);
+  if (netif) {
+    dhcp_start (netif);
+    return TRUE;
+  }
+  return FALSE;
+}
+
+/* set device to "up" status */
+bool
+net_set_up (char *devname)
+{
+  struct netif *netif = netif_find (devname);
+  if (netif) {
+    netif_set_up (netif);
+    return TRUE;
+  }
+  return FALSE;
+}
+
+/* give device a static configuration */
+bool
+net_static_config(char *devname, char *myip_s, char *gwip_s, char *netmask_s)
 {
   struct in_addr inaddr;
   struct ip_addr ipaddr, netmask, gw;
 
-  if (dhcp)
-    DLOG ("init_interface: dhcp");
-  else
-    DLOG ("init_interface: %s, %s, %s:", myip_s, gwip_s, netmask_s);
+  struct netif *netif = netif_find (devname);
+  if (netif == NULL) return FALSE;
 
-  pcnet_dispatch_packet = dispatch;
+  inet_aton (myip_s, &inaddr);
+  ipaddr.addr = inaddr.s_addr;
 
-  if (!dhcp) {
-    inet_aton (myip_s, &inaddr);
-    ipaddr.addr = inaddr.s_addr;
+  inet_aton (gwip_s, &inaddr);
+  gw.addr = inaddr.s_addr;
 
-    inet_aton (gwip_s, &inaddr);
-    gw.addr = inaddr.s_addr;
+  inet_aton (netmask_s, &inaddr);
+  netmask.addr = inaddr.s_addr;
 
-    inet_aton (netmask_s, &inaddr);
-    netmask.addr = inaddr.s_addr;
+  netif_set_ipaddr  (netif, &ipaddr);
+  netif_set_gw      (netif, &gw);
+  netif_set_netmask (netif, &netmask);
 
-    DLOG ("    %p, %p, %p", ipaddr.addr, gw.addr, netmask.addr);
-
-    netif_add (&netif, &ipaddr, &netmask, &gw, 
-               NULL, ethernetif_init, ethernet_input);
-  } else {
-    netif_add (&netif, IP_ADDR_ANY, IP_ADDR_ANY, IP_ADDR_ANY,
-               NULL, ethernetif_init, ethernet_input);
-  }
-
-  DLOG ("init_interface netif_add complete");
-  netif_set_default (&netif);
-  DLOG ("init_interface netif_set_default complete");
-  netif_set_up (&netif);
-  DLOG ("init_interface netif_set_up: complete");
-
-  if (dhcp) {
-    DLOG ("init_interface dhcp_start");
-    dhcp_start (&netif);
-  }
-
-  DLOG ("init_interface netif configured.");
+  return TRUE;
 }
 
-void net_init(void)
-{
-  lwip_init ();
-  init_interface (TRUE, NULL, NULL, NULL);
-  echo_init ();
-}
-
-void net_tmr_process(void)
+void
+net_tmr_process(void)
 {
   extern volatile uint32 tick;
   static uint32 next_tcp_time = 0;
