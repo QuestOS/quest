@@ -44,6 +44,7 @@
 #include "lwip/netif.h"
 #include "lwip/udp.h"
 #include "lwip/tcp.h"
+#include "lwip/dhcp.h"
 #include <lwip/stats.h>
 #include <lwip/snmp.h>
 #include "netif/etharp.h"
@@ -422,48 +423,55 @@ void dispatch(uint8* buf, uint len)
   ethernetif_input (&netif);
 }
 
-void init_interface(char *myip_s, char *gwip_s, char *netmask_s)
+void init_interface(bool dhcp, char *myip_s, char *gwip_s, char *netmask_s)
 {
   struct in_addr inaddr;
   struct ip_addr ipaddr, netmask, gw;
 
-  DLOG("init_interface: %s, %s, %s:", myip_s, gwip_s, netmask_s);
+  if (dhcp)
+    DLOG ("init_interface: dhcp");
+  else
+    DLOG ("init_interface: %s, %s, %s:", myip_s, gwip_s, netmask_s);
 
   pcnet_dispatch_packet = dispatch;
 
-  inet_aton(myip_s, &inaddr);
-  ipaddr.addr = inaddr.s_addr;
+  if (!dhcp) {
+    inet_aton (myip_s, &inaddr);
+    ipaddr.addr = inaddr.s_addr;
 
-  inet_aton(gwip_s, &inaddr);
-  gw.addr = inaddr.s_addr;
+    inet_aton (gwip_s, &inaddr);
+    gw.addr = inaddr.s_addr;
 
-  inet_aton(netmask_s, &inaddr);
-  netmask.addr = inaddr.s_addr;
+    inet_aton (netmask_s, &inaddr);
+    netmask.addr = inaddr.s_addr;
 
-  DLOG("    %p, %p, %p", ipaddr.addr, gw.addr, netmask.addr);
+    DLOG ("    %p, %p, %p", ipaddr.addr, gw.addr, netmask.addr);
 
-  netif_add(&netif, &ipaddr, &netmask,
-            &gw, NULL,
-            ethernetif_init,
-            ethernet_input);
+    netif_add (&netif, &ipaddr, &netmask, &gw, 
+               NULL, ethernetif_init, ethernet_input);
+  } else {
+    netif_add (&netif, IP_ADDR_ANY, IP_ADDR_ANY, IP_ADDR_ANY,
+               NULL, ethernetif_init, ethernet_input);
+  }
 
-  DLOG("init_interface netif_add complete");
-  netif_set_default(&netif);
-  DLOG("init_interface netif_set_default complete");
-  netif_set_up(&netif);
-  DLOG("init_interface netif_set_up: complete");
+  DLOG ("init_interface netif_add complete");
+  netif_set_default (&netif);
+  DLOG ("init_interface netif_set_default complete");
+  netif_set_up (&netif);
+  DLOG ("init_interface netif_set_up: complete");
 
-  DLOG("init_interface netif configured.");
+  if (dhcp) {
+    DLOG ("init_interface dhcp_start");
+    dhcp_start (&netif);
+  }
+
+  DLOG ("init_interface netif configured.");
 }
 
 void net_init(void)
 {
-  /* qemu defaults */
-#define IP_ADDRESS "10.0.2.15"
-#define GATEWAY "10.0.2.2"
-#define NETMASK "255.255.255.0"
   lwip_init ();
-  init_interface (IP_ADDRESS, GATEWAY, NETMASK);
+  init_interface (TRUE, NULL, NULL, NULL);
   echo_init ();
 }
 
@@ -472,6 +480,10 @@ void net_tmr_process(void)
   extern volatile uint32 tick;
   static uint32 next_tcp_time = 0;
   static uint32 next_etharp_time = 0;
+#if LWIP_DHCP
+  static uint32 next_dhcp_coarse_time = 0;
+  static uint32 next_dhcp_fine_time = 0;
+#endif
 
   uint32 now = tick;
 
@@ -486,4 +498,16 @@ void net_tmr_process(void)
     etharp_tmr ();
     next_etharp_time = now + (ARP_TMR_INTERVAL / 10);
   }
+
+#if LWIP_DHCP
+  if (now >= next_dhcp_coarse_time) {
+    dhcp_coarse_tmr ();
+    next_dhcp_coarse_time = now + (DHCP_COARSE_TIMER_MSECS / 10);
+  }
+
+  if (now >= next_dhcp_fine_time) {
+    dhcp_fine_tmr ();
+    next_dhcp_fine_time = now + (DHCP_FINE_TIMER_MSECS / 10);
+  }
+#endif
 }
