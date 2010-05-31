@@ -75,8 +75,9 @@
  * But this is only an example, anyway...
  */
 struct ethernetif {
-  struct eth_addr *ethaddr;
-  /* Add whatever per-interface state that is needed here. */
+  /* current location and size of received buffer */
+  uint8* cur_buf;
+  uint cur_len;
 };
 
 /* Forward declarations. */
@@ -159,10 +160,6 @@ low_level_output(struct netif *netif, struct pbuf *p)
   return ERR_OK;
 }
 
-/* ugly global hack */
-static uint8* cur_buf;
-static uint cur_len;
-
 /**
  * Should allocate a pbuf and transfer the bytes of the incoming
  * packet from the interface into the pbuf.
@@ -174,13 +171,13 @@ static uint cur_len;
 static struct pbuf *
 low_level_input(struct netif *netif)
 {
-  /*struct ethernetif *ethernetif = netif->state;*/
+  struct ethernetif *ethernetif = netif->state;
   struct pbuf *p, *q;
   uint8 *buffer;
   uint len, start, err;
 
-  len = cur_len;
-  buffer = cur_buf;
+  len = ethernetif->cur_len;
+  buffer = ethernetif->cur_buf;
 
 #if ETH_PAD_SIZE
   len += ETH_PAD_SIZE; /* allow room for Ethernet padding */
@@ -289,17 +286,15 @@ ethernetif_input(struct netif *netif)
 err_t
 ethernetif_init(struct netif *netif)
 {
-  /*struct ethernetif *ethernetif;*/
+  struct ethernetif *ethernetif;
 
   LWIP_ASSERT("netif != NULL", (netif != NULL));
 
-  /*
-  ethernetif = reinterpret_cast<struct ethernetif*> (mem_malloc(sizeof(struct ethernetif)));
+  ethernetif = (struct ethernetif*) (mem_malloc(sizeof(struct ethernetif)));
   if (ethernetif == NULL) {
    LWIP_DEBUGF(NETIF_DEBUG, ("ethernetif_init: out of memory\n"));
    return ERR_MEM;
   }
-  */
 
 #if LWIP_NETIF_HOSTNAME
   /* Initialize interface hostname */
@@ -313,7 +308,7 @@ ethernetif_init(struct netif *netif)
    */
   NETIF_INIT_SNMP(netif, snmp_ifType_ethernet_csmacd, LINK_SPEED_OF_YOUR_NETIF_IN_BPS);
 
-  /*netif->state = ethernetif;*/
+  netif->state = ethernetif;
   netif->name[0] = IFNAME0;
   netif->name[1] = IFNAME1;
   /* We directly use etharp_output() here to save a function call.
@@ -418,8 +413,9 @@ static struct netif netif;
 
 void dispatch(uint8* buf, uint len)
 {
-  cur_buf = buf;
-  cur_len = len;
+  struct ethernetif *ethernetif = netif.state;
+  ethernetif->cur_buf = buf;
+  ethernetif->cur_len = len;
   ethernetif_input (&netif);
 }
 
