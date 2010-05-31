@@ -4,7 +4,7 @@ LD = ld -melf_i386
 CC = gcc
 ATSCC = atscc 
 ATSOPT = atsopt
-OPT = 1
+OPT = 0
 CFLAGS = -m32 -fno-builtin -nostdinc -g -Wall -O$(OPT) $(EXTRA_CFLAGS)
 CPPFLAGS = -D_QUEST -Wa,--32 -MMD -Iinclude -Iinclude/drivers/acpi -I. -I../libc/include 
 ATSFLAGS = -IATS include -I. -Iinclude -Iinclude/drivers/acpi -I../libc/include -g -O$(OPT) -D_ATS_PRELUDE_NONE -D_ATS_DYNLOADFUN_NONE -D_ATS_STALOADFUN_NONE -DATS_TYPES_H -DATS_EXCEPTION_H -DATS_MEMORY_H -D_QUEST
@@ -30,7 +30,7 @@ OBJS =  boot/boot.o boot/init.o kernel.o \
 	drivers/ata/ata.o drivers/ata/diskio.o \
 	drivers/input/keyboard_8042.o drivers/input/keymap.o \
 	drivers/pci/pci.o \
-	drivers/net/pcnet.o \
+	drivers/net/ethernetif.o drivers/net/pcnet.o \
 	fs/fsys.o \
 	fs/ext2/fsys_ext2fs.o \
 	fs/iso9660/fsys_iso9660.o \

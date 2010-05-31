@@ -331,6 +331,14 @@ pcnet_transmit (uint8* buf, sint len)
 }
 
 static void
+pcnet_drop_packet (uint8* packet, uint len)
+{
+  DLOG ("dropping packet (%p, %d)", packet, len);
+}
+
+pcnet_dispatch_t pcnet_dispatch_packet = pcnet_drop_packet;
+
+static void
 handle_rint (void)
 {
   uint32 entry;
@@ -356,8 +364,8 @@ handle_rint (void)
       DLOG ("    %.08X %.08X %.08X %.08X",
             ptr[0], ptr[1], ptr[2], ptr[3]);
 
-      /* ... do something with packet */
-
+      /* do something with packet */
+      pcnet_dispatch_packet ((uint8*)ptr, card->rx_ring[entry].rmd2.msg_length);
     } else {
       /* not a full packet -- error */
       DLOG ("  recv error not full packet entry=%d rmd1=%p",
@@ -421,7 +429,16 @@ pcnet_irq_handler (uint8 vec)
   return 0;
 }
 
-bool
+extern bool
+pcnet_get_hwaddr (uint8 addr[ETH_ADDR_LEN])
+{
+  uint i;
+  for (i=0;i<ETH_ADDR_LEN;i++)
+    addr[i] = eth_addr[i];
+  return TRUE;
+}
+
+extern bool
 pcnet_init (void)
 {
   uint i, mem_addr, mask;

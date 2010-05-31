@@ -10,6 +10,10 @@
 
 #include "kernel-defs.h"
 
+#ifndef NULL
+#define NULL ((void*)0)
+#endif
+
 /* Bitmap utility functions for e.g., physical memory map and also
    scheduling priority queues */
 #define BITMAP_SET(table,index) ((table)[(index)>>5] |= (1 << ((index) & 31)))

@@ -73,7 +73,7 @@ typedef u32_t mem_ptr_t;
 #define PACK_STRUCT_BEGIN
 #define PACK_STRUCT_END
 
-int    printf(const char *fmt, ...);
+void printf(const char *fmt, ...);
 
 /* Plaform specific diagnostic output  */
 /* Plaform specific diagnostic output */

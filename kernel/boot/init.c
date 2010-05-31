@@ -494,6 +494,9 @@ init (multiboot * pmb)
   /* Initialize PCnet card */
   pcnet_init ();
 
+  /* Initialize LWIP/network subsystem */
+  { void net_init (void); net_init (); }
+
   /* Initialize ATA/ATAPI subsystem */
   ata_init ();
 

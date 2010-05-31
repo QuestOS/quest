@@ -889,6 +889,12 @@ _timer (void)
      interrupts */
   send_eoi ();
 
+  if (mp_enabled) {
+    /* run lwip timer process */
+    void net_tmr_process (void);
+    net_tmr_process ();
+  }
+
   if (!mp_ISA_PC)
     mp_enabled = 1;
   else {
