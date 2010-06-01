@@ -1,7 +1,7 @@
 #ifndef _KERNEL_H_
 #define _KERNEL_H_
 
-#define ENABLE_GDBSTUB          /* the remote debugger via GDB */
+//#define ENABLE_GDBSTUB          /* the remote debugger via GDB */
 
 #ifdef ENABLE_GDBSTUB
 #define GDBSTUB_TCP             /* using TCP instead of serial port */
