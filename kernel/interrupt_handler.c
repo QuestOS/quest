@@ -893,6 +893,15 @@ _timer (void)
     /* run lwip timer process */
     void net_tmr_process (void);
     net_tmr_process ();
+#ifdef GDBSTUB_TCP
+    { 
+      extern bool break_requested; 
+      if (break_requested) {
+        break_requested = FALSE;
+        BREAKPOINT ();
+      }
+    }      
+#endif
   }
 
   if (!mp_ISA_PC)

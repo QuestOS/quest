@@ -416,6 +416,8 @@ static uint debug_buf_cnt=0;                   /* count of chars in buffer */
 static uint debug_send_cnt=0;                  /* count of chars awaiting send ACK */
 static struct netif* debug_netif = NULL;       /* netif for ethernet device */
 
+bool break_requested = FALSE;
+
 /* buffer received data from TCP until getDebugChar can read it */
 static err_t
 debug_recv (void* arg, struct tcp_pcb* pcb, struct pbuf* p, err_t err)
@@ -431,6 +433,14 @@ debug_recv (void* arg, struct tcp_pcb* pcb, struct pbuf* p, err_t err)
     debug_ins_pt = debug_buf_cnt = 0;
     debug_send_cnt = 0;
     return ERR_OK; /* disconnected */
+  }
+
+  if (p->payload && *((char *)p->payload) == 3) {
+    /* Ctrl-C */
+    q = p; p = p->next;
+    if (p) pbuf_ref (p);
+    while (q->ref > 0) pbuf_free (q);
+    break_requested = TRUE;
   }
 
   /* read the pbufs into the ring buffer */
@@ -455,7 +465,8 @@ debug_recv (void* arg, struct tcp_pcb* pcb, struct pbuf* p, err_t err)
 static err_t
 debug_sent (void* arg, struct tcp_pcb* pcb, u16_t len)
 {
-  debug_send_cnt -= len;
+  if (debug_send_cnt > 0)
+    debug_send_cnt--;
   return ERR_OK;
 }
 
