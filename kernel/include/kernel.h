@@ -1,8 +1,17 @@
 #ifndef _KERNEL_H_
 #define _KERNEL_H_
 
-//#define ENABLE_GDBSTUB          /* the remote debugger via GDB */
+#define ENABLE_GDBSTUB          /* the remote debugger via GDB */
+
+#ifdef ENABLE_GDBSTUB
+#define GDBSTUB_TCP             /* using TCP instead of serial port */
+#define GDBSTUB_TCP_PORT  1234
+#define GDBSTUB_ETHDEV    "en0"
+#define GDBSTUB_BUFFER_SIZE 512
 #define BREAKPOINT() asm("   int $3");
+#else
+#define BREAKPOINT() ;
+#endif
 
 #define PIT_FREQ 1193181        /* in Hz */
 #define HZ 100

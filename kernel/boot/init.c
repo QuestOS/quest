@@ -532,9 +532,11 @@ init (multiboot * pmb)
 
 #ifdef ENABLE_GDBSTUB
   {
+#ifndef GDBSTUB_TCP
     void set_debug_traps (void);
     set_debug_traps ();
     BREAKPOINT ();
+#endif
   }
 #endif  
 

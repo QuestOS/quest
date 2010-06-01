@@ -399,10 +399,142 @@ static void
 echo_init (void)
 {
   struct tcp_pcb* echo_pcb = tcp_new ();
-  tcp_bind(echo_pcb, IP_ADDR_ANY, 7);
-  echo_pcb = tcp_listen(echo_pcb);
+  tcp_bind (echo_pcb, IP_ADDR_ANY, 7);
+  echo_pcb = tcp_listen (echo_pcb);
   tcp_accept (echo_pcb, echo_accept);
 }
+
+/* ************************************************** */
+
+/* gdbstub debugging over tcp */
+
+#ifdef GDBSTUB_TCP
+static struct tcp_pcb* debug_client = NULL;    /* current gdbstub client */
+static char debug_buffer[GDBSTUB_BUFFER_SIZE]; /* ring buffer */
+static uint debug_ins_pt=0;                    /* insert point */
+static uint debug_buf_cnt=0;                   /* count of chars in buffer */
+static uint debug_send_cnt=0;                  /* count of chars awaiting send ACK */
+static struct netif* debug_netif = NULL;       /* netif for ethernet device */
+
+/* buffer received data from TCP until getDebugChar can read it */
+static err_t
+debug_recv (void* arg, struct tcp_pcb* pcb, struct pbuf* p, err_t err)
+{
+  struct pbuf* q;
+  int i;
+
+  if (p == NULL) {
+    _printf ("GDBstub disconnected\n");
+    /* reset state */
+    tcp_close (debug_client);
+    debug_client = NULL;
+    debug_ins_pt = debug_buf_cnt = 0;
+    debug_send_cnt = 0;
+    return ERR_OK; /* disconnected */
+  }
+
+  /* read the pbufs into the ring buffer */
+  while (p != NULL && 
+         p->payload != NULL &&
+         debug_buf_cnt < GDBSTUB_BUFFER_SIZE) {
+    q = p;
+    for (i=0; i<p->len;
+         i++, debug_ins_pt=(debug_ins_pt+1)%GDBSTUB_BUFFER_SIZE)
+      debug_buffer[debug_ins_pt] = ((char *)p->payload)[i];
+    p = p->next;
+    if (p) pbuf_ref (p);
+    while (q->ref > 0) pbuf_free (q);
+    tcp_recved (pcb, i);
+    debug_buf_cnt += i;
+  }
+
+  return ERR_OK;
+}
+
+/* record how many bytes were sent successfully */
+static err_t
+debug_sent (void* arg, struct tcp_pcb* pcb, u16_t len)
+{
+  debug_send_cnt -= len;
+  return ERR_OK;
+}
+
+#endif
+
+/* accept a gdbstub connection */
+static err_t
+debug_accept (void* arg, struct tcp_pcb* pcb, err_t err)
+{
+#ifdef GDBSTUB_TCP
+  void set_debug_traps (void);
+
+  tcp_accepted (pcb);
+  tcp_recv (pcb, debug_recv);
+  tcp_sent (pcb, debug_sent);
+  debug_client = pcb;
+  debug_netif = netif_find (GDBSTUB_ETHDEV);
+  if (!debug_netif) return ERR_ARG;
+  _printf ("Accepted GDBstub TCP client\n");
+  set_debug_traps ();
+  BREAKPOINT ();
+  return ERR_OK;
+#else
+  return ERR_ARG;
+#endif
+}
+
+#ifdef GDBSTUB_TCP
+
+/* drive the lwip engine without interrupts */
+static void
+debug_poll (void)
+{
+  struct ethernetif* ethernetif;
+  ethernetif = debug_netif->state;
+
+  /* poll, since interrupts are disabled */
+  ethernetif->dev->poll_func ();
+  /* run lwip processes */
+  tcp_tmr ();
+  etharp_tmr ();
+}
+
+/* send/recv chars over TCP */
+void
+putDebugChar (int c)
+{
+  char buf[2]; buf[0] = c; buf[1] = 0;
+
+  if (!debug_netif) return;
+
+  if (debug_client) {
+    while (tcp_write (debug_client, buf, 1, 1) != ERR_OK) {
+      debug_poll ();
+    }
+    debug_send_cnt++;
+    /* wait for send to finish */
+    while (debug_send_cnt > 0) {
+      debug_poll ();
+    }
+  }
+}
+
+int
+getDebugChar (void)
+{
+  sint i;
+
+  if (!debug_netif) return 0;
+
+  while (debug_buf_cnt == 0) {
+    debug_poll ();
+  }
+  i = debug_ins_pt - debug_buf_cnt;
+  i %= GDBSTUB_BUFFER_SIZE;
+  debug_buf_cnt--;
+  return debug_buffer[i];
+}
+#endif
 
 /* ************************************************** */
 
@@ -413,6 +545,14 @@ net_init(void)
 {
   lwip_init ();
   echo_init ();
+#ifdef GDBSTUB_TCP
+  {
+    struct tcp_pcb* debug_pcb = tcp_new ();
+    tcp_bind (debug_pcb, IP_ADDR_ANY, GDBSTUB_TCP_PORT);
+    debug_pcb = tcp_listen (debug_pcb);
+    tcp_accept (debug_pcb, debug_accept);
+  }
+#endif
 }
 
 static uint ethernet_device_count = 0;

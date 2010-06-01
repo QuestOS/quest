@@ -1,6 +1,7 @@
 #include "kernel.h"
 #include "util/printf.h"
 
+#ifndef GDBSTUB_TCP
 void putDebugChar (int c)
 {
   while (!(inb (PORT1 + 5) & 0x20));    /* check line status register, empty transmitter bit */
@@ -12,6 +13,7 @@ int getDebugChar (void)
   while (!(inb (PORT1 + 5) & 1));
   return inb (PORT1);
 }
+#endif
 
 void
 com1_putc (char c)
