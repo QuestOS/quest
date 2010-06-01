@@ -52,7 +52,7 @@
 
 #include "types.h"
 #include "string.h"
-#include "drivers/net/pcnet.h"
+#include "drivers/net/ethernet.h"
 #include "util/debug.h"
 #include "util/printf.h"
 
@@ -94,10 +94,11 @@ static void  ethernetif_input(struct netif *netif);
 static void
 low_level_init(struct netif *netif)
 {
+  struct ethernetif *ethernetif = netif->state;
   /* set MAC hardware address length */
   netif->hwaddr_len = ETHARP_HWADDR_LEN;
 
-  pcnet_get_hwaddr (netif->hwaddr);
+  ethernetif->dev->get_hwaddr_func (netif->hwaddr);
 
   /* maximum transfer unit */
   netif->mtu = 1500;
@@ -126,6 +127,7 @@ low_level_init(struct netif *netif)
 static err_t
 low_level_output(struct netif *netif, struct pbuf *p)
 {
+  struct ethernetif *ethernetif = netif->state;
   struct pbuf *q;
   uint8 buffer[MAX_FRAME_SIZE], *ptr; /* this is a kludge for the moment */
 
@@ -142,7 +144,7 @@ low_level_output(struct netif *netif, struct pbuf *p)
     ptr += q->len;
   }
 
-  if (pcnet_transmit (buffer, p->tot_len) != p->tot_len)
+  if (ethernetif->dev->send_func (buffer, p->tot_len) != p->tot_len)
     return ERR_BUF;
 
 #if ETH_PAD_SIZE
