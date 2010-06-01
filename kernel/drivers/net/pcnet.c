@@ -339,16 +339,10 @@ pcnet_drop_packet (uint8* packet, uint len)
 static ethernet_device pcnet_ethdev;
 
 static void
-handle_rint (void)
+pcnet_poll (void)
 {
   uint32 entry;
   uint32* ptr;
-
-  DLOG ("IRQ: RINT rx_ring=%.01x %p %.01x %p %.01x %p %.01x %p",
-        card->rx_ring[0].rmd1.own, card->rx_ring[0].rmd0.rbadr,
-        card->rx_ring[1].rmd1.own, card->rx_ring[1].rmd0.rbadr,
-        card->rx_ring[2].rmd1.own, card->rx_ring[2].rmd0.rbadr,
-        card->rx_ring[3].rmd1.own, card->rx_ring[3].rmd0.rbadr);
 
   entry = card->rx_idx & RX_RING_MOD_MASK;
 
@@ -388,6 +382,18 @@ handle_rint (void)
     /* check next entry */
     entry = (++card->rx_idx) & RX_RING_MOD_MASK;
   }
+}
+
+static void
+handle_rint (void)
+{
+  DLOG ("IRQ: RINT rx_ring=%.01x %p %.01x %p %.01x %p %.01x %p",
+        card->rx_ring[0].rmd1.own, card->rx_ring[0].rmd0.rbadr,
+        card->rx_ring[1].rmd1.own, card->rx_ring[1].rmd0.rbadr,
+        card->rx_ring[2].rmd1.own, card->rx_ring[2].rmd0.rbadr,
+        card->rx_ring[3].rmd1.own, card->rx_ring[3].rmd0.rbadr);
+
+  pcnet_poll ();
 }
 
 static void
@@ -529,6 +535,7 @@ pcnet_init (void)
   pcnet_ethdev.recv_func = NULL;
   pcnet_ethdev.send_func = pcnet_transmit;
   pcnet_ethdev.get_hwaddr_func = pcnet_get_hwaddr;
+  pcnet_ethdev.poll_func = pcnet_poll;
 
   if (!net_register_device (&pcnet_ethdev)) {
     DLOG ("registration failed");

@@ -13,6 +13,7 @@ typedef void (*packet_recv_func_t)(struct _ethernet_device *dev,
                                    uint8* buffer, sint len);
 typedef sint (*packet_send_func_t)(uint8* buffer, sint len);
 typedef bool (*get_hwaddr_func_t)(uint8 addr[ETH_ADDR_LEN]);
+typedef void (*packet_poll_func_t)(void);
 
 typedef struct _ethernet_device {
   /* ethernet device number */
@@ -25,6 +26,8 @@ typedef struct _ethernet_device {
   packet_send_func_t send_func;
   /* function that populates a buffer with the hardware address */
   get_hwaddr_func_t  get_hwaddr_func;
+  /* function that attempts to poll the network device */
+  packet_poll_func_t poll_func;
   /* lwip network interface struct */
   struct netif netif;
 } ethernet_device;
