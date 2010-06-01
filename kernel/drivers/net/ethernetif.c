@@ -94,9 +94,6 @@ static void  ethernetif_input(struct netif *netif);
 static void
 low_level_init(struct netif *netif)
 {
-  uint error;
-  /*struct ethernetif *ethernetif = reinterpret_cast<struct ethernetif*> (netif->state);*/
-
   /* set MAC hardware address length */
   netif->hwaddr_len = ETHARP_HWADDR_LEN;
 
@@ -108,8 +105,6 @@ low_level_init(struct netif *netif)
   /* device capabilities */
   /* don't set NETIF_FLAG_ETHARP if this device is not an ethernet one */
   netif->flags = NETIF_FLAG_BROADCAST | NETIF_FLAG_ETHARP | NETIF_FLAG_LINK_UP;
-
-  /* Do whatever else is needed to initialize interface. */
 }
 
 /**
@@ -131,10 +126,8 @@ low_level_init(struct netif *netif)
 static err_t
 low_level_output(struct netif *netif, struct pbuf *p)
 {
-  /*struct ethernetif *ethernetif = netif->state;*/
   struct pbuf *q;
-  uint error;
-  uint8 buffer[1600], *ptr; /* this is a kludge for the moment */
+  uint8 buffer[MAX_FRAME_SIZE], *ptr; /* this is a kludge for the moment */
 
 #if ETH_PAD_SIZE
   pbuf_header(p, -ETH_PAD_SIZE); /* drop the padding word */
@@ -175,7 +168,7 @@ low_level_input(struct netif *netif)
   struct ethernetif *ethernetif = netif->state;
   struct pbuf *p, *q;
   uint8 *buffer;
-  uint len, start, err;
+  uint len, start;
 
   len = ethernetif->cur_len;
   buffer = ethernetif->cur_buf;
