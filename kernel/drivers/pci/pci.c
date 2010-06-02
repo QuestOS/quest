@@ -112,9 +112,13 @@ probe (void)
 
 #ifdef DEBUG_PCI
           if (pci_search_ven_table (vendorID, &ven))
-            DLOG ("  %s", ven.VenFull);
+            DLOG ("  %s (0x%x)", ven.VenFull, vendorID);
+          else
+            DLOG ("  0x%x", vendorID);
           if (pci_search_dev_table (vendorID, deviceID, &dev))
-            DLOG ("  %s", dev.ChipDesc);
+            DLOG ("  %s (0x%x)", dev.ChipDesc, deviceID);
+          else
+            DLOG ("  0x%x", deviceID);
           if (pci_search_class_code_table (classID, subclID, prgIFID, &cc))
             DLOG ("  %s %s %s", cc.BaseDesc, cc.SubDesc, cc.ProgDesc);
 #endif
