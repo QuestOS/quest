@@ -18,6 +18,10 @@
 #define DLOG(fmt,...) ;
 #endif
 
+#define RDESC_COUNT 8           /* must be multiple of 8 */
+#define RBUF_SIZE   2048        /* configured in RCTL.BSIZE */
+#define RBUF_SIZE_MASK 0        /* 0 = 2048 bytes */
+
 /* List of compatible cards (ended by { 0xFFFF, 0xFFFF }) */
 static struct { uint16 vendor, device; } compatible_ids[] = {
   { 0x8086, 0x100E },
@@ -27,17 +31,108 @@ static struct { uint16 vendor, device; } compatible_ids[] = {
 static uint8 hwaddr[ETH_ADDR_LEN];
 static uint device_index, mem_addr, irq_line, irq_pin, e1000_phys;
 static uint32 *mmio_base;
+#define E1000_MMIO_PAGES 0x10
+
+/* ************************************************** */
+
+/* registers */
 
 #define REG(x) (mmio_base[x])
-#define EERD   (REG (5))
+
+#define CTRL   (REG (0x00))     /* Control */
+#define CTRL_RST (1<<26)        /* Reset */
+#define EERD   (REG (0x05))     /* EEPROM Read */
+#define RCTL   (REG (0x40))     /* Receive Control */
+#define RCTL_EN (0x02)          /* RX Enable */
+#define RCTL_BAM (1<<15)        /* Accept Broadcast packets */
+#define RCTL_BSIZE (0x30000)    /* Buffer size */
+#define RCTL_BSEX (1<<25)       /* "Extension" (x16) of size */
+#define RDBAL  (REG (0xA00))    /* RX Desc. Base Address Low */
+#define RDBAH  (REG (0xA01))    /* RX Desc. Base Address Low */
+#define RDLEN  (REG (0xA02))    /* RX Desc. Length */
+#define RDH    (REG (0xA04))    /* RX Desc Head */
+#define RDT    (REG (0xA06))    /* RX Desc Tail */
+#define RAL    (REG (0x1500))   /* RX Address Low */
+#define RAH    (REG (0x1501))   /* RX Address High */
+
+/* ************************************************** */
+
+/* Receive descriptor (16-bytes) describes a buffer in memory */
+struct e1000_rdesc {
+  uint64 address;
+  uint16 length;
+  uint16 checksum;
+  uint8  status;
+  uint8  errors;
+  uint16 special;
+} PACKED;
+#define RDESC_STATUS_DD  0x01    /* indicates hardware done with descriptor */
+#define RDESC_STATUS_EOP 0x02    /* indicates end of packet */
 
 static struct e1000 {
+  struct e1000_rdesc rdescs[RDESC_COUNT];
+  uint8 rbufs[RDESC_COUNT][RBUF_SIZE];
 } e1000 ALIGNED(4096);
+
+/* ************************************************** */
 
 /* Virtual-to-Physical */
 #define V2P(ty,p) ((ty)((((uint) (p)) - ((uint) &e1000))+e1000_phys))
 /* Physical-to-Virtual */
 #define P2V(ty,p) ((ty)((((uint) (p)) - e1000_phys)+((uint) &e1000)))
+
+/* ************************************************** */
+
+static void
+reset (void)
+{
+  uint i;
+
+  /* reset */
+  CTRL |= CTRL_RST;
+  while (CTRL & CTRL_RST) tsc_delay_usec (1);
+
+  /* set hardware address */
+  RAL =
+    (hwaddr[0] << 0x00) |
+    (hwaddr[1] << 0x08) |
+    (hwaddr[2] << 0x10) |
+    (hwaddr[3] << 0x18);
+  RAH = 0x80000000L     |       /* Address Valid */
+    (hwaddr[4] << 0x00) |
+    (hwaddr[5] << 0x08);
+
+  DLOG ("RAL=%p RAH=%p", RAL, RAH);
+
+  /* set buffer size code */
+  RCTL &= ~RCTL_BSIZE;
+  RCTL |= RBUF_SIZE_MASK;
+  RCTL &= ~RCTL_BSEX;
+
+  /* set up rdesc addresses */
+  for (i=0; i<RDESC_COUNT; i++) {
+    e1000.rdescs[i].address = V2P (uint64, e1000.rbufs[i]);
+    e1000.rdescs[i].status = 0;
+  }
+
+  /* program the rdesc base address and length */
+  RDBAL = V2P (uint32, e1000.rdescs);
+  RDBAH = 0;
+  RDLEN = RDESC_COUNT * sizeof (struct e1000_rdesc);
+
+  /* set head, tail of ring buffer */
+  RDH = 0;
+  RDT = RDESC_COUNT - 1;
+
+  DLOG ("RDBAL=%p RDLEN=%p RDH=%d RDT=%d",
+        V2P (uint32, e1000.rdescs), RDESC_COUNT * sizeof (struct e1000_rdesc),
+        RDH, RDT);
+
+  /* setup RX interrupts */
+
+  /* enable RX operation and broadcast reception */
+  RCTL |= (RCTL_EN | RCTL_BAM);
+}
 
 extern bool
 e1000_init (void)
@@ -73,7 +168,7 @@ e1000_init (void)
     goto abort;
   }
 
-  mmio_base = map_virtual_page (mem_addr | 3);
+  mmio_base = map_contiguous_virtual_pages (mem_addr | 3, E1000_MMIO_PAGES);
 
   if (mmio_base == NULL) {
     DLOG ("Unable to map page to phys=%p", mem_addr);
@@ -110,10 +205,12 @@ e1000_init (void)
   DLOG ("hwaddr=%.02x:%.02x:%.02x:%.02x:%.02x:%.02x",
         hwaddr[0], hwaddr[1], hwaddr[2], hwaddr[3], hwaddr[4], hwaddr[5]);
 
+  reset ();
+
   return TRUE;
 
  abort_mmap:
-  unmap_virtual_page (mmio_base);
+  unmap_virtual_pages (mmio_base, E1000_MMIO_PAGES);
  abort:
   return FALSE;
 }
