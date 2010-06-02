@@ -497,6 +497,9 @@ init (multiboot * pmb)
   /* Initialize PCnet card (depends on network) */
   pcnet_init ();
 
+  /* Initialize e1000 card (depends on network) */
+  { bool e1000_init (void); e1000_init (); }
+
   /* hard-code the configuration for now */
   net_set_default ("en0");
   net_dhcp_start ("en0");
