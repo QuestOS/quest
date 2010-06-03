@@ -20,6 +20,7 @@
 
 #define E1000_VECTOR 0x4C       /* arbitrary */
 #define RDESC_COUNT 8           /* must be multiple of 8 */
+#define RDESC_COUNT_MOD_MASK (RDESC_COUNT - 1)
 #define RBUF_SIZE   2048        /* configured in RCTL.BSIZE */
 #define RBUF_SIZE_MASK 0        /* 0 = 2048 bytes */
 
@@ -89,11 +90,32 @@ static struct e1000_interface {
 /* Physical-to-Virtual */
 #define P2V(ty,p) ((ty)((((uint) (p)) - e1000_phys)+((uint) e1000)))
 
+static ethernet_device e1000_ethdev;
+
 /* ************************************************** */
+
+extern bool
+e1000_get_hwaddr (uint8 a[ETH_ADDR_LEN])
+{
+  int i;
+  for (i=0; i<ETH_ADDR_LEN; i++)
+    a[i] = hwaddr[i]; 
+  return TRUE;
+}
+
+extern sint
+e1000_transmit (uint8* buffer, sint len)
+{
+  DLOG ("TX: (%p, %d)", buffer, len);
+  return 0;
+}
 
 extern void
 e1000_rx_poll (void)
 {
+  uint32 entry, rdt;
+  uint8 *ptr;
+
   DLOG ("RX: %d %d %d %d %d %d %d %d",
         e1000->rdescs[0].status & RDESC_STATUS_DD,
         e1000->rdescs[1].status & RDESC_STATUS_DD,
@@ -103,6 +125,37 @@ e1000_rx_poll (void)
         e1000->rdescs[5].status & RDESC_STATUS_DD,
         e1000->rdescs[6].status & RDESC_STATUS_DD,
         e1000->rdescs[7].status & RDESC_STATUS_DD);
+  
+  entry = e1000->rx_idx & RDESC_COUNT_MOD_MASK;
+  while (e1000->rdescs[entry].status & RDESC_STATUS_DD) {
+    if (e1000->rdescs[entry].status & RDESC_STATUS_EOP) {
+      uint16 len;
+      /* full packet */
+      ptr = e1000->rbufs[entry];
+      len = e1000->rdescs[entry].length;
+      DLOG ("RX: full packet@%p len=%d", ptr, len);
+      if (e1000_ethdev.recv_func)
+        e1000_ethdev.recv_func (&e1000_ethdev, ptr, len);
+      else                      /* drop it */
+        DLOG ("recv_func is null");
+    } else {
+      /* error */
+      DLOG ("RX: error. status=%p", e1000->rdescs[entry].status);
+    }
+
+    /* clear status */
+    e1000->rdescs[entry].status = 0;
+
+    /* advance "tail" to notify hardware */
+    rdt = RDT;
+    rdt++;
+    if (rdt >= RDESC_COUNT)
+      rdt = 0;
+    RDT = rdt;
+
+    /* check next entry */
+    entry = (++e1000->rx_idx) & RDESC_COUNT_MOD_MASK;
+  }
 }
 
 static uint32
@@ -274,6 +327,17 @@ e1000_init (void)
         hwaddr[0], hwaddr[1], hwaddr[2], hwaddr[3], hwaddr[4], hwaddr[5]);
 
   reset ();
+
+  /* Register network device with net subsystem */
+  e1000_ethdev.recv_func = NULL;
+  e1000_ethdev.send_func = e1000_transmit;
+  e1000_ethdev.get_hwaddr_func = e1000_get_hwaddr;
+  e1000_ethdev.poll_func = e1000_rx_poll;
+
+  if (!net_register_device (&e1000_ethdev)) {
+    DLOG ("registration failed");
+    goto abort_virt;
+  }
 
   return TRUE;
 
