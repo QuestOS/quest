@@ -69,17 +69,18 @@ struct e1000_rdesc {
 #define RDESC_STATUS_DD  0x01    /* indicates hardware done with descriptor */
 #define RDESC_STATUS_EOP 0x02    /* indicates end of packet */
 
-static struct e1000 {
-  struct e1000_rdesc rdescs[RDESC_COUNT];
-  uint8 rbufs[RDESC_COUNT][RBUF_SIZE];
-} e1000 ALIGNED(4096);
-
 /* ************************************************** */
 
+static struct e1000_interface {
+  struct e1000_rdesc rdescs[RDESC_COUNT];
+  uint8 rbufs[RDESC_COUNT][RBUF_SIZE];
+  uint  rx_idx;
+} *e1000;
+
 /* Virtual-to-Physical */
-#define V2P(ty,p) ((ty)((((uint) (p)) - ((uint) &e1000))+e1000_phys))
+#define V2P(ty,p) ((ty)((((uint) (p)) - ((uint) e1000))+e1000_phys))
 /* Physical-to-Virtual */
-#define P2V(ty,p) ((ty)((((uint) (p)) - e1000_phys)+((uint) &e1000)))
+#define P2V(ty,p) ((ty)((((uint) (p)) - e1000_phys)+((uint) e1000)))
 
 /* ************************************************** */
 
@@ -111,12 +112,12 @@ reset (void)
 
   /* set up rdesc addresses */
   for (i=0; i<RDESC_COUNT; i++) {
-    e1000.rdescs[i].address = V2P (uint64, e1000.rbufs[i]);
-    e1000.rdescs[i].status = 0;
+    e1000->rdescs[i].address = V2P (uint64, e1000->rbufs[i]);
+    e1000->rdescs[i].status = 0;
   }
 
   /* program the rdesc base address and length */
-  RDBAL = V2P (uint32, e1000.rdescs);
+  RDBAL = V2P (uint32, e1000->rdescs);
   RDBAH = 0;
   RDLEN = RDESC_COUNT * sizeof (struct e1000_rdesc);
 
@@ -125,7 +126,7 @@ reset (void)
   RDT = RDESC_COUNT - 1;
 
   DLOG ("RDBAL=%p RDLEN=%p RDH=%d RDT=%d",
-        V2P (uint32, e1000.rdescs), RDESC_COUNT * sizeof (struct e1000_rdesc),
+        V2P (uint32, e1000->rdescs), RDESC_COUNT * sizeof (struct e1000_rdesc),
         RDH, RDT);
 
   /* setup RX interrupts */
@@ -137,7 +138,7 @@ reset (void)
 extern bool
 e1000_init (void)
 {
-  uint i, io_base, mask;
+  uint i, io_base, mask, frame_count;
 
   if (mp_ISA_PC) {
     DLOG ("Requires PCI support");
@@ -168,6 +169,7 @@ e1000_init (void)
     goto abort;
   }
 
+  /* Map some virtual pages to the memory-mapped I/O region */
   mmio_base = map_contiguous_virtual_pages (mem_addr | 3, E1000_MMIO_PAGES);
 
   if (mmio_base == NULL) {
@@ -177,18 +179,42 @@ e1000_init (void)
 
   DLOG ("Using memory mapped IO at phys=%p virt=%p", mem_addr, mmio_base);
 
-  e1000_phys = (uint32) get_phys_addr (&e1000);
 
-  DLOG ("e1000 structure mapped at phys=%p virt=%p", e1000_phys, &e1000);
+  /* I need contiguous physical and virtual memory for DMA memory */
+  frame_count = sizeof (struct e1000_interface) >> 12;
+  if (sizeof (struct e1000_interface) & 0xFFF)
+    frame_count++;              /* round up */
+
+  /* Obtain contiguous physical frames. */
+  e1000_phys = alloc_phys_frames (frame_count);
+
+  if (e1000_phys == -1) {
+    DLOG ("Unable to allocate physical memory");
+    goto abort_mmap;
+  }
+
+  /* Map contiguous virtual pages to contiguous physical frames. */
+  e1000 = (struct e1000_interface *)
+    map_contiguous_virtual_pages (e1000_phys | 3, frame_count);
+
+  if (e1000 == NULL) {
+    DLOG ("Unable to allocate virtual memory");
+    goto abort_phys;
+  }
+
+  /* zero the acquired memory */
+  memset (e1000, 0, sizeof (struct e1000_interface));
+
+  DLOG ("DMA region at virt=%p phys=%p count=%d", e1000, e1000_phys, frame_count);
 
   if (!pci_get_interrupt (device_index, &irq_line, &irq_pin)) {
     DLOG ("Unable to get IRQ");
-    goto abort_mmap;
+    goto abort_virt;
   }
 
   DLOG ("Using IRQ line=%.02X pin=%X", irq_line, irq_pin);
 
-  /* read hardware individual address */
+  /* read hardware individual address from EEPROM */
   EERD = 0x0001;                /* EERD.START=0 EERD.ADDR=0 */
   while (!(EERD & 0x10)) asm volatile ("pause"); /* wait for EERD.DONE */
   hwaddr[0] = (EERD >> 16) & 0xFF;
@@ -209,6 +235,10 @@ e1000_init (void)
 
   return TRUE;
 
+ abort_virt:
+  unmap_virtual_pages (e1000, frame_count);
+ abort_phys:
+  free_phys_frames (e1000_phys, frame_count);
  abort_mmap:
   unmap_virtual_pages (mmio_base, E1000_MMIO_PAGES);
  abort:
