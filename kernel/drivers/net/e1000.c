@@ -19,10 +19,19 @@
 #endif
 
 #define E1000_VECTOR 0x4C       /* arbitrary */
+
 #define RDESC_COUNT 8           /* must be multiple of 8 */
 #define RDESC_COUNT_MOD_MASK (RDESC_COUNT - 1)
 #define RBUF_SIZE   2048        /* configured in RCTL.BSIZE */
 #define RBUF_SIZE_MASK 0        /* 0 = 2048 bytes */
+
+#define TDESC_COUNT 8           /* must be multiple of 8 */
+#define TDESC_COUNT_MOD_MASK (RDESC_COUNT - 1)
+#define TBUF_SIZE   2048        /* configured in TCTL.BSIZE */
+#define TBUF_SIZE_MASK 0        /* 0 = 2048 bytes */
+#define TCTL_CT_MASK   0x100
+#define TCTL_COLD_MASK 0x40000
+#define TIPG_MASK (10 | (10 << 10) | (10 << 20))
 
 /* List of compatible cards (ended by { 0xFFFF, 0xFFFF }) */
 static struct { uint16 vendor, device; } compatible_ids[] = {
@@ -47,21 +56,34 @@ static uint32 *mmio_base;
 #define ICR    (REG (0x30))     /* Interrupt Cause Read */
 #define ICR_RXT (0x80)          /* RX Timer Int. */
 #define ICR_RXO (0x40)          /* RX Overrun Int. */
+#define ICR_TXQE (0x02)         /* TX Queue Empty Int. */
 #define IMS    (REG (0x34))     /* Interrupt Mask Set */
 #define IMS_RXT (0x80)          /* RX Timer Int. */
 #define IMS_RXO (0x40)          /* RX Overrun Int. */
+#define IMS_TXQE (0x02)         /* TX Queue Empty Int. */
 #define RCTL   (REG (0x40))     /* Receive Control */
 #define RCTL_EN (0x02)          /* RX Enable */
 #define RCTL_BAM (1<<15)        /* Accept Broadcast packets */
 #define RCTL_BSIZE (0x30000)    /* Buffer size */
 #define RCTL_BSEX (1<<25)       /* "Extension" (x16) of size */
+#define TCTL   (REG (0x100))    /* Transmit Control */
+#define TCTL_EN (0x02)          /* TX Enable */
+#define TCTL_PSP (0x08)         /* TX Pad Short Packets */
+#define TCTL_CT (0xFF0)         /* TX Collision Threshold */
+#define TCTL_COLD (0x3FF000)    /* TX Collision Distance */
+#define TIPG   (REG (0x104))    /* TX Inter Packet Gap */
 #define RDBAL  (REG (0xA00))    /* RX Desc. Base Address Low */
-#define RDBAH  (REG (0xA01))    /* RX Desc. Base Address Low */
+#define RDBAH  (REG (0xA01))    /* RX Desc. Base Address High */
 #define RDLEN  (REG (0xA02))    /* RX Desc. Length */
 #define RDH    (REG (0xA04))    /* RX Desc Head */
 #define RDT    (REG (0xA06))    /* RX Desc Tail */
-#define RAL    (REG (0x1500))   /* RX Address Low */
-#define RAH    (REG (0x1501))   /* RX Address High */
+#define TDBAL  (REG (0xE00))    /* TX Desc. Base Address Low */
+#define TDBAH  (REG (0xE01))    /* TX Desc. Base Address High */
+#define TDLEN  (REG (0xE02))    /* TX Desc. Length */
+#define TDH    (REG (0xE04))    /* TX Desc Head */
+#define TDT    (REG (0xE06))    /* TX Desc Tail */
+#define RAL    (REG (0x1500))   /* RX HW Address Low */
+#define RAH    (REG (0x1501))   /* RX HW Address High */
 
 /* ************************************************** */
 
@@ -79,10 +101,30 @@ struct e1000_rdesc {
 
 /* ************************************************** */
 
+/* Transmit descriptor (16-bytes) describes a buffer in memory */
+struct e1000_tdesc {
+  uint64 address;
+  uint16 length;
+  uint8  cso;                   /* checksum offset */
+  uint8  cmd;                   /* command */
+  uint8  sta:4;                 /* status */
+  uint8  rsv:4;                 /* reserved */
+  uint8  css;                   /* checksum start */
+  uint16 special;
+} PACKED;
+#define TDESC_STA_DD  0x01 /* indicates hardware done with descriptor */
+#define TDESC_CMD_EOP 0x01 /* indicates end of packet */
+#define TDESC_CMD_RS 0x08  /* requests status report */
+
+/* ************************************************** */
+
 static struct e1000_interface {
-  struct e1000_rdesc rdescs[RDESC_COUNT];
+  struct e1000_rdesc rdescs[RDESC_COUNT] ALIGNED(0x10);
+  struct e1000_tdesc tdescs[TDESC_COUNT] ALIGNED(0x10);
   uint8 rbufs[RDESC_COUNT][RBUF_SIZE];
-  uint  rx_idx;
+  uint8 tbufs[TDESC_COUNT][TBUF_SIZE];
+  uint  rx_idx;                 /* current RX descriptor */
+  uint  tx_cnt;                 /* number of pending TX descriptors */
 } *e1000;
 
 /* Virtual-to-Physical */
@@ -99,15 +141,36 @@ e1000_get_hwaddr (uint8 a[ETH_ADDR_LEN])
 {
   int i;
   for (i=0; i<ETH_ADDR_LEN; i++)
-    a[i] = hwaddr[i]; 
+    a[i] = hwaddr[i];
   return TRUE;
 }
 
 extern sint
 e1000_transmit (uint8* buffer, sint len)
 {
-  DLOG ("TX: (%p, %d)", buffer, len);
-  return 0;
+  uint32 tdt = TDT;
+  DLOG ("TX: (%p, %d) TDH=%d TDT=%d", buffer, len, TDH, tdt);
+
+  if (len > TBUF_SIZE)
+    return 0;
+
+  if (e1000->tx_cnt >= TDESC_COUNT - 1) /* overrun */
+    return 0;
+
+  /* set up the first available descriptor */
+  memcpy (e1000->tbufs[tdt], buffer, len);
+  e1000->tdescs[tdt].length = len;
+  e1000->tdescs[tdt].cmd = TDESC_CMD_RS | TDESC_CMD_EOP;
+
+  /* advance the TDT, notifying hardware */
+  tdt++;
+  if (tdt >= TDESC_COUNT)
+    tdt = 0;
+  TDT = tdt;
+
+  e1000->tx_cnt++;
+
+  return len;
 }
 
 extern void
@@ -125,7 +188,7 @@ e1000_rx_poll (void)
         e1000->rdescs[5].status & RDESC_STATUS_DD,
         e1000->rdescs[6].status & RDESC_STATUS_DD,
         e1000->rdescs[7].status & RDESC_STATUS_DD);
-  
+
   entry = e1000->rx_idx & RDESC_COUNT_MOD_MASK;
   while (e1000->rdescs[entry].status & RDESC_STATUS_DD) {
     if (e1000->rdescs[entry].status & RDESC_STATUS_EOP) {
@@ -158,6 +221,22 @@ e1000_rx_poll (void)
   }
 }
 
+static void
+handle_tx (uint32 icr)
+{
+  uint i;
+  DLOG ("TX: tx_cnt=%d", e1000->tx_cnt);
+
+  /* find descriptors that have completed */
+  for (i=0; i<TDESC_COUNT; i++) {
+    if (e1000->tdescs[i].cmd && (e1000->tdescs[i].sta & TDESC_STA_DD)) {
+      e1000->tdescs[i].cmd = 0;
+      e1000->tdescs[i].sta = 0;
+      e1000->tx_cnt--;
+    }
+  }
+}
+
 static uint32
 e1000_irq_handler (uint8 vec)
 {
@@ -166,9 +245,10 @@ e1000_irq_handler (uint8 vec)
   uint32 icr = ICR;
   DLOG ("IRQ: ICR=%p", icr);
 
-  if (icr & ICR_RXT) {          /* RX */
+  if (icr & ICR_RXT)            /* RX */
     e1000_rx_poll ();
-  }
+  if (icr & ICR_TXQE)           /* TX queue empty */
+    handle_tx (icr);
 
   return 0;
 }
@@ -194,7 +274,7 @@ reset (void)
 
   DLOG ("RAL=%p RAH=%p", RAL, RAH);
 
-  /* set buffer size code */
+  /* set rx buffer size code */
   RCTL &= ~RCTL_BSIZE;
   RCTL |= RBUF_SIZE_MASK;
   RCTL &= ~RCTL_BSEX;
@@ -210,19 +290,51 @@ reset (void)
   RDBAH = 0;
   RDLEN = RDESC_COUNT * sizeof (struct e1000_rdesc);
 
-  /* set head, tail of ring buffer */
+  /* set head, tail of rx ring buffer */
   RDH = 0;
   RDT = RDESC_COUNT - 1;
+
+  e1000->rx_idx = 0;
 
   DLOG ("RDBAL=%p RDLEN=%p RDH=%d RDT=%d",
         V2P (uint32, e1000->rdescs), RDESC_COUNT * sizeof (struct e1000_rdesc),
         RDH, RDT);
 
+  /* set up tdesc addresses */
+  for (i=0; i<TDESC_COUNT; i++) {
+    e1000->tdescs[i].address = V2P (uint64, e1000->tbufs[i]);
+    e1000->tdescs[i].sta = 0;
+  }
+
+  /* program the tdesc base address and length */
+  TDBAL = V2P (uint32, e1000->tdescs);
+  TDBAH = 0;
+  TDLEN = TDESC_COUNT * sizeof (struct e1000_tdesc);
+
+  /* set head, tail of rx ring buffer */
+  TDH = 0;
+  TDT = 0;
+
+  e1000->tx_cnt = 0;
+
+  DLOG ("TDBAL=%p TDLEN=%p TDH=%d TDT=%d",
+        V2P (uint32, e1000->tdescs), TDESC_COUNT * sizeof (struct e1000_tdesc),
+        TDH, TDT);
+
   /* setup RX interrupts */
   IMS |= IMS_RXT;
 
+  /* setup TX interrupts */
+  IMS |= IMS_TXQE;
+
   /* enable RX operation and broadcast reception */
   RCTL |= (RCTL_EN | RCTL_BAM);
+
+  /* enable TX operation */
+  TCTL |= (TCTL_EN | TCTL_PSP | TCTL_COLD_MASK);
+  TIPG = TIPG_MASK;
+
+  while (! (TCTL & TCTL_EN)) asm volatile ("pause");
 }
 
 extern bool
