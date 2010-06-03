@@ -18,6 +18,7 @@
 #define DLOG(fmt,...) ;
 #endif
 
+#define E1000_VECTOR 0x4C       /* arbitrary */
 #define RDESC_COUNT 8           /* must be multiple of 8 */
 #define RBUF_SIZE   2048        /* configured in RCTL.BSIZE */
 #define RBUF_SIZE_MASK 0        /* 0 = 2048 bytes */
@@ -42,6 +43,12 @@ static uint32 *mmio_base;
 #define CTRL   (REG (0x00))     /* Control */
 #define CTRL_RST (1<<26)        /* Reset */
 #define EERD   (REG (0x05))     /* EEPROM Read */
+#define ICR    (REG (0x30))     /* Interrupt Cause Read */
+#define ICR_RXT (0x80)          /* RX Timer Int. */
+#define ICR_RXO (0x40)          /* RX Overrun Int. */
+#define IMS    (REG (0x34))     /* Interrupt Mask Set */
+#define IMS_RXT (0x80)          /* RX Timer Int. */
+#define IMS_RXO (0x40)          /* RX Overrun Int. */
 #define RCTL   (REG (0x40))     /* Receive Control */
 #define RCTL_EN (0x02)          /* RX Enable */
 #define RCTL_BAM (1<<15)        /* Accept Broadcast packets */
@@ -83,6 +90,35 @@ static struct e1000_interface {
 #define P2V(ty,p) ((ty)((((uint) (p)) - e1000_phys)+((uint) e1000)))
 
 /* ************************************************** */
+
+extern void
+e1000_rx_poll (void)
+{
+  DLOG ("RX: %d %d %d %d %d %d %d %d",
+        e1000->rdescs[0].status & RDESC_STATUS_DD,
+        e1000->rdescs[1].status & RDESC_STATUS_DD,
+        e1000->rdescs[2].status & RDESC_STATUS_DD,
+        e1000->rdescs[3].status & RDESC_STATUS_DD,
+        e1000->rdescs[4].status & RDESC_STATUS_DD,
+        e1000->rdescs[5].status & RDESC_STATUS_DD,
+        e1000->rdescs[6].status & RDESC_STATUS_DD,
+        e1000->rdescs[7].status & RDESC_STATUS_DD);
+}
+
+static uint32
+e1000_irq_handler (uint8 vec)
+{
+  /* ICR is cleared upon read; this implicitly acknowledges the
+   * interrupt. */
+  uint32 icr = ICR;
+  DLOG ("IRQ: ICR=%p", icr);
+
+  if (icr & ICR_RXT) {          /* RX */
+    e1000_rx_poll ();
+  }
+
+  return 0;
+}
 
 static void
 reset (void)
@@ -130,6 +166,7 @@ reset (void)
         RDH, RDT);
 
   /* setup RX interrupts */
+  IMS |= IMS_RXT;
 
   /* enable RX operation and broadcast reception */
   RCTL |= (RCTL_EN | RCTL_BAM);
@@ -213,6 +250,11 @@ e1000_init (void)
   }
 
   DLOG ("Using IRQ line=%.02X pin=%X", irq_line, irq_pin);
+
+  /* Map IRQ to handler */
+  IOAPIC_map_GSI (IRQ_to_GSI (mp_ISA_bus_id, irq_line),
+                  E1000_VECTOR, 0xFF00000000000800LL);
+  set_vector_handler (E1000_VECTOR, e1000_irq_handler);
 
   /* read hardware individual address from EEPROM */
   EERD = 0x0001;                /* EERD.START=0 EERD.ADDR=0 */
