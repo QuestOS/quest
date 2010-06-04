@@ -20,7 +20,7 @@ com1_putc (char c)
 {
 #ifdef COM1_TO_SCREEN
   _putchar (c);
-#elif !defined(ENABLE_GDBSTUB)
+#elif !defined(ENABLE_GDBSTUB) || defined(GDBSTUB_TCP)
   if (c == '\n') {
     /* output CR before NL */
     while (!(inb (PORT1 + 5) & 0x20));  /* check line status register, empty transmitter bit */
