@@ -237,6 +237,13 @@ handle_tx (uint32 icr)
   }
 }
 
+extern void
+e1000_poll (void)
+{
+  e1000_rx_poll ();
+  handle_tx (ICR_TXQE);
+}
+
 static uint32
 e1000_irq_handler (uint8 vec)
 {
@@ -444,7 +451,7 @@ e1000_init (void)
   e1000_ethdev.recv_func = NULL;
   e1000_ethdev.send_func = e1000_transmit;
   e1000_ethdev.get_hwaddr_func = e1000_get_hwaddr;
-  e1000_ethdev.poll_func = e1000_rx_poll;
+  e1000_ethdev.poll_func = e1000_poll;
 
   if (!net_register_device (&e1000_ethdev)) {
     DLOG ("registration failed");
@@ -458,7 +465,7 @@ e1000_init (void)
  abort_phys:
   free_phys_frames (e1000_phys, frame_count);
  abort_mmap:
-  unmap_virtual_pages (mmio_base, E1000_MMIO_PAGES);
+  unmap_virtual_pages ((void *)mmio_base, E1000_MMIO_PAGES);
  abort:
   return FALSE;
 }
