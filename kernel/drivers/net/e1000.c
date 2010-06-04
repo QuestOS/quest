@@ -41,7 +41,7 @@ static struct { uint16 vendor, device; } compatible_ids[] = {
 
 static uint8 hwaddr[ETH_ADDR_LEN];
 static uint device_index, mem_addr, irq_line, irq_pin, e1000_phys;
-static uint32 *mmio_base;
+static volatile uint32 *mmio_base;
 #define E1000_MMIO_PAGES 0x10
 
 /* ************************************************** */
