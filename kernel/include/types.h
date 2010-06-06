@@ -27,6 +27,10 @@ typedef signed char bool;
 typedef unsigned long uint;
 typedef signed long sint;
 
+typedef uint8 uint8_t;
+typedef uint16 uint16_t;
+typedef uint32 uint32_t;
+
 #endif // [#ifndef __ASSEMBLER__]
 
 #endif
