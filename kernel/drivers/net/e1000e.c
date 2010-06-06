@@ -537,3 +537,14 @@ e1000e_init (void)
  abort:
   return FALSE;
 }
+
+/* 
+ * Local Variables:
+ * indent-tabs-mode: nil
+ * mode: C
+ * c-file-style: "gnu"
+ * c-basic-offset: 2
+ * End: 
+ */
+
+/* vi: set et sw=2 sts=2: */
