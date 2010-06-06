@@ -4,6 +4,41 @@
 #include "arch/i386.h"
 #include "types.h"
 
+/* ************************************************** */
+
+/* PCI DEVICE definition */
+
+#define PCI_MAX_DEVICES 16      /* arbitrary limit */
+
+typedef struct {
+  union {
+    uint32 raw;
+    struct {
+      uint32 setBit:1;
+      uint32 reserved:1;
+      uint32 ioPort:30;
+    } ioBAR;
+    struct {
+      uint32 clrBit:1;
+      uint32 memType:2;
+      uint32 prefetch:1;
+      uint32 baseAddr:28;
+    } memBAR;
+  };
+  uint32 mask;
+} pci_bar;
+
+typedef struct {
+  uint32 bus, slot, func;
+  uint16 vendor;
+  uint16 device;
+  uint8 classcode;
+  uint8 subclass;
+  uint8 progIF;
+  uint8 headerType;
+  pci_bar bar[6];
+  uint32 data[0x10];
+} pci_device;
 
 /* ************************************************** */
 
@@ -31,6 +66,8 @@ bool pci_decode_bar (uint index, uint bar_index,
  * the given device. */
 bool pci_get_interrupt (uint index, uint* line, uint* pin);
 
+/* Fill a pci_device struct given a valid device index. */
+bool pci_get_device (uint index, pci_device* dev);
 
 /* ************************************************** */
 
@@ -140,42 +177,6 @@ pci_write_dword (pci_config_addr a, uint32 v)
   outl (a32, PCI_CONFIG_ADDRESS);
   outl (v, PCI_CONFIG_DATA);
 }
-
-/* ************************************************** */
-
-/* PCI DEVICE definition */
-
-#define PCI_MAX_DEVICES 16      /* arbitrary limit */
-
-typedef struct {
-  union {
-    uint32 raw;
-    struct {
-      uint32 setBit:1;
-      uint32 reserved:1;
-      uint32 ioPort:30;
-    } ioBAR;
-    struct {
-      uint32 clrBit:1;
-      uint32 memType:2;
-      uint32 prefetch:1;
-      uint32 baseAddr:28;
-    } memBAR;
-  };
-  uint32 mask;
-} pci_bar;
-
-typedef struct {
-  uint32 bus, slot, func;
-  uint16 vendor;
-  uint16 device;
-  uint8 classcode;
-  uint8 subclass;
-  uint8 progIF;
-  uint8 headerType;
-  pci_bar bar[6];
-  uint32 data[0x10];
-} pci_device;
 
 #endif
 

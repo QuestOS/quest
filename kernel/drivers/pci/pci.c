@@ -182,7 +182,7 @@ bool
 pci_get_device (uint n, pci_device *dev)
 {
   if (n < num_devices) {
-    *dev = devices[n];
+    memcpy (dev, &devices[n], sizeof (pci_device));
     return TRUE;
   }
   return FALSE;
