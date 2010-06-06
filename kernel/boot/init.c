@@ -500,6 +500,9 @@ init (multiboot * pmb)
   /* Initialize e1000 card (depends on network) */
   { bool e1000_init (void); e1000_init (); }
 
+  /* Initialize e1000e card (depends on network) */
+  { bool e1000e_init (void); e1000e_init (); }
+
   /* hard-code the configuration for now */
   net_set_default ("en0");
   net_dhcp_start ("en0");

@@ -111,6 +111,8 @@ probe (void)
           uint8 header    = READ (bus, slot, func, 0x0E, byte);
 
 #ifdef DEBUG_PCI
+          if (classID == 0x02 && subclID == 0)
+            printf ("PCI ethernet: %x %x\n", vendorID, deviceID);
           if (pci_search_ven_table (vendorID, &ven))
             DLOG ("  %s (0x%x)", ven.VenFull, vendorID);
           else

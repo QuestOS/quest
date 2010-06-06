@@ -269,31 +269,31 @@ reset (void)
   uint i;
 
   /* disable PCIe mastering */
-  DLOG ("Master Disable CTRL=%p", CTRL);
+  //DLOG ("Master Disable CTRL=%p", CTRL);
   CTRL |= 0x4;
 
-  DLOG ("Masking interrupts");
+  //DLOG ("Masking interrupts");
   IMC = (~0);
 
-  DLOG ("Disable TX and RX");
+  //DLOG ("Disable TX and RX");
   RCTL = 0;
   TCTL = TCTL_PSP;
 
-  DLOG ("STATUS=%p RCTL=%p TCTL=%p", STATUS, RCTL, TCTL);
+  //DLOG ("STATUS=%p RCTL=%p TCTL=%p", STATUS, RCTL, TCTL);
 
   STATUS &= ~(0x600);
 
-  DLOG ("cleared PHYRST and INIT_DONE; STATUS=%p", STATUS);
+  //DLOG ("cleared PHYRST and INIT_DONE; STATUS=%p", STATUS);
 
   /* get sw control */
-  DLOG ("(before) EXTCNF_CTRL=%p", REG(0x3C0));
+  //DLOG ("(before) EXTCNF_CTRL=%p", REG(0x3C0));
   REG(0x3C0) |= 0x20;
-  DLOG ("(after) EXTCNF_CTRL=%p", REG(0x3C0));
+  //DLOG ("(after) EXTCNF_CTRL=%p", REG(0x3C0));
 
   /* reset */
 
-  DLOG ("reseting CTRL=%p", CTRL);
-  CTRL |= (0x80000000 | CTRL_RST);
+  //DLOG ("reseting CTRL=%p", CTRL);
+  //CTRL |= (0x80000000 | CTRL_RST);
   //  while (CTRL & CTRL_RST) tsc_delay_usec (1);
   DLOG ("CTRL=%p", CTRL);
 
@@ -368,6 +368,16 @@ reset (void)
   /* enable TX operation */
   TCTL |= (TCTL_EN | TCTL_PSP | TCTL_COLD_MASK);
   TIPG = TIPG_MASK;
+
+
+  /* re-enable mastering */
+
+  CTRL &= (~0x4);
+
+  /* relinquish SWFLAG */
+  REG(0x3C0) &= ~(0x20);
+
+  DLOG ("CTRL=%p STA=%p RCTL=%p TCTL=%p EXT=%p", CTRL, STATUS, RCTL, TCTL, REG(0x3C0));
 
   //while (! (TCTL & TCTL_EN)) asm volatile ("pause");
 }

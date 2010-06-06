@@ -30,7 +30,8 @@ OBJS =  boot/boot.o boot/init.o kernel.o \
 	drivers/ata/ata.o drivers/ata/diskio.o \
 	drivers/input/keyboard_8042.o drivers/input/keymap.o \
 	drivers/pci/pci.o \
-	drivers/net/ethernetif.o drivers/net/pcnet.o drivers/net/e1000.o \
+	drivers/net/ethernetif.o drivers/net/pcnet.o \
+	drivers/net/e1000.o drivers/net/e1000e.o \
 	fs/fsys.o \
 	fs/ext2/fsys_ext2fs.o \
 	fs/iso9660/fsys_iso9660.o \
