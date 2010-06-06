@@ -12,10 +12,16 @@
 #define DLOG(fmt,...) ;
 #endif
 
+/* List of compatible cards (ended by { 0xFFFF, 0xFFFF }) */
+static struct { uint16 vendor, device; } compatible_ids[] = {
+  { 0x8086, 0x27C8 },           /* Intel ICH7 Family UHCI */
+  { 0x8086, 0x7020 },           /* Intel PIIX3 USB controller */
+  { 0xFFFF, 0xFFFF }
+};
 
-static int bus = 0x00;
-static int dev = 0x1D;
-static int func = 0x0;
+static int bus;                 /* set by PCI probing in uhci_init */
+static int dev;
+static int func;
 
 /* USB I/O space base address */
 static uint16_t usb_base = 0x0;
@@ -132,8 +138,6 @@ free_tds (UHCI_TD * tds, int len)
 static void
 disable_ehci (void)
 {
-  int bus = 0x00;
-  int dev = 0x1D;
   int func = 0x7;
   uint32_t pa_ubase = 0;
   unsigned long eecp = 0;
@@ -271,6 +275,8 @@ check_tds (UHCI_TD * tx_tds)
        * --??-- Here, we rely on the assumption that in kernel, physical
        * and virtual addresses of the first 4MB are the same
        */
+
+      /* FIXME: BROKEN! that's not true anymore. */
       tds = (UHCI_TD *) (tds->link_ptr & 0xFFFFFFF0);
     } while (tds->link_ptr != 0x01);
   }
@@ -342,7 +348,34 @@ uhci_reset (void)
 int
 uhci_init (void)
 {
-  disable_ehci ();
+  uint i, device_index;
+  pci_device uhci_device;
+  /* Find the UHCI device on the PCI bus */
+  for (i=0; compatible_ids[i].vendor != 0xFFFF; i++)
+    if (pci_find_device (compatible_ids[i].vendor, compatible_ids[i].device,
+                         0xFF, 0xFF, 0, &device_index))
+      break;
+    else
+      device_index = ~0;
+
+  if (device_index == ~0) {
+    DLOG ("Unable to find compatible device on PCI bus");
+    return FALSE;
+  }
+
+  if (!pci_get_device (device_index, &uhci_device)) {
+    DLOG ("Unable to get PCI device from PCI subsystem");
+    return FALSE;
+  }
+
+  bus = uhci_device.bus;
+  dev = uhci_device.slot;
+  func = uhci_device.func;
+
+  DLOG ("Using PCI bus=%x dev=%x func=%x", bus, dev, func);
+
+  if (uhci_device.device != 0x7020)
+    disable_ehci ();
 
 #if 0
   /* Disable USB Legacy Support */
@@ -360,15 +393,12 @@ uhci_init (void)
   /* Perform global reset on host controller */
   uhci_reset ();
 
-#if 0
-#include <usb/usb_tests.h>
+#if 1
+#include <drivers/usb/usb_tests.h>
 
-  control_transfer_test ();
-  //show_usb_regs();
+  //control_transfer_test ();
+  show_usb_regs(bus, dev, func);
 
-  for (;;) {
-    delay (1000);
-  }
 #endif
 
   return 0;

@@ -4,11 +4,8 @@
 #include "kernel.h"
 
 void
-show_usb_regs (void)
+show_usb_regs (int bus, int dev, int func)
 {
-  int bus = 0x00;
-  int dev = 0x1D;
-  int func = 0x0;
   uint16_t base_addr = 0;
   uint32_t ldata = 0;
   uint16_t wdata = 0;

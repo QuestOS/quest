@@ -37,6 +37,7 @@ OBJS =  boot/boot.o boot/init.o kernel.o \
 	fs/iso9660/fsys_iso9660.o \
 	drivers/sb16/sound.o \
 	drivers/acpi/quest-acpica.o \
+	drivers/usb/uhci_hcd.o drivers/usb/uvc.o drivers/usb/usb_tests.o \
 	kdb/i386-stub.o
 
 CFILES = $(patsubst %.o,%.c,$(OBJS))

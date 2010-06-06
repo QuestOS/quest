@@ -8,7 +8,7 @@
 #include "drivers/usb/usb.h"
 #include "drivers/usb/uvc.h"
 
-extern void show_usb_regs (void);
+extern void show_usb_regs (int bus, int dev, int func);
 extern void control_transfer_test (void);
 
 #endif
