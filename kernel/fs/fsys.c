@@ -1,5 +1,6 @@
 #include"fs/filesys.h"
 #include"kernel.h"
+#include"util/screen.h"
 
 static int vfs_root_type = VFS_FSYS_NONE;
 
@@ -18,7 +19,7 @@ vfs_dir (char *pathname)
   case VFS_FSYS_EZISO:
     return eziso_dir (pathname);
   default:
-    panic ("Unknown vfs_root_type");
+    print ("Unknown vfs_root_type");
     return 0;
   }
 }
@@ -32,7 +33,7 @@ vfs_read (char *buf, int len)
   case VFS_FSYS_EZISO:
     return eziso_read (buf, len);
   default:
-    panic ("Unknown vfs_root_type");
+    print ("Unknown vfs_root_type");
     return 0;
   }
 }
