@@ -20,6 +20,19 @@
 #include "util/printf.h"
 #include "kernel.h"
 
+#define DEBUG_USB_TEST
+
+#ifdef DEBUG_USB_TEST
+#define DLOG(fmt,...) DLOG_PREFIX("usb-test",fmt,##__VA_ARGS__)
+#else
+#define DLOG(fmt,...) ;
+#endif
+
+#define print com1_puts
+#define putx  com1_putx
+#define putchar com1_putc
+
+
 void
 show_usb_regs (int bus, int dev, int func)
 {

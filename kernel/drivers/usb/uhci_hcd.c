@@ -15,6 +15,7 @@
  *  along with this program.  If not, see <http://www.gnu.org/licenses/>.
  */
 
+#include <smp/apic.h>
 #include <drivers/usb/usb.h>
 #include <drivers/usb/uhci.h>
 #include <util/printf.h>
@@ -32,6 +33,7 @@
 /* List of compatible cards (ended by { 0xFFFF, 0xFFFF }) */
 static struct { uint16 vendor, device; } compatible_ids[] = {
   { 0x8086, 0x27C8 },           /* Intel ICH7 Family UHCI */
+  { 0x8086, 0x2934 },           /* Intel ICH9 Family UHCI */
   { 0x8086, 0x7020 },           /* Intel PIIX3 USB controller */
   { 0xFFFF, 0xFFFF }
 };
@@ -44,12 +46,20 @@ static int func;
 static uint16_t usb_base = 0x0;
 
 /* UHCI Frame List. 1024 entries aligned to 4KB boundary */
-static frm_lst_ptr frame_list[1024] __attribute__ ((aligned (4096)));
-static UHCI_TD td[TD_POOL_SIZE] __attribute__ ((aligned (16)));
-static UHCI_QH qh[QH_POOL_SIZE] __attribute__ ((aligned (16)));
+static frm_lst_ptr frame_list[1024] ALIGNED(0x1000);
+static UHCI_TD td[TD_POOL_SIZE] ALIGNED(0x1000);
+static UHCI_QH qh[QH_POOL_SIZE] ALIGNED(0x10);
 static frm_lst_ptr *phys_frm;
 static UHCI_QH *int_qh = 0;
 static UHCI_QH *ctl_qh = 0;
+
+
+uint32 td_phys;
+
+/* Virtual-to-Physical */
+#define TD_V2P(ty,p) ((ty)((((uint) (p)) - ((uint) td))+td_phys))
+/* Physical-to-Virtual */
+#define TD_P2V(ty,p) ((ty)((((uint) (p)) - td_phys)+((uint) td)))
 
 /*
  * This is non-reentrant! Fortunately, we do not have concurrency yet:-)
@@ -128,8 +138,11 @@ static int
 free_tds (UHCI_TD * tds, int len)
 {
   int count = 0, i = 0, end = 0;
+  uint32 link_ptr;
 
   for (i = 0; i < len; i++) {
+    link_ptr = tds->link_ptr;
+
     if ((tds->link_ptr & 0x01) == 0x01) {
       end++;
     }
@@ -142,11 +155,7 @@ free_tds (UHCI_TD * tds, int len)
     if (end)
       break;
 
-    /*
-     * --??-- Here, we rely on the assumption that in kernel, physical
-     * and virtual addresses of the first 4MB are the same
-     */
-    tds = (UHCI_TD *) (tds->link_ptr & 0xFFFFFFF0);
+    tds = TD_P2V (UHCI_TD *, link_ptr & 0xFFFFFFF0);
   }
 
   return count;
@@ -250,10 +259,13 @@ debug_dump_sched (UHCI_TD * tx_tds)
 {
   // Dump the schedule for debugging
   uint32_t *dump, *dump1;
+
+#if 0
   dump = (uint32_t *) tx_tds;
   DLOG ("setup packet dump: %p:%p:%p:%p",
         dump[0], dump[1], dump[2], dump[3]);
   dump1 = (uint32_t *) dump[3];
+  /* --??-- pagefault here? */
   DLOG ("setup request: %p:%p", dump1[0], dump1[1]);
 
   while (dump[0] != 0x01) {
@@ -261,7 +273,7 @@ debug_dump_sched (UHCI_TD * tx_tds)
     DLOG ("Data/ACK packet dump: %p:%p:%p:%p",
           dump[0], dump[1], dump[2], dump[3]);
   }
-
+#endif
 }
 
 static int
@@ -288,13 +300,7 @@ check_tds (UHCI_TD * tx_tds)
         return status;
       }
 
-      /*
-       * --??-- Here, we rely on the assumption that in kernel, physical
-       * and virtual addresses of the first 4MB are the same
-       */
-
-      /* FIXME: BROKEN! that's not true anymore. */
-      tds = (UHCI_TD *) (tds->link_ptr & 0xFFFFFFF0);
+      tds = TD_P2V (UHCI_TD *, tds->link_ptr & 0xFFFFFFF0);
     } while (tds->link_ptr != 0x01);
   }
 
@@ -362,11 +368,19 @@ uhci_reset (void)
   return 0;
 }
 
+static uint32 uhci_irq_handler (uint8 vec);
+
 int
 uhci_init (void)
 {
-  uint i, device_index;
+  uint i, device_index, irq_pin, irq_line;
   pci_device uhci_device;
+
+  if (mp_ISA_PC) {
+    DLOG ("Cannot operate without PCI");
+    return FALSE;
+  }
+
   /* Find the UHCI device on the PCI bus */
   for (i=0; compatible_ids[i].vendor != 0xFFFF; i++)
     if (pci_find_device (compatible_ids[i].vendor, compatible_ids[i].device,
@@ -391,6 +405,24 @@ uhci_init (void)
 
   DLOG ("Using PCI bus=%x dev=%x func=%x", bus, dev, func);
 
+  if (!pci_get_interrupt (device_index, &irq_line, &irq_pin)) {
+    DLOG ("Unable to get IRQ");
+    return FALSE;
+  }
+
+  DLOG ("Using IRQ line=%X pin=%X", irq_line, irq_pin);
+
+#define UHCI_VECTOR 0x50
+
+  IOAPIC_map_GSI (IRQ_to_GSI (mp_ISA_bus_id, irq_line),
+                  UHCI_VECTOR, 0xFF00000000000800LL);
+  set_vector_handler (UHCI_VECTOR, uhci_irq_handler);
+
+
+  td_phys = (uint32) get_phys_addr ((void *) td);
+  DLOG ("td@%p td_phys@%p", td, td_phys);
+
+
   if (uhci_device.device != 0x7020)
     disable_ehci ();
 
@@ -413,7 +445,7 @@ uhci_init (void)
 #if 1
 #include <drivers/usb/usb_tests.h>
 
-  //control_transfer_test ();
+  control_transfer_test ();
   show_usb_regs(bus, dev, func);
 
 #endif
@@ -451,10 +483,10 @@ uhci_isochronous_transfer (uint8_t address,
   entry = frame_list[frm];
 
   if (!(entry & 0x01) && !(entry & 0x02)) {
-    idx_td = (UHCI_TD *) (entry & 0xFFFFFFF0);  //--??-- Again, physical = virtual assumption
+    idx_td = TD_P2V (UHCI_TD *, entry & 0xFFFFFFF0);
 
     while (!(idx_td->link_ptr & 0x01) && !(idx_td->link_ptr & 0x02)) {
-      idx_td = (UHCI_TD *) (idx_td->link_ptr & 0xFFFFFFF0);
+      idx_td = TD_P2V (UHCI_TD *, idx_td->link_ptr & 0xFFFFFFF0);
     }
 
     iso_td->link_ptr = idx_td->link_ptr;
@@ -675,13 +707,11 @@ uhci_get_interface (uint8_t addr, uint16_t interface)
   return alt;
 }
 
-void
-uhci_irq_handler (void)
+static uint32
+uhci_irq_handler (uint8 vec)
 {
-  // TODO
-  while (1) {
-    DLOG ("We caught an interrupt from usb IRQ_LN!");
-  }
+  DLOG ("We caught an interrupt from usb IRQ_LN!");
+  return 0;
 }
 
 /*
