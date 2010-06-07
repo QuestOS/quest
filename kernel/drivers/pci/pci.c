@@ -247,14 +247,20 @@ pci_decode_bar (uint index, uint bar_index,
 
     if (bar->raw & 0x1) {
       /* IO port */
-      *io_addr = bar->ioBAR.ioPort << 2;
-      *mem_addr = 0;
-      *mask = bar->mask;
+      if (io_addr)
+        *io_addr = bar->ioBAR.ioPort << 2;
+      if (mem_addr)
+        *mem_addr = 0;
+      if (mask)
+        *mask = bar->mask;
     } else {
       /* Memory-mapped */
-      *io_addr = 0;
-      *mem_addr = bar->memBAR.baseAddr << 4;
-      *mask = bar->mask;
+      if (io_addr)
+        *io_addr = 0;
+      if (mem_addr)
+        *mem_addr = bar->memBAR.baseAddr << 4;
+      if (mask)
+        *mask = bar->mask;
     }
 
     return TRUE;

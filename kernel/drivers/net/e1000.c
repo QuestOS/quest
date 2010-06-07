@@ -364,7 +364,7 @@ reset (void)
 extern bool
 e1000_init (void)
 {
-  uint i, io_base, mask, frame_count;
+  uint i, frame_count;
 
   if (mp_ISA_PC) {
     DLOG ("Requires PCI support");
@@ -385,7 +385,7 @@ e1000_init (void)
 
   DLOG ("Found device_index=%d", device_index);
 
-  if (!pci_decode_bar (device_index, 0, &mem_addr, &io_base, &mask)) {
+  if (!pci_decode_bar (device_index, 0, &mem_addr, NULL, NULL)) {
     DLOG ("Invalid PCI configuration or BAR0 not found");
     goto abort;
   }

@@ -468,7 +468,7 @@ pcnet_get_hwaddr (uint8 addr[ETH_ADDR_LEN])
 extern bool
 pcnet_init (void)
 {
-  uint i, mem_addr, mask;
+  uint i;
 
   if (mp_ISA_PC) {
     DLOG ("Cannot operate without PCI support");
@@ -490,7 +490,7 @@ pcnet_init (void)
   DLOG ("Found device_index=%d sizeof (pcnet_interface)=%d",
         device_index, sizeof (struct pcnet_interface));
 
-  if (!pci_decode_bar (device_index, 0, &mem_addr, &io_base, &mask)) {
+  if (!pci_decode_bar (device_index, 0, NULL, &io_base, NULL)) {
     DLOG ("Invalid PCI configuration or BAR0 not found");
     goto abort;
   }
