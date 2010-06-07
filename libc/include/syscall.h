@@ -84,7 +84,18 @@ getchar (void)
 
   char c;
 
-  asm volatile ("int $0x34\n":"=a" (c):);
+  asm volatile ("int $0x34\n":"=a" (c): "b" (0):CLOBBERS2);
+
+  return c;
+}
+
+static inline unsigned int
+getcode (void)
+{
+
+  unsigned int c;
+
+  asm volatile ("int $0x34\n":"=a" (c): "b" (1):CLOBBERS2);
 
   return c;
 }

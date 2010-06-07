@@ -32,6 +32,7 @@
 #include "util/screen.h"
 #include "util/debug.h"
 #include "drivers/input/keymap.h"
+#include "drivers/input/keyboard.h"
 
 //#define DEBUG_SYSCALL
 //#define DEBUG_PIT
@@ -698,16 +699,31 @@ _exec (char *filename, char *argv[], uint32 *curr_stack)
   return 0;
 }
 
-/* Syscall: getchar */
-char
-_getchar (void)
+/* Syscall: getchar / getcode */
+uint
+_getchar (uint ebx)
 {
 
-  char c;
+  uint c = 0;
 
   lock_kernel ();
 
-  c = keymap_getchar ();
+  if (ebx == 0)
+    c = keymap_getchar ();
+  else {
+    key_event e;
+    uint i;
+
+    keyboard_8042_next (&e);
+    for (i=0; i<KEY_EVENT_MAX; i++) {
+      if (e.keys[i].latest) {
+        c = e.keys[i].scancode;
+        if (e.keys[i].release)
+          c |= 0x80;            /* restore "break" code */
+        break;
+      }
+    }
+  }
   
   unlock_kernel ();
 

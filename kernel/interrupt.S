@@ -328,7 +328,9 @@ syscall3:
 syscall4:
         SREGS_SAVE
 
+        pushl %ebx
         call _getchar
+        popl %ebx
         
         SREGS_RESTORE
 
