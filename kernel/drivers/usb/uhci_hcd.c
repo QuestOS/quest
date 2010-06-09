@@ -52,7 +52,8 @@ static UHCI_QH qh[QH_POOL_SIZE] ALIGNED(0x10);
 static frm_lst_ptr *phys_frm;
 static UHCI_QH *int_qh = 0;
 static UHCI_QH *ctl_qh = 0;
-
+static UHCI_QH *blk_qh = 0;
+static uint8_t glb_toggle = 0;
 
 uint32 td_phys;
 
@@ -228,15 +229,21 @@ init_schedule (void)
 
   int_qh = sched_alloc (TYPE_QH);
   ctl_qh = sched_alloc (TYPE_QH);
+  blk_qh = sched_alloc (TYPE_QH);
 
-  /* Points to next Queue Head (First Control and Bulk QH). Set Q=1, T=0 */
+  /* Points to next Queue Head (First Control QH). Set Q=1, T=0 */
   int_qh->qh_ptr =
     (((uint32_t) get_phys_addr ((void *) ctl_qh)) & 0xFFFFFFF0) + 0x02;
   int_qh->qe_ptr = 0x01;
 
-  /* Set this as the last Queue Head for now. T=1 */
-  ctl_qh->qh_ptr = 0x01;
+  /* Points to next Queue Head (First Bulk QH). Set Q=1, T=0 */
+  ctl_qh->qh_ptr =
+    (((uint32_t) get_phys_addr ((void *) blk_qh)) & 0xFFFFFFF0) + 0x02;
   ctl_qh->qe_ptr = 0x01;
+
+  /* Set this as the last Queue Head for now. T=1 */
+  blk_qh->qh_ptr = 0x01;
+  blk_qh->qe_ptr = 0x01;
 
 #if 0
   DLOG ("int_qh va=%p ctl_qh va=%p qhp va=%p",
@@ -513,6 +520,64 @@ uhci_isochronous_transfer (uint8_t address,
   return 0;
 }
 
+int uhci_bulk_transfer(
+    uint8_t address,
+    uint8_t endpoint,
+    addr_t data,
+    int data_len,
+    int packet_len,
+    uint8_t direction)
+{
+  UHCI_TD *tx_tds = 0;
+  UHCI_TD *data_td = 0;
+  UHCI_TD *idx_td = 0;
+  int max_packet_len = ((packet_len - 1) >= USB_MAX_LEN) ? USB_MAX_LEN : packet_len - 1;
+  int i = 0, num_data_packets = 0, data_left = 0, return_status = 0;
+
+  num_data_packets = (data_len + max_packet_len) / (max_packet_len + 1);
+  data_left = data_len;
+
+  for(i = 0; i < num_data_packets; i++) {
+    data_td = sched_alloc(TYPE_TD);
+
+    if(tx_tds == 0)
+      tx_tds = data_td;
+    else
+      idx_td->link_ptr = (((uint32_t)get_phys_addr((void*)data_td)) & 0xFFFFFFF0) + 0x04;
+
+    idx_td = data_td;
+    data_td->status = 0x80;
+    data_td->c_err = 3;
+    data_td->ioc = data_td->iso = data_td->spd = 0;
+
+    data_td->pid = (direction == DIR_IN) ? UHCI_PID_IN : UHCI_PID_OUT;
+    data_td->addr = address;
+    data_td->endp = endpoint;
+    data_td->toggle = glb_toggle;
+    glb_toggle = (glb_toggle == 1) ? 0 : 1;
+
+    data_td->max_len = (data_left > (max_packet_len + 1)) ? max_packet_len : data_left - 1;
+    data_td->buf_ptr = (uint32_t)get_phys_addr((void*)data);
+
+    if(data_left <= (max_packet_len + 1)) {
+      break;
+    } else {
+      data += (data_td->max_len + 1);
+      data_left -= (data_td->max_len + 1);
+    }
+  }
+
+  /* Initiate our bulk transactions */
+  blk_qh->qe_ptr = (((uint32_t)get_phys_addr((void*)tx_tds)) & 0xFFFFFFF0) + 0x0;
+
+  /* Check the status of all the packets in the transaction */
+  return_status = check_tds(tx_tds);
+  blk_qh->qe_ptr = 0x01;
+  free_tds(tx_tds, num_data_packets);
+
+  return return_status;
+}
+
 int
 uhci_control_transfer (uint8_t address, addr_t setup_req,       /* Use virtual address here */
                        int setup_len, addr_t setup_data,        /* Use virtual address here */
@@ -675,6 +740,12 @@ uhci_set_configuration (uint8_t addr, uint8_t conf)
   setup_req.wValue = conf;
   setup_req.wIndex = 0;
   setup_req.wLength = 0;
+  /* 
+   * A bulk endpoint's toggle is initialized to DATA0 when any 
+   * configuration event is experienced 
+   */
+  glb_toggle = 0;
+
 
   return uhci_control_transfer (addr,
                                 (addr_t) & setup_req, sizeof (USB_DEV_REQ), 0,
