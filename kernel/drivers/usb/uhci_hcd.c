@@ -294,7 +294,7 @@ check_tds (UHCI_TD * tx_tds)
     UHCI_TD *tds = tx_tds;
     status_count = 0;
 
-    do {
+    while (tds != TD_P2V (UHCI_TD *, 0)) {
       if (tds->status & 0x80) {
         status_count++;
       }
@@ -308,8 +308,9 @@ check_tds (UHCI_TD * tx_tds)
         return status;
       }
 
+      /* move to next TD in chain */
       tds = TD_P2V (UHCI_TD *, tds->link_ptr & 0xFFFFFFF0);
-    } while (tds->link_ptr != 0x01);
+    }
   }
 
   delay (10);                   // --??-- Let's wait a little while here. It might be a source of timing bugs
@@ -539,7 +540,7 @@ int uhci_bulk_transfer(
 
   for(i = 0; i < num_data_packets; i++) {
     data_td = sched_alloc(TYPE_TD);
-
+    data_td->link_ptr = 0x01;
     if(tx_tds == 0)
       tx_tds = data_td;
     else
