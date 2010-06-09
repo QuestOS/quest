@@ -258,18 +258,19 @@ static void
 debug_dump_sched (UHCI_TD * tx_tds)
 {
   // Dump the schedule for debugging
-  uint32_t *dump, *dump1;
+  uint32_t *dump;
+  //uint32_t *dump1;
 
-#if 0
+#if 1
   dump = (uint32_t *) tx_tds;
   DLOG ("setup packet dump: %p:%p:%p:%p",
         dump[0], dump[1], dump[2], dump[3]);
-  dump1 = (uint32_t *) dump[3];
+  //dump1 = (uint32_t *) dump[3];
   /* --??-- pagefault here? */
-  DLOG ("setup request: %p:%p", dump1[0], dump1[1]);
+  //DLOG ("setup request: %p:%p", dump1[0], dump1[1]);
 
   while (dump[0] != 0x01) {
-    dump = (uint32_t *) (dump[0] & 0xFFFFFFF0);
+    dump = TD_P2V (uint32 *, dump[0] & 0xFFFFFFF0);
     DLOG ("Data/ACK packet dump: %p:%p:%p:%p",
           dump[0], dump[1], dump[2], dump[3]);
   }
