@@ -43,7 +43,7 @@ static int dev;
 static int func;
 
 /* USB I/O space base address */
-static uint16_t usb_base = 0x0;
+static uint32_t usb_base = 0x0;
 
 /* UHCI Frame List. 1024 entries aligned to 4KB boundary */
 static frm_lst_ptr frame_list[1024] ALIGNED(0x1000);
@@ -436,7 +436,12 @@ uhci_init (void)
   //SET_LEGACY(bus, dev, func, GET_LEGACY(bus, dev, func) | 0x2000);
 #endif
 
-  usb_base = GET_USB_BASE (bus, dev, func);
+  if (!pci_decode_bar (device_index, 4, NULL, &usb_base, NULL)) {
+    DLOG ("unable to decode BAR4");
+    return FALSE;
+  }
+
+  DLOG ("usb_base=0x%.04X", usb_base);
 
   /* Initiate UHCI internal data structure */
   init_schedule ();
