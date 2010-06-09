@@ -28,6 +28,7 @@
 #define DLOG(fmt,...) ;
 #endif
 
+#define printf com1_printf
 #define print com1_puts
 #define putx  com1_putx
 #define putchar com1_putc
@@ -201,9 +202,30 @@ show_usb_regs (int bus, int dev, int func)
   return;
 }
 
+#define UMSC_CBW_SIGNATURE 0x43425355 /* "USBC" (little-endian) */
+struct umsc_cbw {
+  uint32 dCBWSignature;
+  uint32 dCBWTag;
+  uint32 dCBWDataTransferLength;
+  union {
+    uint8 raw;
+    struct {
+      uint8 _reserved:7;
+      uint8 direction:1;
+    };
+  } bmCBWFlags;
+  uint8 bCBWLUN:4;
+  uint8 _reserved1:4;
+  uint8 bCBWCBLength:5;
+  uint8 _reserved2:3;
+  uint8 CBWCB[16];  
+} PACKED;
+typedef struct umsc_cbw UMSC_CBW;
+
 void
 control_transfer_test (void)
 {
+  sint status, j;
   uint8_t data[20];
   uint8_t conf[1300];
   uint8_t iso1[1024];
@@ -216,8 +238,10 @@ control_transfer_test (void)
   USB_DEV_DESC *desc;
   USB_CFG_DESC *cfgd;
   UVC_IA_DESC *iad;
-  USB_IF_DESC *vcifd;
+  USB_IF_DESC *vcifd, *ifd;
   UVC_CSVC_IF_HDR_DESC *csvcifd;
+  USB_EPT_DESC *ep1, *ep2, *ep;
+  UMSC_CBW cbw;
   //USB_EPT_DESC *eptd;
 
   port_reset (0);
@@ -265,18 +289,14 @@ control_transfer_test (void)
   print ("  idVendor : ");
   putx (desc->idVendor);
   putchar ('\n');
+  print ("  idProduct : ");
+  putx (desc->idProduct);
+  putchar ('\n');
   print ("  bNumConfigurations : ");
   putx (desc->bNumConfigurations);
   putchar ('\n');
 #endif
 
-  delay (1000);
-  delay (1000);
-  delay (1000);
-  delay (1000);
-  delay (1000);
-  delay (1000);
-  delay (1000);
   delay (1000);
   delay (1000);
   delay (1000);
@@ -287,7 +307,7 @@ control_transfer_test (void)
   uhci_get_descriptor (1, TYPE_CFG_DESC, 0, 0, 9, (addr_t) data);
   cfgd = (USB_CFG_DESC *) data;
 
-#if 0
+#if 1
   print ("Configuration Descriptor: \n");
   print ("  bLength : ");
   putx (cfgd->bLength);
@@ -320,9 +340,74 @@ control_transfer_test (void)
   print ("Getting all descriptors.\n");
   uhci_get_descriptor (1, TYPE_CFG_DESC, 0, 0, cfgd->wTotalLength,
                        (addr_t) conf);
+  ifd = (USB_IF_DESC *) (&conf[cfgd->bLength]);
+  ep1 = (USB_EPT_DESC *) (&conf[cfgd->bLength + ifd->bLength]); 
+  ep2 = (USB_EPT_DESC *) (&conf[cfgd->bLength + ifd->bLength + ep1->bLength]); 
+
+  printf ("interface protocol=%x subclass=%x\n",
+          ifd->bInterfaceProtocol, ifd->bInterfaceSubClass);
+  ep = ep1;
+  printf ("endpoint length=%x desctype=%x endaddr=%x attr=%x maxpkt=%x interval=%x\n",
+          ep->bLength, ep->bDescriptorType, ep->bEndpointAddress,
+          ep->bmAttributes, ep->wMaxPacketSize, ep->bInterval);
+  ep = ep2;
+  printf ("endpoint length=%x desctype=%x endaddr=%x attr=%x maxpkt=%x interval=%x\n",
+          ep->bLength, ep->bDescriptorType, ep->bEndpointAddress,
+          ep->bmAttributes, ep->wMaxPacketSize, ep->bInterval);
+
+
+  delay (1000);
+
+  print ("Set configuration to 1.\n");
+  uhci_set_configuration (1, 1);
+
+  printf ("New configuration is : %x\n",
+          uhci_get_configuration (1));
+
+  delay (1000);
+
+  memset (&cbw, 0, sizeof (cbw));
+
+  cbw.dCBWSignature = UMSC_CBW_SIGNATURE;
+  cbw.dCBWDataTransferLength = 512; /* 512 bytes transferred */
+  cbw.bmCBWFlags.direction = 1; /* dev -> host */
+  cbw.bCBWCBLength = 16;         /* cmd length */
+  cbw.CBWCB[0] = 0x88;           /* READ (16) */
+  cbw.CBWCB[13] = 1;
+  status = uhci_bulk_transfer (1, 2 /* bulk-out EP */, 
+                               (addr_t) &cbw, 0x1f, 64, DIR_OUT);
+
+  printf ("status=%d\n", status);
+  delay (500);
+
+  memset (conf, 0, 1300);
+  status = uhci_bulk_transfer (1, 1 /* bulk-in EP */,
+                               (addr_t) &conf, 512, 64, DIR_IN);
+  printf ("status=%d\n", status);
+  delay (500);
+
+  for (j=0;j<8;j++) {
+    sint k;
+    for (k=0;k<8;k++)
+      printf ("%.02x ", conf[j*8+k]);
+    printf ("\n");
+  }
+
+  status = uhci_bulk_transfer (1, 1 /* bulk-in EP */,
+                               (addr_t) &conf, 64, 64, DIR_IN);
+  printf ("status=%d\n", status);
+  delay (500);
+
+  for (j=0;j<8;j++) {
+    sint k;
+    for (k=0;k<8;k++)
+      printf ("%.02x ", conf[j*8+k]);
+    printf ("\n");
+  }
+
+#if 0
   iad = (UVC_IA_DESC *) (&conf[cfgd->bLength]);
 
-#if 1
   print ("Interface Association Descriptor: \n");
   print ("  bLength : ");
   putx (iad->bLength);
@@ -356,9 +441,10 @@ control_transfer_test (void)
   delay (1000);
   delay (1000);
 
+#if 0
   vcifd = (USB_IF_DESC *) (&conf[cfgd->bLength + iad->bLength]);
 
-#if 1
+
   print ("VC Interface Descriptor : \n");
   print ("  bLength : ");
   putx (vcifd->bLength);
@@ -395,11 +481,12 @@ control_transfer_test (void)
   delay (1000);
   delay (1000);
 
+#if 0
   csvcifd =
     (UVC_CSVC_IF_HDR_DESC
      *) (&conf[cfgd->bLength + iad->bLength + vcifd->bLength]);
 
-#if 1
+
   print ("Class-Specific VC Interface Header Descriptor : \n");
   print ("  bLength : ");
   putx (csvcifd->bLength);
@@ -427,12 +514,13 @@ control_transfer_test (void)
   putchar ('\n');
 #endif
 
+#if 0
   csvcifd =
     (UVC_CSVC_IF_HDR_DESC
      *) (&conf[cfgd->bLength + iad->bLength + vcifd->bLength +
                csvcifd->bLength]);
 
-#if 0
+
   print ("Class-Specific VC Interface Header Descriptor : \n");
   print ("  bLength : ");
   putx (csvcifd->bLength);
@@ -451,12 +539,13 @@ control_transfer_test (void)
   putchar ('\n');
 #endif
 
+#if 0
   csvcifd =
     (UVC_CSVC_IF_HDR_DESC
      *) (&conf[cfgd->bLength + iad->bLength + vcifd->bLength + 13 +
                csvcifd->bLength]);
 
-#if 0
+
   print ("Class-Specific VC Interface Header Descriptor : \n");
   print ("  bLength : ");
   putx (csvcifd->bLength);
@@ -475,12 +564,13 @@ control_transfer_test (void)
   putchar ('\n');
 #endif
 
+#if 0
   csvcifd =
     (UVC_CSVC_IF_HDR_DESC
      *) (&conf[cfgd->bLength + iad->bLength + vcifd->bLength + 13 + 18 +
                csvcifd->bLength]);
 
-#if 0
+
   print ("Class-Specific VC Interface Header Descriptor : \n");
   print ("  bLength : ");
   putx (csvcifd->bLength);
@@ -499,12 +589,13 @@ control_transfer_test (void)
   putchar ('\n');
 #endif
 
+#if 0
   csvcifd =
     (UVC_CSVC_IF_HDR_DESC
      *) (&conf[cfgd->bLength + iad->bLength + vcifd->bLength + 13 + 18 + 11 +
                csvcifd->bLength]);
 
-#if 0
+
   print ("Class-Specific VC Interface Header Descriptor : \n");
   print ("  bLength : ");
   putx (csvcifd->bLength);
@@ -523,29 +614,11 @@ control_transfer_test (void)
   putchar ('\n');
 #endif
 
-  delay (1000);
-  delay (1000);
-  delay (1000);
-  delay (1000);
-  delay (1000);
-
-  print ("Set configuration to 1.\n");
-  uhci_set_configuration (1, 1);
-
-  print ("New configuration is : ");
-  putx (uhci_get_configuration (1));
-  putchar ('\n');
-
-  delay (1000);
-  delay (1000);
-  delay (1000);
-  delay (1000);
-  delay (1000);
 
 #if 1
   memset (conf, 0, 1300);
 
-  int status =
+  status =
     uhci_get_descriptor (1, TYPE_CFG_DESC, 0, 0, 1000, (addr_t) conf);
   print ("Status Code : ");
   putx (status);

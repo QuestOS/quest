@@ -135,6 +135,7 @@ extern int port_reset (uint8_t);
 extern int uhci_isochronous_transfer (uint8_t, uint8_t, addr_t, int, uint16_t,
                                       uint8_t);
 extern int uhci_control_transfer (uint8_t, addr_t, int, addr_t, int);
+extern int uhci_bulk_transfer (uint8_t, uint8_t, addr_t, int, int, uint8_t);
 extern int uhci_get_descriptor (uint8_t, uint16_t, uint16_t, uint16_t,
                                 uint16_t, addr_t);
 extern int uhci_set_address (uint8_t, uint8_t);
