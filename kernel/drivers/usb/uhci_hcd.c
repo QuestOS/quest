@@ -740,9 +740,9 @@ uhci_set_configuration (uint8_t addr, uint8_t conf)
   setup_req.wValue = conf;
   setup_req.wIndex = 0;
   setup_req.wLength = 0;
-  /* 
-   * A bulk endpoint's toggle is initialized to DATA0 when any 
-   * configuration event is experienced 
+  /*
+   * A bulk endpoint's toggle is initialized to DATA0 when any
+   * configuration event is experienced
    */
   glb_toggle = 0;
 
