@@ -42,6 +42,8 @@ static int bus;                 /* set by PCI probing in uhci_init */
 static int dev;
 static int func;
 
+static uint32 uhci_irq_handler (uint8 vec);
+
 /* USB I/O space base address */
 static uint32_t usb_base = 0x0;
 
@@ -53,7 +55,7 @@ static frm_lst_ptr *phys_frm;
 static UHCI_QH *int_qh = 0;
 static UHCI_QH *ctl_qh = 0;
 static UHCI_QH *blk_qh = 0;
-uint8_t glb_toggle = 0;
+static uint32 toggles[128];     /* endpoint toggle bit states (bulk i/o) */
 
 uint32 td_phys;
 
@@ -378,13 +380,13 @@ uhci_reset (void)
   return 0;
 }
 
-static uint32 uhci_irq_handler (uint8 vec);
-
 int
 uhci_init (void)
 {
   uint i, device_index, irq_pin, irq_line;
   pci_device uhci_device;
+
+  memset (toggles, 0, sizeof (toggles));
 
   if (mp_ISA_PC) {
     DLOG ("Cannot operate without PCI");
@@ -535,7 +537,7 @@ int uhci_bulk_transfer(
   UHCI_TD *data_td = 0;
   UHCI_TD *idx_td = 0;
   int max_packet_len = ((packet_len - 1) >= USB_MAX_LEN) ? USB_MAX_LEN : packet_len - 1;
-  int i = 0, num_data_packets = 0, data_left = 0, return_status = 0;
+  int i = 0, num_data_packets = 0, data_left = 0, return_status = 0, tog_idx;
 
   num_data_packets = (data_len + max_packet_len) / (max_packet_len + 1);
   data_left = data_len;
@@ -556,8 +558,13 @@ int uhci_bulk_transfer(
     data_td->pid = (direction == DIR_IN) ? UHCI_PID_IN : UHCI_PID_OUT;
     data_td->addr = address;
     data_td->endp = endpoint;
-    data_td->toggle = glb_toggle;
-    glb_toggle = (glb_toggle == 1) ? 0 : 1;
+
+    tog_idx = (address * 32 + (endpoint + ((direction == DIR_IN) << 4)));
+    data_td->toggle = (BITMAP_TST (toggles, tog_idx) ? 1 : 0);
+    if (data_td->toggle)
+      BITMAP_CLR (toggles, tog_idx);
+    else
+      BITMAP_SET (toggles, tog_idx);
 
     data_td->max_len = (data_left > (max_packet_len + 1)) ? max_packet_len : data_left - 1;
     data_td->buf_ptr = (uint32_t)get_phys_addr((void*)data);
@@ -712,16 +719,21 @@ uhci_get_descriptor (uint8_t address, uint16_t dtype,   /* Descriptor type */
 int
 uhci_set_address (uint8_t old_addr, uint8_t new_addr)
 {
+  sint status;
   USB_DEV_REQ setup_req;
   setup_req.bmRequestType = 0x0;
   setup_req.bRequest = USB_SET_ADDRESS;
   setup_req.wValue = new_addr;
   setup_req.wIndex = 0;
   setup_req.wLength = 0;
-
-  return uhci_control_transfer (old_addr,
+  
+  status = uhci_control_transfer (old_addr,
                                 (addr_t) & setup_req, sizeof (USB_DEV_REQ), 0,
                                 0);
+  if (status == 0) {
+    toggles[old_addr] = toggles[new_addr] = 0;
+  }
+  return status;
 }
 
 int
@@ -754,7 +766,7 @@ uhci_set_configuration (uint8_t addr, uint8_t conf)
    * A bulk endpoint's toggle is initialized to DATA0 when any
    * configuration event is experienced
    */
-  glb_toggle = 0;
+  toggles[addr] = 0;
 
 
   return uhci_control_transfer (addr,

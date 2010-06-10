@@ -243,10 +243,6 @@ umsc_bo_reset (uint address, uint interface_idx)
   return uhci_control_transfer (address, (addr_t)&req, sizeof (req), 0, 0);
 }
 
-extern uint8 glb_toggle;
-
-static uint8 in_tog = 0, out_tog = 0;
-
 sint
 umsc_bulk_scsi (uint addr, uint ep_out, uint ep_in,
                 uint8 cmd[16], uint dir, uint8* data, 
@@ -269,22 +265,16 @@ umsc_bulk_scsi (uint addr, uint ep_out, uint ep_in,
   cbw.bCBWCBLength = 16;            /* cmd length */
   memcpy (cbw.CBWCB, cmd, 16);
 
-  glb_toggle = out_tog;
   status = uhci_bulk_transfer (addr, ep_out, &cbw, 0x1f, maxpkt, DIR_OUT);
-  out_tog = glb_toggle;
 
   printf ("status=%d\n", status);
 
   if (data_len > 0) {
     if (dir) { 
-      glb_toggle = in_tog;
       status = uhci_bulk_transfer (addr, ep_in, data, data_len, maxpkt, DIR_IN);
-      in_tog = glb_toggle;
     }
     else {
-      glb_toggle = out_tog;
       status = uhci_bulk_transfer (addr, ep_out, data, data_len, maxpkt, DIR_OUT);
-      out_tog = glb_toggle;
     }
 
     printf ("status=%d\n", status);
@@ -300,9 +290,7 @@ umsc_bulk_scsi (uint addr, uint ep_out, uint ep_in,
 
   }
 
-  glb_toggle = in_tog;
   status = uhci_bulk_transfer (1, ep_in, (addr_t) &csw, 0x0d, maxpkt, DIR_IN);
-  in_tog = glb_toggle;
 
   printf ("status=%d\n", status);
 
