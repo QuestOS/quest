@@ -88,27 +88,39 @@ typedef struct
 {
   uint32_t link_ptr;
 
-  uint32_t act_len:11;
-  uint32_t reserve0:5;
-  uint32_t status:8;
-  uint32_t ioc:1;
-  uint32_t iso:1;
-  uint32_t ls:1;
-  uint32_t c_err:2;
-  uint32_t spd:1;
-  uint32_t reserve1:2;
+  union {
+    uint32_t raw2;
+    struct {
+      uint32_t act_len:11;
+      uint32_t reserve0:5;
+      uint32_t status:8;
+      uint32_t ioc:1;
+      uint32_t iso:1;
+      uint32_t ls:1;
+      uint32_t c_err:2;
+      uint32_t spd:1;
+      uint32_t reserve1:2;
+    };
+  };
 
-  uint32_t pid:8;
-  uint32_t addr:7;
-  uint32_t endp:4;
-  uint32_t toggle:1;
-  uint32_t reserve2:1;
-  uint32_t max_len:11;
+  union {
+    uint32_t raw3;
+    struct {
+      uint32_t pid:8;
+      uint32_t addr:7;
+      uint32_t endp:4;
+      uint32_t toggle:1;
+      uint32_t reserve2:1;
+      uint32_t max_len:11;
+    };
+  };
 
   uint32_t buf_ptr;
 
+  /* Use reserved word for buf_ptr virt addr */
+  addr_t buf_vptr;
   /* Reserved for software */
-  uint32_t reserve[4];
+  uint32_t reserve[3];
 } UHCI_TD;
 
 /*

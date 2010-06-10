@@ -53,7 +53,7 @@ static frm_lst_ptr *phys_frm;
 static UHCI_QH *int_qh = 0;
 static UHCI_QH *ctl_qh = 0;
 static UHCI_QH *blk_qh = 0;
-static uint8_t glb_toggle = 0;
+uint8_t glb_toggle = 0;
 
 uint32 td_phys;
 
@@ -265,23 +265,24 @@ static void
 debug_dump_sched (UHCI_TD * tx_tds)
 {
   // Dump the schedule for debugging
-  uint32_t *dump;
-  //uint32_t *dump1;
 
-#if 1
-  dump = (uint32_t *) tx_tds;
-  DLOG ("setup packet dump: %p:%p:%p:%p",
-        dump[0], dump[1], dump[2], dump[3]);
-  //dump1 = (uint32_t *) dump[3];
-  /* --??-- pagefault here? */
-  //DLOG ("setup request: %p:%p", dump1[0], dump1[1]);
-
-  while (dump[0] != 0x01) {
-    dump = TD_P2V (uint32 *, dump[0] & 0xFFFFFFF0);
-    DLOG ("Data/ACK packet dump: %p:%p:%p:%p",
-          dump[0], dump[1], dump[2], dump[3]);
+  for (;;) {
+    DLOG ("TD dump: %p %p %p %p %p",
+          tx_tds->link_ptr, tx_tds->raw2, tx_tds->raw3, 
+          tx_tds->buf_ptr, tx_tds->buf_vptr);
+    DLOG ("  act_len=%d status=%p ioc=%d iso=%d ls=%d c_err=%d spd=%d",
+          tx_tds->act_len, tx_tds->status, tx_tds->ioc, tx_tds->iso, 
+          tx_tds->ls, tx_tds->c_err, tx_tds->spd);
+    DLOG ("  pid=0x%.02X addr=%d ep=%d tog=%d max_len=%d",
+          tx_tds->pid, tx_tds->addr, tx_tds->endp, tx_tds->toggle, tx_tds->max_len);
+    if (tx_tds->buf_vptr) {
+      uint32 *p = (uint32 *)tx_tds->buf_vptr;
+      DLOG ("    %.08X %.08X %.08X %.08X",
+            p[0], p[1], p[2], p[3]);
+    }
+    if (tx_tds->link_ptr == 0x01) break;
+    tx_tds = TD_P2V (UHCI_TD *, tx_tds->link_ptr & 0xFFFFFFF0);
   }
-#endif
 }
 
 static int
@@ -493,6 +494,7 @@ uhci_isochronous_transfer (uint8_t address,
   iso_td->toggle = 0;
   iso_td->max_len = data_len - 1;
   iso_td->buf_ptr = (uint32_t) get_phys_addr ((void *) data);
+  iso_td->buf_vptr = data;
 
   entry = frame_list[frm];
 
@@ -559,6 +561,7 @@ int uhci_bulk_transfer(
 
     data_td->max_len = (data_left > (max_packet_len + 1)) ? max_packet_len : data_left - 1;
     data_td->buf_ptr = (uint32_t)get_phys_addr((void*)data);
+    data_td->buf_vptr = data;
 
     if(data_left <= (max_packet_len + 1)) {
       break;
@@ -567,6 +570,10 @@ int uhci_bulk_transfer(
       data_left -= (data_td->max_len + 1);
     }
   }
+
+  DLOG ("Dumping tx_tds...");
+  debug_dump_sched (tx_tds);
+  DLOG ("... done");
 
   /* Initiate our bulk transactions */
   blk_qh->qe_ptr = (((uint32_t)get_phys_addr((void*)tx_tds)) & 0xFFFFFFF0) + 0x0;
@@ -614,6 +621,7 @@ uhci_control_transfer (uint8_t address, addr_t setup_req,       /* Use virtual a
   tx_tds->max_len = setup_len - 1;      // This field is encoded as n-1
 
   tx_tds->buf_ptr = (uint32_t) get_phys_addr ((void *) setup_req);
+  tx_tds->buf_vptr = setup_req;
 
   /* Constructing the data packets */
   td_idx = tx_tds;
@@ -640,6 +648,7 @@ uhci_control_transfer (uint8_t address, addr_t setup_req,       /* Use virtual a
     data_td->max_len =
       (data_left > (max_packet_len + 1)) ? max_packet_len : data_left - 1;
     data_td->buf_ptr = (uint32_t) get_phys_addr ((void *) data);
+    data_td->buf_vptr = data;
 
     if (data_left <= (max_packet_len + 1)) {
       break;
