@@ -222,12 +222,105 @@ struct umsc_cbw {
 } PACKED;
 typedef struct umsc_cbw UMSC_CBW;
 
+#define UMSC_CSW_SIGNATURE 0x53425355 /* "USBS" (little-endian) */
+struct umsc_csw {
+  uint32 dCSWSignature;
+  uint32 dCSWTag;
+  uint32 dCSWDataResidue;
+  uint8  bCSWStatus;
+} PACKED;
+typedef struct umsc_csw UMSC_CSW;
+
+sint
+umsc_bo_reset (uint address, uint interface_idx)
+{
+  USB_DEV_REQ req;
+  printf ("bmsc_reset (%d, %d)\n", address, interface_idx);
+  memset (&req, 0, sizeof (req));
+  req.bmRequestType = 0x21;
+  req.bRequest = 0xFF;
+  req.wIndex = interface_idx;
+  return uhci_control_transfer (address, (addr_t)&req, sizeof (req), 0, 0);
+}
+
+extern uint8 glb_toggle;
+
+static uint8 in_tog = 0, out_tog = 0;
+
+sint
+umsc_bulk_scsi (uint addr, uint ep_out, uint ep_in,
+                uint8 cmd[16], uint dir, uint8* data, 
+                uint data_len, uint maxpkt)
+{
+  UMSC_CBW cbw;
+  UMSC_CSW csw;
+  sint status, i, j;
+
+  printf ("umsc_bulk_scsi cmd:");
+  for (i=0;i<16;i++) printf (" %.02X", cmd[i]);
+  printf ("\n");
+
+  memset (&cbw, 0, sizeof (cbw));
+  memset (&csw, 0, sizeof (csw));
+
+  cbw.dCBWSignature = UMSC_CBW_SIGNATURE;
+  cbw.dCBWDataTransferLength = data_len;
+  cbw.bmCBWFlags.direction = dir;
+  cbw.bCBWCBLength = 16;            /* cmd length */
+  memcpy (cbw.CBWCB, cmd, 16);
+
+  glb_toggle = out_tog;
+  status = uhci_bulk_transfer (addr, ep_out, &cbw, 0x1f, maxpkt, DIR_OUT);
+  out_tog = glb_toggle;
+
+  printf ("status=%d\n", status);
+
+  if (data_len > 0) {
+    if (dir) { 
+      glb_toggle = in_tog;
+      status = uhci_bulk_transfer (addr, ep_in, data, data_len, maxpkt, DIR_IN);
+      in_tog = glb_toggle;
+    }
+    else {
+      glb_toggle = out_tog;
+      status = uhci_bulk_transfer (addr, ep_out, data, data_len, maxpkt, DIR_OUT);
+      out_tog = glb_toggle;
+    }
+
+    printf ("status=%d\n", status);
+
+    if (status != 0) return status;
+
+    for (j=0;j<8;j++) {
+      sint k;
+      for (k=0;k<8;k++)
+        printf ("%.02x ", data[j*8+k]);
+      printf ("\n");
+    }
+
+  }
+
+  glb_toggle = in_tog;
+  status = uhci_bulk_transfer (1, ep_in, (addr_t) &csw, 0x0d, maxpkt, DIR_IN);
+  in_tog = glb_toggle;
+
+  printf ("status=%d\n", status);
+
+  if (status != 0) return status;
+
+  printf ("csw sig=%p tag=%p res=%d status=%d\n",
+          csw.dCSWSignature, csw.dCSWTag, csw.dCSWDataResidue, csw.bCSWStatus);
+
+  return status;
+}
+
 void
 control_transfer_test (void)
 {
+  uint sector_size, last_lba;
   sint status, j;
   uint8_t data[20];
-  uint8_t conf[1300];
+  uint8_t conf[2048];
   uint8_t iso1[1024];
   //uint8_t iso2[1024];
   //uint8_t iso3[1024];
@@ -241,6 +334,7 @@ control_transfer_test (void)
   USB_IF_DESC *vcifd, *ifd;
   UVC_CSVC_IF_HDR_DESC *csvcifd;
   USB_EPT_DESC *ep1, *ep2, *ep;
+  uint8 ep_in, ep_out;
   UMSC_CBW cbw;
   //USB_EPT_DESC *eptd;
 
@@ -344,18 +438,30 @@ control_transfer_test (void)
   ep1 = (USB_EPT_DESC *) (&conf[cfgd->bLength + ifd->bLength]); 
   ep2 = (USB_EPT_DESC *) (&conf[cfgd->bLength + ifd->bLength + ep1->bLength]); 
 
-  printf ("interface protocol=%x subclass=%x\n",
+  printf ("interface %d protocol=%x subclass=%x\n",
+          ifd->bInterfaceNumber, 
           ifd->bInterfaceProtocol, ifd->bInterfaceSubClass);
   ep = ep1;
   printf ("endpoint length=%x desctype=%x endaddr=%x attr=%x maxpkt=%x interval=%x\n",
           ep->bLength, ep->bDescriptorType, ep->bEndpointAddress,
           ep->bmAttributes, ep->wMaxPacketSize, ep->bInterval);
+
+  if (ep->bEndpointAddress & 0x80)
+    ep_in = ep->bEndpointAddress & 0x7F;
+  else
+    ep_out = ep->bEndpointAddress & 0x7F;
+
   ep = ep2;
   printf ("endpoint length=%x desctype=%x endaddr=%x attr=%x maxpkt=%x interval=%x\n",
           ep->bLength, ep->bDescriptorType, ep->bEndpointAddress,
           ep->bmAttributes, ep->wMaxPacketSize, ep->bInterval);
 
+  if (ep->bEndpointAddress & 0x80)
+    ep_in = ep->bEndpointAddress & 0x7F;
+  else
+    ep_out = ep->bEndpointAddress & 0x7F;
 
+  
   delay (1000);
 
   print ("Set configuration to 1.\n");
@@ -366,44 +472,53 @@ control_transfer_test (void)
 
   delay (1000);
 
-  memset (&cbw, 0, sizeof (cbw));
 
-  cbw.dCBWSignature = UMSC_CBW_SIGNATURE;
-  cbw.dCBWDataTransferLength = 512; /* 512 bytes transferred */
-  cbw.bmCBWFlags.direction = 1; /* dev -> host */
-  cbw.bCBWCBLength = 16;         /* cmd length */
-  cbw.CBWCB[0] = 0x88;           /* READ (16) */
-  cbw.CBWCB[13] = 1;
-  status = uhci_bulk_transfer (1, 2 /* bulk-out EP */, 
-                               (addr_t) &cbw, 0x1f, 64, DIR_OUT);
-
-  printf ("status=%d\n", status);
-  delay (500);
-
-  memset (conf, 0, 1300);
-  status = uhci_bulk_transfer (1, 1 /* bulk-in EP */,
-                               (addr_t) &conf, 512, 64, DIR_IN);
-  printf ("status=%d\n", status);
-  delay (500);
-
-  for (j=0;j<8;j++) {
-    sint k;
-    for (k=0;k<8;k++)
-      printf ("%.02x ", conf[j*8+k]);
-    printf ("\n");
+  {
+    uint8 cmd[16] = {0x12,0,0,0,0x24,0,0,0,0,0,0,0};
+    printf ("SENDING INQUIRY\n");
+    umsc_bulk_scsi (1, ep_out, ep_in, cmd, 1, conf, 0x24, 0x40);
   }
 
-  status = uhci_bulk_transfer (1, 1 /* bulk-in EP */,
-                               (addr_t) &conf, 64, 64, DIR_IN);
-  printf ("status=%d\n", status);
-  delay (500);
-
-  for (j=0;j<8;j++) {
-    sint k;
-    for (k=0;k<8;k++)
-      printf ("%.02x ", conf[j*8+k]);
-    printf ("\n");
+  {
+    uint8 cmd[16] = {0,0,0,0,0,0,0,0,0,0,0,0};
+    printf ("SENDING TEST UNIT READY\n");
+    umsc_bulk_scsi (1, ep_out, ep_in, cmd, 1, conf, 0, 0x40);
   }
+
+  {
+    uint8 cmd[16] = {0x03,0,0,0,0x24,0,0,0,0,0,0,0};
+    printf ("SENDING REQUEST SENSE\n");
+    umsc_bulk_scsi (1, ep_out, ep_in, cmd, 1, conf, 0x24, 0x40);
+  }
+
+  {
+    uint8 cmd[16] = {0,0,0,0,0,0,0,0,0,0,0,0};
+    printf ("SENDING TEST UNIT READY\n");
+    umsc_bulk_scsi (1, ep_out, ep_in, cmd, 1, conf, 0, 0x40);
+  }
+
+  {
+    uint8 cmd[16] = {0x03,0,0,0,0x24,0,0,0,0,0,0,0};
+    printf ("SENDING REQUEST SENSE\n");
+    umsc_bulk_scsi (1, ep_out, ep_in, cmd, 1, conf, 0x24, 0x40);
+  }
+
+  {
+    uint8 cmd[16] = {0x25,0,0,0,0,0,0,0,0,0,0,0};
+    printf ("SENDING READ CAPACITY\n");
+    umsc_bulk_scsi (1, ep_out, ep_in, cmd, 1, conf, 0x8, 0x40);
+    last_lba = conf[3] | conf[2] << 8 | conf[1] << 16 | conf[0] << 24;
+    sector_size = conf[7] | conf[6] << 8 | conf[5] << 16 | conf[4] << 24;
+    printf ("sector_size=0x%x last_lba=0x%x total_size=%d bytes\n",
+            sector_size, last_lba, sector_size * (last_lba + 1));
+  }
+
+  {
+    uint8 cmd[16] = { [0] = 0x28, [8] = 1 };
+    printf ("SENDING READ (10)\n");
+    umsc_bulk_scsi (1, ep_out, ep_in, cmd, 1, conf, sector_size, 0x40);
+  }
+
 
 #if 0
   iad = (UVC_IA_DESC *) (&conf[cfgd->bLength]);
