@@ -72,7 +72,7 @@ struct usb_dev_req
   uint16_t wValue;
   uint16_t wIndex;
   uint16_t wLength;
-} __attribute__ ((packed));
+} PACKED;
 
 typedef struct usb_dev_req USB_DEV_REQ;
 
@@ -99,7 +99,7 @@ struct usb_dev_desc
   uint8_t iProduct;
   uint8_t iSerialNumber;
   uint8_t bNumConfigurations;
-} __attribute__ ((packed));
+} PACKED;
 
 typedef struct usb_dev_desc USB_DEV_DESC;
 
@@ -120,7 +120,7 @@ struct usb_cfg_desc
   uint8_t iConfiguration;
   uint8_t bmAttributes;
   uint8_t MaxPower;
-} __attribute__ ((packed));
+} PACKED;
 
 typedef struct usb_cfg_desc USB_CFG_DESC;
 
@@ -142,7 +142,7 @@ struct usb_if_desc
   uint8_t bInterfaceSubClass;
   uint8_t bInterfaceProtocol;
   uint8_t iInterface;
-} __attribute__ ((packed));
+} PACKED;
 
 typedef struct usb_if_desc USB_IF_DESC;
 
@@ -161,7 +161,7 @@ struct usb_ept_desc
   uint8_t bmAttributes;
   uint16_t wMaxPacketSize;
   uint8_t bInterval;
-} __attribute__ ((packed));
+} PACKED;
 
 typedef struct usb_ept_desc USB_EPT_DESC;
 
