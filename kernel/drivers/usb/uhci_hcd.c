@@ -55,7 +55,7 @@ static frm_lst_ptr *phys_frm;
 static UHCI_QH *int_qh = 0;
 static UHCI_QH *ctl_qh = 0;
 static UHCI_QH *blk_qh = 0;
-static uint32 toggles[128];     /* endpoint toggle bit states (bulk i/o) */
+static uint32 toggles[128];     /* endpoint toggle bit states (bulk transfer) */
 
 uint32 td_phys;
 
