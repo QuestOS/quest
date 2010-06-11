@@ -1,4 +1,4 @@
-CFLAGS    = -m32 -nostdinc -I../libc/include -I../kernel -fno-builtin -g
+CFLAGS    = -m32 -nostdinc -I../libc/include -I../kernel -fno-builtin -fno-stack-protector -g
 OBJS = src/stdio.o
 
 all: libc.a
