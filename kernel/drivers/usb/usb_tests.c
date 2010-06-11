@@ -17,6 +17,7 @@
 
 #include "drivers/usb/usb_tests.h"
 #include "drivers/usb/usb.h"
+#include "drivers/usb/umsc.h"
 #include "util/printf.h"
 #include "kernel.h"
 
@@ -202,35 +203,6 @@ show_usb_regs (int bus, int dev, int func)
   return;
 }
 
-#define UMSC_CBW_SIGNATURE 0x43425355 /* "USBC" (little-endian) */
-struct umsc_cbw {
-  uint32 dCBWSignature;
-  uint32 dCBWTag;
-  uint32 dCBWDataTransferLength;
-  union {
-    uint8 raw;
-    struct {
-      uint8 _reserved:7;
-      uint8 direction:1;
-    };
-  } bmCBWFlags;
-  uint8 bCBWLUN:4;
-  uint8 _reserved1:4;
-  uint8 bCBWCBLength:5;
-  uint8 _reserved2:3;
-  uint8 CBWCB[16];  
-} PACKED;
-typedef struct umsc_cbw UMSC_CBW;
-
-#define UMSC_CSW_SIGNATURE 0x53425355 /* "USBS" (little-endian) */
-struct umsc_csw {
-  uint32 dCSWSignature;
-  uint32 dCSWTag;
-  uint32 dCSWDataResidue;
-  uint8  bCSWStatus;
-} PACKED;
-typedef struct umsc_csw UMSC_CSW;
-
 sint
 umsc_bo_reset (uint address, uint interface_idx)
 {
@@ -241,65 +213,6 @@ umsc_bo_reset (uint address, uint interface_idx)
   req.bRequest = 0xFF;
   req.wIndex = interface_idx;
   return uhci_control_transfer (address, (addr_t)&req, sizeof (req), 0, 0);
-}
-
-sint
-umsc_bulk_scsi (uint addr, uint ep_out, uint ep_in,
-                uint8 cmd[16], uint dir, uint8* data, 
-                uint data_len, uint maxpkt)
-{
-  UMSC_CBW cbw;
-  UMSC_CSW csw;
-  sint status, i, j;
-
-  printf ("umsc_bulk_scsi cmd:");
-  for (i=0;i<16;i++) printf (" %.02X", cmd[i]);
-  printf ("\n");
-
-  memset (&cbw, 0, sizeof (cbw));
-  memset (&csw, 0, sizeof (csw));
-
-  cbw.dCBWSignature = UMSC_CBW_SIGNATURE;
-  cbw.dCBWDataTransferLength = data_len;
-  cbw.bmCBWFlags.direction = dir;
-  cbw.bCBWCBLength = 16;            /* cmd length */
-  memcpy (cbw.CBWCB, cmd, 16);
-
-  status = uhci_bulk_transfer (addr, ep_out, &cbw, 0x1f, maxpkt, DIR_OUT);
-
-  printf ("status=%d\n", status);
-
-  if (data_len > 0) {
-    if (dir) { 
-      status = uhci_bulk_transfer (addr, ep_in, data, data_len, maxpkt, DIR_IN);
-    }
-    else {
-      status = uhci_bulk_transfer (addr, ep_out, data, data_len, maxpkt, DIR_OUT);
-    }
-
-    printf ("status=%d\n", status);
-
-    if (status != 0) return status;
-
-    for (j=0;j<8;j++) {
-      sint k;
-      for (k=0;k<8;k++)
-        printf ("%.02x ", data[j*8+k]);
-      printf ("\n");
-    }
-
-  }
-
-  status = uhci_bulk_transfer (1, ep_in, (addr_t) &csw, 0x0d, maxpkt, DIR_IN);
-
-  printf ("status=%d\n", status);
-
-  if (status != 0) return status;
-
-  printf ("csw sig=%p tag=%p res=%d status=%d\n",
-          csw.dCSWSignature, csw.dCSWTag, csw.dCSWDataResidue, csw.bCSWStatus);
-
-  return status;
 }
 
 void
@@ -323,7 +236,6 @@ control_transfer_test (void)
   UVC_CSVC_IF_HDR_DESC *csvcifd;
   USB_EPT_DESC *ep1, *ep2, *ep;
   uint8 ep_in, ep_out;
-  UMSC_CBW cbw;
   //USB_EPT_DESC *eptd;
 
   port_reset (0);
@@ -423,11 +335,11 @@ control_transfer_test (void)
   uhci_get_descriptor (1, TYPE_CFG_DESC, 0, 0, cfgd->wTotalLength,
                        (addr_t) conf);
   ifd = (USB_IF_DESC *) (&conf[cfgd->bLength]);
-  ep1 = (USB_EPT_DESC *) (&conf[cfgd->bLength + ifd->bLength]); 
-  ep2 = (USB_EPT_DESC *) (&conf[cfgd->bLength + ifd->bLength + ep1->bLength]); 
+  ep1 = (USB_EPT_DESC *) (&conf[cfgd->bLength + ifd->bLength]);
+  ep2 = (USB_EPT_DESC *) (&conf[cfgd->bLength + ifd->bLength + ep1->bLength]);
 
   printf ("interface %d protocol=%x subclass=%x\n",
-          ifd->bInterfaceNumber, 
+          ifd->bInterfaceNumber,
           ifd->bInterfaceProtocol, ifd->bInterfaceSubClass);
   ep = ep1;
   printf ("endpoint length=%x desctype=%x endaddr=%x attr=%x maxpkt=%x interval=%x\n",
@@ -449,7 +361,7 @@ control_transfer_test (void)
   else
     ep_out = ep->bEndpointAddress & 0x7F;
 
-  
+
   delay (1000);
 
   print ("Set configuration to 1.\n");
