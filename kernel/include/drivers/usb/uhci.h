@@ -33,7 +33,7 @@ typedef void *addr_t;
 
 #define GET_USB_BASE(bus, dev, func)    pci_config_rd16(bus, dev, func, 0x20) & 0xFFE0
 #define GET_USB_RELNUM(bus, dev, func)    pci_config_rd8(bus, dev, func, 0x60)
-#define DISABLE_LEGACY(bus, dev, func)    pci_config_wr16(bus, dev, func, 0xC0, 0x0)
+#define DISABLE_LEGACY(bus, dev, func)    pci_config_wr16(bus, dev, func, 0xC0, 0)
 #define SET_LEGACY(bus, dev, func, leg)    pci_config_wr16(bus, dev, func, 0xC0, leg);
 #define GET_LEGACY(bus, dev, func)    pci_config_rd16(bus, dev, func, 0xC0)
 #define GET_PCICMD(bus, dev, func)    pci_config_rd16(bus, dev, func, 0x04)

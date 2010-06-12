@@ -386,6 +386,71 @@ uhci_reset (void)
   return 0;
 }
 
+
+static uint next_address = 1;
+
+/* figures out what device is attached as address 0 */
+bool
+uhci_enumerate (void)
+{
+  USB_DEV_DESC devd;
+  USB_CFG_DESC *cfgd;
+  USB_IF_DESC *ifd;
+  USB_EPT_DESC *ep;
+#define TEMPSZ 256
+  uint8 temp[TEMPSZ];
+  uint curdev = next_address;
+  sint status;
+
+  DLOG ("uhci_enumerate: curdev=%d", curdev);
+
+  /* get device descriptor */
+  status =
+    uhci_get_descriptor (0, TYPE_DEV_DESC, 0, 0, sizeof (USB_DEV_DESC), &devd);
+  if (status != 0)
+    return FALSE;
+
+  /* assign an address */
+  if (uhci_set_address (0, curdev) != 0)
+    return FALSE;
+  DLOG ("Set %p to addr %d", devd.bDeviceClass, curdev);
+  delay (2);
+
+  /* get config descriptor for size field */
+  memset (temp, 0, TEMPSZ);
+  status =
+    uhci_get_descriptor (1, TYPE_CFG_DESC, 0, 0, sizeof (USB_CFG_DESC), temp);
+  if (status != 0)
+    return FALSE;
+
+  cfgd = (USB_CFG_DESC *)temp;
+  DLOG ("cfgd->wTotalLength=%d", cfgd->wTotalLength);
+
+  /* get config + interface + endpoint descriptors */
+  status =
+    uhci_get_descriptor (curdev, TYPE_CFG_DESC, 0, 0, cfgd->wTotalLength, temp);
+  if (status != 0)
+    return FALSE;
+
+  cfgd = (USB_CFG_DESC *)temp;
+  ifd = (USB_IF_DESC *) (&temp[cfgd->bLength]);
+  ep = (USB_EPT_DESC *) (&temp[cfgd->bLength + ifd->bLength]);
+
+  DLOG ("ifd class=%x #ep=%x", ifd->bInterfaceClass, ifd->bNumEndpoints);
+
+  /* set a configuration */
+  uhci_set_configuration (curdev, cfgd->bConfigurationValue);
+
+  next_address++;
+
+  if (ifd->bInterfaceClass == 9) {
+    void probe_hub (uint);
+    probe_hub (curdev);
+  }
+
+  return TRUE;
+}
+
 int
 uhci_init (void)
 {
@@ -444,7 +509,7 @@ uhci_init (void)
   if (uhci_device.device != 0x7020)
     disable_ehci ();
 
-#if 0
+#if 1
   /* Disable USB Legacy Support */
   DLOG ("UHCI LEGSUP: %p", GET_LEGACY (bus, dev, func));
   DISABLE_LEGACY (bus, dev, func);
@@ -466,6 +531,19 @@ uhci_init (void)
   uhci_reset ();
 
 #if 1
+#include <drivers/usb/usb_tests.h>
+
+  DLOG ("begin enumeration");
+
+  for (i=0;i<2;i++) {
+    port_reset (i);
+
+    uhci_enumerate ();
+    show_usb_regs (bus, dev, func);
+  }
+  DLOG ("end enumeration");
+
+#else
 #include <drivers/usb/usb_tests.h>
 
   control_transfer_test ();
@@ -732,10 +810,10 @@ uhci_set_address (uint8_t old_addr, uint8_t new_addr)
   setup_req.wValue = new_addr;
   setup_req.wIndex = 0;
   setup_req.wLength = 0;
-  
+
   status = uhci_control_transfer (old_addr,
-                                (addr_t) & setup_req, sizeof (USB_DEV_REQ), 0,
-                                0);
+                                  (addr_t) & setup_req, sizeof (USB_DEV_REQ), 0,
+                                  0);
   if (status == 0) {
     toggles[old_addr] = toggles[new_addr] = 0;
   }
