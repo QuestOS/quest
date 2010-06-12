@@ -270,10 +270,10 @@ debug_dump_sched (UHCI_TD * tx_tds)
 
   for (;;) {
     DLOG ("TD dump: %p %p %p %p %p",
-          tx_tds->link_ptr, tx_tds->raw2, tx_tds->raw3, 
+          tx_tds->link_ptr, tx_tds->raw2, tx_tds->raw3,
           tx_tds->buf_ptr, tx_tds->buf_vptr);
     DLOG ("  act_len=%d status=%p ioc=%d iso=%d ls=%d c_err=%d spd=%d",
-          tx_tds->act_len, tx_tds->status, tx_tds->ioc, tx_tds->iso, 
+          tx_tds->act_len, tx_tds->status, tx_tds->ioc, tx_tds->iso,
           tx_tds->ls, tx_tds->c_err, tx_tds->spd);
     DLOG ("  pid=0x%.02X addr=%d ep=%d tog=%d max_len=%d",
           tx_tds->pid, tx_tds->addr, tx_tds->endp, tx_tds->toggle, tx_tds->max_len);
@@ -308,6 +308,12 @@ check_tds (UHCI_TD * tx_tds)
 
         debug_dump_sched (tx_tds);
 
+        return status;
+      }
+
+      /* If the TD is timed out */
+      if (tds->status & 0x04) {
+        status = tds->status & 0x7F;
         return status;
       }
 
