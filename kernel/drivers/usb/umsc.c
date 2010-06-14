@@ -21,6 +21,9 @@
 #include "util/printf.h"
 #include "kernel.h"
 
+#define USB_MASS_STORAGE_CLASS 0x8
+#define UMSC_PROTOCOL 0x50
+
 #define DEBUG_UMSC
 
 #ifdef DEBUG_UMSC
@@ -102,7 +105,7 @@ umsc_bulk_scsi (uint addr, uint ep_out, uint ep_in,
 
   }
 
-  status = uhci_bulk_transfer (1, ep_in, (addr_t) &csw, 0x0d, maxpkt, DIR_IN);
+  status = uhci_bulk_transfer (addr, ep_in, (addr_t) &csw, 0x0d, maxpkt, DIR_IN);
 
   DLOG ("status=%d", status);
 
@@ -112,6 +115,96 @@ umsc_bulk_scsi (uint addr, uint ep_out, uint ep_in,
         csw.dCSWSignature, csw.dCSWTag, csw.dCSWDataResidue, csw.bCSWStatus);
 
   return status;
+}
+
+static bool
+umsc_probe (USB_DEVICE_INFO *info, USB_CFG_DESC *cfgd, USB_IF_DESC *ifd)
+{
+  uint i, addr = info->address, ep_in=0, ep_out=0;
+  USB_EPT_DESC *ep;
+  uint last_lba, sector_size, maxpkt=32;
+  uint8 conf[512];
+
+  if (ifd->bInterfaceClass != USB_MASS_STORAGE_CLASS ||
+      ifd->bInterfaceProtocol != UMSC_PROTOCOL)
+    return FALSE;
+
+  ep = (USB_EPT_DESC *)(&ifd[1]);
+
+  for (i=0; i<ifd->bNumEndpoints; i++)
+    if (ep[i].bEndpointAddress & 0x80)
+      ep_in = ep[i].bEndpointAddress & 0x7F;
+    else
+      ep_out = ep[i].bEndpointAddress & 0x7F;
+
+  if (!(ep_in && ep_out))
+    return FALSE;
+
+  DLOG ("detected device=%d ep_in=%d ep_out=%d", addr, ep_in, ep_out);
+
+  uhci_set_configuration (addr, cfgd->bConfigurationValue);
+  delay (50);
+
+
+  {
+    uint8 cmd[16] = {0x12,0,0,0,0x24,0,0,0,0,0,0,0};
+    DLOG ("SENDING INQUIRY");
+    umsc_bulk_scsi (addr, ep_out, ep_in, cmd, 1, conf, 0x24, maxpkt);
+  }
+
+  {
+    uint8 cmd[16] = {0,0,0,0,0,0,0,0,0,0,0,0};
+    DLOG ("SENDING TEST UNIT READY");
+    umsc_bulk_scsi (addr, ep_out, ep_in, cmd, 1, conf, 0, maxpkt);
+  }
+
+  {
+    uint8 cmd[16] = {0x03,0,0,0,0x24,0,0,0,0,0,0,0};
+    DLOG ("SENDING REQUEST SENSE");
+    umsc_bulk_scsi (addr, ep_out, ep_in, cmd, 1, conf, 0x24, maxpkt);
+  }
+
+  {
+    uint8 cmd[16] = {0,0,0,0,0,0,0,0,0,0,0,0};
+    DLOG ("SENDING TEST UNIT READY");
+    umsc_bulk_scsi (addr, ep_out, ep_in, cmd, 1, conf, 0, maxpkt);
+  }
+
+  {
+    uint8 cmd[16] = {0x03,0,0,0,0x24,0,0,0,0,0,0,0};
+    DLOG ("SENDING REQUEST SENSE");
+    umsc_bulk_scsi (addr, ep_out, ep_in, cmd, 1, conf, 0x24, maxpkt);
+  }
+
+  {
+    uint8 cmd[16] = {0x25,0,0,0,0,0,0,0,0,0,0,0};
+    DLOG ("SENDING READ CAPACITY");
+    umsc_bulk_scsi (addr, ep_out, ep_in, cmd, 1, conf, 0x8, maxpkt);
+    last_lba = conf[3] | conf[2] << 8 | conf[1] << 16 | conf[0] << 24;
+    sector_size = conf[7] | conf[6] << 8 | conf[5] << 16 | conf[4] << 24;
+    DLOG ("sector_size=0x%x last_lba=0x%x total_size=%d bytes",
+            sector_size, last_lba, sector_size * (last_lba + 1));
+  }
+
+  {
+    uint8 cmd[16] = { [0] = 0x28, [8] = 1 };
+    DLOG ("SENDING READ (10)");
+    umsc_bulk_scsi (addr, ep_out, ep_in, cmd, 1, conf, 512, maxpkt);
+    DLOG ("read from sector 0: %.02X %.02X %.02X %.02X",
+          conf[0], conf[1], conf[2], conf[3]);
+  }
+
+  return TRUE;
+}
+
+static USB_DRIVER umsc_driver = {
+  .probe = umsc_probe
+};
+
+extern bool
+usb_mass_storage_driver_init (void)
+{
+  return usb_register_driver (&umsc_driver);
 }
 
 

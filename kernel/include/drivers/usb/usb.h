@@ -165,6 +165,22 @@ struct usb_ept_desc
 
 typedef struct usb_ept_desc USB_EPT_DESC;
 
+/* ************************************************** */
+
+typedef struct
+{
+  uint8 address;
+  USB_DEV_DESC devd;
+  uint8 *raw;
+} USB_DEVICE_INFO;
+
+typedef struct
+{
+  bool (*probe) (USB_DEVICE_INFO *, USB_CFG_DESC *, USB_IF_DESC *);
+} USB_DRIVER;
+
+bool usb_register_driver (USB_DRIVER *);
+
 #endif
 
 /*

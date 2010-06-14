@@ -20,6 +20,7 @@
 #include <drivers/usb/uhci.h>
 #include <util/printf.h>
 #include <mem/virtual.h>
+#include <mem/pow2.h>
 #include <kernel.h>
 
 #define DEBUG_UHCI
@@ -386,8 +387,24 @@ uhci_reset (void)
   return 0;
 }
 
-
+#define USB_MAX_DEVICES 32
+static USB_DEVICE_INFO devinfo[USB_MAX_DEVICES+1];
 static uint next_address = 1;
+
+#define USB_MAX_DEVICE_DRIVERS 32
+static USB_DRIVER drivers[USB_MAX_DEVICE_DRIVERS];
+static uint num_drivers = 0;
+
+void
+find_device_driver (USB_DEVICE_INFO *info, USB_CFG_DESC *cfgd, USB_IF_DESC *ifd)
+{
+  int d;
+  for (d=0; d<num_drivers; d++) {
+    if (drivers[d].probe (info, cfgd, ifd))
+      return;
+  }
+}
+
 
 /* figures out what device is attached as address 0 */
 bool
@@ -396,11 +413,16 @@ uhci_enumerate (void)
   USB_DEV_DESC devd;
   USB_CFG_DESC *cfgd;
   USB_IF_DESC *ifd;
-  USB_EPT_DESC *ep;
 #define TEMPSZ 256
-  uint8 temp[TEMPSZ];
+  uint8 temp[TEMPSZ], *ptr;
   uint curdev = next_address;
-  sint status;
+  sint status, c, i, total_length=0;
+  USB_DEVICE_INFO *info;
+
+  if (curdev > USB_MAX_DEVICES) {
+    DLOG ("uhci_enumerate: too many devices");
+    return FALSE;
+  }
 
   DLOG ("uhci_enumerate: curdev=%d", curdev);
 
@@ -408,48 +430,96 @@ uhci_enumerate (void)
   status =
     uhci_get_descriptor (0, TYPE_DEV_DESC, 0, 0, sizeof (USB_DEV_DESC), &devd);
   if (status != 0)
-    return FALSE;
+    goto abort;
 
   /* assign an address */
   if (uhci_set_address (0, curdev) != 0)
-    return FALSE;
-  DLOG ("Set %p to addr %d", devd.bDeviceClass, curdev);
+    goto abort;
+  DLOG ("uhci_enumerate: set %p to addr %d", devd.bDeviceClass, curdev);
   delay (2);
 
-  /* get config descriptor for size field */
-  memset (temp, 0, TEMPSZ);
-  status =
-    uhci_get_descriptor (1, TYPE_CFG_DESC, 0, 0, sizeof (USB_CFG_DESC), temp);
-  if (status != 0)
-    return FALSE;
+  DLOG ("uhci_enumerate: num configs=%d", devd.bNumConfigurations);
 
-  cfgd = (USB_CFG_DESC *)temp;
-  DLOG ("cfgd->wTotalLength=%d", cfgd->wTotalLength);
+  /* clear device info */
+  info = &devinfo[curdev];
+  memset (info, 0, sizeof (USB_DEVICE_INFO));
+  memcpy (&info->devd, &devd, sizeof (USB_DEV_DESC));
+  info->address = curdev;
 
-  /* get config + interface + endpoint descriptors */
-  status =
-    uhci_get_descriptor (curdev, TYPE_CFG_DESC, 0, 0, cfgd->wTotalLength, temp);
-  if (status != 0)
-    return FALSE;
+  for (c=0; c<devd.bNumConfigurations; c++) {
+    /* get a config descriptor for size field */
+    memset (temp, 0, TEMPSZ);
+    status =
+      uhci_get_descriptor (curdev, TYPE_CFG_DESC, c, 0, sizeof (USB_CFG_DESC), temp);
+    if (status != 0) {
+      DLOG ("uhci_enumerate: failed to get config descriptor for c=%d", c);
+      goto abort;
+    }
 
-  cfgd = (USB_CFG_DESC *)temp;
-  ifd = (USB_IF_DESC *) (&temp[cfgd->bLength]);
-  ep = (USB_EPT_DESC *) (&temp[cfgd->bLength + ifd->bLength]);
-
-  DLOG ("ifd class=%x #ep=%x", ifd->bInterfaceClass, ifd->bNumEndpoints);
-
-  /* set a configuration */
-  uhci_set_configuration (curdev, cfgd->bConfigurationValue);
-
-  next_address++;
-
-  if (ifd->bInterfaceClass == 9) {
-    void probe_hub (uint);
-    probe_hub (curdev);
+    cfgd = (USB_CFG_DESC *)temp;
+    DLOG ("uhci_enumerate: c=%d cfgd->wTotalLength=%d", c, cfgd->wTotalLength);
+    total_length += cfgd->wTotalLength;
   }
 
+  DLOG ("uhci_enumerate: total_length=%d", total_length);
+
+  /* allocate memory to hold everything */
+  pow2_alloc (total_length, &info->raw);
+  if (!info->raw) {
+    DLOG ("uhci_enumerate: pow2_alloc (%d) failed", total_length);
+    goto abort;
+  }
+
+  /* read all cfg, if, and endpoint descriptors */
+  ptr = info->raw;
+  for (c=0; c<devd.bNumConfigurations; c++) {
+    status =
+      uhci_get_descriptor (curdev, TYPE_CFG_DESC, c, 0, cfgd->wTotalLength, ptr);
+    if (status != 0)
+      goto abort_mem;
+    DLOG ("uhci_enumerate: cfg %d has num_if=%d", c, cfgd->bNumInterfaces);
+    ptr += cfgd->wTotalLength;
+  }
+
+  /* incr this here because hub drivers may recursively invoke enumerate */
+  next_address++;
+
+  /* parse cfg and if descriptors */
+  ptr = info->raw;
+  for (c=0; c<devd.bNumConfigurations; c++) {
+    cfgd = (USB_CFG_DESC *) ptr;
+    ptr += cfgd->bLength;
+    for (i=0; i<cfgd->bNumInterfaces; i++) {
+      ifd = (USB_IF_DESC *) ptr;
+      DLOG ("uhci_enumerate: examining (%d, %d) if_class=%X num_endp=%d",
+            c, i, ifd->bInterfaceClass, ifd->bNumEndpoints);
+
+      /* find a device driver interested in this interface */
+      find_device_driver (info, cfgd, ifd);
+
+      ptr += ifd->bLength;
+    }
+  }
+
+  /* --??-- what happens if more than one driver matches more than one config? */
+
+  return TRUE;
+
+ abort_mem:
+  pow2_free (info->raw);
+ abort:
+  return FALSE;
+}
+
+bool
+usb_register_driver (USB_DRIVER *driver)
+{
+  if (num_drivers >= USB_MAX_DEVICE_DRIVERS) return FALSE;
+  memcpy (&drivers[num_drivers], driver, sizeof (USB_DRIVER));
+  num_drivers++;
   return TRUE;
 }
+
 
 int
 uhci_init (void)
@@ -662,9 +732,11 @@ int uhci_bulk_transfer(
     }
   }
 
+#if 0
   DLOG ("Dumping tx_tds...");
   debug_dump_sched (tx_tds);
   DLOG ("... done");
+#endif
 
   /* Initiate our bulk transactions */
   blk_qh->qe_ptr = (((uint32_t)get_phys_addr((void*)tx_tds)) & 0xFFFFFFF0) + 0x0;

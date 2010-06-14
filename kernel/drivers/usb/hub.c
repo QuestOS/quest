@@ -22,6 +22,8 @@
 #include <util/printf.h>
 #include <kernel.h>
 
+#define USB_HUB_CLASS 0x9
+
 #define DEBUG_USB_HUB
 
 #ifdef DEBUG_USB_HUB
@@ -110,12 +112,19 @@ hub_clr_port_feature (uint address, uint port, uint feature)
   return status == 0;
 }
 
-void
-probe_hub (uint address)
+static bool
+probe_hub (USB_DEVICE_INFO *info, USB_CFG_DESC *cfgd, USB_IF_DESC *ifd)
 {
-  sint status, i;
+  sint status, i, address = info->address;
   USB_DEV_REQ req;
   USB_HUB_DESC hubd;
+
+  if (ifd->bInterfaceClass != USB_HUB_CLASS)
+    return FALSE;
+
+  /* it's a hub, set the configuration */
+  uhci_set_configuration (address, cfgd->bConfigurationValue);
+
   memset (&hubd, 0, sizeof (hubd));
 
   DLOG ("Probing hub @ %d", address);
@@ -128,7 +137,7 @@ probe_hub (uint address)
   status = uhci_control_transfer (address, &req, sizeof (req), &hubd, sizeof (hubd));
   DLOG ("GET_HUB_DESCRIPTOR: status=%d len=%d nbrports=%d delay=%d",
         status, hubd.bDescLength, hubd.bNbrPorts, hubd.bPwrOn2PwrGood);
-  if (status != 0) return;
+  if (status != 0) return FALSE;
   for (i=1; i<=hubd.bNbrPorts; i++) {
     /* power-on port if necessary */
     while (!((status=hub_port_status (address, i)) & HUB_PORT_STAT_POWER)) {
@@ -146,6 +155,17 @@ probe_hub (uint address)
       uhci_enumerate ();
     }
   }
+  return TRUE;
+}
+
+static USB_DRIVER hub_driver = {
+  .probe = probe_hub
+};
+
+extern bool
+usb_hub_driver_init (void)
+{
+  return usb_register_driver (&hub_driver);
 }
 
 /*
