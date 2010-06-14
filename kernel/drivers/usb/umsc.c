@@ -192,12 +192,15 @@ umsc_probe (USB_DEVICE_INFO *info, USB_CFG_DESC *cfgd, USB_IF_DESC *ifd)
             sector_size, last_lba, sector_size * (last_lba + 1));
   }
 
+  memset (conf, 0, 512);
   {
     uint8 cmd[16] = { [0] = 0x28, [8] = 1 };
     DLOG ("SENDING READ (10)");
     umsc_bulk_scsi (addr, ep_out, ep_in, cmd, 1, conf, 512, maxpkt);
     DLOG ("read from sector 0: %.02X %.02X %.02X %.02X",
           conf[0], conf[1], conf[2], conf[3]);
+    if (conf[510] == 0x55 && conf[511] == 0xAA)
+      DLOG ("Found boot sector magic number");
   }
 
   return TRUE;
