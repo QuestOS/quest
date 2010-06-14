@@ -122,7 +122,7 @@ umsc_probe (USB_DEVICE_INFO *info, USB_CFG_DESC *cfgd, USB_IF_DESC *ifd)
 {
   uint i, addr = info->address, ep_in=0, ep_out=0;
   USB_EPT_DESC *ep;
-  uint last_lba, sector_size, maxpkt=32;
+  uint last_lba, sector_size, maxpkt=64;
   uint8 conf[512];
 
   if (ifd->bInterfaceClass != USB_MASS_STORAGE_CLASS ||
@@ -131,6 +131,11 @@ umsc_probe (USB_DEVICE_INFO *info, USB_CFG_DESC *cfgd, USB_IF_DESC *ifd)
 
   ep = (USB_EPT_DESC *)(&ifd[1]);
 
+  if (ep[0].wMaxPacketSize != ep[1].wMaxPacketSize) {
+    DLOG ("endpoint packet sizes don't match!");
+    return FALSE;
+  }
+  maxpkt = ep[0].wMaxPacketSize;
   for (i=0; i<ifd->bNumEndpoints; i++)
     if (ep[i].bEndpointAddress & 0x80)
       ep_in = ep[i].bEndpointAddress & 0x7F;
@@ -140,7 +145,8 @@ umsc_probe (USB_DEVICE_INFO *info, USB_CFG_DESC *cfgd, USB_IF_DESC *ifd)
   if (!(ep_in && ep_out))
     return FALSE;
 
-  DLOG ("detected device=%d ep_in=%d ep_out=%d", addr, ep_in, ep_out);
+  DLOG ("detected device=%d ep_in=%d ep_out=%d maxpkt=%d",
+        addr, ep_in, ep_out, maxpkt);
 
   uhci_set_configuration (addr, cfgd->bConfigurationValue);
   delay (50);
