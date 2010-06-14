@@ -55,8 +55,8 @@ typedef void *addr_t;
 #define SET_USBINTR(usb_base, intr)    outw(intr, usb_base + 0x04)
 #define GET_USBINTR(usb_base)    inw(usb_base + 0x04)
 
-#define TD_POOL_SIZE 100
-#define QH_POOL_SIZE 10
+#define TD_POOL_SIZE 256
+#define QH_POOL_SIZE 16
 #define TYPE_TD 0
 #define TYPE_QH 1
 #define DIR_IN  0
