@@ -73,42 +73,34 @@ uint32 td_phys;
 static void *
 sched_alloc (int type)
 {
-  static int i = 0;
-  static int j = 0;
-  int k = 0;
+  int i = 0;
 
   switch (type) {
-  case TYPE_TD:
-    k = ++i;
-    while (1) {
-      if (td[i].link_ptr == 0)
-        return &td[i];
-      if (++i >= TD_POOL_SIZE) {
-        i = 0;
+    case TYPE_TD:
+      for (i = 0; i < TD_POOL_SIZE; i++) {
+        if (td[i].link_ptr == 0) {
+          td[i].link_ptr = 0x01;
+          return &td[i];
+        }
       }
-      if (i == k)
-        return (void *) 0;
-    }
-    break;
+      break;
 
-  case TYPE_QH:
-    k = ++j;
-    while (1) {
-      if (qh[j].qh_ptr == 0 && qh[j].qe_ptr == 0)
-        return &qh[j];
-      if (++j >= QH_POOL_SIZE) {
-        j = 0;
+    case TYPE_QH:
+      for (i = 0; i < QH_POOL_SIZE; i++) {
+        if (qh[i].qh_ptr == 0 && qh[i].qe_ptr == 0) {
+          qh[i].qh_ptr = qh[i].qe_ptr = 0x01;
+          return &qh[i];
+        }
       }
-      if (j == k)
-        return (void *) 0;
-    }
-    break;
+      break;
 
-  default:
-    return (void *) 0;
+    default:
+      DLOG("Unsupported Descriptor Type: %d", type);
+      return (void *) 0;
 
   }
 
+  DLOG("Error! No enough descriptor in the pool!");
   return (void *) 0;
 }
 
@@ -119,19 +111,24 @@ sched_free (int type, void *res)
   UHCI_QH *res_qh;
 
   switch (type) {
-  case TYPE_TD:
-    res_td = (UHCI_TD *) res;
-    res_td->link_ptr = 0;
-    break;
+    case TYPE_TD:
+      res_td = (UHCI_TD *) res;
+      res_td->link_ptr = 0;
+      res_td->raw2 = 0;
+      res_td->raw3 = 0;
+      res_td->buf_ptr = 0;
+      res_td->buf_vptr = 0;
+      res_td->call_back = 0;
+      break;
 
-  case TYPE_QH:
-    res_qh = (UHCI_QH *) res;
-    res_qh->qh_ptr = 0;
-    res_qh->qe_ptr = 0;
-    break;
+    case TYPE_QH:
+      res_qh = (UHCI_QH *) res;
+      res_qh->qh_ptr = 0;
+      res_qh->qe_ptr = 0;
+      break;
 
-  default:
-    return -1;
+    default:
+      return -1;
   }
 
   return 0;
@@ -250,7 +247,7 @@ init_schedule (void)
 
 #if 0
   DLOG ("int_qh va=%p ctl_qh va=%p qhp va=%p",
-        int_qh, ctl_qh, qh);
+      int_qh, ctl_qh, qh);
 #endif
 
 #if 0
@@ -625,10 +622,13 @@ uhci_init (void)
 }
 
 int
-uhci_isochronous_transfer (uint8_t address,
-                           uint8_t endpoint,
-                           addr_t data,
-                           int data_len, uint16_t frm, uint8_t direction)
+uhci_isochronous_transfer (
+    uint8_t address,
+    uint8_t endpoint,
+    addr_t data,
+    int data_len,
+    uint16_t frm,
+    uint8_t direction)
 {
   UHCI_TD *iso_td = 0;
   UHCI_TD *idx_td = 0;
@@ -750,9 +750,12 @@ int uhci_bulk_transfer(
 }
 
 int
-uhci_control_transfer (uint8_t address, addr_t setup_req,       /* Use virtual address here */
-                       int setup_len, addr_t setup_data,        /* Use virtual address here */
-                       int data_len)
+uhci_control_transfer (
+    uint8_t address,
+    addr_t setup_req,       /* Use virtual address here */
+    int setup_len,
+    addr_t setup_data,        /* Use virtual address here */
+    int data_len)
 {
   UHCI_TD *tx_tds = 0;
   UHCI_TD *td_idx = 0;
@@ -854,11 +857,13 @@ uhci_control_transfer (uint8_t address, addr_t setup_req,       /* Use virtual a
 }
 
 int
-uhci_get_descriptor (uint8_t address, uint16_t dtype,   /* Descriptor type */
-                     uint16_t dindex,   /* Descriptor index */
-                     uint16_t index,    /* Zero or Language ID */
-                     uint16_t length,   /* Descriptor length */
-                     addr_t desc)
+uhci_get_descriptor (
+    uint8_t address,
+    uint16_t dtype,   /* Descriptor type */
+    uint16_t dindex,   /* Descriptor index */
+    uint16_t index,    /* Zero or Language ID */
+    uint16_t length,   /* Descriptor length */
+    addr_t desc)
 {
   USB_DEV_REQ setup_req;
   setup_req.bmRequestType = 0x80;       // Characteristics of request, see spec, P183, Rev 1.1
@@ -965,7 +970,80 @@ uhci_get_interface (uint8_t addr, uint16_t interface)
 static uint32
 uhci_irq_handler (uint8 vec)
 {
-  DLOG ("We caught an interrupt from usb IRQ_LN!");
+  DLOG ("An interrupt is caught from usb IRQ_LN!");
+  /* Check the source of the interrupt received */
+  uint16_t status = 0;
+  status = GET_USBSTS(usb_base);
+
+  if((status & 0x3F) == 0) {
+    DLOG("Interrupt is probably not from UHCI. Nothing will be done.");
+    return 0;
+  }
+
+  if(status & 0x20) {
+    /* Host Controller Halted */
+    DLOG("HCHalted detected!");
+    status |= 0x20; /* Clear the interrupt by writing a 1 to it */
+  }
+
+  if(status & 0x10) {
+    /* Host Controller Process Error */
+    DLOG("HC Process Error detected!");
+    status |= 0x10; /* Clear the interrupt by writing a 1 to it */
+  }
+
+  if(status & 0x08) {
+    /* Host System Error */
+    DLOG("Host System Error detected!");
+    status |= 0x08; /* Clear the interrupt by writing a 1 to it */
+  }
+
+  if(status & 0x04) {
+    /* Resume Detect */
+    DLOG("Resume detected!");
+    status |= 0x04; /* Clear the interrupt by writing a 1 to it */
+  }
+
+  if(status & 0x02) {
+    /* USB Error Interrupt */
+    DLOG("USB Error Interrupt detected!");
+    status |= 0x02; /* Clear the interrupt by writing a 1 to it */
+  }
+
+  if(status & 0x01) {
+    DLOG("USB Interrupt detected!");
+    /*
+     * This is possibly an IOC or short packet.
+     * We need to visit the whole schedule for now
+     * to decide what exactly happened.
+     */
+    int i;
+
+    for(i = 0; i < TD_POOL_SIZE; i++) {
+      if(td[i].link_ptr && !(td[i].status & 0x80)) {
+        /* Is this an IOC? */
+        if(td[i].ioc) {
+          /* Call the call back function from user if it exists */
+          if(td[i].call_back) {
+            (td[i].call_back)(td[i].buf_vptr);
+            DLOG("Call back function called: 0x%x, buf_vptr: 0x%x",
+                td[i].call_back, td[i].buf_vptr);
+          }
+          status |= 0x01; /* Clear the interrupt by writing a 1 to it */
+          /* Release this TD if it is isochronous */
+          if(td[i].iso) sched_free(TYPE_TD, &td[i]);
+        }
+
+        /* Short packet detected */
+        if(td[i].spd) {
+          status |= 0x01; /* Clear the interrupt by writing a 1 to it */
+          /* Release this TD if it is isochronous */
+          if(td[i].iso) sched_free(TYPE_TD, &td[i]);
+        }
+      }
+    }
+  }
+
   return 0;
 }
 

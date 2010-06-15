@@ -55,7 +55,7 @@ typedef void *addr_t;
 #define SET_USBINTR(usb_base, intr)    outw(intr, usb_base + 0x04)
 #define GET_USBINTR(usb_base)    inw(usb_base + 0x04)
 
-#define TD_POOL_SIZE 256
+#define TD_POOL_SIZE 100
 #define QH_POOL_SIZE 16
 #define TYPE_TD 0
 #define TYPE_QH 1
@@ -119,8 +119,13 @@ typedef struct
 
   /* Use reserved word for buf_ptr virt addr */
   addr_t buf_vptr;
+  /* Call back funtion pointer of this TD */
+  void (*call_back)(addr_t);
+
   /* Reserved for software */
-  uint32_t reserve[3];
+  union {
+    uint32_t reserve[2];
+  };
 } UHCI_TD;
 
 /*
