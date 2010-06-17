@@ -33,7 +33,7 @@ typedef void *addr_t;
 
 #define GET_USB_BASE(bus, dev, func)    pci_config_rd16(bus, dev, func, 0x20) & 0xFFE0
 #define GET_USB_RELNUM(bus, dev, func)    pci_config_rd8(bus, dev, func, 0x60)
-#define DISABLE_LEGACY(bus, dev, func)    pci_config_wr16(bus, dev, func, 0xC0, 0)
+#define DISABLE_LEGACY(bus, dev, func)    pci_config_wr16(bus, dev, func, 0xC0, 0x8f00)
 #define SET_LEGACY(bus, dev, func, leg)    pci_config_wr16(bus, dev, func, 0xC0, leg);
 #define GET_LEGACY(bus, dev, func)    pci_config_rd16(bus, dev, func, 0xC0)
 #define GET_PCICMD(bus, dev, func)    pci_config_rd16(bus, dev, func, 0x04)
@@ -43,6 +43,7 @@ typedef void *addr_t;
 #define GET_USBCMD(usb_base)    inw(usb_base + 0x00)
 #define SET_USBCMD(usb_base, cmd)    outw(cmd, usb_base + 0x00)
 #define GET_USBSTS(usb_base)    inw(usb_base + 0x02)
+#define SET_USBSTS(usb_base, sts)    outw(sts, usb_base + 0x02)
 #define SET_FRBASEADD(usb_base, frbase)    outl(frbase, usb_base + 0x08)
 #define GET_FRBASEADD(usb_base)    inl(usb_base + 0x08)
 #define SET_SOFMOD(usb_base, sofmod)    outb(sofmod, usb_base + 0x0C)
