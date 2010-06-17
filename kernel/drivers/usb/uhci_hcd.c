@@ -581,9 +581,9 @@ uhci_init (void)
   DLOG ("Using IRQ line=%X pin=%X", irq_line, irq_pin);
 
 #define UHCI_VECTOR 0x50
-
-  IOAPIC_map_GSI (IRQ_to_GSI (mp_ISA_bus_id, irq_line),
-                  UHCI_VECTOR, 0xFF00000000000800LL);
+#define TMP_IRQ 0x15
+  IOAPIC_map_GSI (TMP_IRQ,
+                  UHCI_VECTOR, 0x0100000000000800LL);
   set_vector_handler (UHCI_VECTOR, uhci_irq_handler);
 
 
@@ -789,7 +789,7 @@ uhci_control_transfer (
    * UHCI specification max packet length : 1280 bytes
    */
   /* This is encoded as n-1 */
-  int max_packet_len = 
+  int max_packet_len =
     ((packet_len - 1) >= USB_MAX_LEN) ? USB_MAX_LEN : packet_len - 1;
   num_data_packets = (data_len + max_packet_len) / (max_packet_len + 1);
 
@@ -991,14 +991,19 @@ uhci_get_interface (uint8_t addr, uint16_t interface, uint8_t packet_size)
 static uint32
 uhci_irq_handler (uint8 vec)
 {
-  DLOG ("An interrupt is caught from usb IRQ_LN!");
+  /* mask it */
+  IOAPIC_map_GSI (TMP_IRQ,
+                  UHCI_VECTOR, 0x0100000000018800LL);
+
+  DLOG ("An interrupt is caught from usb IRQ_LN! (PCISTS=0x%x)",
+        pci_config_rd16 (bus, dev, func, 0x06));
   /* Check the source of the interrupt received */
   uint16_t status = 0;
   status = GET_USBSTS(usb_base);
 
   if((status & 0x3F) == 0) {
     DLOG("Interrupt is probably not from UHCI. Nothing will be done.");
-    return 0;
+    goto finish;
   }
 
   if(status & 0x20) {
@@ -1040,6 +1045,7 @@ uhci_irq_handler (uint8 vec)
      */
     int i;
 
+#if 0
     for(i = 0; i < TD_POOL_SIZE; i++) {
       if(td[i].link_ptr && !(td[i].status & 0x80)) {
         /* Is this an IOC? */
@@ -1063,7 +1069,21 @@ uhci_irq_handler (uint8 vec)
         }
       }
     }
+#endif
   }
+
+ finish:
+
+  /* clear the interrupt(s) */
+  SET_USBSTS (usb_base, status);
+
+  uint64 v = IOAPIC_read64 (0x10 + (TMP_IRQ * 2));
+  DLOG ("IOAPIC (irq_line=0x%x) says %p %p",
+        TMP_IRQ, (uint32) (v >> 32), (uint32) v);
+
+  /* unmask it */
+  IOAPIC_map_GSI (TMP_IRQ,
+                  UHCI_VECTOR, 0x0100000000008800LL);
 
   return 0;
 }
