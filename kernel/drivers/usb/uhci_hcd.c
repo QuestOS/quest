@@ -594,14 +594,10 @@ uhci_init (void)
   if (uhci_device.device != 0x7020)
     disable_ehci ();
 
-#if 1
-  /* Disable USB Legacy Support */
+  /* Disable USB Legacy Support, set PIRQ */
   DLOG ("UHCI LEGSUP: %p", GET_LEGACY (bus, dev, func));
-  DISABLE_LEGACY (bus, dev, func);
-  while (GET_LEGACY (bus, dev, func));
-  DLOG ("UHCI LEGSUP disabled!");
-  //SET_LEGACY(bus, dev, func, GET_LEGACY(bus, dev, func) | 0x2000);
-#endif
+  SET_LEGACY(bus, dev, func, 0x2000); /* PIRQ enabled */
+  DLOG ("Set PIRQDEN");
 
   if (!pci_decode_bar (device_index, 4, NULL, &usb_base, NULL)) {
     DLOG ("unable to decode BAR4");
