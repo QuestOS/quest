@@ -516,6 +516,7 @@ AcpiOsWritePort (ACPI_IO_ADDRESS Address, UINT32 Value, UINT32 Width)
 ACPI_STATUS
 AcpiOsReadMemory (ACPI_PHYSICAL_ADDRESS Address, UINT32 * Value, UINT32 Width)
 {
+  com1_printf ("AcpiOsReadMemory (%p, %d)\n", Address, Width);
   return AE_NOT_IMPLEMENTED;
 }
 
@@ -523,6 +524,7 @@ AcpiOsReadMemory (ACPI_PHYSICAL_ADDRESS Address, UINT32 * Value, UINT32 Width)
 ACPI_STATUS
 AcpiOsWriteMemory (ACPI_PHYSICAL_ADDRESS Address, UINT32 Value, UINT32 Width)
 {
+  com1_printf ("AcpiOsWriteMemory (%p, %p, %d)\n", Address, Value, Width);
   return AE_NOT_IMPLEMENTED;
 }
 
@@ -542,7 +544,7 @@ AcpiOsReadPciConfiguration (ACPI_PCI_ID * PciId,
   uint16 v16;
   uint32 v32;
   com1_printf
-    ("AcpiOsReadPciConfiguration(%.4X:%.4X:%.4X:%.4X, %.8X, ..., %d)\n",
+    ("AcpiOsReadPciConfiguration(%.4X:%.4X:%.4X:%.4X, %.8X, ..., %d)",
      PciId->Segment, PciId->Bus, PciId->Device, PciId->Function, Reg, Width);
   pci_config_addr_init (&a, PciId->Bus, PciId->Device, PciId->Function, Reg);
   switch (Width) {
@@ -559,8 +561,10 @@ AcpiOsReadPciConfiguration (ACPI_PCI_ID * PciId,
     *((ACPI_INTEGER *) Value) = (ACPI_INTEGER) v32;
     break;
   default:
+    com1_printf (" = error\n");
     return AE_BAD_PARAMETER;
   }
+  com1_printf (" = 0x%x\n", *((ACPI_INTEGER *) Value));
   return AE_OK;
 }
 
