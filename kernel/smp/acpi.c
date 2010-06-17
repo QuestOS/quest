@@ -52,6 +52,20 @@ acpi_early_init(void)
 }
 
 void
+acpi_enable_IOAPIC (void)
+{
+  ACPI_STATUS Status;
+  ACPI_OBJECT arg = { ACPI_TYPE_INTEGER };
+  ACPI_OBJECT_LIST arg_list = { 1, &arg };
+  arg.Integer.Value = 1;        /* IOAPIC */
+  Status = AcpiEvaluateObject (NULL, "\\_PIC", &arg_list, NULL);
+  if (ACPI_FAILURE (Status) && Status != AE_NOT_FOUND) {
+    com1_printf ("unable to evaluate _PIC(1): %d\n", Status);
+  } else
+    com1_printf ("ACPI: IOAPIC mode enabled.\n");
+}
+
+void
 acpi_secondary_init(void)
 {
   ACPI_STATUS Status;
@@ -81,12 +95,48 @@ acpi_secondary_init(void)
     com1_printf ("Failed: AcpiInitializeObjects.\n");
   }
 
+  /* Must enable IOAPIC before checking any PCI routing tables. */
+  acpi_enable_IOAPIC ();
+
   /* Walk the System Bus "\_SB_" and output info about each object
    * found. */
 
   AcpiGetHandle (ACPI_ROOT_OBJECT, ACPI_NS_SYSTEM_BUS, &SysBusHandle);
-  AcpiWalkNamespace (ACPI_TYPE_DEVICE, SysBusHandle, INT_MAX,
+  AcpiWalkNamespace (ACPI_TYPE_ANY, SysBusHandle, INT_MAX,
                      DisplayOneDevice, NULL, NULL);
+
+
+
+  ACPI_HANDLE LnkFHandle;
+  int i;
+  uint8 _buf[256];
+  ACPI_BUFFER Buffer = { .Length = sizeof (_buf), .Pointer = _buf };
+  com1_printf ("trying to set resources\n");
+  Status = AcpiGetHandle (ACPI_ROOT_OBJECT, "_SB_.LNKF", &LnkFHandle);
+  if (ACPI_FAILURE (Status)) {
+    com1_printf ("gethandle failed %d\n", Status);
+    return;
+  }
+  Status = AcpiGetCurrentResources (LnkFHandle, &Buffer);
+  if (ACPI_FAILURE (Status)) {
+    com1_printf ("getresources failed %d\n", Status);
+    return;
+  }
+  com1_printf ("_buf=");
+  for (i=0;i<sizeof(_buf);i++) {
+    com1_printf ("%.02X ", _buf[i]);
+    if ((i & 7) == 7) com1_printf ("\n");
+  }
+  //ACPI_RESOURCE *Rsrc = (ACPI_RESOURCE *)_buf;
+  //Rsrc->Data.Irq.Interrupts[0] = 0x9;
+#if 0
+  Status = AcpiSetCurrentResources (LnkFHandle, &Buffer);
+  if (ACPI_FAILURE (Status)) {
+    com1_printf ("setresources failed %d\n", Status);
+    return;
+  }
+#endif
+
 }
 
 #define printf com1_printf
@@ -158,8 +208,8 @@ process_acpi_tables (void)
             /* Interrupt Override entry */
             ACPI_MADT_INTERRUPT_OVERRIDE *sub =
               (ACPI_MADT_INTERRUPT_OVERRIDE *) ptr;
-            printf ("Int. Override: Bus: %X SourceIRQ: %X GlobalIRQ: %X\n",
-                    sub->Bus, sub->SourceIrq, sub->GlobalIrq);
+            printf ("Int. Override: Bus: %X SourceIRQ: %X GlobalIRQ: %X Flags: %X\n",
+                    sub->Bus, sub->SourceIrq, sub->GlobalIrq, sub->IntiFlags);
             if (mp_num_overrides == MAX_INT_OVERRIDES)
               panic ("Too many interrupt overrides.");
             mp_overrides[mp_num_overrides].src_bus = sub->Bus;
@@ -269,6 +319,9 @@ DisplayOneDevice (ACPI_HANDLE ObjHandle, UINT32 Level, void *Context,
   ACPI_BUFFER Result;
   ACPI_OBJECT Obj;
   char Buffer[256];
+  uint8 prt_buf[1024];
+  ACPI_BUFFER Prt = { .Length = sizeof (prt_buf), .Pointer = prt_buf };
+  ACPI_PCI_ROUTING_TABLE *prtd;
 
   Path.Length = sizeof (Buffer);
   Path.Pointer = Buffer;
@@ -324,9 +377,74 @@ DisplayOneDevice (ACPI_HANDLE ObjHandle, UINT32 Level, void *Context,
   com1_printf ("\n");
 
 
+  for (;;) {
+    Status = AcpiGetIrqRoutingTable (ObjHandle, &Prt);
+    if (ACPI_FAILURE (Status)) {
+      if (Status == AE_BUFFER_OVERFLOW) {
+        com1_printf ("AcpiGetIrqRoutingTable failed: BUFFER OVERFLOW\n");
+      }
+      break;
+    } else break;
+  }
+  if (ACPI_SUCCESS (Status)) {
+    int i;
+    for (i=0;i<sizeof(prt_buf);) {
+      prtd = (ACPI_PCI_ROUTING_TABLE *)(&prt_buf[i]);
+      if (prtd->Length == 0) break;
+      if (prtd->Source[0]) {
+        com1_printf ("  PRT entry: len=%d pin=%d addr=%p srcidx=0x%x src=%s\n",
+                     prtd->Length,
+                     prtd->Pin,
+                     (uint32)prtd->Address,
+                     prtd->SourceIndex,
+                     &prtd->Source[0]);
+      } else {
+        com1_printf ("  PRT entry: len=%d pin=%d addr=%p fixed IRQ=0x%x\n",
+                     prtd->Length,
+                     prtd->Pin,
+                     (uint32)prtd->Address,
+                     prtd->SourceIndex);
+      }
+      i+=prtd->Length;
+    }
+  }
+
+#if 0
+  ACPI_STATUS DisplayResource (ACPI_RESOURCE *Resource, void *Context);
+  com1_printf ("  _PRS:\n");
+  AcpiWalkResources (ObjHandle, "_PRS", DisplayResource, NULL);
+  com1_printf ("  _CRS:\n");
+  AcpiWalkResources (ObjHandle, "_CRS", DisplayResource, NULL);
+#endif
   return AE_OK;
 }
 
+ACPI_STATUS 
+DisplayResource (ACPI_RESOURCE *Resource, void *Context)
+{
+  int i;
+  com1_printf ("Resource: type=%d ", Resource->Type);
+  switch (Resource->Type) {
+  case ACPI_RESOURCE_TYPE_IRQ:
+    com1_printf ("IRQ dlen=%d trig=%d pol=%d shar=%d cnt=%d\n  int=",
+                 Resource->Data.Irq.DescriptorLength,
+                 Resource->Data.Irq.Triggering,
+                 Resource->Data.Irq.Polarity,
+                 Resource->Data.Irq.Sharable,
+                 Resource->Data.Irq.InterruptCount);
+    for (i=0;i<Resource->Data.Irq.InterruptCount;i++)
+      com1_printf ("%.02X ", Resource->Data.Irq.Interrupts[i]);
+    com1_printf ("\n");
+    break;
+  case ACPI_RESOURCE_TYPE_END_TAG:
+    com1_printf ("end_tag\n");
+    break;
+  default:
+    com1_printf ("unhandled\n");
+    break;
+  }
+  return AE_OK;
+}
 
 
 /* End ACPI support */
