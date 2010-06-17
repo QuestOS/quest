@@ -1067,6 +1067,178 @@ uhci_irq_handler (uint8 vec)
   return 0;
 }
 
+#define printf com1_printf
+#define print com1_puts
+#define putx  com1_putx
+#define putchar com1_putc
+
+extern void
+uhci_show_regs (void)
+{
+  uint16_t base_addr = 0;
+  uint32_t ldata = 0;
+  uint16_t wdata = 0;
+  uint8_t bdata = 0;
+#if 1
+  print ("\nUHCI Controller PCI Register Address Map\n\n");
+
+  wdata = pci_config_rd16 (bus, dev, func, 0x00);
+  print ("VID: 0x");
+  putx (wdata);
+  putchar ('\n');
+
+  wdata = pci_config_rd16 (bus, dev, func, 0x02);
+  print ("DID: 0x");
+  putx (wdata);
+  putchar ('\n');
+
+  wdata = pci_config_rd16 (bus, dev, func, 0x04);
+  print ("PCICMD: 0x");
+  putx (wdata);
+  putchar ('\n');
+
+  wdata = pci_config_rd16 (bus, dev, func, 0x06);
+  print ("PCISTS: 0x");
+  putx (wdata);
+  putchar ('\n');
+
+  bdata = pci_config_rd8 (bus, dev, func, 0x08);
+  print ("RID: 0x");
+  putx (bdata);
+  putchar ('\n');
+
+  bdata = pci_config_rd8 (bus, dev, func, 0x09);
+  print ("PI: 0x");
+  putx (bdata);
+  putchar ('\n');
+
+  bdata = pci_config_rd8 (bus, dev, func, 0x0A);
+  print ("SCC: 0x");
+  putx (bdata);
+  putchar ('\n');
+
+  bdata = pci_config_rd8 (bus, dev, func, 0x0B);
+  print ("BCC: 0x");
+  putx (bdata);
+  putchar ('\n');
+
+  bdata = pci_config_rd8 (bus, dev, func, 0x0D);
+  print ("MLT: 0x");
+  putx (bdata);
+  putchar ('\n');
+
+  bdata = pci_config_rd8 (bus, dev, func, 0x0E);
+  print ("HEADTYP: 0x");
+  putx (bdata);
+  putchar ('\n');
+
+  wdata = pci_config_rd16 (bus, dev, func, 0x20);
+  print ("BASE: 0x");
+  putx (wdata);
+  putchar ('\n');
+
+  wdata = pci_config_rd16 (bus, dev, func, 0x2C);
+  print ("SVID: 0x");
+  putx (wdata);
+  putchar ('\n');
+
+  wdata = pci_config_rd16 (bus, dev, func, 0x2E);
+  print ("SID: 0x");
+  putx (wdata);
+  putchar ('\n');
+
+  bdata = pci_config_rd8 (bus, dev, func, 0x3C);
+  print ("INT_LN: 0x");
+  putx (bdata);
+  putchar ('\n');
+
+  bdata = pci_config_rd8 (bus, dev, func, 0x3D);
+  print ("INT_PN: 0x");
+  putx (bdata);
+  putchar ('\n');
+
+  bdata = pci_config_rd8 (bus, dev, func, 0x60);
+  print ("USB_RELNUM: 0x");
+  putx (bdata);
+  putchar ('\n');
+
+  wdata = pci_config_rd16 (bus, dev, func, 0xC0);
+  print ("USB_LEGKEY: 0x");
+  putx (wdata);
+  putchar ('\n');
+
+  bdata = pci_config_rd8 (bus, dev, func, 0xC4);
+  print ("USB_RES: 0x");
+  putx (bdata);
+  putchar ('\n');
+
+  bdata = pci_config_rd8 (bus, dev, func, 0xC8);
+  print ("CWP: 0x");
+  putx (bdata);
+  putchar ('\n');
+#endif
+  base_addr = pci_config_rd16 (bus, dev, func, 0x20);
+  base_addr &= 0xFFE0;
+
+  print ("\nBase address for USB I/O Registers: 0x");
+  putx (base_addr);
+  putchar ('\n');
+
+  print ("\nUSB I/O Registers\n\n");
+
+  wdata = inw (base_addr + 0x00);
+  print ("USBCMD: 0x");
+  putx (wdata);
+  putchar ('\n');
+
+  wdata = inw (base_addr + 0x02);
+  print ("USBSTS: 0x");
+  putx (wdata);
+  putchar ('\n');
+
+  wdata = inw (base_addr + 0x04);
+  print ("USBINTR: 0x");
+  putx (wdata);
+  putchar ('\n');
+
+  wdata = inw (base_addr + 0x06);
+  print ("FRNUM: 0x");
+  putx (wdata);
+  putchar ('\n');
+
+  ldata = inl (base_addr + 0x08);
+  print ("FRBASEADD: 0x");
+  putx (ldata);
+  putchar ('\n');
+
+  bdata = inb (base_addr + 0x0C);
+  print ("SOFMOD: 0x");
+  putx (bdata);
+  putchar ('\n');
+
+  wdata = inw (base_addr + 0x10);
+  print ("PORTSC0: 0x");
+  putx (wdata);
+  putchar ('\n');
+
+  wdata = inw (base_addr + 0x12);
+  print ("PORTSC1: 0x");
+  putx (wdata);
+  putchar ('\n');
+
+  bdata = pci_config_rd8 (bus, dev, func, 0x3C);
+  print ("INT_LN: 0x");
+  putx (bdata);
+  putchar ('\n');
+
+  bdata = pci_config_rd8 (bus, dev, func, 0x3D);
+  print ("INT_PN: 0x");
+  putx (bdata);
+  putchar ('\n');
+
+  return;
+}
+
 /*
  * Local Variables:
  * indent-tabs-mode: nil
