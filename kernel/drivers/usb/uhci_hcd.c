@@ -545,12 +545,17 @@ uhci_init (void)
   }
 
   /* Find the UHCI device on the PCI bus */
-  for (i=0; compatible_ids[i].vendor != 0xFFFF; i++)
-    if (pci_find_device (compatible_ids[i].vendor, compatible_ids[i].device,
-                         0xFF, 0xFF, 0, &device_index))
-      break;
-    else
-      device_index = ~0;
+  device_index = ~0;
+  i=0;
+  while (pci_find_device (0xFFFF, 0xFFFF, 0x0C, 0x03, i, &i)) {
+    if (pci_get_device (i, &uhci_device)) {
+      if (uhci_device.progIF == 0) {
+        device_index = i;
+        break;
+      }
+      i++;
+    } else break;
+  }
 
   if (device_index == ~0) {
     DLOG ("Unable to find compatible device on PCI bus");
