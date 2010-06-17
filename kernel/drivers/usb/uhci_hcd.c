@@ -583,7 +583,7 @@ uhci_init (void)
 #define UHCI_VECTOR 0x50
 #define TMP_IRQ 0x15
   IOAPIC_map_GSI (TMP_IRQ,
-                  UHCI_VECTOR, 0x0100000000000800LL);
+                  UHCI_VECTOR, 0x0100000000008800LL);
   set_vector_handler (UHCI_VECTOR, uhci_irq_handler);
 
 
