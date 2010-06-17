@@ -287,7 +287,7 @@ IOAPIC_init (void)
 
   for (i = 0; i < mp_num_IOAPICs; i++) {
     for (j = 0; j < mp_IOAPICs[i].numGSIs; j++) {
-      IOAPIC_write64 (IOAPIC_REDIR + (i * 2), 0x0000000000010000LL);
+      IOAPIC_write64 (IOAPIC_REDIR + (j * 2), 0x0000000000010000LL);
     }
   }
 
