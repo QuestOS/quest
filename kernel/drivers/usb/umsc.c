@@ -148,7 +148,7 @@ umsc_probe (USB_DEVICE_INFO *info, USB_CFG_DESC *cfgd, USB_IF_DESC *ifd)
   DLOG ("detected device=%d ep_in=%d ep_out=%d maxpkt=%d",
         addr, ep_in, ep_out, maxpkt);
 
-  uhci_set_configuration (addr, cfgd->bConfigurationValue);
+  usb_set_configuration (info, cfgd->bConfigurationValue);
   delay (50);
 
 

@@ -26,7 +26,7 @@
 #include "drivers/usb/uvc.h"
 
 extern void show_usb_regs (int bus, int dev, int func);
-extern void control_transfer_test (void);
+extern void isochronous_transfer_test (void);
 
 #endif
 

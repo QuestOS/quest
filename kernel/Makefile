@@ -40,6 +40,7 @@ OBJS =  boot/boot.o boot/init.o kernel.o \
 	drivers/usb/uhci_hcd.o drivers/usb/uvc.o drivers/usb/umsc.o \
 	drivers/usb/hub.o \
 	drivers/usb/usb_tests.o \
+	drivers/usb/usb.o \
 	kdb/i386-stub.o
 
 CFILES = $(patsubst %.o,%.c,$(OBJS))

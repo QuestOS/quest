@@ -423,31 +423,44 @@ uhci_enumerate (void)
 
   DLOG ("uhci_enumerate: curdev=%d", curdev);
 
+  /* clear device info */
+  info = &devinfo[curdev];
+  memset (info, 0, sizeof (USB_DEVICE_INFO));
+  info->address = 0;
+  info->host_type = TYPE_HC_UHCI;
+
+  /* Assume this is a low speed device for safety. We will use
+   * the maximum packet size for low speed control transfer, which
+   * is 8 bytes. This procedure will probably be shifted to the
+   * USB core in the future. 
+   */
+  (info->devd).bMaxPacketSize0 = 8;
+
   /* get device descriptor */
   status =
-    uhci_get_descriptor (0, TYPE_DEV_DESC, 0, 0, sizeof (USB_DEV_DESC), &devd);
+    usb_get_descriptor (info, TYPE_DEV_DESC, 0, 0, sizeof (USB_DEV_DESC), &devd);
   if (status != 0)
     goto abort;
 
+  /* Update device info structure. Put it in USB core might be better */
+  memcpy (&info->devd, &devd, sizeof (USB_DEV_DESC));
+
   /* assign an address */
-  if (uhci_set_address (0, curdev) != 0)
+  if (usb_set_address (info, curdev) != 0)
     goto abort;
   DLOG ("uhci_enumerate: set %p to addr %d", devd.bDeviceClass, curdev);
   delay (2);
 
   DLOG ("uhci_enumerate: num configs=%d", devd.bNumConfigurations);
 
-  /* clear device info */
-  info = &devinfo[curdev];
-  memset (info, 0, sizeof (USB_DEVICE_INFO));
-  memcpy (&info->devd, &devd, sizeof (USB_DEV_DESC));
+  /* Update device info structure for new address. */
   info->address = curdev;
 
   for (c=0; c<devd.bNumConfigurations; c++) {
     /* get a config descriptor for size field */
     memset (temp, 0, TEMPSZ);
     status =
-      uhci_get_descriptor (curdev, TYPE_CFG_DESC, c, 0, sizeof (USB_CFG_DESC), temp);
+      usb_get_descriptor (info, TYPE_CFG_DESC, c, 0, sizeof (USB_CFG_DESC), temp);
     if (status != 0) {
       DLOG ("uhci_enumerate: failed to get config descriptor for c=%d", c);
       goto abort;
@@ -471,7 +484,7 @@ uhci_enumerate (void)
   ptr = info->raw;
   for (c=0; c<devd.bNumConfigurations; c++) {
     status =
-      uhci_get_descriptor (curdev, TYPE_CFG_DESC, c, 0, cfgd->wTotalLength, ptr);
+      usb_get_descriptor (info, TYPE_CFG_DESC, c, 0, cfgd->wTotalLength, ptr);
     if (status != 0)
       goto abort_mem;
     DLOG ("uhci_enumerate: cfg %d has num_if=%d", c, cfgd->bNumInterfaces);
@@ -613,7 +626,7 @@ uhci_init (void)
 #else
 #include <drivers/usb/usb_tests.h>
 
-  control_transfer_test ();
+  isochronous_transfer_test ();
   show_usb_regs(bus, dev, func);
 
 #endif
@@ -628,7 +641,8 @@ uhci_isochronous_transfer (
     addr_t data,
     int data_len,
     uint16_t frm,
-    uint8_t direction)
+    uint8_t direction,
+    void (*func)(addr_t))
 {
   UHCI_TD *iso_td = 0;
   UHCI_TD *idx_td = 0;
@@ -651,6 +665,7 @@ uhci_isochronous_transfer (
   iso_td->max_len = data_len - 1;
   iso_td->buf_ptr = (uint32_t) get_phys_addr ((void *) data);
   iso_td->buf_vptr = data;
+  iso_td->call_back = func;
 
   entry = frame_list[frm];
 
@@ -752,10 +767,11 @@ int uhci_bulk_transfer(
 int
 uhci_control_transfer (
     uint8_t address,
-    addr_t setup_req,       /* Use virtual address here */
+    addr_t setup_req,    /* Use virtual address here */
     int setup_len,
-    addr_t setup_data,        /* Use virtual address here */
-    int data_len)
+    addr_t setup_data,   /* Use virtual address here */
+    int data_len,
+    int packet_len)      /* 64 bytes for Full-speed and 8 bytes for Low-speed */
 {
   UHCI_TD *tx_tds = 0;
   UHCI_TD *td_idx = 0;
@@ -771,7 +787,9 @@ uhci_control_transfer (
    * USB specification max packet length :  1023 bytes
    * UHCI specification max packet length : 1280 bytes
    */
-  int max_packet_len = USB_MAX_LEN;     // This is encoded as n-1
+  /* This is encoded as n-1 */
+  int max_packet_len = 
+    ((packet_len - 1) >= USB_MAX_LEN) ? USB_MAX_LEN : packet_len - 1;
   num_data_packets = (data_len + max_packet_len) / (max_packet_len + 1);
 
   /* Constructing the setup packet */
@@ -863,7 +881,8 @@ uhci_get_descriptor (
     uint16_t dindex,   /* Descriptor index */
     uint16_t index,    /* Zero or Language ID */
     uint16_t length,   /* Descriptor length */
-    addr_t desc)
+    addr_t desc,
+    uint8_t packet_size)
 {
   USB_DEV_REQ setup_req;
   setup_req.bmRequestType = 0x80;       // Characteristics of request, see spec, P183, Rev 1.1
@@ -873,12 +892,12 @@ uhci_get_descriptor (
   setup_req.wLength = length;
 
   return uhci_control_transfer (address,
-                                (addr_t) & setup_req, sizeof (USB_DEV_REQ),
-                                desc, length);
+      (addr_t) & setup_req, sizeof (USB_DEV_REQ),
+      desc, length, packet_size);
 }
 
 int
-uhci_set_address (uint8_t old_addr, uint8_t new_addr)
+uhci_set_address (uint8_t old_addr, uint8_t new_addr, uint8_t packet_size)
 {
   sint status;
   USB_DEV_REQ setup_req;
@@ -889,8 +908,8 @@ uhci_set_address (uint8_t old_addr, uint8_t new_addr)
   setup_req.wLength = 0;
 
   status = uhci_control_transfer (old_addr,
-                                  (addr_t) & setup_req, sizeof (USB_DEV_REQ), 0,
-                                  0);
+      (addr_t) & setup_req, sizeof (USB_DEV_REQ), 0,
+      0, packet_size);
   if (status == 0) {
     toggles[old_addr] = toggles[new_addr] = 0;
   }
@@ -898,7 +917,7 @@ uhci_set_address (uint8_t old_addr, uint8_t new_addr)
 }
 
 int
-uhci_get_configuration (uint8_t addr)
+uhci_get_configuration (uint8_t addr, uint8_t packet_size)
 {
   USB_DEV_REQ setup_req;
   uint8_t num = -1;
@@ -909,13 +928,13 @@ uhci_get_configuration (uint8_t addr)
   setup_req.wLength = 1;
 
   uhci_control_transfer (addr, (addr_t) & setup_req, sizeof (USB_DEV_REQ),
-                         (addr_t) & num, 1);
+      (addr_t) & num, 1, packet_size);
 
   return num;
 }
 
 int
-uhci_set_configuration (uint8_t addr, uint8_t conf)
+uhci_set_configuration (uint8_t addr, uint8_t conf, uint8_t packet_size)
 {
   USB_DEV_REQ setup_req;
   setup_req.bmRequestType = 0x0;
@@ -931,12 +950,13 @@ uhci_set_configuration (uint8_t addr, uint8_t conf)
 
 
   return uhci_control_transfer (addr,
-                                (addr_t) & setup_req, sizeof (USB_DEV_REQ), 0,
-                                0);
+      (addr_t) & setup_req, sizeof (USB_DEV_REQ), 0,
+      0, packet_size);
 }
 
 int
-uhci_set_interface (uint8_t addr, uint16_t alt, uint16_t interface)
+uhci_set_interface (uint8_t addr, uint16_t alt, uint16_t interface,
+    uint8_t packet_size)
 {
   USB_DEV_REQ setup_req;
   setup_req.bmRequestType = 0x01;
@@ -946,12 +966,12 @@ uhci_set_interface (uint8_t addr, uint16_t alt, uint16_t interface)
   setup_req.wLength = 0;
 
   return uhci_control_transfer (addr,
-                                (addr_t) & setup_req, sizeof (USB_DEV_REQ), 0,
-                                0);
+      (addr_t) & setup_req, sizeof (USB_DEV_REQ), 0,
+      0, packet_size);
 }
 
 int
-uhci_get_interface (uint8_t addr, uint16_t interface)
+uhci_get_interface (uint8_t addr, uint16_t interface, uint8_t packet_size)
 {
   USB_DEV_REQ setup_req;
   uint8_t alt = -1;
@@ -962,7 +982,7 @@ uhci_get_interface (uint8_t addr, uint16_t interface)
   setup_req.wLength = 1;
 
   uhci_control_transfer (addr, (addr_t) & setup_req, sizeof (USB_DEV_REQ),
-                         (addr_t) & alt, 1);
+      (addr_t) & alt, 1, packet_size);
 
   return alt;
 }

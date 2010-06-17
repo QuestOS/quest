@@ -46,7 +46,7 @@ uvc_read (void *buf, int count)
 #endif
 
 #if 1
-  status = uhci_isochronous_transfer (1, 5, (addr_t) iso, 1023, 1, DIR_IN);
+  status = uhci_isochronous_transfer (1, 5, (addr_t) iso, 1023, 1, DIR_IN, 0);
   //uhci_isochronous_transfer(1, 4, (addr_t)iso2, 1023, 10, DIR_IN);
   //uhci_isochronous_transfer(1, 4, (addr_t)iso3, 1023, 20, DIR_IN);
   //uhci_isochronous_transfer(1, 4, (addr_t)iso4, 1023, 30, DIR_IN);
@@ -73,6 +73,7 @@ uvc_read (void *buf, int count)
 int
 uvc_init (void)
 {
+#if 0
   uint8_t data[20];
   uint8_t conf[1300];
 
@@ -185,7 +186,7 @@ uvc_init (void)
 #endif
 
   uhci_set_configuration (1, 1);
-
+#endif
   return 0;
 }
 

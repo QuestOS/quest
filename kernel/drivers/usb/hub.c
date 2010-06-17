@@ -71,7 +71,8 @@ hub_port_status (uint address, uint port)
   req.wValue = 0;
   req.wIndex = port;
   req.wLength = 4;
-  status = uhci_control_transfer (address, &req, sizeof (req), data, 4);
+  /* We assume this is a full speed device, use the maximum, 64 bytes */
+  status = uhci_control_transfer (address, &req, sizeof (req), data, 4, 64);
   DLOG ("GET_PORT_STATUS: status=%d port status: %.04X",
         status, *((uint16 *)data));
 
@@ -89,7 +90,8 @@ hub_set_port_feature (uint address, uint port, uint feature)
   req.wValue = feature;
   req.wIndex = port;
   req.wLength = 0;
-  status = uhci_control_transfer (address, &req, sizeof (req), NULL, 0);
+  /* We assume this is a full speed device, use the maximum, 64 bytes */
+  status = uhci_control_transfer (address, &req, sizeof (req), NULL, 0, 64);
   DLOG ("SET_PORT_FEATURE: status=%d", status);
 
   return status == 0;
@@ -106,7 +108,8 @@ hub_clr_port_feature (uint address, uint port, uint feature)
   req.wValue = feature;
   req.wIndex = port;
   req.wLength = 0;
-  status = uhci_control_transfer (address, &req, sizeof (req), NULL, 0);
+  /* We assume this is a full speed device, use the maximum, 64 bytes */
+  status = uhci_control_transfer (address, &req, sizeof (req), NULL, 0, 64);
   DLOG ("CLEAR_PORT_FEATURE: status=%d", status);
 
   return status == 0;
@@ -123,7 +126,7 @@ probe_hub (USB_DEVICE_INFO *info, USB_CFG_DESC *cfgd, USB_IF_DESC *ifd)
     return FALSE;
 
   /* it's a hub, set the configuration */
-  uhci_set_configuration (address, cfgd->bConfigurationValue);
+  usb_set_configuration (info, cfgd->bConfigurationValue);
 
   memset (&hubd, 0, sizeof (hubd));
 
@@ -134,7 +137,8 @@ probe_hub (USB_DEVICE_INFO *info, USB_CFG_DESC *cfgd, USB_IF_DESC *ifd)
   req.wValue = 0x29 << 8;
   req.wIndex = 0;
   req.wLength = sizeof (USB_HUB_DESC);
-  status = uhci_control_transfer (address, &req, sizeof (req), &hubd, sizeof (hubd));
+  /* We assume this is a full speed device, use the maximum, 64 bytes */
+  status = uhci_control_transfer (address, &req, sizeof (req), &hubd, sizeof (hubd), 64);
   DLOG ("GET_HUB_DESCRIPTOR: status=%d len=%d nbrports=%d delay=%d",
         status, hubd.bDescLength, hubd.bNbrPorts, hubd.bPwrOn2PwrGood);
   if (status != 0) return FALSE;

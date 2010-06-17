@@ -122,10 +122,9 @@ typedef struct
   /* Call back funtion pointer of this TD */
   void (*call_back)(addr_t);
 
+  /* --??-- This is problem for 64-bit */
   /* Reserved for software */
-  union {
-    uint32_t reserve[2];
-  };
+  uint32_t reserve[2];
 } UHCI_TD;
 
 /*
@@ -150,16 +149,16 @@ extern int uhci_init (void);
 extern int uhci_reset (void);
 extern int port_reset (uint8_t);
 extern int uhci_isochronous_transfer (uint8_t, uint8_t, addr_t, int, uint16_t,
-                                      uint8_t);
-extern int uhci_control_transfer (uint8_t, addr_t, int, addr_t, int);
+                                      uint8_t, void (*) (addr_t));
+extern int uhci_control_transfer (uint8_t, addr_t, int, addr_t, int, int);
 extern int uhci_bulk_transfer (uint8_t, uint8_t, addr_t, int, int, uint8_t);
 extern int uhci_get_descriptor (uint8_t, uint16_t, uint16_t, uint16_t,
-                                uint16_t, addr_t);
-extern int uhci_set_address (uint8_t, uint8_t);
-extern int uhci_get_configuration (uint8_t);
-extern int uhci_set_configuration (uint8_t, uint8_t);
-extern int uhci_get_interface (uint8_t, uint16_t);
-extern int uhci_set_interface (uint8_t, uint16_t, uint16_t);
+                                uint16_t, addr_t, uint8_t);
+extern int uhci_set_address (uint8_t, uint8_t, uint8_t);
+extern int uhci_get_configuration (uint8_t, uint8_t);
+extern int uhci_set_configuration (uint8_t, uint8_t, uint8_t);
+extern int uhci_get_interface (uint8_t, uint16_t, uint8_t);
+extern int uhci_set_interface (uint8_t, uint16_t, uint16_t, uint8_t);
 
 #endif
 

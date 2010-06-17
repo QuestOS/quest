@@ -19,6 +19,7 @@
 #define _USB_H_
 
 #include <types.h>
+#include <drivers/usb/uhci.h>
 
 #define pci_config_rd8(bus, slot, func, reg) \
   pci_read_byte (pci_addr (bus, slot, func, reg))
@@ -57,6 +58,10 @@
 #define TYPE_STR_DESC    0x03
 #define TYPE_IF_DESC     0x04
 #define TYPE_EPT_DESC    0x05
+
+#define TYPE_HC_UHCI    0x00
+#define TYPE_HC_EHCI    0x01
+#define TYPE_HC_OHCI    0x02
 
 /*
  * USB_DEV_REQ : USB Device Request
@@ -171,6 +176,7 @@ typedef struct
 {
   uint8 address;
   USB_DEV_DESC devd;
+  uint8 host_type;
   uint8 *raw;
 } USB_DEVICE_INFO;
 
@@ -180,6 +186,16 @@ typedef struct
 } USB_DRIVER;
 
 bool usb_register_driver (USB_DRIVER *);
+
+
+/* Generic USB operations */
+extern int usb_get_descriptor(USB_DEVICE_INFO *, uint16_t, uint16_t,
+    uint16_t, uint16_t, addr_t);
+extern int usb_set_address(USB_DEVICE_INFO *, uint8_t);
+extern int usb_get_configuration(USB_DEVICE_INFO *);
+extern int usb_set_configuration(USB_DEVICE_INFO *, uint8_t);
+extern int usb_get_interface(USB_DEVICE_INFO *, uint16_t);
+extern int usb_set_interface(USB_DEVICE_INFO *, uint16_t, uint16_t);
 
 #endif
 
