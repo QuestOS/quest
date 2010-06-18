@@ -39,7 +39,7 @@ uint32 mp_num_overrides = 0;
 uint32
 IRQ_to_GSI (uint32 src_bus, uint32 src_irq)
 {
-  /* this probably only works for ISA at the moment */
+  /* This is for ISA only */
   int i;
   for (i = 0; i < mp_num_overrides; i++) {
     if (src_bus == mp_overrides[i].src_bus &&

@@ -104,39 +104,6 @@ acpi_secondary_init(void)
   AcpiGetHandle (ACPI_ROOT_OBJECT, ACPI_NS_SYSTEM_BUS, &SysBusHandle);
   AcpiWalkNamespace (ACPI_TYPE_ANY, SysBusHandle, INT_MAX,
                      DisplayOneDevice, NULL, NULL);
-
-
-
-  ACPI_HANDLE LnkFHandle;
-  int i;
-  uint8 _buf[256];
-  ACPI_BUFFER Buffer = { .Length = sizeof (_buf), .Pointer = _buf };
-  com1_printf ("trying to set resources\n");
-  Status = AcpiGetHandle (ACPI_ROOT_OBJECT, "_SB_.LNKF", &LnkFHandle);
-  if (ACPI_FAILURE (Status)) {
-    com1_printf ("gethandle failed %d\n", Status);
-    return;
-  }
-  Status = AcpiGetCurrentResources (LnkFHandle, &Buffer);
-  if (ACPI_FAILURE (Status)) {
-    com1_printf ("getresources failed %d\n", Status);
-    return;
-  }
-  com1_printf ("_buf=");
-  for (i=0;i<sizeof(_buf);i++) {
-    com1_printf ("%.02X ", _buf[i]);
-    if ((i & 7) == 7) com1_printf ("\n");
-  }
-  //ACPI_RESOURCE *Rsrc = (ACPI_RESOURCE *)_buf;
-  //Rsrc->Data.Irq.Interrupts[0] = 0x9;
-#if 0
-  Status = AcpiSetCurrentResources (LnkFHandle, &Buffer);
-  if (ACPI_FAILURE (Status)) {
-    com1_printf ("setresources failed %d\n", Status);
-    return;
-  }
-#endif
-
 }
 
 #define printf com1_printf
