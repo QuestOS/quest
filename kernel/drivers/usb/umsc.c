@@ -119,6 +119,16 @@ umsc_bulk_scsi (uint addr, uint ep_out, uint ep_in,
 
 static uint testaddr, testepout, testepin;
 
+typedef struct {
+  USB_DEVICE_INFO *devinfo;
+  uint ep_out, ep_in, maxpkt, last_lba, sector_size;
+} umsc_device_t;
+
+#define UMSC_MAX_DEVICES 16
+static umsc_device_t umsc_devs[UMSC_MAX_DEVICES];
+static uint num_umsc_devs=0;
+
+
 static bool
 umsc_probe (USB_DEVICE_INFO *info, USB_CFG_DESC *cfgd, USB_IF_DESC *ifd)
 {
@@ -126,6 +136,10 @@ umsc_probe (USB_DEVICE_INFO *info, USB_CFG_DESC *cfgd, USB_IF_DESC *ifd)
   USB_EPT_DESC *ep;
   uint last_lba, sector_size, maxpkt=64;
   uint8 conf[512];
+  umsc_device_t *umsc;
+
+  if (num_umsc_devs >= UMSC_MAX_DEVICES)
+    return FALSE;
 
   if (ifd->bInterfaceClass != USB_MASS_STORAGE_CLASS ||
       ifd->bInterfaceProtocol != UMSC_PROTOCOL)
@@ -160,37 +174,43 @@ umsc_probe (USB_DEVICE_INFO *info, USB_CFG_DESC *cfgd, USB_IF_DESC *ifd)
   {
     uint8 cmd[16] = {0x12,0,0,0,0x24,0,0,0,0,0,0,0};
     DLOG ("SENDING INQUIRY");
-    umsc_bulk_scsi (addr, ep_out, ep_in, cmd, 1, conf, 0x24, maxpkt);
+    if (umsc_bulk_scsi (addr, ep_out, ep_in, cmd, 1, conf, 0x24, maxpkt) != 0)
+      return FALSE;
   }
 
   {
     uint8 cmd[16] = {0,0,0,0,0,0,0,0,0,0,0,0};
     DLOG ("SENDING TEST UNIT READY");
-    umsc_bulk_scsi (addr, ep_out, ep_in, cmd, 1, conf, 0, maxpkt);
+    if (umsc_bulk_scsi (addr, ep_out, ep_in, cmd, 1, conf, 0, maxpkt) != 0)
+      return FALSE;
   }
 
   {
     uint8 cmd[16] = {0x03,0,0,0,0x24,0,0,0,0,0,0,0};
     DLOG ("SENDING REQUEST SENSE");
-    umsc_bulk_scsi (addr, ep_out, ep_in, cmd, 1, conf, 0x24, maxpkt);
+    if (umsc_bulk_scsi (addr, ep_out, ep_in, cmd, 1, conf, 0x24, maxpkt) != 0)
+      return FALSE;
   }
 
   {
     uint8 cmd[16] = {0,0,0,0,0,0,0,0,0,0,0,0};
     DLOG ("SENDING TEST UNIT READY");
-    umsc_bulk_scsi (addr, ep_out, ep_in, cmd, 1, conf, 0, maxpkt);
+    if (umsc_bulk_scsi (addr, ep_out, ep_in, cmd, 1, conf, 0, maxpkt) != 0)
+      return FALSE;
   }
 
   {
     uint8 cmd[16] = {0x03,0,0,0,0x24,0,0,0,0,0,0,0};
     DLOG ("SENDING REQUEST SENSE");
-    umsc_bulk_scsi (addr, ep_out, ep_in, cmd, 1, conf, 0x24, maxpkt);
+    if (umsc_bulk_scsi (addr, ep_out, ep_in, cmd, 1, conf, 0x24, maxpkt) != 0)
+      return FALSE;
   }
 
   {
     uint8 cmd[16] = {0x25,0,0,0,0,0,0,0,0,0,0,0};
     DLOG ("SENDING READ CAPACITY");
-    umsc_bulk_scsi (addr, ep_out, ep_in, cmd, 1, conf, 0x8, maxpkt);
+    if (umsc_bulk_scsi (addr, ep_out, ep_in, cmd, 1, conf, 0x8, maxpkt) != 0)
+      return FALSE;
     last_lba = conf[3] | conf[2] << 8 | conf[1] << 16 | conf[0] << 24;
     sector_size = conf[7] | conf[6] << 8 | conf[5] << 16 | conf[4] << 24;
     DLOG ("sector_size=0x%x last_lba=0x%x total_size=%d bytes",
@@ -201,14 +221,48 @@ umsc_probe (USB_DEVICE_INFO *info, USB_CFG_DESC *cfgd, USB_IF_DESC *ifd)
   {
     uint8 cmd[16] = { [0] = 0x28, [8] = 1 };
     DLOG ("SENDING READ (10)");
-    umsc_bulk_scsi (addr, ep_out, ep_in, cmd, 1, conf, 512, maxpkt);
+    if (umsc_bulk_scsi (addr, ep_out, ep_in, cmd, 1, conf, 512, maxpkt) != 0)
+      return FALSE;
     DLOG ("read from sector 0: %.02X %.02X %.02X %.02X",
           conf[0], conf[1], conf[2], conf[3]);
     if (conf[510] == 0x55 && conf[511] == 0xAA)
       DLOG ("Found boot sector magic number");
   }
 
+  umsc = &umsc_devs[num_umsc_devs];
+  umsc->devinfo = info;
+  umsc->sector_size = sector_size;
+  umsc->last_lba = last_lba;
+  umsc->ep_out = ep_out;
+  umsc->ep_in = ep_in;
+  umsc->maxpkt = maxpkt;
+
+  DLOG ("Registered UMSC device index=%d", num_umsc_devs);
+
+  num_umsc_devs++;
+
   return TRUE;
+}
+
+sint 
+umsc_read_sector (uint dev_index, uint32 lba, uint8 *sector, uint len)
+{
+  umsc_device_t *umsc;
+  uint8 cmd[16] = { [0] = 0x28,
+                    [2] = (lba >> 0x18) & 0xFF,
+                    [3] = (lba >> 0x10) & 0xFF,
+                    [4] = (lba >> 0x08) & 0xFF,
+                    [5] = (lba >> 0x00) & 0xFF,
+                    [8] = 1 };
+  if (dev_index >= num_umsc_devs) return 0;
+  umsc = &umsc_devs[dev_index];
+  if (len < umsc->sector_size) return 0;
+
+  if (umsc_bulk_scsi (umsc->devinfo->address, 
+                      umsc->ep_out, umsc->ep_in, cmd, 1, sector,
+                      umsc->sector_size, umsc->maxpkt) != 0)
+    return 0;
+  return umsc->sector_size;
 }
 
 static USB_DRIVER umsc_driver = {

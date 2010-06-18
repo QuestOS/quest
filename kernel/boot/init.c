@@ -536,6 +536,7 @@ init (multiboot * pmb)
   /* Initialize ATA/ATAPI subsystem */
   ata_init ();
 
+#if 0
   if (boot_device == 0x8000FFFF && pata_drives[0].ata_type == ATA_TYPE_PATA) {
     printf ("ROOT: EXT2FS\n");
     /* Mount root filesystem */
@@ -556,6 +557,12 @@ init (multiboot * pmb)
     if (i == 4)
       printf ("Unsupported boot device=%X.\n", boot_device);
   }
+#else
+  /* hack */
+  printf ("ROOT: USB\n");
+  vfat_mount ();
+  vfs_set_root (VFS_FSYS_EZUSB, NULL);
+#endif
 
   /* Initialise soundcard, if one exists */
   init_sound ();

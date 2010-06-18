@@ -35,6 +35,8 @@ vfs_dir (char *pathname)
     return ext2fs_dir (pathname);
   case VFS_FSYS_EZISO:
     return eziso_dir (pathname);
+  case VFS_FSYS_EZUSB:
+    return vfat_dir (pathname);
   default:
     print ("Unknown vfs_root_type");
     return 0;
@@ -49,6 +51,8 @@ vfs_read (char *buf, int len)
     return ext2fs_read (buf, len);
   case VFS_FSYS_EZISO:
     return eziso_read (buf, len);
+  case VFS_FSYS_EZUSB:
+    return vfat_read (buf, len);
   default:
     print ("Unknown vfs_root_type");
     return 0;

@@ -499,7 +499,7 @@ _exec (char *filename, char *argv[], uint32 *curr_stack)
   Elf32_Ehdr *pe = (Elf32_Ehdr *) 0xFF400000;   /* 4MB below KERN_STK virt address */
   Elf32_Phdr *pph;
   void *pEntry;
-  int filesize;
+  int filesize, orig_filesize;
   /* Temporary storage for frame pointers for a file image up to 4MB
      discounting bss */
   uint32 phys_addr = alloc_phys_frame () | 3;
@@ -585,8 +585,12 @@ _exec (char *filename, char *argv[], uint32 *curr_stack)
   com1_printf ("_exec: vfs read\n");
 #endif
   /* Read into virtual address corresponding to plPageDirectory[1021] */
-  if (filesize != vfs_read ((void *) pe, filesize))
+  orig_filesize = filesize;
+  filesize = vfs_read ((void *) pe, orig_filesize);
+  if (filesize != orig_filesize) {
+    printf ("expected filesize=%d got filesize=%d\n", orig_filesize, filesize);
     panic ("File size mismatch on read");
+  }
 
   pph = (void *) pe + pe->e_phoff;
   pEntry = (void *) pe->e_entry;

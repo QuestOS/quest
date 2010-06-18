@@ -77,9 +77,14 @@ int eziso_mount (uint32 bus, uint32 drive);
 int eziso_dir (char *pathname);
 int eziso_read (char *buf, int len);
 
+int vfat_mount (void);
+int vfat_dir (char *pathname);
+int vfat_read (char *buf, int len);
+
 #define VFS_FSYS_NONE  0
 #define VFS_FSYS_EXT2  1
 #define VFS_FSYS_EZISO 2
+#define VFS_FSYS_EZUSB 3
 
 void vfs_set_root (int type, ata_info * drive_info);
 int vfs_dir (char *);
