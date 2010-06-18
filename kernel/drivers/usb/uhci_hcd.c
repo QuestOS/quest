@@ -582,8 +582,9 @@ uhci_init (void)
 
 #define UHCI_VECTOR 0x50
 #define TMP_IRQ 0x15
+#define IOAPIC_FLAGS 0x010000000000A800LL
   IOAPIC_map_GSI (TMP_IRQ,
-                  UHCI_VECTOR, 0x0100000000008800LL);
+                  UHCI_VECTOR, IOAPIC_FLAGS);
   set_vector_handler (UHCI_VECTOR, uhci_irq_handler);
 
 
@@ -724,6 +725,7 @@ int uhci_bulk_transfer(
     data_td->status = 0x80;
     data_td->c_err = 3;
     data_td->ioc = data_td->iso = data_td->spd = 0;
+    data_td->ioc = 1;
 
     data_td->pid = (direction == DIR_IN) ? UHCI_PID_IN : UHCI_PID_OUT;
     data_td->addr = address;
@@ -991,15 +993,20 @@ uhci_get_interface (uint8_t addr, uint16_t interface, uint8_t packet_size)
 static uint32
 uhci_irq_handler (uint8 vec)
 {
-  /* mask it */
-  IOAPIC_map_GSI (TMP_IRQ,
-                  UHCI_VECTOR, 0x0100000000018800LL);
+  uint64 v = IOAPIC_read64 (0x10 + (TMP_IRQ * 2));
+  DLOG ("(1) IOAPIC (irq_line=0x%x) says %p %p",
+        TMP_IRQ, (uint32) (v >> 32), (uint32) v);
 
-  DLOG ("An interrupt is caught from usb IRQ_LN! (PCISTS=0x%x)",
-        pci_config_rd16 (bus, dev, func, 0x06));
+  /* mask it */
+  //IOAPIC_map_GSI (TMP_IRQ, UHCI_VECTOR, IOAPIC_FLAGS | 0x10000);
+
   /* Check the source of the interrupt received */
   uint16_t status = 0;
   status = GET_USBSTS(usb_base);
+
+  DLOG ("An interrupt is caught from usb IRQ_LN! (USBSTS=0x%x PCISTS=0x%x)",
+        status,
+        pci_config_rd16 (bus, dev, func, 0x06));
 
   if((status & 0x3F) == 0) {
     DLOG("Interrupt is probably not from UHCI. Nothing will be done.");
@@ -1044,6 +1051,7 @@ uhci_irq_handler (uint8 vec)
      * to decide what exactly happened.
      */
     int i;
+    status |= 0x01; /* Clear the interrupt by writing a 1 to it */
 
 #if 0
     for(i = 0; i < TD_POOL_SIZE; i++) {
@@ -1056,7 +1064,6 @@ uhci_irq_handler (uint8 vec)
             DLOG("Call back function called: 0x%x, buf_vptr: 0x%x",
                 td[i].call_back, td[i].buf_vptr);
           }
-          status |= 0x01; /* Clear the interrupt by writing a 1 to it */
           /* Release this TD if it is isochronous */
           if(td[i].iso) sched_free(TYPE_TD, &td[i]);
         }
@@ -1077,13 +1084,12 @@ uhci_irq_handler (uint8 vec)
   /* clear the interrupt(s) */
   SET_USBSTS (usb_base, status);
 
-  uint64 v = IOAPIC_read64 (0x10 + (TMP_IRQ * 2));
-  DLOG ("IOAPIC (irq_line=0x%x) says %p %p",
+  v = IOAPIC_read64 (0x10 + (TMP_IRQ * 2));
+  DLOG ("(2) IOAPIC (irq_line=0x%x) says %p %p",
         TMP_IRQ, (uint32) (v >> 32), (uint32) v);
 
   /* unmask it */
-  IOAPIC_map_GSI (TMP_IRQ,
-                  UHCI_VECTOR, 0x0100000000008800LL);
+  //IOAPIC_map_GSI (TMP_IRQ, UHCI_VECTOR, IOAPIC_FLAGS);
 
   return 0;
 }
