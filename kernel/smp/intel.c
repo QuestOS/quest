@@ -16,7 +16,7 @@
  */
 
 /* Based on:
- * http://www.uruk.org/mps/, http://www.osdev.org/, http://www.osdever.net/ 
+ * http://www.uruk.org/mps/, http://www.osdev.org/, http://www.osdever.net/
  * and the Intel Multiprocessing Specification v1.4.
  */
 #include "arch/i386.h"
@@ -26,6 +26,7 @@
 #include "smp/intel_mps.h"
 #include "smp/apic.h"
 #include "smp/spinlock.h"
+#include "drivers/pci/pci.h"
 #include "util/printf.h"
 
 static int process_mp_fp (struct mp_fp *);
@@ -58,7 +59,7 @@ uint32
 intel_mps_init(void)
 {
   struct mp_fp *ptr;
-  
+
   if ((ptr = probe_mp_fp (0x9F800, 0xA0000)));
   else if ((ptr = probe_mp_fp (0x0040E, 0x0140E)));
   else if ((ptr = probe_mp_fp (0xE0000, 0xFFFFF)));
@@ -247,7 +248,9 @@ process_mp_config (struct mp_config *cfg)
          entry->IO_int.dest_APIC_id, entry->IO_int.dest_APIC_intin);
 
       if (entry->IO_int.source_bus_irq != entry->IO_int.dest_APIC_intin
-          && entry->IO_int.int_type == 0) {
+          && entry->IO_int.int_type == 0
+          /* overriding only applies to ISA IRQs */
+          && entry->IO_int.source_bus_id == mp_ISA_bus_id) {
         /* not sure if this is the right condition */
         if (mp_num_overrides == MAX_INT_OVERRIDES)
           panic ("Too many interrupt overrides.");
@@ -257,6 +260,30 @@ process_mp_config (struct mp_config *cfg)
           IOAPIC_lookup (entry->IO_int.dest_APIC_id)->startGSI +
           entry->IO_int.dest_APIC_intin;
         mp_num_overrides++;
+      }
+      if (entry->IO_int.source_bus_id != mp_ISA_bus_id) {
+        /* assume it's PCI */
+        pci_irq_t irq;
+        irq.bus = entry->IO_int.source_bus_id;
+        /* Section D.3:
+         *   SOURCE BUS IRQ bits 0-1 are PCI PIN (counting from 0)
+         *   SOURCE BUS IRQ bits 2-6 are PCI Device Number */
+        irq.pin = (entry->IO_int.source_bus_irq & 0x03) + 1;
+        irq.dev = (entry->IO_int.source_bus_irq & 0x7C) >> 2;
+        irq.gsi =
+          IOAPIC_lookup (entry->IO_int.dest_APIC_id)->startGSI +
+          entry->IO_int.dest_APIC_intin;
+        switch (entry->IO_int.flags & 0x3) {
+        case 0: irq.polarity = POLARITY_DEFAULT; break;
+        case 1: irq.polarity = POLARITY_HIGH; break;
+        case 3: irq.polarity = POLARITY_LOW; break;
+        }
+        switch ((entry->IO_int.flags & 0xC) >> 2) {
+        case 0: irq.trigger = TRIGGER_DEFAULT; break;
+        case 1: irq.trigger = TRIGGER_EDGE; break;
+        case 3: irq.trigger = TRIGGER_LEVEL; break;
+        }
+        pci_irq_register (&irq);
       }
       ptr += sizeof (struct mp_config_interrupt_entry);
       break;
@@ -307,13 +334,13 @@ add_processor (struct mp_config_processor_entry *proc)
 
 /* End Intel Multiprocessing Specification implementation */
 
-/* 
+/*
  * Local Variables:
  * indent-tabs-mode: nil
  * mode: C
  * c-file-style: "gnu"
  * c-basic-offset: 2
- * End: 
+ * End:
  */
 
 /* vi: set et sw=2 sts=2: */

@@ -63,6 +63,37 @@
 #define         IOAPIC_VER                      1
 #define         IOAPIC_REDIR                    0x10
 
+/* Delivery Mode Masks */
+typedef enum {
+  IOAPIC_DELIVERY_FIXED=                   0x000,
+  IOAPIC_DELIVERY_LOWEST_PRIORITY=         0x100,
+  /* the next 4 are likely unsupported: */      
+  IOAPIC_DELIVERY_SMI=                     0x200,
+  IOAPIC_DELIVERY_NMI=                     0x400,
+  IOAPIC_DELIVERY_INIT=                    0x500,
+  IOAPIC_DELIVERY_EXTINT=                  0x700
+} IOAPIC_delivery_mode_t;
+
+/* Destination Mode Masks */
+typedef enum {
+  IOAPIC_DESTINATION_PHYSICAL=             0x000,
+  IOAPIC_DESTINATION_LOGICAL=              0x800
+} IOAPIC_destination_mode_t;
+
+/* Trigger Mode Masks */
+typedef enum {
+  IOAPIC_TRIGGER_EDGE=                     0x0000,
+  IOAPIC_TRIGGER_LEVEL=                    0x8000
+} IOAPIC_trigger_mode_t;
+
+/* Polarity Mode Masks */
+typedef enum {
+  IOAPIC_POLARITY_HIGH=                    0x0000,
+  IOAPIC_POLARITY_LOW=                     0x2000
+} IOAPIC_polarity_mode_t;
+
+/* Local APIC */
+
 #define LAPIC_ID                                0x20
 #define LAPIC_VER                               0x30
 #define LAPIC_TPR                               0x80

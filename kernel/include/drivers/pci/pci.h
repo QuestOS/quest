@@ -19,6 +19,7 @@
 #define _PCI_H_
 
 #include "arch/i386.h"
+#include "smp/apic.h"
 #include "types.h"
 
 /* ************************************************** */
@@ -85,6 +86,52 @@ bool pci_get_interrupt (uint index, uint* line, uint* pin);
 
 /* Fill a pci_device struct given a valid device index. */
 bool pci_get_device (uint index, pci_device* dev);
+
+/* ************************************************** */
+
+/* PCI IRQ routing interface */
+
+/* IRQ polarity */
+enum {
+  POLARITY_DEFAULT=0,
+  POLARITY_HIGH,
+  POLARITY_LOW
+};
+
+/* IRQ trigger mode */
+enum {
+  TRIGGER_DEFAULT=0,
+  TRIGGER_EDGE,
+  TRIGGER_LEVEL
+};
+
+/* Enumerate pins from 1, as PCI config does. */
+enum {
+  PCI_PIN_A=1,
+  PCI_PIN_B,
+  PCI_PIN_C,
+  PCI_PIN_D
+};
+
+#define PCI_DEFAULT_POLARITY POLARITY_LOW
+#define PCI_DEFAULT_TRIGGER  TRIGGER_LEVEL
+
+/* PCI IRQ table entry */
+typedef struct {
+  uint8 bus;
+  uint8 dev:5;
+  uint8 pin:3;
+  uint8 gsi;
+  uint8 trigger:4;
+  uint8 polarity:4;
+} pci_irq_t;
+
+extern void pci_irq_register (pci_irq_t *irq);
+extern bool pci_irq_find (uint8 bus, uint8 dev, uint8 pin, pci_irq_t *irq_out);
+extern bool pci_irq_map (pci_irq_t *irq, uint8 vector,
+                         uint8 destmask,
+                         IOAPIC_destination_mode_t destmode,
+                         IOAPIC_delivery_mode_t delivmode);
 
 /* ************************************************** */
 

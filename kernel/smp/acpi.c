@@ -21,6 +21,7 @@
 #include "smp/smp.h"
 #include "smp/apic.h"
 #include "smp/spinlock.h"
+#include "drivers/pci/pci.h"
 #include "drivers/acpi/acpi.h"
 #include "drivers/acpi/acmacros.h"
 #include "drivers/acpi/acexcep.h"
@@ -45,7 +46,7 @@ static int acpi_add_processor (ACPI_MADT_LOCAL_APIC *);
 #define ACPI_MAX_INIT_TABLES 16
 static ACPI_TABLE_DESC TableArray[ACPI_MAX_INIT_TABLES];
 
-uint32 
+uint32
 acpi_early_init(void)
 {
   return process_acpi_tables ();
@@ -277,6 +278,31 @@ acpi_add_processor (ACPI_MADT_LOCAL_APIC * ptr)
 extern char const *AcpiGbl_ExceptionNames_Env[];
 
 ACPI_STATUS
+GetLnkIrq (ACPI_RESOURCE *Resource, void *Context)
+{
+  pci_irq_t *irq = (pci_irq_t *)Context;
+  if (Resource->Type == ACPI_RESOURCE_TYPE_IRQ) {
+    irq->gsi = Resource->Data.Irq.Interrupts[0];
+    irq->trigger = Resource->Data.Irq.Triggering;
+    irq->polarity = Resource->Data.Irq.Polarity;
+    return AE_CTRL_TERMINATE;
+  }
+  return AE_OK;
+}
+
+void
+GetLnkInfo (char *lnkname, pci_irq_t *irq)
+{
+  ACPI_HANDLE Handle;
+  ACPI_STATUS Status;
+
+  Status = AcpiGetHandle (NULL, lnkname, &Handle);
+  if (ACPI_SUCCESS (Status)) {
+    AcpiWalkResources (Handle, "_CRS", GetLnkIrq, (void *) irq);
+  }
+}
+
+ACPI_STATUS
 DisplayOneDevice (ACPI_HANDLE ObjHandle, UINT32 Level, void *Context,
                   void **RetVal)
 {
@@ -289,6 +315,8 @@ DisplayOneDevice (ACPI_HANDLE ObjHandle, UINT32 Level, void *Context,
   uint8 prt_buf[1024];
   ACPI_BUFFER Prt = { .Length = sizeof (prt_buf), .Pointer = prt_buf };
   ACPI_PCI_ROUTING_TABLE *prtd;
+  uint32 addr=0;
+  bool pcibus=FALSE;
 
   Path.Length = sizeof (Buffer);
   Path.Pointer = Buffer;
@@ -300,10 +328,16 @@ DisplayOneDevice (ACPI_HANDLE ObjHandle, UINT32 Level, void *Context,
   Status = AcpiGetObjectInfo (ObjHandle, &Info);
   if (ACPI_SUCCESS (Status)) {
     com1_printf ("    ");
+    if (Info->Flags & ACPI_PCI_ROOT_BRIDGE) {
+      com1_printf (" PCI_ROOT");
+      pcibus = TRUE;
+    }
     if (Info->Valid & ACPI_VALID_STA)
       com1_printf (" STA %.8X", Info->CurrentStatus);
-    if (Info->Valid & ACPI_VALID_ADR)
+    if (Info->Valid & ACPI_VALID_ADR) {
       com1_printf (" ADR %.8X", Info->Address);
+      addr = Info->Address;
+    }
     if (Info->Valid & ACPI_VALID_HID)
       com1_printf (" HID %s", Info->HardwareId.String);
     if (Info->Valid & ACPI_VALID_UID)
@@ -341,6 +375,14 @@ DisplayOneDevice (ACPI_HANDLE ObjHandle, UINT32 Level, void *Context,
     com1_printf (" MLS=%s", Obj.String.Pointer);
   }
 
+  Status =
+    AcpiEvaluateObjectTyped (ObjHandle, "_BBN", NULL, &Result,
+                             ACPI_TYPE_INTEGER);
+  if (ACPI_SUCCESS (Status)) {
+    com1_printf (" BBN=%x", Obj.Integer.Value);
+  }
+
+
   com1_printf ("\n");
 
 
@@ -356,8 +398,18 @@ DisplayOneDevice (ACPI_HANDLE ObjHandle, UINT32 Level, void *Context,
   if (ACPI_SUCCESS (Status)) {
     int i;
     for (i=0;i<sizeof(prt_buf);) {
+      pci_irq_t irq;
       prtd = (ACPI_PCI_ROUTING_TABLE *)(&prt_buf[i]);
       if (prtd->Length == 0) break;
+
+      /* only support bus==0 for now */
+      if (addr == 0 && pcibus) {
+        irq.bus = 0;
+        irq.dev = (uint32) ((prtd->Address >> 16) & 0xFF);
+        irq.pin = prtd->Pin + 1; /* ACPI numbers pins from 0 */
+        irq.gsi = 0;
+      }
+
       if (prtd->Source[0]) {
         com1_printf ("  PRT entry: len=%d pin=%d addr=%p srcidx=0x%x src=%s\n",
                      prtd->Length,
@@ -365,13 +417,20 @@ DisplayOneDevice (ACPI_HANDLE ObjHandle, UINT32 Level, void *Context,
                      (uint32)prtd->Address,
                      prtd->SourceIndex,
                      &prtd->Source[0]);
+        GetLnkInfo (&prtd->Source[0], &irq);
       } else {
         com1_printf ("  PRT entry: len=%d pin=%d addr=%p fixed IRQ=0x%x\n",
                      prtd->Length,
                      prtd->Pin,
                      (uint32)prtd->Address,
                      prtd->SourceIndex);
+        irq.gsi = prtd->SourceIndex;
+        irq.polarity = POLARITY_DEFAULT;
+        irq.trigger = TRIGGER_DEFAULT;
       }
+
+      if (addr == 0 && pcibus && irq.gsi != 0)
+        pci_irq_register (&irq);
       i+=prtd->Length;
     }
   }
@@ -386,7 +445,7 @@ DisplayOneDevice (ACPI_HANDLE ObjHandle, UINT32 Level, void *Context,
   return AE_OK;
 }
 
-ACPI_STATUS 
+ACPI_STATUS
 DisplayResource (ACPI_RESOURCE *Resource, void *Context)
 {
   int i;
@@ -403,8 +462,30 @@ DisplayResource (ACPI_RESOURCE *Resource, void *Context)
       com1_printf ("%.02X ", Resource->Data.Irq.Interrupts[i]);
     com1_printf ("\n");
     break;
+  case ACPI_RESOURCE_TYPE_IO:
+    com1_printf ("IO decode=0x%x align=0x%x addrlen=%d min=0x%.04X max=0x%.04X\n",
+                 Resource->Data.Io.IoDecode,
+                 Resource->Data.Io.Alignment,
+                 Resource->Data.Io.AddressLength,
+                 Resource->Data.Io.Minimum,
+                 Resource->Data.Io.Maximum);
+    break;
   case ACPI_RESOURCE_TYPE_END_TAG:
     com1_printf ("end_tag\n");
+    break;
+  case ACPI_RESOURCE_TYPE_ADDRESS16:
+    com1_printf ("ADDR16 type=%d min=0x%.04X max=0x%.04X gran=0x%.04X trans=0x%.04X\n",
+                 Resource->Data.Address16.ResourceType,
+                 Resource->Data.Address16.Minimum,
+                 Resource->Data.Address16.Maximum,
+                 Resource->Data.Address16.Granularity,
+                 Resource->Data.Address16.TranslationOffset);
+    break;
+  case ACPI_RESOURCE_TYPE_ADDRESS32:
+    com1_printf ("ADDR32 type=%d min=0x%.04X max=0x%.04X\n",
+                 Resource->Data.Address32.ResourceType,
+                 Resource->Data.Address32.Minimum,
+                 Resource->Data.Address32.Maximum);
     break;
   default:
     com1_printf ("unhandled\n");
@@ -417,13 +498,13 @@ DisplayResource (ACPI_RESOURCE *Resource, void *Context)
 /* End ACPI support */
 
 
-/* 
+/*
  * Local Variables:
  * indent-tabs-mode: nil
  * mode: C
  * c-file-style: "gnu"
  * c-basic-offset: 2
- * End: 
+ * End:
  */
 
 /* vi: set et sw=2 sts=2: */

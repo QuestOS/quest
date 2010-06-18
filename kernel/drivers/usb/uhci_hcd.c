@@ -530,12 +530,14 @@ usb_register_driver (USB_DRIVER *driver)
   return TRUE;
 }
 
+static uint irq_line;
 
 int
 uhci_init (void)
 {
-  uint i, device_index, irq_pin, irq_line;
+  uint i, device_index, irq_pin;
   pci_device uhci_device;
+  pci_irq_t irq;
 
   memset (toggles, 0, sizeof (toggles));
 
@@ -578,13 +580,22 @@ uhci_init (void)
     return FALSE;
   }
 
-  DLOG ("Using IRQ line=%X pin=%X", irq_line, irq_pin);
+  DLOG ("Using IRQ pin=%X", irq_pin);
 
 #define UHCI_VECTOR 0x50
-#define TMP_IRQ 0x15
+  if (pci_irq_find (bus, dev, irq_pin, &irq)) {
+    /* use PCI routing table */
+    DLOG ("Found PCI routing entry irq.gsi=0x%x", irq.gsi);
+    pci_irq_map (&irq, UHCI_VECTOR, 0x01,
+                 IOAPIC_DESTINATION_LOGICAL, IOAPIC_DELIVERY_FIXED);
+    irq_line = irq.gsi;
+  } else {
 #define IOAPIC_FLAGS 0x010000000000A800LL
-  IOAPIC_map_GSI (TMP_IRQ,
-                  UHCI_VECTOR, IOAPIC_FLAGS);
+    /* assume irq_line is correct */
+    DLOG ("Falling back to PCI config space INT_LN=0x%x", irq_line);
+    IOAPIC_map_GSI (irq_line, UHCI_VECTOR, IOAPIC_FLAGS);
+  }
+
   set_vector_handler (UHCI_VECTOR, uhci_irq_handler);
 
 
@@ -993,12 +1004,12 @@ uhci_get_interface (uint8_t addr, uint16_t interface, uint8_t packet_size)
 static uint32
 uhci_irq_handler (uint8 vec)
 {
-  uint64 v = IOAPIC_read64 (0x10 + (TMP_IRQ * 2));
+  uint64 v = IOAPIC_read64 (0x10 + (irq_line * 2));
   DLOG ("(1) IOAPIC (irq_line=0x%x) says %p %p",
-        TMP_IRQ, (uint32) (v >> 32), (uint32) v);
+        irq_line, (uint32) (v >> 32), (uint32) v);
 
   /* mask it */
-  //IOAPIC_map_GSI (TMP_IRQ, UHCI_VECTOR, IOAPIC_FLAGS | 0x10000);
+  //IOAPIC_map_GSI (irq_line, UHCI_VECTOR, IOAPIC_FLAGS | 0x10000);
 
   /* Check the source of the interrupt received */
   uint16_t status = 0;
@@ -1084,12 +1095,12 @@ uhci_irq_handler (uint8 vec)
   /* clear the interrupt(s) */
   SET_USBSTS (usb_base, status);
 
-  v = IOAPIC_read64 (0x10 + (TMP_IRQ * 2));
+  v = IOAPIC_read64 (0x10 + (irq_line * 2));
   DLOG ("(2) IOAPIC (irq_line=0x%x) says %p %p",
-        TMP_IRQ, (uint32) (v >> 32), (uint32) v);
+        irq_line, (uint32) (v >> 32), (uint32) v);
 
   /* unmask it */
-  //IOAPIC_map_GSI (TMP_IRQ, UHCI_VECTOR, IOAPIC_FLAGS);
+  //IOAPIC_map_GSI (irq_line, UHCI_VECTOR, IOAPIC_FLAGS);
 
   return 0;
 }
