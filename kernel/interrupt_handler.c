@@ -935,6 +935,12 @@ _timer (void)
       }
     }      
 #endif
+#if 0
+    {
+      void umsc_tmr_test (void);
+      umsc_tmr_test ();
+    }
+#endif
   }
 
   if (!mp_ISA_PC)

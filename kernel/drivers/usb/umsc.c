@@ -117,6 +117,8 @@ umsc_bulk_scsi (uint addr, uint ep_out, uint ep_in,
   return status;
 }
 
+static uint testaddr, testepout, testepin;
+
 static bool
 umsc_probe (USB_DEVICE_INFO *info, USB_CFG_DESC *cfgd, USB_IF_DESC *ifd)
 {
@@ -151,6 +153,9 @@ umsc_probe (USB_DEVICE_INFO *info, USB_CFG_DESC *cfgd, USB_IF_DESC *ifd)
   usb_set_configuration (info, cfgd->bConfigurationValue);
   delay (50);
 
+  testaddr = addr;
+  testepin = ep_in;
+  testepout = ep_out;
 
   {
     uint8 cmd[16] = {0x12,0,0,0,0x24,0,0,0,0,0,0,0};
@@ -214,6 +219,26 @@ extern bool
 usb_mass_storage_driver_init (void)
 {
   return usb_register_driver (&umsc_driver);
+}
+
+extern void
+umsc_tmr_test (void)
+{
+  void uhci_show_regs (void);
+  uint8 conf[16];
+  uint addr = testaddr, ep_out = testepout, ep_in = testepin, maxpkt=64;
+  uint last_lba, sector_size;
+  {
+    uint8 cmd[16] = {0x25,0,0,0,0,0,0,0,0,0,0,0};
+    DLOG ("SENDING READ CAPACITY");
+    umsc_bulk_scsi (addr, ep_out, ep_in, cmd, 1, conf, 0x8, maxpkt);
+    last_lba = conf[3] | conf[2] << 8 | conf[1] << 16 | conf[0] << 24;
+    sector_size = conf[7] | conf[6] << 8 | conf[5] << 16 | conf[4] << 24;
+    DLOG ("sector_size=0x%x last_lba=0x%x total_size=%d bytes",
+            sector_size, last_lba, sector_size * (last_lba + 1));
+  }
+
+  uhci_show_regs ();
 }
 
 
