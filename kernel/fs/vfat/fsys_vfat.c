@@ -43,11 +43,14 @@
 #include "types.h"
 
 #define UMSC_DEVICE_INDEX 0
+#define VFAT_FIRST_PARTITION 63
+
 static int
 devread_vfat (int sector, int byte_offset, int byte_len, char *buf)
 {
   uint8 s[512];
   int len = byte_len;
+  sector+=VFAT_FIRST_PARTITION; /* offset into the first partition */
   com1_printf ("fsys_vfat: devread_vfat (%d, %d, %d, %p)\n",
                sector, byte_offset, byte_len, buf);
   while (len > 0) {
