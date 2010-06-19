@@ -493,7 +493,7 @@ vfat_dir (char *dirname)
       if (attrib & FAT_ATTRIB_DIR)
         {
           errnum = ERR_BAD_FILETYPE;
-          return 0;
+          return -1;
         }
 
       return filemax;
@@ -507,7 +507,7 @@ vfat_dir (char *dirname)
   if (!(attrib & FAT_ATTRIB_DIR))
     {
       errnum = ERR_BAD_FILETYPE;
-      return 0;
+      return -1;
     }
   /* Directories don't have a file size */
   filemax = MAXINT;
@@ -527,7 +527,7 @@ vfat_dir (char *dirname)
               *rest = ch;
             }
 
-          return 0;
+          return -1;
         }
 
       if (FAT_DIRENTRY_ATTRIB (dir_buf) == FAT_ATTRIB_LONGNAME)
