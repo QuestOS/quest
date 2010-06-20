@@ -920,6 +920,7 @@ _timer (void)
 {
   extern volatile bool mp_enabled;
   extern bool mp_ISA_PC;
+  void net_tmr_process (void);
 
 #ifdef DEBUG_PIT
   com1_printf ("tick: %u\n", tick);
@@ -932,9 +933,16 @@ _timer (void)
   send_eoi ();
 
   if (mp_enabled) {
+    lock_kernel ();
+
+    /* check sleeping processes */
+    process_sleepqueue ();
+
     /* run lwip timer process */
-    void net_tmr_process (void);
     net_tmr_process ();
+
+    unlock_kernel ();
+
 #ifdef GDBSTUB_TCP
     { 
       extern bool break_requested; 

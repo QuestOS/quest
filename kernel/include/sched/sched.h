@@ -27,16 +27,18 @@ extern void schedule (void);
 extern void wakeup (uint16);
 extern void wakeup_queue (uint16 *);
 
+extern void sched_usleep (uint32);
+extern void process_sleepqueue (void);
 
 #endif
 
-/* 
+/*
  * Local Variables:
  * indent-tabs-mode: nil
  * mode: C
  * c-file-style: "gnu"
  * c-basic-offset: 2
- * End: 
+ * End:
  */
 
 /* vi: set et sw=2 sts=2: */

@@ -36,7 +36,7 @@
 #define pci_config_wr32(bus, slot, func, reg, val) \
   pci_write_dword (pci_addr (bus, slot, func, reg), val)
 
-#define delay(x) tsc_delay_usec (x*1000)
+#define delay(x) sched_usleep (x*1000)
 
 #define USB_MAX_LEN       0x3FE
 #define USB_NULL_PACKET   0x7FF

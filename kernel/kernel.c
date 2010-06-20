@@ -177,39 +177,13 @@ set_idt_descriptor (uint8 n, idt_descriptor * d)
   ptr[n] = *d;
 }
 
-/* Spin for a given amount of microsec. */
-void
-tsc_delay_usec (uint32 usec)
-{
-  extern uint64 tsc_freq;
-  uint64 f;
-  uint32 ticks, f_hi, f_lo;
-  uint64 start, value, finish;
-  uint32 divisor = 1000000;
-
-  f = tsc_freq * usec;
-  f_hi = (uint32) (f >> 32);
-  f_lo = (uint32) (f & 0xFFFFFFFF);
-  asm volatile ("div %1":"=a" (ticks):"r" (divisor), "a" (f_lo), "d" (f_hi));
-
-  RDTSC (start);
-
-  finish = start + ticks;
-  for (;;) {
-    RDTSC (value);
-    if (value >= finish)
-      break;
-    asm volatile ("pause");
-  }
-}
-
-/* 
+/*
  * Local Variables:
  * indent-tabs-mode: nil
  * mode: C
  * c-file-style: "gnu"
  * c-basic-offset: 2
- * End: 
+ * End:
  */
 
 /* vi: set et sw=2 sts=2: */

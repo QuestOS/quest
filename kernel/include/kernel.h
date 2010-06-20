@@ -79,6 +79,9 @@ typedef struct _quest_tss
   bool busy;                    /* mutex for server: when busy, clients must add themselves to
                                    waitqueue above */
   uint32 priority;
+  uint64 time;                  /* A field for time values associated
+                                   with task, for example, to be used
+                                   by waitqueue managers. */
 } quest_tss;
 
 extern char *kernel_version;
