@@ -57,6 +57,8 @@ uint32 td_phys;
 /* Physical-to-Virtual */
 #define TD_P2V(ty,p) ((ty)((((uint) (p)) - td_phys)+((uint) td)))
 
+static task_id uhci_waitq = 0;  /* Tasks waiting for IRQ */
+
 /*
  * This is non-reentrant! Fortunately, we do not have concurrency yet:-)
  * This function returns the available Queue Head or Transfer Descriptor.
@@ -287,6 +289,12 @@ check_tds (UHCI_TD * tx_tds)
     UHCI_TD *tds = tx_tds;
     status_count = 0;
 
+    /* wait for IRQ if interrupts enabled */
+    if (mp_enabled) {
+      queue_append (&uhci_waitq, str ());
+      schedule ();
+    }
+
     while (tds != TD_P2V (UHCI_TD *, 0)) {
       if (tds->status & 0x80) {
         status_count++;
@@ -311,8 +319,6 @@ check_tds (UHCI_TD * tx_tds)
       tds = TD_P2V (UHCI_TD *, tds->link_ptr & 0xFFFFFFF0);
     }
   }
-
-  delay (10);                   // --??-- Let's wait a little while here. It might be a source of timing bugs
 
   return status;
 }
@@ -998,7 +1004,12 @@ uhci_get_interface (uint8_t addr, uint16_t interface, uint8_t packet_size)
 static uint32
 uhci_irq_handler (uint8 vec)
 {
-  uint64 v = IOAPIC_read64 (0x10 + (irq_line * 2));
+  uint64 v;
+  uint16 status;
+
+  lock_kernel ();
+
+  v = IOAPIC_read64 (0x10 + (irq_line * 2));
   DLOG ("(1) IOAPIC (irq_line=0x%x) says %p %p",
         irq_line, (uint32) (v >> 32), (uint32) v);
 
@@ -1006,7 +1017,7 @@ uhci_irq_handler (uint8 vec)
   //IOAPIC_map_GSI (irq_line, UHCI_VECTOR, IOAPIC_FLAGS | 0x10000);
 
   /* Check the source of the interrupt received */
-  uint16_t status = 0;
+  status = 0;
   status = GET_USBSTS(usb_base);
 
   DLOG ("An interrupt is caught from usb IRQ_LN! (USBSTS=0x%x PCISTS=0x%x)",
@@ -1046,6 +1057,9 @@ uhci_irq_handler (uint8 vec)
     /* USB Error Interrupt */
     DLOG("USB Error Interrupt detected!");
     status |= 0x02; /* Clear the interrupt by writing a 1 to it */
+
+    /* wake-up any waiting threads */
+    wakeup_queue (&uhci_waitq);
   }
 
   if(status & 0x01) {
@@ -1056,6 +1070,9 @@ uhci_irq_handler (uint8 vec)
      * to decide what exactly happened.
      */
     status |= 0x01; /* Clear the interrupt by writing a 1 to it */
+
+    /* wake-up any waiting threads */
+    wakeup_queue (&uhci_waitq);
 
 #if 0
     int i;
@@ -1095,6 +1112,8 @@ uhci_irq_handler (uint8 vec)
 
   /* unmask it */
   //IOAPIC_map_GSI (irq_line, UHCI_VECTOR, IOAPIC_FLAGS);
+
+  unlock_kernel ();
 
   return 0;
 }
