@@ -30,6 +30,75 @@
 #endif
 
 int
+usb_control_transfer(
+    USB_DEVICE_INFO * dev,
+    addr_t setup_req,
+    uint16_t req_len,
+    addr_t data,
+    uint16_t data_len)
+{
+  switch (dev->host_type)
+  {
+    case TYPE_HC_UHCI :
+      if ((dev->devd).bMaxPacketSize0 == 0) {
+        DLOG("USB_DEVICE_INFO is probably not initialized!");
+        return -1;
+      } else {
+        return uhci_control_transfer(dev->address, setup_req,
+            req_len, data, data_len, (dev->devd).bMaxPacketSize0);
+      }
+
+    case TYPE_HC_EHCI :
+      DLOG("EHCI Host Controller is not supported now!");
+      return -1;
+
+    case TYPE_HC_OHCI :
+      DLOG("OHCI Host Controller is not supported now!");
+      return -1;
+
+    default :
+      DLOG("Unknown Host Controller request!");
+      return -1;
+  }
+  return -1;
+}
+
+int
+usb_bulk_transfer(
+    USB_DEVICE_INFO * dev,
+    uint8_t endp,
+    addr_t data,
+    uint16_t len,
+    uint8_t packet_len,
+    uint8_t dir)
+{
+  switch (dev->host_type)
+  {
+    case TYPE_HC_UHCI :
+      if ((dev->devd).bMaxPacketSize0 == 0) {
+        DLOG("USB_DEVICE_INFO is probably not initialized!");
+        return -1;
+      } else {
+        return uhci_bulk_transfer(dev->address, endp, data,
+            len, packet_len, dir);
+      }
+
+    case TYPE_HC_EHCI :
+      DLOG("EHCI Host Controller is not supported now!");
+      return -1;
+
+    case TYPE_HC_OHCI :
+      DLOG("OHCI Host Controller is not supported now!");
+      return -1;
+
+    default :
+      DLOG("Unknown Host Controller request!");
+      return -1;
+  }
+  return -1;
+}
+
+int
 usb_get_descriptor (
     USB_DEVICE_INFO * dev,
     uint16_t dtype,

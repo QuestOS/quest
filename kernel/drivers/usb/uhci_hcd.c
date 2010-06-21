@@ -429,12 +429,14 @@ uhci_enumerate (void)
   info->address = 0;
   info->host_type = TYPE_HC_UHCI;
 
-  /* Assume this is a low speed device for safety. We will use
-   * the maximum packet size for low speed control transfer, which
-   * is 8 bytes. This procedure will probably be shifted to the
-   * USB core in the future. 
+  /* OK, here is the deal. The spec says you should use the maximum
+   * packet size in the data phase of control transfer if the data
+   * is larger than one packet. Since we do not want to support low
+   * speed device for now, the bMaxPacketSize0 is always set to 64
+   * bytes for full speed device. So, do not be surprised if your USB
+   * mouse does not work in Quest!
    */
-  (info->devd).bMaxPacketSize0 = 8;
+  (info->devd).bMaxPacketSize0 = 64;
 
   /* get device descriptor */
   status =
@@ -1061,10 +1063,10 @@ uhci_irq_handler (uint8 vec)
      * We need to visit the whole schedule for now
      * to decide what exactly happened.
      */
-    int i;
     status |= 0x01; /* Clear the interrupt by writing a 1 to it */
 
 #if 0
+    int i;
     for(i = 0; i < TD_POOL_SIZE; i++) {
       if(td[i].link_ptr && !(td[i].status & 0x80)) {
         /* Is this an IOC? */
