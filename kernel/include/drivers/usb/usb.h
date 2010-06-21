@@ -170,6 +170,23 @@ struct usb_ept_desc
 
 typedef struct usb_ept_desc USB_EPT_DESC;
 
+/* 
+ * USB_STR_DESC: Standard String Descriptor
+ *
+ * Reference :
+ *     Universal Serial Bus Specification
+ *     Revision 1.1, Page 205
+ */
+
+struct usb_str_desc
+{
+  uint8_t bLength;
+  uint8_t bDescriptorType;
+  uint8_t bString[];
+} PACKED;
+
+typedef struct usb_str_desc USB_STR_DESC;
+
 /* ************************************************** */
 
 typedef struct
