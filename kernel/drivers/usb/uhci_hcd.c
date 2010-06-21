@@ -31,14 +31,6 @@
 #define DLOG(fmt,...) ;
 #endif
 
-/* List of compatible cards (ended by { 0xFFFF, 0xFFFF }) */
-static struct { uint16 vendor, device; } compatible_ids[] = {
-  { 0x8086, 0x27C8 },           /* Intel ICH7 Family UHCI */
-  { 0x8086, 0x2934 },           /* Intel ICH9 Family UHCI */
-  { 0x8086, 0x7020 },           /* Intel PIIX3 USB controller */
-  { 0xFFFF, 0xFFFF }
-};
-
 static int bus;                 /* set by PCI probing in uhci_init */
 static int dev;
 static int func;
