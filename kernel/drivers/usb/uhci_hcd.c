@@ -425,7 +425,7 @@ uhci_enumerate (void)
   info = &devinfo[curdev];
   memset (info, 0, sizeof (USB_DEVICE_INFO));
   info->address = 0;
-  info->host_type = TYPE_HC_UHCI;
+  info->host_type = USB_TYPE_HC_UHCI;
 
   /* OK, here is the deal. The spec says you should use the maximum
    * packet size in the data phase of control transfer if the data
@@ -438,7 +438,7 @@ uhci_enumerate (void)
 
   /* get device descriptor */
   status =
-    usb_get_descriptor (info, TYPE_DEV_DESC, 0, 0, sizeof (USB_DEV_DESC), &devd);
+    usb_get_descriptor (info, USB_TYPE_DEV_DESC, 0, 0, sizeof (USB_DEV_DESC), &devd);
   if (status != 0)
     goto abort;
 
@@ -460,7 +460,7 @@ uhci_enumerate (void)
     /* get a config descriptor for size field */
     memset (temp, 0, TEMPSZ);
     status =
-      usb_get_descriptor (info, TYPE_CFG_DESC, c, 0, sizeof (USB_CFG_DESC), temp);
+      usb_get_descriptor (info, USB_TYPE_CFG_DESC, c, 0, sizeof (USB_CFG_DESC), temp);
     if (status != 0) {
       DLOG ("uhci_enumerate: failed to get config descriptor for c=%d", c);
       goto abort;
@@ -483,10 +483,23 @@ uhci_enumerate (void)
   /* read all cfg, if, and endpoint descriptors */
   ptr = info->raw;
   for (c=0; c<devd.bNumConfigurations; c++) {
+    /* obtain precise size info */
+    memset (temp, 0, TEMPSZ);
+    status = usb_get_descriptor (info, USB_TYPE_CFG_DESC, c, 0, 
+                                 sizeof (USB_CFG_DESC), temp);
+    if (status != 0) {
+      DLOG ("uhci_enumerate: failed to get config descriptor for c=%d", c);
+      goto abort_mem;
+    }
+    cfgd = (USB_CFG_DESC *)temp;
+
+    /* get cfg, if, and endp descriptors */
     status =
-      usb_get_descriptor (info, TYPE_CFG_DESC, c, 0, cfgd->wTotalLength, ptr);
+      usb_get_descriptor (info, USB_TYPE_CFG_DESC, c, 0, cfgd->wTotalLength, ptr);
     if (status != 0)
       goto abort_mem;
+
+    cfgd = (USB_CFG_DESC *)ptr;
     DLOG ("uhci_enumerate: cfg %d has num_if=%d", c, cfgd->bNumInterfaces);
     ptr += cfgd->wTotalLength;
   }
@@ -500,15 +513,25 @@ uhci_enumerate (void)
     cfgd = (USB_CFG_DESC *) ptr;
     ptr += cfgd->bLength;
     for (i=0; i<cfgd->bNumInterfaces; i++) {
-      ifd = (USB_IF_DESC *) ptr;
-      DLOG ("uhci_enumerate: examining (%d, %d) if_class=%X num_endp=%d",
-            c, i, ifd->bInterfaceClass, ifd->bNumEndpoints);
+      /* find the next if descriptor, skipping any class-specific stuff */
+      for (ifd = (USB_IF_DESC *) ptr;
+           ifd->bDescriptorType != USB_TYPE_IF_DESC;
+           ifd = (USB_IF_DESC *)((uint8 *)ifd + ifd->bLength)) {
+        //DLOG ("ifd=%p len=%d type=0x%x", ifd, ifd->bLength, ifd->bDescriptorType);
+      }
+      ptr = (uint8 *) ifd;
+      DLOG ("uhci_enumerate: examining (%d, %d) if_class=0x%X sub=0x%X proto=0x%X #endp=%d",
+            c, i, ifd->bInterfaceClass,
+            ifd->bInterfaceSubClass,
+            ifd->bInterfaceProtocol,
+            ifd->bNumEndpoints);
 
       /* find a device driver interested in this interface */
       find_device_driver (info, cfgd, ifd);
 
       ptr += ifd->bLength;
     }
+    ptr = ((uint8 *)cfgd) + cfgd->wTotalLength;
   }
 
   /* --??-- what happens if more than one driver matches more than one config? */
