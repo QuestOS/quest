@@ -229,12 +229,12 @@ void isochronous_transfer_test(void)
   USB_DEVICE_INFO dev;
   dev.address = 0;
   dev.devd.bMaxPacketSize0 = 64;
-  dev.host_type = TYPE_HC_UHCI;
+  dev.host_type = USB_TYPE_HC_UHCI;
 
   port_reset(0);
   port_reset(1);
 
-  usb_get_descriptor(&dev, TYPE_DEV_DESC, 0, 0, 18, (addr_t)data);
+  usb_get_descriptor(&dev, USB_TYPE_DEV_DESC, 0, 0, 18, (addr_t)data);
   desc = (USB_DEV_DESC*)data;
   print("The length of device descriptor is: 0x");
   putx(desc->bLength);
@@ -252,7 +252,7 @@ void isochronous_transfer_test(void)
   memset(data, 0, 20);
 
   print("Now, getting device descriptor again.\n");
-  usb_get_descriptor(&dev, TYPE_DEV_DESC, 0, 0, 18, (addr_t)data);
+  usb_get_descriptor(&dev, USB_TYPE_DEV_DESC, 0, 0, 18, (addr_t)data);
   desc = (USB_DEV_DESC*)data;
 
 #if 1
@@ -292,7 +292,7 @@ void isochronous_transfer_test(void)
   memset(data, 0, 20);
 
   print("Getting configuration descriptor.\n");
-  usb_get_descriptor(&dev, TYPE_CFG_DESC, 0, 0, 9, (addr_t)data);
+  usb_get_descriptor(&dev, USB_TYPE_CFG_DESC, 0, 0, 9, (addr_t)data);
   cfgd = (USB_CFG_DESC*)data;
 
 #if 1
@@ -326,7 +326,7 @@ void isochronous_transfer_test(void)
   memset(conf, 0, 1300);
 
   print("Getting all descriptors.\n");
-  usb_get_descriptor(&dev, TYPE_CFG_DESC, 0, 0, cfgd->wTotalLength, (addr_t)conf);
+  usb_get_descriptor(&dev, USB_TYPE_CFG_DESC, 0, 0, cfgd->wTotalLength, (addr_t)conf);
   iad = (UVC_IA_DESC*)(&conf[cfgd->bLength]);
 
 #if 1
@@ -430,7 +430,7 @@ void isochronous_transfer_test(void)
 #if 1
   memset(conf, 0, 1300);
 
-  int status = usb_get_descriptor(&dev, TYPE_CFG_DESC, 0, 0, 1000, (addr_t)conf);
+  int status = usb_get_descriptor(&dev, USB_TYPE_CFG_DESC, 0, 0, 1000, (addr_t)conf);
   print("Status Code : ");
   putx(status);
   putchar('\n');

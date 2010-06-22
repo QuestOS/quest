@@ -63,7 +63,7 @@ uvc_probe (USB_DEVICE_INFO *dev, USB_CFG_DESC *cfg, USB_IF_DESC *ifd)
   desc_dump (dev, cfg);
 #endif
 
-  if (usb_get_descriptor(dev, TYPE_SPD_CFG_DESC, 0, 0, 9, (addr_t)tmp)) {
+  if (usb_get_descriptor(dev, USB_TYPE_SPD_CFG_DESC, 0, 0, 9, (addr_t)tmp)) {
     DLOG("Other Speed Configuration is not presented.");
   } else {
     scfgd = (USB_SPD_CFG_DESC *)tmp;
@@ -177,7 +177,7 @@ desc_dump (USB_DEVICE_INFO *dev, USB_CFG_DESC *cfg)
   memset(conf, 0, 1300);
 
   print("Getting all descriptors.\n");
-  usb_get_descriptor(dev, TYPE_CFG_DESC, 0, 0, cfgd->wTotalLength, (addr_t)conf);
+  usb_get_descriptor(dev, USB_TYPE_CFG_DESC, 0, 0, cfgd->wTotalLength, (addr_t)conf);
   iad = (UVC_IA_DESC*)(&conf[cfgd->bLength]);
 
 #if 1
