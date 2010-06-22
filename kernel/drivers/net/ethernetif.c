@@ -565,11 +565,30 @@ getDebugChar (void)
 
 /* external init routine */
 
+static task_id net_tmr_pid;
+static uint32 net_tmr_stack[1024];
+
+#define NET_TMR_THREAD_WAIT_MSEC 50
+
+static void 
+net_tmr_thread (void)
+{
+  DLOG ("net_tmr_thread id=0x%x", str ());
+  for (;;) {
+    void net_tmr_process (void);
+    net_tmr_process ();
+    sched_usleep (NET_TMR_THREAD_WAIT_MSEC * 1000);
+  }
+}
+
 void
 net_init(void)
 {
   lwip_init ();
   echo_init ();
+
+  net_tmr_pid = start_kernel_thread ((uint) net_tmr_thread,
+                                     (uint) &net_tmr_stack[1023]);
 #ifdef GDBSTUB_TCP
   {
     struct tcp_pcb* debug_pcb = tcp_new ();

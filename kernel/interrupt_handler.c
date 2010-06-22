@@ -938,9 +938,6 @@ _timer (void)
     /* check sleeping processes */
     process_sleepqueue ();
 
-    /* run lwip timer process */
-    net_tmr_process ();
-
     unlock_kernel ();
 
 #ifdef GDBSTUB_TCP
