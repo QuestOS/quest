@@ -142,10 +142,8 @@ free_tds (UHCI_TD * tds, int len)
       end++;
     }
 
-    if ((tds->status & 0x80) == 0) {
-      sched_free (TYPE_TD, tds);
-      count++;
-    }
+    sched_free (TYPE_TD, tds);
+    count++;
 
     if (end)
       break;
@@ -279,11 +277,13 @@ debug_dump_sched (UHCI_TD * tx_tds)
   }
 }
 
+uint32 check_tds_len;
 static int
 check_tds (UHCI_TD * tx_tds)
 {
   int status_count = 1;
   int status = 0;
+  int len = 0;
 
   while (status_count) {
     UHCI_TD *tds = tx_tds;
@@ -295,9 +295,18 @@ check_tds (UHCI_TD * tx_tds)
       schedule ();
     }
 
+    len = 0;
     while (tds != TD_P2V (UHCI_TD *, 0)) {
       if (tds->status & 0x80) {
         status_count++;
+      } else {
+        len += tds->act_len;
+        /* Check for short packet */
+        if (tds->act_len != tds->max_len) {
+          DLOG ("Short Packet! after %d bytes", len);
+          check_tds_len = len;
+          return status;
+        }
       }
 
       /* If the TD is STALLED, we report the error */
@@ -315,11 +324,19 @@ check_tds (UHCI_TD * tx_tds)
         return status;
       }
 
+      /* Got a NAK */
+      if (tds->status & 0x08) {
+        DLOG ("NAK! after %d bytes", len);
+        check_tds_len = len;
+        return status;
+      }
+
       /* move to next TD in chain */
       tds = TD_P2V (UHCI_TD *, tds->link_ptr & 0xFFFFFFF0);
     }
   }
 
+  check_tds_len = len;
   return status;
 }
 
@@ -758,8 +775,8 @@ int uhci_bulk_transfer(
     idx_td = data_td;
     data_td->status = 0x80;
     data_td->c_err = 3;
-    data_td->ioc = data_td->iso = data_td->spd = 0;
-    data_td->ioc = 1;
+    data_td->ioc = data_td->iso = 0;
+    data_td->spd = (direction == DIR_IN ? 1 : 0);
 
     data_td->pid = (direction == DIR_IN) ? UHCI_PID_IN : UHCI_PID_OUT;
     data_td->addr = address;
@@ -777,12 +794,18 @@ int uhci_bulk_transfer(
     data_td->buf_vptr = data;
 
     if(data_left <= (max_packet_len + 1)) {
+      data_td->ioc = 1;
       break;
     } else {
       data += (data_td->max_len + 1);
       data_left -= (data_td->max_len + 1);
     }
+
+    /* set last packet IOC */
+    if (i == num_data_packets - 1)
+      data_td->ioc = 1;
   }
+
 
 #if 0
   DLOG ("Dumping tx_tds...");
@@ -891,6 +914,7 @@ uhci_control_transfer (
   status_td->status = 0x80;
   status_td->c_err = 3;
   status_td->ioc = status_td->iso = status_td->spd = 0;
+  status_td->ioc = 1;
   status_td->pid = pid;
   status_td->addr = address;
   status_td->endp = endpoint;
