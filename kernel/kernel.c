@@ -177,6 +177,25 @@ set_idt_descriptor (uint8 n, idt_descriptor * d)
   ptr[n] = *d;
 }
 
+task_id
+start_kernel_thread (uint eip, uint esp)
+{
+  task_id pid;
+  uint32 eflags;
+  void *page_dir = get_pdbr ();
+
+  asm volatile ("pushfl\n" "pop %0\n":"=r" (eflags):);
+
+  /* start kernel thread */
+  pid = duplicate_TSS (0, NULL,
+                       eip, 0, esp,
+                       eflags, (uint32) page_dir);
+
+  wakeup (pid);
+
+  return pid;
+}
+
 /*
  * Local Variables:
  * indent-tabs-mode: nil

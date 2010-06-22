@@ -111,14 +111,18 @@ void stacktrace (void);
 
 void tsc_delay_usec (uint32 usec);
 
-uint16
-duplicate_TSS (uint32 ebp,
-               uint32 *esp,
-               uint32 child_eip,
-               uint32 child_ebp,
-               uint32 child_esp,
-               uint32 child_eflags, 
-               uint32 child_directory);
+uint16 duplicate_TSS (uint32 ebp,
+                      uint32 *esp,
+                      uint32 child_eip,
+                      uint32 child_ebp,
+                      uint32 child_esp,
+                      uint32 child_eflags, 
+                      uint32 child_directory);
+
+typedef uint16 task_id;
+
+task_id start_kernel_thread (uint eip, uint esp);
+
 
 /* Declare space for a stack */
 extern uint32 ul_stack[][1024] __attribute__ ((aligned (4096)));
@@ -145,8 +149,6 @@ extern uint16 dummyTSS_selector;
 extern tss idleTSS[MAX_CPUS];
 
 extern uint16 idleTSS_selector[MAX_CPUS];
-
-typedef uint16 task_id;
 
 extern spinlock screen_lock;
 
