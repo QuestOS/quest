@@ -50,7 +50,9 @@ uvc_probe (USB_DEVICE_INFO *dev, USB_CFG_DESC *cfg, USB_IF_DESC *ifd)
   if (entrance) return FALSE;
 
   USB_SPD_CFG_DESC *scfgd;
-  uint8_t tmp[20];
+  uint8_t tmp[1300];
+
+  memset(tmp, 0, 1300);
 
   if((dev->devd.bDeviceClass == 0xEF) &&
      (dev->devd.bDeviceSubClass == 0x02) &&
@@ -63,6 +65,7 @@ uvc_probe (USB_DEVICE_INFO *dev, USB_CFG_DESC *cfg, USB_IF_DESC *ifd)
   desc_dump (dev, cfg);
 #endif
 
+  DLOG("Now, getting other speed configuration.");
   if (usb_get_descriptor(dev, USB_TYPE_SPD_CFG_DESC, 0, 0, 9, (addr_t)tmp)) {
     DLOG("Other Speed Configuration is not presented.");
   } else {
@@ -72,6 +75,10 @@ uvc_probe (USB_DEVICE_INFO *dev, USB_CFG_DESC *cfg, USB_IF_DESC *ifd)
         scfgd->bLength, scfgd->bDescriptorType, scfgd->wTotalLength);
     DLOG("  bNumInterfaces : 0x%x  bConfigurationValue : 0x%x",
         scfgd->bNumInterfaces, scfgd->bConfigurationValue);
+
+    memset(tmp, 0, 1300);
+    //usb_get_descriptor(dev, USB_TYPE_SPD_CFG_DESC, 0, 0,
+    //    1300, (addr_t)tmp);
   }
 
   DLOG("Set configuration to %d.", cfg->bConfigurationValue);
@@ -272,21 +279,16 @@ desc_dump (USB_DEVICE_INFO *dev, USB_CFG_DESC *cfg)
 #endif
 
   DLOG("Dumping UVC device descriptors ends");
-  memset(conf, 0, 1300);
 
-#if 0
-  int status = usb_get_descriptor(&dev, TYPE_CFG_DESC, 0, 0, 1000, (addr_t)conf);
-  print("Status Code : ");
-  putx(status);
-  putchar('\n');
+#if 1
 
   uint32_t *dump = (uint32_t*)conf;
   int i = 0;
 
-  for(i = 1; i < 200; i++) {
+  for(i = 1; i < 325; i++) {
     putx(*dump);
     dump++;
-    if(i%9 == 0) putchar('\n');
+    putchar('\n');
   }
 #endif
   
