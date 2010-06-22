@@ -233,7 +233,7 @@ bool usb_register_driver (USB_DRIVER *);
 extern int usb_control_transfer(USB_DEVICE_INFO *, addr_t, uint16_t,
     addr_t, uint16_t);
 extern int usb_bulk_transfer(USB_DEVICE_INFO *, uint8_t, addr_t,
-    uint16_t, uint8_t, uint8_t);
+                             uint16_t, uint8_t, uint8_t, uint32_t *);
 
 extern int usb_get_descriptor(USB_DEVICE_INFO *, uint16_t, uint16_t,
     uint16_t, uint16_t, addr_t);

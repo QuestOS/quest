@@ -69,6 +69,7 @@ umsc_bulk_scsi (uint addr, uint ep_out, uint ep_in,
   UMSC_CBW cbw;
   UMSC_CSW csw;
   sint status;
+  uint32 act_len;
 
   DLOG ("cmd: %.02X %.02X %.02X %.02X %.02X %.02X %.02X %.02X %.02X %.02X %.02X %.02X %.02X %.02X %.02X %.02X",
         cmd[0], cmd[1], cmd[2], cmd[3],
@@ -85,16 +86,16 @@ umsc_bulk_scsi (uint addr, uint ep_out, uint ep_in,
   cbw.bCBWCBLength = 16;            /* cmd length */
   memcpy (cbw.CBWCB, cmd, 16);
 
-  status = uhci_bulk_transfer (addr, ep_out, &cbw, 0x1f, maxpkt, DIR_OUT);
+  status = uhci_bulk_transfer (addr, ep_out, &cbw, 0x1f, maxpkt, DIR_OUT, &act_len);
 
   DLOG ("status=%d", status);
 
   if (data_len > 0) {
     if (dir) {
-      status = uhci_bulk_transfer (addr, ep_in, data, data_len, maxpkt, DIR_IN);
+      status = uhci_bulk_transfer (addr, ep_in, data, data_len, maxpkt, DIR_IN, &act_len);
     }
     else {
-      status = uhci_bulk_transfer (addr, ep_out, data, data_len, maxpkt, DIR_OUT);
+      status = uhci_bulk_transfer (addr, ep_out, data, data_len, maxpkt, DIR_OUT, &act_len);
     }
 
     DLOG ("status=%d", status);
@@ -105,7 +106,7 @@ umsc_bulk_scsi (uint addr, uint ep_out, uint ep_in,
 
   }
 
-  status = uhci_bulk_transfer (addr, ep_in, (addr_t) &csw, 0x0d, maxpkt, DIR_IN);
+  status = uhci_bulk_transfer (addr, ep_in, (addr_t) &csw, 0x0d, maxpkt, DIR_IN, &act_len);
 
   DLOG ("status=%d", status);
 
@@ -244,7 +245,7 @@ umsc_probe (USB_DEVICE_INFO *info, USB_CFG_DESC *cfgd, USB_IF_DESC *ifd)
   return TRUE;
 }
 
-sint 
+sint
 umsc_read_sector (uint dev_index, uint32 lba, uint8 *sector, uint len)
 {
   umsc_device_t *umsc;
@@ -258,7 +259,7 @@ umsc_read_sector (uint dev_index, uint32 lba, uint8 *sector, uint len)
   umsc = &umsc_devs[dev_index];
   if (len < umsc->sector_size) return 0;
 
-  if (umsc_bulk_scsi (umsc->devinfo->address, 
+  if (umsc_bulk_scsi (umsc->devinfo->address,
                       umsc->ep_out, umsc->ep_in, cmd, 1, sector,
                       umsc->sector_size, umsc->maxpkt) != 0)
     return 0;

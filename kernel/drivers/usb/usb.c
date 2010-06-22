@@ -70,7 +70,8 @@ usb_bulk_transfer(
     addr_t data,
     uint16_t len,
     uint8_t packet_len,
-    uint8_t dir)
+    uint8_t dir,
+    uint32_t *act_len)
 {
   switch (dev->host_type)
   {
@@ -80,7 +81,7 @@ usb_bulk_transfer(
         return -1;
       } else {
         return uhci_bulk_transfer(dev->address, endp, data,
-            len, packet_len, dir);
+                                  len, packet_len, dir, act_len);
       }
 
     case USB_TYPE_HC_EHCI :

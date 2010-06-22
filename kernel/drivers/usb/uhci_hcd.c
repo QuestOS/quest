@@ -277,9 +277,8 @@ debug_dump_sched (UHCI_TD * tx_tds)
   }
 }
 
-uint32 check_tds_len;
 static int
-check_tds (UHCI_TD * tx_tds)
+check_tds (UHCI_TD * tx_tds, uint32 *act_len)
 {
   int status_count = 1;
   int status = 0;
@@ -300,11 +299,11 @@ check_tds (UHCI_TD * tx_tds)
       if (tds->status & 0x80) {
         status_count++;
       } else {
-        len += tds->act_len;
+        len += (tds->act_len + 1) & 0x7FF;
         /* Check for short packet */
         if (tds->act_len != tds->max_len) {
           DLOG ("Short Packet! after %d bytes", len);
-          check_tds_len = len;
+          *act_len = len;
           return status;
         }
       }
@@ -327,7 +326,7 @@ check_tds (UHCI_TD * tx_tds)
       /* Got a NAK */
       if (tds->status & 0x08) {
         DLOG ("NAK! after %d bytes", len);
-        check_tds_len = len;
+        *act_len = len;
         return status;
       }
 
@@ -336,7 +335,7 @@ check_tds (UHCI_TD * tx_tds)
     }
   }
 
-  check_tds_len = len;
+  *act_len = len;
   return status;
 }
 
@@ -753,7 +752,8 @@ int uhci_bulk_transfer(
     addr_t data,
     int data_len,
     int packet_len,
-    uint8_t direction)
+    uint8_t direction,
+    uint32 *act_len)
 {
   UHCI_TD *tx_tds = 0;
   UHCI_TD *data_td = 0;
@@ -817,7 +817,7 @@ int uhci_bulk_transfer(
   blk_qh->qe_ptr = (((uint32_t)get_phys_addr((void*)tx_tds)) & 0xFFFFFFF0) + 0x0;
 
   /* Check the status of all the packets in the transaction */
-  return_status = check_tds(tx_tds);
+  return_status = check_tds(tx_tds, act_len);
   blk_qh->qe_ptr = 0x01;
   free_tds(tx_tds, num_data_packets);
 
@@ -842,6 +842,7 @@ uhci_control_transfer (
   addr_t data = 0;
   /* Using the default pipe for control transfer */
   uint8_t endpoint = 0;
+  uint32_t act_len;
 
   /*
    * USB specification max packet length :  1023 bytes
@@ -928,7 +929,7 @@ uhci_control_transfer (
     (((uint32_t) get_phys_addr ((void *) tx_tds)) & 0xFFFFFFF0) + 0x0;
 
   /* Check the status of all the packets in the transaction */
-  return_status = check_tds (tx_tds);
+  return_status = check_tds (tx_tds, &act_len);
   ctl_qh->qe_ptr = 0x01;
   free_tds (tx_tds, num_data_packets + 2);
 
