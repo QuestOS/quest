@@ -266,18 +266,7 @@ probe (USB_DEVICE_INFO *info, USB_CFG_DESC *cfgd, USB_IF_DESC *ifd)
 
   ethusbdev = info;
 
-  uint32 eflags;
-  void *page_dir = get_pdbr ();
-  asm volatile ("pushfl\n" "pop %0\n":"=r" (eflags):);
-
-  /* start kernel thread */
-  irq_pid = duplicate_TSS (0, NULL,
-                           (uint32) irq_loop,
-                           0, (uint32) &irq_stack[1023],
-                           eflags,
-                           (uint32) page_dir);
-
-  wakeup (irq_pid);
+  irq_pid = start_kernel_thread ((uint) irq_loop, (uint) &irq_stack[1023]);
 
   if (!reset ())
     return FALSE;
