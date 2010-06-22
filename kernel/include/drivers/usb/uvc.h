@@ -57,8 +57,7 @@ struct uvc_csvc_if_hdr_desc
 
 typedef struct uvc_csvc_if_hdr_desc UVC_CSVC_IF_HDR_DESC;
 
-extern int uvc_read (void *, int);
-extern int uvc_init (void);
+extern bool usb_uvc_driver_init (void);
 
 #endif
 

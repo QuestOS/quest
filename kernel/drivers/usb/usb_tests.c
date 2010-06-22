@@ -34,8 +34,6 @@
 #define putx  com1_putx
 #define putchar com1_putc
 
-static void call_back(addr_t buf);
-
 void
 show_usb_regs (int bus, int dev, int func)
 {
@@ -219,10 +217,8 @@ umsc_bo_reset (uint address, uint interface_idx)
 
 void isochronous_transfer_test(void)
 {
-#if 0
   uint8_t data[20];
   uint8_t conf[1300];
-  uint8_t iso1[1024];
 
   memset(data, 0, 20);
   USB_DEV_DESC *desc;
@@ -230,12 +226,15 @@ void isochronous_transfer_test(void)
   UVC_IA_DESC *iad;
   USB_IF_DESC *vcifd;
   UVC_CSVC_IF_HDR_DESC *csvcifd;
-  //USB_EPT_DESC *eptd;
+  USB_DEVICE_INFO dev;
+  dev.address = 0;
+  dev.devd.bMaxPacketSize0 = 64;
+  dev.host_type = USB_TYPE_HC_UHCI;
 
   port_reset(0);
   port_reset(1);
 
-  uhci_get_descriptor(0, TYPE_DEV_DESC, 0, 0, 18, (addr_t)data);
+  usb_get_descriptor(&dev, USB_TYPE_DEV_DESC, 0, 0, 18, (addr_t)data);
   desc = (USB_DEV_DESC*)data;
   print("The length of device descriptor is: 0x");
   putx(desc->bLength);
@@ -245,12 +244,15 @@ void isochronous_transfer_test(void)
   port_reset(1);
 
   print("Setting new address for the device.\n");
-  uhci_set_address(0, 1);
+  if(usb_set_address(&dev, 1))
+    DLOG("Set address failed!");
+
+  dev.address = 1;
 
   memset(data, 0, 20);
 
   print("Now, getting device descriptor again.\n");
-  uhci_get_descriptor(1, TYPE_DEV_DESC, 0, 0, 18, (addr_t)data);
+  usb_get_descriptor(&dev, USB_TYPE_DEV_DESC, 0, 0, 18, (addr_t)data);
   desc = (USB_DEV_DESC*)data;
 
 #if 1
@@ -261,6 +263,9 @@ void isochronous_transfer_test(void)
   print("  bDescriptorType : ");
   putx(desc->bDescriptorType);
   putchar('\n');
+  print("  bcdUSB : ");
+  putx(desc->bcdUSB);
+  putchar('\n');
   print("  bDeviceClass : ");
   putx(desc->bDeviceClass);
   putchar('\n');
@@ -270,20 +275,24 @@ void isochronous_transfer_test(void)
   print("  bDeviceProtocol : ");
   putx(desc->bDeviceProtocol);
   putchar('\n');
+  print("  bMaxPacketSize0 : ");
+  putx(desc->bMaxPacketSize0);
+  putchar('\n');
   print("  idVendor : ");
   putx(desc->idVendor);
+  putchar('\n');
+  print("  idProduct : ");
+  putx(desc->idProduct);
   putchar('\n');
   print("  bNumConfigurations : ");
   putx(desc->bNumConfigurations);
   putchar('\n');
 #endif
 
-  delay(100);
-
   memset(data, 0, 20);
 
   print("Getting configuration descriptor.\n");
-  uhci_get_descriptor(1, TYPE_CFG_DESC, 0, 0, 9, (addr_t)data);
+  usb_get_descriptor(&dev, USB_TYPE_CFG_DESC, 0, 0, 9, (addr_t)data);
   cfgd = (USB_CFG_DESC*)data;
 
 #if 1
@@ -317,7 +326,7 @@ void isochronous_transfer_test(void)
   memset(conf, 0, 1300);
 
   print("Getting all descriptors.\n");
-  uhci_get_descriptor(1, TYPE_CFG_DESC, 0, 0, cfgd->wTotalLength, (addr_t)conf);
+  usb_get_descriptor(&dev, USB_TYPE_CFG_DESC, 0, 0, cfgd->wTotalLength, (addr_t)conf);
   iad = (UVC_IA_DESC*)(&conf[cfgd->bLength]);
 
 #if 1
@@ -347,8 +356,6 @@ void isochronous_transfer_test(void)
   putx(iad->iFunction);
   putchar('\n');
 #endif
-
-  delay(100);
 
   vcifd = (USB_IF_DESC*)(&conf[cfgd->bLength + iad->bLength]);
 
@@ -383,8 +390,6 @@ void isochronous_transfer_test(void)
   putchar('\n');
 #endif
 
-  delay(100);
-
   csvcifd = (UVC_CSVC_IF_HDR_DESC*)(&conf[cfgd->bLength + iad->bLength + vcifd->bLength]);
 
 #if 1
@@ -415,21 +420,17 @@ void isochronous_transfer_test(void)
   putchar('\n');
 #endif
 
-  delay(100);
-
   print("Set configuration to 1.\n");
-  uhci_set_configuration(1, 1);
+  usb_set_configuration(&dev, 1);
 
   print("New configuration is : ");
-  putx(uhci_get_configuration(1));
+  putx(usb_get_configuration(&dev));
   putchar('\n');
-
-  delay(100);
 
 #if 1
   memset(conf, 0, 1300);
 
-  int status = uhci_get_descriptor(1, TYPE_CFG_DESC, 0, 0, 1000, (addr_t)conf);
+  int status = usb_get_descriptor(&dev, USB_TYPE_CFG_DESC, 0, 0, 1000, (addr_t)conf);
   print("Status Code : ");
   putx(status);
   putchar('\n');
@@ -444,19 +445,8 @@ void isochronous_transfer_test(void)
   }
 #endif
 
-  uhci_isochronous_transfer(1, 5, (addr_t)iso1, 1023, 1, DIR_IN, call_back);
 }
 
-static void call_back(addr_t buf) {
-  print("Now, we are in the call back function.\n");
-  int i = 0;
-
-  for(i = 1; i < 256; i++) {
-    putx((uint32_t)((uint32_t*)buf + i));
-    if(i%5 == 0) putchar('\n');
-  }
-#endif
-}
 /*
  * Local Variables:
  * indent-tabs-mode: nil

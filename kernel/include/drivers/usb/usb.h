@@ -53,11 +53,14 @@
 #define USB_SET_INTERFACE        0x0B
 #define USB_SYNCH_FRAME          0x0C
 
-#define USB_TYPE_DEV_DESC    0x01
-#define USB_TYPE_CFG_DESC    0x02
-#define USB_TYPE_STR_DESC    0x03
-#define USB_TYPE_IF_DESC     0x04
-#define USB_TYPE_EPT_DESC    0x05
+#define USB_TYPE_DEV_DESC      0x01
+#define USB_TYPE_CFG_DESC      0x02
+#define USB_TYPE_STR_DESC      0x03
+#define USB_TYPE_IF_DESC       0x04
+#define USB_TYPE_EPT_DESC      0x05
+#define USB_TYPE_QUA_DESC      0x06
+#define USB_TYPE_SPD_CFG_DESC  0x07
+#define USB_TYPE_IF_PWR_DESC   0x08
 
 #define USB_TYPE_HC_UHCI    0x00
 #define USB_TYPE_HC_EHCI    0x01
@@ -128,6 +131,27 @@ struct usb_cfg_desc
 } PACKED;
 
 typedef struct usb_cfg_desc USB_CFG_DESC;
+
+/*
+ * USB_SPD_CFG_DESC : Other Speed Configuration Descriptor
+ *
+ * Reference :
+ *     Universal Serial Bus Specification
+ *     Revision 2.0, Page 267
+ */
+struct usb_spd_cfg_desc
+{
+  uint8_t bLength;
+  uint8_t bDescriptorType;
+  uint16_t wTotalLength;
+  uint8_t bNumInterfaces;
+  uint8_t bConfigurationValue;
+  uint8_t iConfiguration;
+  uint8_t bmAttributes;
+  uint8_t bMaxPower;
+} PACKED;
+
+typedef struct usb_spd_cfg_desc USB_SPD_CFG_DESC;
 
 /*
  * USB_IF_DESC : Standard Interface Descriptor

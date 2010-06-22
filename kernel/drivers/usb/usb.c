@@ -39,7 +39,7 @@ usb_control_transfer(
 {
   switch (dev->host_type)
   {
-    case TYPE_HC_UHCI :
+    case USB_TYPE_HC_UHCI :
       if ((dev->devd).bMaxPacketSize0 == 0) {
         DLOG("USB_DEVICE_INFO is probably not initialized!");
         return -1;
@@ -48,11 +48,11 @@ usb_control_transfer(
             req_len, data, data_len, (dev->devd).bMaxPacketSize0);
       }
 
-    case TYPE_HC_EHCI :
+    case USB_TYPE_HC_EHCI :
       DLOG("EHCI Host Controller is not supported now!");
       return -1;
 
-    case TYPE_HC_OHCI :
+    case USB_TYPE_HC_OHCI :
       DLOG("OHCI Host Controller is not supported now!");
       return -1;
 
@@ -74,7 +74,7 @@ usb_bulk_transfer(
 {
   switch (dev->host_type)
   {
-    case TYPE_HC_UHCI :
+    case USB_TYPE_HC_UHCI :
       if ((dev->devd).bMaxPacketSize0 == 0) {
         DLOG("USB_DEVICE_INFO is probably not initialized!");
         return -1;
@@ -83,11 +83,11 @@ usb_bulk_transfer(
             len, packet_len, dir);
       }
 
-    case TYPE_HC_EHCI :
+    case USB_TYPE_HC_EHCI :
       DLOG("EHCI Host Controller is not supported now!");
       return -1;
 
-    case TYPE_HC_OHCI :
+    case USB_TYPE_HC_OHCI :
       DLOG("OHCI Host Controller is not supported now!");
       return -1;
 
@@ -109,7 +109,7 @@ usb_get_descriptor (
 {
   switch (dev->host_type)
   {
-    case TYPE_HC_UHCI :
+    case USB_TYPE_HC_UHCI :
       if ((dev->devd).bMaxPacketSize0 == 0) {
         DLOG("USB_DEVICE_INFO is probably not initialized!");
         return -1;
@@ -118,11 +118,11 @@ usb_get_descriptor (
             index, length, desc, (dev->devd).bMaxPacketSize0);
       }
 
-    case TYPE_HC_EHCI :
+    case USB_TYPE_HC_EHCI :
       DLOG("EHCI Host Controller is not supported now!");
       return -1;
 
-    case TYPE_HC_OHCI :
+    case USB_TYPE_HC_OHCI :
       DLOG("OHCI Host Controller is not supported now!");
       return -1;
 
@@ -138,7 +138,7 @@ usb_set_address (USB_DEVICE_INFO * dev, uint8_t new_addr)
 {
   switch (dev->host_type)
   {
-    case TYPE_HC_UHCI :
+    case USB_TYPE_HC_UHCI :
       if ((dev->devd).bMaxPacketSize0 == 0) {
         DLOG("USB_DEVICE_INFO is probably not initialized!");
         return -1;
@@ -147,11 +147,11 @@ usb_set_address (USB_DEVICE_INFO * dev, uint8_t new_addr)
             (dev->devd).bMaxPacketSize0);
       }
 
-    case TYPE_HC_EHCI :
+    case USB_TYPE_HC_EHCI :
       DLOG("EHCI Host Controller is not supported now!");
       return -1;
 
-    case TYPE_HC_OHCI :
+    case USB_TYPE_HC_OHCI :
       DLOG("OHCI Host Controller is not supported now!");
       return -1;
 
@@ -167,7 +167,7 @@ usb_get_configuration(USB_DEVICE_INFO * dev)
 {
   switch (dev->host_type)
   {
-    case TYPE_HC_UHCI :
+    case USB_TYPE_HC_UHCI :
       if ((dev->devd).bMaxPacketSize0 == 0) {
         DLOG("USB_DEVICE_INFO is probably not initialized!");
         return -1;
@@ -176,11 +176,11 @@ usb_get_configuration(USB_DEVICE_INFO * dev)
             (dev->devd).bMaxPacketSize0);
       }
 
-    case TYPE_HC_EHCI :
+    case USB_TYPE_HC_EHCI :
       DLOG("EHCI Host Controller is not supported now!");
       return -1;
 
-    case TYPE_HC_OHCI :
+    case USB_TYPE_HC_OHCI :
       DLOG("OHCI Host Controller is not supported now!");
       return -1;
 
@@ -196,7 +196,7 @@ usb_set_configuration(USB_DEVICE_INFO * dev, uint8_t conf)
 {
   switch (dev->host_type)
   {
-    case TYPE_HC_UHCI :
+    case USB_TYPE_HC_UHCI :
       if ((dev->devd).bMaxPacketSize0 == 0) {
         DLOG("USB_DEVICE_INFO is probably not initialized!");
         return -1;
@@ -205,11 +205,11 @@ usb_set_configuration(USB_DEVICE_INFO * dev, uint8_t conf)
             (dev->devd).bMaxPacketSize0);
       }
 
-    case TYPE_HC_EHCI :
+    case USB_TYPE_HC_EHCI :
       DLOG("EHCI Host Controller is not supported now!");
       return -1;
 
-    case TYPE_HC_OHCI :
+    case USB_TYPE_HC_OHCI :
       DLOG("OHCI Host Controller is not supported now!");
       return -1;
 
@@ -225,7 +225,7 @@ usb_get_interface(USB_DEVICE_INFO * dev, uint16_t interface)
 {
   switch (dev->host_type)
   {
-    case TYPE_HC_UHCI :
+    case USB_TYPE_HC_UHCI :
       if ((dev->devd).bMaxPacketSize0 == 0) {
         DLOG("USB_DEVICE_INFO is probably not initialized!");
         return -1;
@@ -234,11 +234,11 @@ usb_get_interface(USB_DEVICE_INFO * dev, uint16_t interface)
             (dev->devd).bMaxPacketSize0);
       }
 
-    case TYPE_HC_EHCI :
+    case USB_TYPE_HC_EHCI :
       DLOG("EHCI Host Controller is not supported now!");
       return -1;
 
-    case TYPE_HC_OHCI :
+    case USB_TYPE_HC_OHCI :
       DLOG("OHCI Host Controller is not supported now!");
       return -1;
 
@@ -254,7 +254,7 @@ usb_set_interface(USB_DEVICE_INFO * dev, uint16_t alt, uint16_t interface)
 {
   switch (dev->host_type)
   {
-    case TYPE_HC_UHCI :
+    case USB_TYPE_HC_UHCI :
       if ((dev->devd).bMaxPacketSize0 == 0) {
         DLOG("USB_DEVICE_INFO is probably not initialized!");
         return -1;
@@ -263,11 +263,11 @@ usb_set_interface(USB_DEVICE_INFO * dev, uint16_t alt, uint16_t interface)
             (dev->devd).bMaxPacketSize0);
       }
 
-    case TYPE_HC_EHCI :
+    case USB_TYPE_HC_EHCI :
       DLOG("EHCI Host Controller is not supported now!");
       return -1;
 
-    case TYPE_HC_OHCI :
+    case USB_TYPE_HC_OHCI :
       DLOG("OHCI Host Controller is not supported now!");
       return -1;
 
