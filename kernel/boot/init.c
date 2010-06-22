@@ -525,6 +525,9 @@ init (multiboot * pmb)
 
   /* Initialize USB mass storage driver */
   { bool usb_mass_storage_driver_init (void); usb_mass_storage_driver_init (); }
+  
+  /* Initialize USB Video Class driver */
+  { bool usb_uvc_driver_init (void); usb_uvc_driver_init ();}
 
   /* Initialize USB */
   { bool uhci_init (void); uhci_init (); }
