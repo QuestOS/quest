@@ -31,14 +31,6 @@
 #define DLOG(fmt,...) ;
 #endif
 
-/* List of compatible cards (ended by { 0xFFFF, 0xFFFF }) */
-static struct { uint16 vendor, device; } compatible_ids[] = {
-  { 0x8086, 0x27C8 },           /* Intel ICH7 Family UHCI */
-  { 0x8086, 0x2934 },           /* Intel ICH9 Family UHCI */
-  { 0x8086, 0x7020 },           /* Intel PIIX3 USB controller */
-  { 0xFFFF, 0xFFFF }
-};
-
 static int bus;                 /* set by PCI probing in uhci_init */
 static int dev;
 static int func;
@@ -64,6 +56,8 @@ uint32 td_phys;
 #define TD_V2P(ty,p) ((ty)((((uint) (p)) - ((uint) td))+td_phys))
 /* Physical-to-Virtual */
 #define TD_P2V(ty,p) ((ty)((((uint) (p)) - td_phys)+((uint) td)))
+
+static task_id uhci_waitq = 0;  /* Tasks waiting for IRQ */
 
 /*
  * This is non-reentrant! Fortunately, we do not have concurrency yet:-)
@@ -295,6 +289,12 @@ check_tds (UHCI_TD * tx_tds)
     UHCI_TD *tds = tx_tds;
     status_count = 0;
 
+    /* wait for IRQ if interrupts enabled */
+    if (mp_enabled) {
+      queue_append (&uhci_waitq, str ());
+      schedule ();
+    }
+
     while (tds != TD_P2V (UHCI_TD *, 0)) {
       if (tds->status & 0x80) {
         status_count++;
@@ -319,8 +319,6 @@ check_tds (UHCI_TD * tx_tds)
       tds = TD_P2V (UHCI_TD *, tds->link_ptr & 0xFFFFFFF0);
     }
   }
-
-  delay (10);                   // --??-- Let's wait a little while here. It might be a source of timing bugs
 
   return status;
 }
@@ -427,7 +425,7 @@ uhci_enumerate (void)
   info = &devinfo[curdev];
   memset (info, 0, sizeof (USB_DEVICE_INFO));
   info->address = 0;
-  info->host_type = TYPE_HC_UHCI;
+  info->host_type = USB_TYPE_HC_UHCI;
 
   /* OK, here is the deal. The spec says you should use the maximum
    * packet size in the data phase of control transfer if the data
@@ -440,7 +438,7 @@ uhci_enumerate (void)
 
   /* get device descriptor */
   status =
-    usb_get_descriptor (info, TYPE_DEV_DESC, 0, 0, sizeof (USB_DEV_DESC), &devd);
+    usb_get_descriptor (info, USB_TYPE_DEV_DESC, 0, 0, sizeof (USB_DEV_DESC), &devd);
   if (status != 0)
     goto abort;
 
@@ -462,7 +460,7 @@ uhci_enumerate (void)
     /* get a config descriptor for size field */
     memset (temp, 0, TEMPSZ);
     status =
-      usb_get_descriptor (info, TYPE_CFG_DESC, c, 0, sizeof (USB_CFG_DESC), temp);
+      usb_get_descriptor (info, USB_TYPE_CFG_DESC, c, 0, sizeof (USB_CFG_DESC), temp);
     if (status != 0) {
       DLOG ("uhci_enumerate: failed to get config descriptor for c=%d", c);
       goto abort;
@@ -485,10 +483,23 @@ uhci_enumerate (void)
   /* read all cfg, if, and endpoint descriptors */
   ptr = info->raw;
   for (c=0; c<devd.bNumConfigurations; c++) {
+    /* obtain precise size info */
+    memset (temp, 0, TEMPSZ);
+    status = usb_get_descriptor (info, USB_TYPE_CFG_DESC, c, 0, 
+                                 sizeof (USB_CFG_DESC), temp);
+    if (status != 0) {
+      DLOG ("uhci_enumerate: failed to get config descriptor for c=%d", c);
+      goto abort_mem;
+    }
+    cfgd = (USB_CFG_DESC *)temp;
+
+    /* get cfg, if, and endp descriptors */
     status =
-      usb_get_descriptor (info, TYPE_CFG_DESC, c, 0, cfgd->wTotalLength, ptr);
+      usb_get_descriptor (info, USB_TYPE_CFG_DESC, c, 0, cfgd->wTotalLength, ptr);
     if (status != 0)
       goto abort_mem;
+
+    cfgd = (USB_CFG_DESC *)ptr;
     DLOG ("uhci_enumerate: cfg %d has num_if=%d", c, cfgd->bNumInterfaces);
     ptr += cfgd->wTotalLength;
   }
@@ -502,15 +513,25 @@ uhci_enumerate (void)
     cfgd = (USB_CFG_DESC *) ptr;
     ptr += cfgd->bLength;
     for (i=0; i<cfgd->bNumInterfaces; i++) {
-      ifd = (USB_IF_DESC *) ptr;
-      DLOG ("uhci_enumerate: examining (%d, %d) if_class=%X num_endp=%d",
-            c, i, ifd->bInterfaceClass, ifd->bNumEndpoints);
+      /* find the next if descriptor, skipping any class-specific stuff */
+      for (ifd = (USB_IF_DESC *) ptr;
+           ifd->bDescriptorType != USB_TYPE_IF_DESC;
+           ifd = (USB_IF_DESC *)((uint8 *)ifd + ifd->bLength)) {
+        //DLOG ("ifd=%p len=%d type=0x%x", ifd, ifd->bLength, ifd->bDescriptorType);
+      }
+      ptr = (uint8 *) ifd;
+      DLOG ("uhci_enumerate: examining (%d, %d) if_class=0x%X sub=0x%X proto=0x%X #endp=%d",
+            c, i, ifd->bInterfaceClass,
+            ifd->bInterfaceSubClass,
+            ifd->bInterfaceProtocol,
+            ifd->bNumEndpoints);
 
       /* find a device driver interested in this interface */
       find_device_driver (info, cfgd, ifd);
 
       ptr += ifd->bLength;
     }
+    ptr = ((uint8 *)cfgd) + cfgd->wTotalLength;
   }
 
   /* --??-- what happens if more than one driver matches more than one config? */
@@ -1006,7 +1027,12 @@ uhci_get_interface (uint8_t addr, uint16_t interface, uint8_t packet_size)
 static uint32
 uhci_irq_handler (uint8 vec)
 {
-  uint64 v = IOAPIC_read64 (0x10 + (irq_line * 2));
+  uint64 v;
+  uint16 status;
+
+  lock_kernel ();
+
+  v = IOAPIC_read64 (0x10 + (irq_line * 2));
   DLOG ("(1) IOAPIC (irq_line=0x%x) says %p %p",
         irq_line, (uint32) (v >> 32), (uint32) v);
 
@@ -1014,7 +1040,7 @@ uhci_irq_handler (uint8 vec)
   //IOAPIC_map_GSI (irq_line, UHCI_VECTOR, IOAPIC_FLAGS | 0x10000);
 
   /* Check the source of the interrupt received */
-  uint16_t status = 0;
+  status = 0;
   status = GET_USBSTS(usb_base);
 
   DLOG ("An interrupt is caught from usb IRQ_LN! (USBSTS=0x%x PCISTS=0x%x)",
@@ -1054,6 +1080,9 @@ uhci_irq_handler (uint8 vec)
     /* USB Error Interrupt */
     DLOG("USB Error Interrupt detected!");
     status |= 0x02; /* Clear the interrupt by writing a 1 to it */
+
+    /* wake-up any waiting threads */
+    wakeup_queue (&uhci_waitq);
   }
 
   if(status & 0x01) {
@@ -1064,6 +1093,9 @@ uhci_irq_handler (uint8 vec)
      * to decide what exactly happened.
      */
     status |= 0x01; /* Clear the interrupt by writing a 1 to it */
+
+    /* wake-up any waiting threads */
+    wakeup_queue (&uhci_waitq);
 
 #if 0
     int i;
@@ -1103,6 +1135,8 @@ uhci_irq_handler (uint8 vec)
 
   /* unmask it */
   //IOAPIC_map_GSI (irq_line, UHCI_VECTOR, IOAPIC_FLAGS);
+
+  unlock_kernel ();
 
   return 0;
 }

@@ -23,7 +23,7 @@
 
 /* Scheduler-integrated blocking sleep routines */
 
-#define DEBUG_SCHED_SLEEP
+//#define DEBUG_SCHED_SLEEP
 
 #ifdef DEBUG_SCHED_SLEEP
 #define DLOG(fmt,...) DLOG_PREFIX("sched-sleep",fmt,##__VA_ARGS__)

@@ -53,18 +53,18 @@
 #define USB_SET_INTERFACE        0x0B
 #define USB_SYNCH_FRAME          0x0C
 
-#define TYPE_DEV_DESC      0x01
-#define TYPE_CFG_DESC      0x02
-#define TYPE_STR_DESC      0x03
-#define TYPE_IF_DESC       0x04
-#define TYPE_EPT_DESC      0x05
-#define TYPE_QUA_DESC      0x06
-#define TYPE_SPD_CFG_DESC  0x07
-#define TYPE_IF_PWR_DESC   0x08
+#define USB_TYPE_DEV_DESC      0x01
+#define USB_TYPE_CFG_DESC      0x02
+#define USB_TYPE_STR_DESC      0x03
+#define USB_TYPE_IF_DESC       0x04
+#define USB_TYPE_EPT_DESC      0x05
+#define USB_TYPE_QUA_DESC      0x06
+#define USB_TYPE_SPD_CFG_DESC  0x07
+#define USB_TYPE_IF_PWR_DESC   0x08
 
-#define TYPE_HC_UHCI    0x00
-#define TYPE_HC_EHCI    0x01
-#define TYPE_HC_OHCI    0x02
+#define USB_TYPE_HC_UHCI    0x00
+#define USB_TYPE_HC_EHCI    0x01
+#define USB_TYPE_HC_OHCI    0x02
 
 /*
  * USB_DEV_REQ : USB Device Request
@@ -193,6 +193,23 @@ struct usb_ept_desc
 } PACKED;
 
 typedef struct usb_ept_desc USB_EPT_DESC;
+
+/* 
+ * USB_STR_DESC: Standard String Descriptor
+ *
+ * Reference :
+ *     Universal Serial Bus Specification
+ *     Revision 1.1, Page 205
+ */
+
+struct usb_str_desc
+{
+  uint8_t bLength;
+  uint8_t bDescriptorType;
+  uint8_t bString[];
+} PACKED;
+
+typedef struct usb_str_desc USB_STR_DESC;
 
 /* ************************************************** */
 

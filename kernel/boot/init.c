@@ -529,6 +529,9 @@ init (multiboot * pmb)
   /* Initialize USB Video Class driver */
   { bool usb_uvc_driver_init (void); usb_uvc_driver_init ();}
 
+  /* Initialize USB net driver */
+  { bool usb_net_driver_init (void); usb_net_driver_init (); }
+
   /* Initialize USB */
   { bool uhci_init (void); uhci_init (); }
 
