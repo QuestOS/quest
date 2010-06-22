@@ -98,7 +98,7 @@ dispatch_vector (uint32 vec)
 }
 
 /* Duplicate parent TSS -- used with fork */
-static uint16
+uint16
 duplicate_TSS (uint32 ebp,
                uint32 *esp,
                uint32 child_eip,
