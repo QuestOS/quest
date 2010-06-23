@@ -52,13 +52,13 @@ uvc_probe (USB_DEVICE_INFO *dev, USB_CFG_DESC *cfg, USB_IF_DESC *ifd)
   USB_SPD_CFG_DESC *scfgd;
   uint8_t tmp[1300];
 
-  memset(tmp, 0, 1300);
-
-  if((dev->devd.bDeviceClass == 0xEF) &&
-     (dev->devd.bDeviceSubClass == 0x02) &&
-     (dev->devd.bDeviceProtocol == 0x01)) {
-    DLOG("Device with one or more Video Interface Collections detected");
+  if(!(dev->devd.bDeviceClass == 0xEF) ||
+     !(dev->devd.bDeviceSubClass == 0x02) ||
+     !(dev->devd.bDeviceProtocol == 0x01)) {
+    return FALSE:
   }
+
+  memset(tmp, 0, 1300);
 
 #if 1
   /* Dumping UVC device descriptors */
