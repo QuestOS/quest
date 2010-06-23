@@ -957,9 +957,13 @@ _timer (void)
 #endif
   }
 
-  if (!mp_ISA_PC)
+  if (!mp_ISA_PC) {
+    void begin_kernel_threads (void);
+    if (!mp_enabled)
+      com1_printf ("timer: enabling scheduling\n");
     mp_enabled = 1;
-  else {
+    begin_kernel_threads ();
+  } else {
     /* On an ISA PC, must use PIT IRQ for scheduling */
     if (str () == idleTSS_selector[0]) {
       /* CPU was idling */

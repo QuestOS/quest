@@ -177,6 +177,9 @@ set_idt_descriptor (uint8 n, idt_descriptor * d)
   ptr[n] = *d;
 }
 
+static bool kernel_threads_running = FALSE;
+static task_id kernel_thread_waitq = 0;
+
 task_id
 start_kernel_thread (uint eip, uint esp)
 {
@@ -191,9 +194,21 @@ start_kernel_thread (uint eip, uint esp)
                        eip, 0, esp,
                        eflags, (uint32) page_dir);
 
-  wakeup (pid);
+  if (kernel_threads_running)
+    wakeup (pid);
+  else
+    queue_append (&kernel_thread_waitq, pid);
 
   return pid;
+}
+
+void
+begin_kernel_threads (void)
+{
+  if (kernel_threads_running == FALSE) {
+    wakeup_queue (&kernel_thread_waitq);
+    kernel_threads_running = TRUE;
+  }
 }
 
 /*
