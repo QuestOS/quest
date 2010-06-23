@@ -323,12 +323,14 @@ check_tds (UHCI_TD * tx_tds, uint32 *act_len)
         return status;
       }
 
+#if 0
       /* Got a NAK */
       if (tds->status & 0x08) {
         DLOG ("NAK! after %d bytes", len);
         *act_len = len;
         return status;
       }
+#endif
 
       /* move to next TD in chain */
       tds = TD_P2V (UHCI_TD *, tds->link_ptr & 0xFFFFFFF0);
@@ -818,7 +820,7 @@ int uhci_bulk_transfer(
 
   /* Check the status of all the packets in the transaction */
   return_status = check_tds(tx_tds, act_len);
-  blk_qh->qe_ptr = 0x01;
+
   free_tds(tx_tds, num_data_packets);
 
   return return_status;
@@ -930,7 +932,7 @@ uhci_control_transfer (
 
   /* Check the status of all the packets in the transaction */
   return_status = check_tds (tx_tds, &act_len);
-  ctl_qh->qe_ptr = 0x01;
+
   free_tds (tx_tds, num_data_packets + 2);
 
   return return_status;
