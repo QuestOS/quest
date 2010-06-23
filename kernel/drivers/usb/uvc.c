@@ -55,7 +55,7 @@ uvc_probe (USB_DEVICE_INFO *dev, USB_CFG_DESC *cfg, USB_IF_DESC *ifd)
   if(!(dev->devd.bDeviceClass == 0xEF) ||
      !(dev->devd.bDeviceSubClass == 0x02) ||
      !(dev->devd.bDeviceProtocol == 0x01)) {
-    return FALSE:
+    return FALSE;
   }
 
   memset(tmp, 0, 1300);
