@@ -38,32 +38,55 @@
 #define DLOG(fmt,...) ;
 #endif
 
+struct iso_data_source
+{
+  uint8_t endp;
+  uint16_t max_packet;
+  uint32_t sample_size;
+};
+
+typedef struct iso_data_source ISO_DATA_SRC;
+
+static ISO_DATA_SRC iso_src;
+
 bool usb_uvc_driver_init (void);
 static bool uvc_probe (USB_DEVICE_INFO *, USB_CFG_DESC *, USB_IF_DESC *);
 static void desc_dump (USB_DEVICE_INFO *, USB_CFG_DESC *);
+static bool uvc_init(USB_DEVICE_INFO *, USB_CFG_DESC *);
+static int video_probe_controls (USB_DEVICE_INFO *, uint8_t, uint8_t,
+    UVC_VS_CTL_PAR_BLOCK *);
+static int video_commit_controls (USB_DEVICE_INFO *, uint8_t, uint8_t,
+    UVC_VS_CTL_PAR_BLOCK *);
+static void para_block_dump (UVC_VS_CTL_PAR_BLOCK *);
+int uvc_get_frame (USB_DEVICE_INFO *, ISO_DATA_SRC *, addr_t, uint32_t);
+
+int
+uvc_get_frame (
+    USB_DEVICE_INFO * dev,
+    ISO_DATA_SRC * iso_src,
+    addr_t data,
+    uint32_t data_len)
+{
+  return uhci_isochronous_transfer (dev->address, iso_src->endp,
+      data, iso_src->max_packet, 100, DIR_IN, 0);
+}
 
 static bool
-uvc_probe (USB_DEVICE_INFO *dev, USB_CFG_DESC *cfg, USB_IF_DESC *ifd)
+uvc_init (USB_DEVICE_INFO * dev, USB_CFG_DESC * cfg)
 {
-  /* Avoid multi-entrance in uhci_enumerate(), should be removed soon */
-  static int entrance = 0;
-  if (entrance) return FALSE;
-
   USB_SPD_CFG_DESC *scfgd;
+  UVC_VS_CTL_PAR_BLOCK par;
   uint8_t tmp[1300];
 
-  if(!(dev->devd.bDeviceClass == 0xEF) ||
-     !(dev->devd.bDeviceSubClass == 0x02) ||
-     !(dev->devd.bDeviceProtocol == 0x01)) {
-    return FALSE;
-  }
+  DLOG("Configuring UVC device ...");
+
+  /* Set data source info manually for now */
+  iso_src.endp = 1;
+  iso_src.max_packet = 512;
+  iso_src.sample_size = 0;
 
   memset(tmp, 0, 1300);
-
-#if 1
-  /* Dumping UVC device descriptors */
-  desc_dump (dev, cfg);
-#endif
+  memset(&par, 0, sizeof(UVC_VS_CTL_PAR_BLOCK));
 
   DLOG("Now, getting other speed configuration.");
   if (usb_get_descriptor(dev, USB_TYPE_SPD_CFG_DESC, 0, 0, 9, (addr_t)tmp)) {
@@ -75,20 +98,140 @@ uvc_probe (USB_DEVICE_INFO *dev, USB_CFG_DESC *cfg, USB_IF_DESC *ifd)
         scfgd->bLength, scfgd->bDescriptorType, scfgd->wTotalLength);
     DLOG("  bNumInterfaces : 0x%x  bConfigurationValue : 0x%x",
         scfgd->bNumInterfaces, scfgd->bConfigurationValue);
-
-    memset(tmp, 0, 1300);
-    //usb_get_descriptor(dev, USB_TYPE_SPD_CFG_DESC, 0, 0,
-    //    1300, (addr_t)tmp);
   }
 
+  /* There is only one configuration in Logitech Webcam Pro 9000 */
   DLOG("Set configuration to %d.", cfg->bConfigurationValue);
   usb_set_configuration(dev, cfg->bConfigurationValue);
-  DLOG("New configuration is : %d", usb_get_configuration(dev));
+
+  /* Now, negotiate with VS interface for streaming parameters */
+
+  /* Manually set format and frame index */
+  par.bFormatIndex = 2;
+  par.bFrameIndex = 2;
+  //par.dwMaxPayloadTransferSize = 512;
+
+  if (video_probe_controls (dev, SET_CUR, 1, &par)) {
+    DLOG("Initial negotiation failed during probe");
+  }
+  para_block_dump (&par);
+  
+  if (video_probe_controls (dev, GET_CUR, 1, &par)) {
+    DLOG("Getting current state during probe failed");
+  }
+  para_block_dump (&par);
+
+  if (video_probe_controls (dev, GET_DEF, 1, &par)) {
+    DLOG("Getting current state during probe failed");
+  }
+  para_block_dump (&par);
+
+  par.bFormatIndex = 2;
+  par.bFrameIndex = 2;
+
+  if (video_commit_controls (dev, SET_CUR, 1, &par)) {
+    DLOG("Setting device state during probe failed");
+  }
+  para_block_dump (&par);
+
+  /* Select Alternate Setting 3 for interface 1 (Std VS interface) */
+  /* This is for an isochronous endpoint with MaxPacketSize 512 */
+  DLOG("Select Alternate Setting 3 for VS interface");
+  if (usb_set_interface(dev, 3, 1)) {
+    DLOG("Cannot configure interface setting for Std VS interface");
+    return FALSE;
+  }
+
+  return TRUE;
+}
+
+static bool
+uvc_probe (USB_DEVICE_INFO *dev, USB_CFG_DESC *cfg, USB_IF_DESC *ifd)
+{
+  /* Avoid multi-entrance in uhci_enumerate(), should be removed soon */
+  static int entrance = 0;
+  if (entrance) return FALSE;
+
+  /* For now, we only support device with multi video interface
+   * collections. This is ugly. But let's make Logitech Webcam Pro
+   * 9000 work first.
+   */
+  if(!(dev->devd.bDeviceClass == 0xEF) ||
+     !(dev->devd.bDeviceSubClass == 0x02) ||
+     !(dev->devd.bDeviceProtocol == 0x01)) {
+    return FALSE;
+  }
+
+#if 0
+  /* Dumping UVC device descriptors */
+  desc_dump (dev, cfg);
+#endif
+
+  if (uvc_init(dev, cfg) == FALSE) {
+    DLOG("Device configuration failed!");
+    return FALSE;
+  }
+
+#if 1
+  uint8_t data[512];
+  int i = 0;
+  uint32_t *dump = (uint32_t*)data;
+  memset(data, 0, 512);
+  uvc_get_frame (dev, &iso_src, (addr_t) data, 512);
+
+  for(i = 1; i < 100; i++) {
+    putx(*dump);
+    dump++;
+    putchar('\n');
+  }
+#endif
 
   /* Avoid multi-entrance in uhci_enumerate(), should be removed soon */
   entrance++;
 
   return TRUE;
+}
+
+static int
+video_probe_controls (
+    USB_DEVICE_INFO * dev,
+    uint8_t request,
+    uint8_t interface,
+    UVC_VS_CTL_PAR_BLOCK * par)
+{
+  USB_DEV_REQ setup_req;
+  if (request == SET_CUR)
+    setup_req.bmRequestType = 0x21;
+  else
+    setup_req.bmRequestType = 0xA1;
+  setup_req.bRequest = request;
+  setup_req.wValue = VS_PROBE_CONTROL;
+  setup_req.wIndex = interface;
+  setup_req.wLength = sizeof(UVC_VS_CTL_PAR_BLOCK);
+
+  return usb_control_transfer (dev, (addr_t) & setup_req,
+      sizeof (USB_DEV_REQ), (addr_t) par, sizeof(UVC_VS_CTL_PAR_BLOCK));
+}
+
+static int
+video_commit_controls (
+    USB_DEVICE_INFO * dev,
+    uint8_t request,
+    uint8_t interface,
+    UVC_VS_CTL_PAR_BLOCK * par)
+{
+  USB_DEV_REQ setup_req;
+  if (request == SET_CUR)
+    setup_req.bmRequestType = 0x21;
+  else
+    setup_req.bmRequestType = 0xA1;
+  setup_req.bRequest = request;
+  setup_req.wValue = VS_COMMIT_CONTROL;
+  setup_req.wIndex = interface;
+  setup_req.wLength = sizeof(UVC_VS_CTL_PAR_BLOCK);
+
+  return usb_control_transfer (dev, (addr_t) & setup_req,
+      sizeof (USB_DEV_REQ), (addr_t) par, sizeof(UVC_VS_CTL_PAR_BLOCK));
 }
 
 static USB_DRIVER uvc_driver = {
@@ -99,6 +242,28 @@ bool
 usb_uvc_driver_init (void)
 {
   return usb_register_driver (&uvc_driver);
+}
+
+static void
+para_block_dump (UVC_VS_CTL_PAR_BLOCK * par)
+{
+  DLOG ("Parameter Block Dump: ");
+  DLOG ("  bmHint : 0x%x", par->bmHint);
+  DLOG ("  bFormatIndex : 0x%x", par->bFormatIndex);
+  DLOG ("  bFrameIndex : 0x%x", par->bFrameIndex);
+  DLOG ("  dwFrameInterval : 0x%x", par->dwFrameInterval);
+  DLOG ("  wKeyFrameRate : 0x%x", par->wKeyFrameRate);
+  DLOG ("  wPFrameRate : 0x%x", par->wPFrameRate);
+  DLOG ("  wCompQuality : 0x%x", par->wCompQuality);
+  DLOG ("  wCompWindowSize : 0x%x", par->wCompWindowSize);
+  DLOG ("  wDelay : 0x%x", par->wDelay);
+  DLOG ("  dwMaxVideoFrameSize : 0x%x", par->dwMaxVideoFrameSize);
+  DLOG ("  dwMaxPayloadTransferSize : 0x%x", par->dwMaxPayloadTransferSize);
+  DLOG ("  dwClockFrequency : 0x%x", par->dwClockFrequency);
+  DLOG ("  bmFramingInfo : 0x%x", par->bmFramingInfo);
+  DLOG ("  bPreferedVersion : 0x%x", par->bPreferedVersion);
+  DLOG ("  bMinVersion : 0x%x", par->bMinVersion);
+  DLOG ("  bMaxVersion : 0x%x", par->bMaxVersion);
 }
 
 static void
