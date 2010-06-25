@@ -304,6 +304,7 @@ check_tds (UHCI_TD * tx_tds, uint32 *act_len)
         if (tds->act_len != tds->max_len) {
           DLOG ("Short Packet! after %d bytes", len);
           *act_len = len;
+          //debug_dump_sched (tx_tds);
           return status;
         }
       }

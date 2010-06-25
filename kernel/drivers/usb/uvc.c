@@ -57,6 +57,7 @@ static int video_probe_controls (USB_DEVICE_INFO *, uint8_t, uint8_t,
     UVC_VS_CTL_PAR_BLOCK *);
 static int video_commit_controls (USB_DEVICE_INFO *, uint8_t, uint8_t,
     UVC_VS_CTL_PAR_BLOCK *);
+static int video_error_code (USB_DEVICE_INFO *, uint8_t, uint8_t);
 static void para_block_dump (UVC_VS_CTL_PAR_BLOCK *);
 int uvc_get_frame (USB_DEVICE_INFO *, ISO_DATA_SRC *, addr_t, uint32_t);
 
@@ -106,24 +107,36 @@ uvc_init (USB_DEVICE_INFO * dev, USB_CFG_DESC * cfg)
 
   /* Now, negotiate with VS interface for streaming parameters */
 
-  /* Manually set format and frame index */
+  /* Manually set parameters */
+#if 0
+  par.bmHint = 1; // Frame Interval Fixed
   par.bFormatIndex = 2;
   par.bFrameIndex = 2;
+  par.dwFrameInterval = 0x61A80; // 25FPS
+  par.wCompQuality = 5000; // 1 - 10000, with 1 the lowest
   //par.dwMaxPayloadTransferSize = 512;
-
+#endif
   if (video_probe_controls (dev, SET_CUR, 1, &par)) {
     DLOG("Initial negotiation failed during probe");
   }
+  delay(500);
+  DLOG("Error Code : 0x%x", video_error_code (dev, GET_INFO, 1));
   para_block_dump (&par);
-  
+  memset(&par, 0, sizeof(UVC_VS_CTL_PAR_BLOCK));
+
   if (video_probe_controls (dev, GET_CUR, 1, &par)) {
     DLOG("Getting current state during probe failed");
   }
+  delay(500);
+  DLOG("Error Code : 0x%x", video_error_code (dev, GET_INFO, 1));
   para_block_dump (&par);
+  memset(&par, 0, sizeof(UVC_VS_CTL_PAR_BLOCK));
 
-  if (video_probe_controls (dev, GET_DEF, 1, &par)) {
+  if (video_probe_controls (dev, GET_CUR, 1, &par)) {
     DLOG("Getting current state during probe failed");
   }
+  delay(500);
+  DLOG("Error Code : 0x%x", video_error_code (dev, GET_INFO, 1));
   para_block_dump (&par);
 
   par.bFormatIndex = 2;
@@ -132,6 +145,16 @@ uvc_init (USB_DEVICE_INFO * dev, USB_CFG_DESC * cfg)
   if (video_commit_controls (dev, SET_CUR, 1, &par)) {
     DLOG("Setting device state during probe failed");
   }
+  delay(500);
+  DLOG("Error Code : 0x%x", video_error_code (dev, GET_INFO, 1));
+  para_block_dump (&par);
+  memset(&par, 0, sizeof(UVC_VS_CTL_PAR_BLOCK));
+
+  if (video_commit_controls (dev, GET_CUR, 1, &par)) {
+    DLOG("Setting device state during probe failed");
+  }
+  delay(500);
+  DLOG("Error Code : 0x%x", video_error_code (dev, GET_INFO, 1));
   para_block_dump (&par);
 
   /* Select Alternate Setting 3 for interface 1 (Std VS interface) */
@@ -193,6 +216,29 @@ uvc_probe (USB_DEVICE_INFO *dev, USB_CFG_DESC *cfg, USB_IF_DESC *ifd)
 }
 
 static int
+video_error_code (
+    USB_DEVICE_INFO * dev,
+    uint8_t request,
+    uint8_t interface)
+{
+  USB_DEV_REQ setup_req;
+  uint8_t code, status;
+
+  setup_req.bmRequestType = 0xA1;
+  setup_req.bRequest = request;
+  setup_req.wValue = VC_REQUEST_ERROR_CODE_CONTROL;
+  setup_req.wIndex = interface;
+  setup_req.wLength = 1;
+
+  status = usb_control_transfer (dev, (addr_t) & setup_req,
+      sizeof (USB_DEV_REQ), (addr_t) & code, 1);
+
+  if (status) {DLOG("Getting error code failed!"); return 0xFF;}
+
+  return code;
+}
+
+static int
 video_probe_controls (
     USB_DEVICE_INFO * dev,
     uint8_t request,
@@ -208,6 +254,8 @@ video_probe_controls (
   setup_req.wValue = VS_PROBE_CONTROL;
   setup_req.wIndex = interface;
   setup_req.wLength = sizeof(UVC_VS_CTL_PAR_BLOCK);
+  DLOG("Size of Parameter Block : %d bytes",
+      sizeof(UVC_VS_CTL_PAR_BLOCK));
 
   return usb_control_transfer (dev, (addr_t) & setup_req,
       sizeof (USB_DEV_REQ), (addr_t) par, sizeof(UVC_VS_CTL_PAR_BLOCK));
@@ -229,6 +277,8 @@ video_commit_controls (
   setup_req.wValue = VS_COMMIT_CONTROL;
   setup_req.wIndex = interface;
   setup_req.wLength = sizeof(UVC_VS_CTL_PAR_BLOCK);
+  DLOG("Size of Parameter Block : %d bytes",
+      sizeof(UVC_VS_CTL_PAR_BLOCK));
 
   return usb_control_transfer (dev, (addr_t) & setup_req,
       sizeof (USB_DEV_REQ), (addr_t) par, sizeof(UVC_VS_CTL_PAR_BLOCK));
