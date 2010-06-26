@@ -48,6 +48,7 @@ struct iso_data_source
 typedef struct iso_data_source ISO_DATA_SRC;
 
 static ISO_DATA_SRC iso_src;
+static uint8_t frame_buf[38400];
 
 bool usb_uvc_driver_init (void);
 static bool uvc_probe (USB_DEVICE_INFO *, USB_CFG_DESC *, USB_IF_DESC *);
@@ -57,7 +58,7 @@ static int video_probe_controls (USB_DEVICE_INFO *, uint8_t, uint8_t,
     UVC_VS_CTL_PAR_BLOCK *);
 static int video_commit_controls (USB_DEVICE_INFO *, uint8_t, uint8_t,
     UVC_VS_CTL_PAR_BLOCK *);
-static int video_error_code (USB_DEVICE_INFO *, uint8_t, uint8_t);
+static int video_ctl_error_code (USB_DEVICE_INFO *, uint8_t, uint8_t);
 static void para_block_dump (UVC_VS_CTL_PAR_BLOCK *);
 int uvc_get_frame (USB_DEVICE_INFO *, ISO_DATA_SRC *, addr_t, uint32_t);
 
@@ -68,8 +69,18 @@ uvc_get_frame (
     addr_t data,
     uint32_t data_len)
 {
-  return uhci_isochronous_transfer (dev->address, iso_src->endp,
-      data, iso_src->max_packet, 100, DIR_IN, 0);
+  int status = 0, i = 0;
+
+  for (i = 0; i < 100; i++) {
+    status += uhci_isochronous_transfer (dev->address, iso_src->endp,
+        data + i * data_len, data_len, i,
+        DIR_IN, 0);
+  }
+
+  delay(1000);
+  delay(1000);
+  delay(1000);
+  return status;
 }
 
 static bool
@@ -108,62 +119,49 @@ uvc_init (USB_DEVICE_INFO * dev, USB_CFG_DESC * cfg)
   /* Now, negotiate with VS interface for streaming parameters */
 
   /* Manually set parameters */
-#if 0
   par.bmHint = 1; // Frame Interval Fixed
   par.bFormatIndex = 2;
   par.bFrameIndex = 2;
   par.dwFrameInterval = 0x61A80; // 25FPS
-  par.wCompQuality = 5000; // 1 - 10000, with 1 the lowest
+  //par.dwFrameInterval = 0xF4240; // 10FPS
+  //par.wCompQuality = 5000; // 1 - 10000, with 1 the lowest
   //par.dwMaxPayloadTransferSize = 512;
-#endif
+
   if (video_probe_controls (dev, SET_CUR, 1, &par)) {
     DLOG("Initial negotiation failed during probe");
   }
-  delay(500);
-  DLOG("Error Code : 0x%x", video_error_code (dev, GET_INFO, 1));
-  para_block_dump (&par);
+
   memset(&par, 0, sizeof(UVC_VS_CTL_PAR_BLOCK));
 
   if (video_probe_controls (dev, GET_CUR, 1, &par)) {
     DLOG("Getting current state during probe failed");
   }
-  delay(500);
-  DLOG("Error Code : 0x%x", video_error_code (dev, GET_INFO, 1));
   para_block_dump (&par);
-  memset(&par, 0, sizeof(UVC_VS_CTL_PAR_BLOCK));
-
-  if (video_probe_controls (dev, GET_CUR, 1, &par)) {
-    DLOG("Getting current state during probe failed");
-  }
-  delay(500);
-  DLOG("Error Code : 0x%x", video_error_code (dev, GET_INFO, 1));
-  para_block_dump (&par);
-
-  par.bFormatIndex = 2;
-  par.bFrameIndex = 2;
 
   if (video_commit_controls (dev, SET_CUR, 1, &par)) {
     DLOG("Setting device state during probe failed");
   }
-  delay(500);
-  DLOG("Error Code : 0x%x", video_error_code (dev, GET_INFO, 1));
-  para_block_dump (&par);
   memset(&par, 0, sizeof(UVC_VS_CTL_PAR_BLOCK));
 
   if (video_commit_controls (dev, GET_CUR, 1, &par)) {
     DLOG("Setting device state during probe failed");
   }
-  delay(500);
-  DLOG("Error Code : 0x%x", video_error_code (dev, GET_INFO, 1));
   para_block_dump (&par);
 
-  /* Select Alternate Setting 3 for interface 1 (Std VS interface) */
-  /* This is for an isochronous endpoint with MaxPacketSize 512 */
-  DLOG("Select Alternate Setting 3 for VS interface");
-  if (usb_set_interface(dev, 3, 1)) {
+  /* Select Alternate Setting 2 for interface 1 (Std VS interface) */
+  /* This is for an isochronous endpoint with MaxPacketSize 384 */
+  DLOG("Select Alternate Setting 2 for VS interface");
+  if (usb_set_interface(dev, 2, 1)) {
     DLOG("Cannot configure interface setting for Std VS interface");
     return FALSE;
   }
+
+  delay(1000);
+  delay(1000);
+  delay(1000);
+  delay(1000);
+  delay(1000);
+  delay(1000);
 
   return TRUE;
 }
@@ -196,16 +194,17 @@ uvc_probe (USB_DEVICE_INFO *dev, USB_CFG_DESC *cfg, USB_IF_DESC *ifd)
   }
 
 #if 1
-  uint8_t data[512];
   int i = 0;
-  uint32_t *dump = (uint32_t*)data;
-  memset(data, 0, 512);
-  uvc_get_frame (dev, &iso_src, (addr_t) data, 512);
+  uint32_t *dump = (uint32_t*)frame_buf;
+  memset(frame_buf, 0, 38400);
 
-  for(i = 1; i < 100; i++) {
+  uvc_get_frame (dev, &iso_src, (addr_t) frame_buf, 384);
+
+  for(i = 1; i <= 9600; i++) {
     putx(*dump);
     dump++;
-    putchar('\n');
+    if ((i % 6) == 0) putchar('\n');
+    if ((i % 96) == 0) putchar('\n');
   }
 #endif
 
@@ -216,7 +215,7 @@ uvc_probe (USB_DEVICE_INFO *dev, USB_CFG_DESC *cfg, USB_IF_DESC *ifd)
 }
 
 static int
-video_error_code (
+video_ctl_error_code (
     USB_DEVICE_INFO * dev,
     uint8_t request,
     uint8_t interface)
@@ -226,7 +225,7 @@ video_error_code (
 
   setup_req.bmRequestType = 0xA1;
   setup_req.bRequest = request;
-  setup_req.wValue = VC_REQUEST_ERROR_CODE_CONTROL;
+  setup_req.wValue = VC_REQUEST_ERROR_CODE_CONTROL << 8;
   setup_req.wIndex = interface;
   setup_req.wLength = 1;
 
@@ -251,14 +250,13 @@ video_probe_controls (
   else
     setup_req.bmRequestType = 0xA1;
   setup_req.bRequest = request;
-  setup_req.wValue = VS_PROBE_CONTROL;
+  setup_req.wValue = VS_PROBE_CONTROL << 8;
   setup_req.wIndex = interface;
-  setup_req.wLength = sizeof(UVC_VS_CTL_PAR_BLOCK);
-  DLOG("Size of Parameter Block : %d bytes",
-      sizeof(UVC_VS_CTL_PAR_BLOCK));
+  //setup_req.wLength = sizeof(UVC_VS_CTL_PAR_BLOCK);
+  setup_req.wLength = 26; // Why? It should be 34! Odd...
 
   return usb_control_transfer (dev, (addr_t) & setup_req,
-      sizeof (USB_DEV_REQ), (addr_t) par, sizeof(UVC_VS_CTL_PAR_BLOCK));
+      sizeof (USB_DEV_REQ), (addr_t) par, setup_req.wLength);
 }
 
 static int
@@ -274,14 +272,13 @@ video_commit_controls (
   else
     setup_req.bmRequestType = 0xA1;
   setup_req.bRequest = request;
-  setup_req.wValue = VS_COMMIT_CONTROL;
+  setup_req.wValue = VS_COMMIT_CONTROL << 8;
   setup_req.wIndex = interface;
-  setup_req.wLength = sizeof(UVC_VS_CTL_PAR_BLOCK);
-  DLOG("Size of Parameter Block : %d bytes",
-      sizeof(UVC_VS_CTL_PAR_BLOCK));
+  //setup_req.wLength = sizeof(UVC_VS_CTL_PAR_BLOCK);
+  setup_req.wLength = 26; // Why? It should be 34! Odd...
 
   return usb_control_transfer (dev, (addr_t) & setup_req,
-      sizeof (USB_DEV_REQ), (addr_t) par, sizeof(UVC_VS_CTL_PAR_BLOCK));
+      sizeof (USB_DEV_REQ), (addr_t) par, setup_req.wLength);
 }
 
 static USB_DRIVER uvc_driver = {

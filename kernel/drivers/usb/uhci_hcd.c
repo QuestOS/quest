@@ -740,10 +740,12 @@ uhci_isochronous_transfer (
     frame_list[frm] = (uint32_t) get_phys_addr ((void *) iso_td) & 0xFFFFFFF0;
   }
 
-#if 1
-  delay (1000);
+#if 0
   delay (500);
+  delay (1000);
   DLOG ("The status of iso_td: %p ActLen: %p", iso_td->status, iso_td->act_len);
+  frame_list[frm] = iso_td->link_ptr;
+  sched_free (TYPE_TD, iso_td);
 #endif
 
   return 0;
@@ -1143,7 +1145,6 @@ uhci_irq_handler (uint8 vec)
 
         /* Short packet detected */
         if(td[i].spd) {
-          status |= 0x01; /* Clear the interrupt by writing a 1 to it */
           /* Release this TD if it is isochronous */
           if(td[i].iso) sched_free(TYPE_TD, &td[i]);
         }
