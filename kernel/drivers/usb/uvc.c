@@ -49,6 +49,8 @@ typedef struct iso_data_source ISO_DATA_SRC;
 
 static ISO_DATA_SRC iso_src;
 static uint8_t frame_buf[38400];
+static uint8_t jpeg_frame[38400];
+static uint32_t uvc_test_stack[1024];
 
 bool usb_uvc_driver_init (void);
 static bool uvc_probe (USB_DEVICE_INFO *, USB_CFG_DESC *, USB_IF_DESC *);
@@ -60,26 +62,81 @@ static int video_commit_controls (USB_DEVICE_INFO *, uint8_t, uint8_t,
     UVC_VS_CTL_PAR_BLOCK *);
 static int video_ctl_error_code (USB_DEVICE_INFO *, uint8_t, uint8_t);
 static void para_block_dump (UVC_VS_CTL_PAR_BLOCK *);
-int uvc_get_frame (USB_DEVICE_INFO *, ISO_DATA_SRC *, addr_t, uint32_t);
+int uvc_get_frame (USB_DEVICE_INFO *, ISO_DATA_SRC *, uint8_t *,
+    uint32_t, uint8_t *, uint32_t *);
+static void uvc_test (void);
+
+static USB_DEVICE_INFO gdev; // --??-- Remove after test
+
+static void
+uvc_test (void)
+{
+  DLOG("UVC Test starts!");
+  uint32_t frm_len;
+  int i = 0;
+  uint32_t *dump = (uint32_t*)jpeg_frame;
+
+  memset(frame_buf, 0, 38400);
+  memset(jpeg_frame, 0, 38400);
+  uvc_get_frame (&gdev, &iso_src, frame_buf, 384, jpeg_frame, &frm_len);
+
+  DLOG("After uvc_get_frame now. The length of the frame is: %d bytes",
+      frm_len);
+  DLOG("Dumping the frame:");
+
+  for(i = 1; i <= (frm_len / 4 + 1); i++) {
+    putx(*dump);
+    dump++;
+    if ((i % 6) == 0) putchar('\n');
+    if ((i % 96) == 0) putchar('\n');
+  }
+
+  for (;;)
+    delay (1000);
+}
 
 int
 uvc_get_frame (
     USB_DEVICE_INFO * dev,
     ISO_DATA_SRC * iso_src,
-    addr_t data,
-    uint32_t data_len)
+    uint8_t * buf,
+    uint32_t transfer_len,
+    uint8_t * frame,
+    uint32_t * frm_len)
 {
-  int status = 0, i = 0;
+  int status = 0, i = 0, j = 0, act_len = 0;
+  uint8_t * index;
+  int counter = 0, header_len = 0;
+
+  DLOG("In uvc_get_frame!");
+  *frm_len = 0;
 
   for (i = 0; i < 100; i++) {
+    index = buf + i * transfer_len;
+
     status += uhci_isochronous_transfer (dev->address, iso_src->endp,
-        data + i * data_len, data_len, i,
-        DIR_IN, 0);
+        (addr_t) index, transfer_len, &act_len, i, DIR_IN, 0);
+
+    header_len = *(index);
+    *frm_len += (act_len - header_len);
+
+#if 0
+    DLOG("Actual length received : %d, header : %d, frame : %d",
+        act_len, header_len, *frm_len);
+#endif
+
+    for (j = 0; j < (act_len - header_len); j++) {
+      *(frame + counter) = *(index + header_len + j);
+      counter ++;
+    }
+
+    /* Now, we only retreive one frame. Check EOF in the header */
+    if ((*(index + 1)) & 0x02) {
+      DLOG("End of frame reached!");
+      break;
+    }
   }
 
-  delay(1000);
-  delay(1000);
-  delay(1000);
   return status;
 }
 
@@ -91,6 +148,8 @@ uvc_init (USB_DEVICE_INFO * dev, USB_CFG_DESC * cfg)
   uint8_t tmp[1300];
 
   DLOG("Configuring UVC device ...");
+
+  gdev = *dev; // --??-- Remove after test
 
   /* Set data source info manually for now */
   iso_src.endp = 1;
@@ -193,7 +252,9 @@ uvc_probe (USB_DEVICE_INFO *dev, USB_CFG_DESC *cfg, USB_IF_DESC *ifd)
     return FALSE;
   }
 
-#if 1
+  start_kernel_thread((uint)uvc_test, (uint)&uvc_test_stack[1023]);
+
+#if 0
   int i = 0;
   uint32_t *dump = (uint32_t*)frame_buf;
   memset(frame_buf, 0, 38400);
