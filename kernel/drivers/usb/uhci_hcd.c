@@ -419,6 +419,46 @@ find_device_driver (USB_DEVICE_INFO *info, USB_CFG_DESC *cfgd, USB_IF_DESC *ifd)
   }
 }
 
+void
+dlog_devd (USB_DEV_DESC *devd)
+{
+  DLOG ("DEVICE DESCRIPTOR len=%d type=%d bcdUSB=0x%x",
+        devd->bLength, devd->bDescriptorType, devd->bcdUSB);
+  DLOG ("  class=0x%x subclass=0x%x proto=0x%x maxpkt0=%d",
+        devd->bDeviceClass, devd->bDeviceSubClass, devd->bDeviceProtocol,
+        devd->bMaxPacketSize0);
+  DLOG ("  vendor=0x%x product=0x%x bcdDevice=0x%x numcfgs=%d",
+        devd->idVendor, devd->idProduct, devd->bcdDevice,
+        devd->bNumConfigurations);
+}
+
+void
+dlog_info (USB_DEVICE_INFO *info)
+{
+  DLOG ("ADDRESS %d", info->address);
+  dlog_devd (&info->devd);
+
+#if 0
+  uint8 strbuf[64];
+  uint8 str[32];
+#define do_str(slot,label)                                              \
+  if (info->devd.slot != 0 &&                                           \
+      uhci_get_string (info->address, info->devd.slot, 0,               \
+                       sizeof (strbuf), strbuf,                         \
+                       info->devd.bMaxPacketSize0)                      \
+      == 0) {                                                           \
+    memset (str, 0, sizeof (str));                                      \
+    if (uhci_interp_string ((USB_STR_DESC *)strbuf, sizeof (strbuf), 0, \
+                            str, sizeof (str)-1) > 0) {                 \
+      DLOG ("  "label": %s", str);                                      \
+    }                                                                   \
+  }
+
+  do_str (iManufacturer, "Manufacturer");
+  do_str (iProduct, "Product");
+#undef do_str
+#endif
+}
 
 /* figures out what device is attached as address 0 */
 bool
@@ -474,6 +514,8 @@ uhci_enumerate (void)
 
   /* Update device info structure for new address. */
   info->address = curdev;
+
+  dlog_info (info);
 
   for (c=0; c<devd.bNumConfigurations; c++) {
     /* get a config descriptor for size field */
@@ -961,6 +1003,35 @@ uhci_get_descriptor (
   return uhci_control_transfer (address,
       (addr_t) & setup_req, sizeof (USB_DEV_REQ),
       desc, length, packet_size);
+}
+
+sint
+uhci_get_string (uint8_t address, uint16_t index, uint16_t lang,
+                 uint16_t length, void *buffer, uint8_t pktsize)
+{
+  return uhci_get_descriptor (address, USB_TYPE_STR_DESC, index, lang,
+                              length, buffer, pktsize);
+}
+
+sint
+uhci_interp_string (USB_STR_DESC *string, uint16_t length, uint16_t lang,
+                    uint8 *output, uint16_t out_len)
+{
+  sint i, j;
+  if (lang == 0) {
+    /* assume UTF-16 encoding */
+    length = (length < string->bLength ? length : string->bLength);
+    /* skip first 2 bytes */
+    length -= 2;
+    for (i=0, j=0; i<length && j<out_len; i+=2, j++) {
+      output[j] = string->bString[i];
+    }
+    return j;
+  } else {
+    /* unsupported */
+    DLOG ("unimplemented: lang!=0");
+    return 0;
+  }
 }
 
 int

@@ -19,7 +19,6 @@
 #define _USB_H_
 
 #include <types.h>
-#include <drivers/usb/uhci.h>
 
 #define pci_config_rd8(bus, slot, func, reg) \
   pci_read_byte (pci_addr (bus, slot, func, reg))

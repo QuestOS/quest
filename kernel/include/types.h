@@ -48,6 +48,8 @@ typedef uint8 uint8_t;
 typedef uint16 uint16_t;
 typedef uint32 uint32_t;
 
+typedef void *addr_t;
+
 #endif // [#ifndef __ASSEMBLER__]
 
 #endif
