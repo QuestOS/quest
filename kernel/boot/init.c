@@ -532,6 +532,9 @@ init (multiboot * pmb)
   /* Initialize USB net driver */
   { bool usb_net_driver_init (void); usb_net_driver_init (); }
 
+  /* Initialize USB asix (network) driver */
+  { bool usb_asix_driver_init (void); usb_asix_driver_init (); }
+
   /* Initialize USB */
   { bool uhci_init (void); uhci_init (); }
 
