@@ -50,7 +50,7 @@ typedef struct iso_data_source ISO_DATA_SRC;
 static ISO_DATA_SRC iso_src;
 static uint8_t frame_buf[38400];
 static uint8_t jpeg_frame[38400];
-static uint32_t uvc_test_stack[1024];
+//static uint32_t uvc_test_stack[1024];
 
 bool usb_uvc_driver_init (void);
 static bool uvc_probe (USB_DEVICE_INFO *, USB_CFG_DESC *, USB_IF_DESC *);
@@ -252,7 +252,8 @@ uvc_probe (USB_DEVICE_INFO *dev, USB_CFG_DESC *cfg, USB_IF_DESC *ifd)
     return FALSE;
   }
 
-  start_kernel_thread((uint)uvc_test, (uint)&uvc_test_stack[1023]);
+  //start_kernel_thread((uint)uvc_test, (uint)&uvc_test_stack[1023]);
+  uvc_test ();
 
 #if 0
   int i = 0;

@@ -711,7 +711,7 @@ uhci_isochronous_transfer (
   iso_td = sched_alloc (TYPE_TD);
   iso_td->status = 0x80;
   iso_td->c_err = 0;
-  iso_td->ioc = 1;
+  iso_td->ioc = 0; // --??-- For test, mask the interrupt
   iso_td->iso = 1;
   iso_td->spd = 0;
   iso_td->pid = (direction == DIR_IN) ? UHCI_PID_IN : UHCI_PID_OUT;
@@ -741,10 +741,12 @@ uhci_isochronous_transfer (
     frame_list[frm] = (uint32_t) get_phys_addr ((void *) iso_td) & 0xFFFFFFF0;
   }
 
-  queue_append (&uhci_waitq, str ());
-  schedule ();
+  //queue_append (&uhci_waitq, str ());
+  //schedule ();
+  while (iso_td->status & 0x80);
 
   *act_len = iso_td->act_len + 1;
+  frame_list[frm] = iso_td->link_ptr;
   sched_free (TYPE_TD, iso_td);
   
 #if 0
