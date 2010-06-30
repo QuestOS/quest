@@ -82,6 +82,17 @@ uvc_test (void)
 
   DLOG("After uvc_get_frame now. The length of the frame is: %d bytes",
       frm_len);
+  
+  DLOG("Getting the second frame.");
+  memset(frame_buf, 0, 38400);
+  memset(jpeg_frame, 0, 38400);
+  uvc_get_frame (&gdev, &iso_src, frame_buf, 384, jpeg_frame, &frm_len);
+
+  DLOG("Getting the third frame.");
+  memset(frame_buf, 0, 38400);
+  memset(jpeg_frame, 0, 38400);
+  uvc_get_frame (&gdev, &iso_src, frame_buf, 384, jpeg_frame, &frm_len);
+
   DLOG("Dumping the frame:");
 
   for(i = 1; i <= (frm_len / 4 + 1); i++) {
