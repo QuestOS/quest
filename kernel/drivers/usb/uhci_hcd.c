@@ -1151,9 +1151,11 @@ uhci_irq_handler (uint8 vec)
 
   lock_kernel ();
 
+#if 0
   v = IOAPIC_read64 (0x10 + (irq_line * 2));
   DLOG ("(1) IOAPIC (irq_line=0x%x) says %p %p",
         irq_line, (uint32) (v >> 32), (uint32) v);
+#endif
 
   /* mask it */
   //IOAPIC_map_GSI (irq_line, UHCI_VECTOR, IOAPIC_FLAGS | 0x10000);
@@ -1247,9 +1249,11 @@ uhci_irq_handler (uint8 vec)
   /* clear the interrupt(s) */
   SET_USBSTS (usb_base, status);
 
+#if 0
   v = IOAPIC_read64 (0x10 + (irq_line * 2));
   DLOG ("(2) IOAPIC (irq_line=0x%x) says %p %p",
         irq_line, (uint32) (v >> 32), (uint32) v);
+#endif
 
   /* unmask it */
   //IOAPIC_map_GSI (irq_line, UHCI_VECTOR, IOAPIC_FLAGS);
