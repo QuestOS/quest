@@ -70,6 +70,7 @@
 #define __ARCH_CC_H__
 
 #include "types.h"
+#include "lwipopts.h"
 
 /* Include some files for defining library routines */
 //#include <linux/string.h>
@@ -109,12 +110,13 @@ typedef u32_t mem_ptr_t;
 #define PACK_STRUCT_END
 
 void printf(const char *fmt, ...);
+void com1_printf(const char *fmt, ...);
 
 /* Plaform specific diagnostic output  */
 /* Plaform specific diagnostic output */
-#define LWIP_PLATFORM_DIAG(x)   do {printf x;} while(0)
+#define LWIP_PLATFORM_DIAG(x)   do {com1_printf x;} while(0)
 
-#define LWIP_PLATFORM_ASSERT(x) do {printf("Assertion \"%s\" failed at line %d in %s\n", \
+#define LWIP_PLATFORM_ASSERT(x) do {com1_printf("Assertion \"%s\" failed at line %d in %s\n", \
                                      x, __LINE__, __FILE__);} while(0)
 
 #define PERF_START   /* null definition */
