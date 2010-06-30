@@ -496,13 +496,27 @@ uhci_enumerate (void)
    * bytes for full speed device. So, do not be surprised if your USB
    * mouse does not work in Quest!
    */
-  (info->devd).bMaxPacketSize0 = 64;
+  info->devd.bMaxPacketSize0 = 64;
+
+  memset (&devd, 0, sizeof (USB_DEV_DESC));
 
   /* get device descriptor */
-  status =
-    usb_get_descriptor (info, USB_TYPE_DEV_DESC, 0, 0, sizeof (USB_DEV_DESC), &devd);
+  status = usb_get_descriptor (info, USB_TYPE_DEV_DESC, 0, 0,
+                               sizeof (USB_DEV_DESC), &devd);
   if (status != 0)
     goto abort;
+
+  if (devd.bMaxPacketSize0 == 8) {
+    /* get device descriptor */
+    info->devd.bMaxPacketSize0 = 8;
+    status = usb_get_descriptor (info, USB_TYPE_DEV_DESC, 0, 0,
+                                 sizeof (USB_DEV_DESC), &devd);
+    if (status != 0)
+      goto abort;
+  }
+
+  if (devd.bNumConfigurations == 255)
+    devd.bNumConfigurations = 1; /* hack */
 
   /* Update device info structure. Put it in USB core might be better */
   memcpy (&info->devd, &devd, sizeof (USB_DEV_DESC));
@@ -510,7 +524,8 @@ uhci_enumerate (void)
   /* assign an address */
   if (usb_set_address (info, curdev) != 0)
     goto abort;
-  DLOG ("uhci_enumerate: set %p to addr %d", devd.bDeviceClass, curdev);
+  DLOG ("uhci_enumerate: set (0x%x, 0x%x, 0x%x) to addr %d",
+        devd.bDeviceClass, devd.idVendor, devd.idProduct, curdev);
   delay (2);
 
   DLOG ("uhci_enumerate: num configs=%d", devd.bNumConfigurations);
@@ -523,8 +538,8 @@ uhci_enumerate (void)
   for (c=0; c<devd.bNumConfigurations; c++) {
     /* get a config descriptor for size field */
     memset (temp, 0, TEMPSZ);
-    status =
-      usb_get_descriptor (info, USB_TYPE_CFG_DESC, c, 0, sizeof (USB_CFG_DESC), temp);
+    status = usb_get_descriptor (info, USB_TYPE_CFG_DESC, c, 0,
+                                 sizeof (USB_CFG_DESC), temp);
     if (status != 0) {
       DLOG ("uhci_enumerate: failed to get config descriptor for c=%d", c);
       goto abort;
