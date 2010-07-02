@@ -28,7 +28,8 @@
 #include "kernel.h"
 
 #define EEPROM_MICROWIRE
-#define DEBUG_E1000
+//#define DEBUG_E1000
+//#define LOOPBACK_MODE
 
 typedef struct {
   uint16 word_size, delay_usec, address_bits, opcode_bits;
@@ -83,9 +84,21 @@ static volatile uint32 *mmio_base;
 #define REG(x) (mmio_base[x])
 
 #define CTRL   (REG (0x00))     /* Control */
+#define CTRL_FD   (0x1)         /* Full-Duplex */
+#define CTRL_LRST (0x8)         /* Link Reset */
+#define CTRL_ASDE (0x20)        /* Auto-Speed Detection */
 #define CTRL_SLU (0x40)         /* Set Link Up */
+#define CTRL_ILOS (0x80)        /* Invert Loss-of-Signal */
+#define CTRL_SPDSEL (0x300)     /* Speed Selector bits */
+#define CTRL_SPD1000 (0x200)    /* Set 1000Mbit */
+#define CTRL_FRCSPD (0x800)     /* Force Speed */
+#define CTRL_FRCDPLX (0x1000)   /* Force Duplex */
 #define CTRL_RST (1<<26)        /* Reset */
+#define CTRL_RFCE (1<<27)       /* RX Flow Control Enable */
+#define CTRL_TFCE (1<<28)       /* TX Flow Control Enable */
+#define CTRL_PHYRST (1<<31)     /* PHY Reset */
 #define STATUS (REG (0x02))     /* Device Status */
+#define STATUS_FD (0x1)         /* Full-Duplex indicator */
 #define EECD   (REG (0x04))     /* EEPROM Control/Data */
 #define EECD_SK (0x1)           /* Clock Input */
 #define EECD_CS (0x2)           /* Chip Select */
@@ -95,6 +108,7 @@ static volatile uint32 *mmio_base;
 #define EECD_GNT (0x80)         /* Access Granted */
 #define EERD   (REG (0x05))     /* EEPROM Read */
 #define CTRLEXT (REG (0x06))    /* Extended Control */
+#define CTRLEXT_EERST (1<<13)   /* EEPROM Reset */
 #define MDIC   (REG (0x08))     /* MDI Control */
 #define ICR    (REG (0x30))     /* Interrupt Cause Read */
 #define ICR_RXT (0x80)          /* RX Timer Int. */
@@ -129,6 +143,7 @@ static volatile uint32 *mmio_base;
 #define TDT    (REG (0xE06))    /* TX Desc Tail */
 #define RAL    (REG (0x1500))   /* RX HW Address Low */
 #define RAH    (REG (0x1501))   /* RX HW Address High */
+#define TPT    (REG (0x1035))   /* Total Packets Transmitted */
 
 #define WRITE_FLUSH (void) STATUS
 
@@ -159,9 +174,10 @@ struct e1000_tdesc {
   uint8  css;                   /* checksum start */
   uint16 special;
 } PACKED;
-#define TDESC_STA_DD  0x01 /* indicates hardware done with descriptor */
-#define TDESC_CMD_EOP 0x01 /* indicates end of packet */
-#define TDESC_CMD_RS 0x08  /* requests status report */
+#define TDESC_STA_DD   0x01 /* indicates hardware done with descriptor */
+#define TDESC_CMD_EOP  0x01 /* indicates end of packet */
+#define TDESC_CMD_IFCS 0x02 /* insert frame checksum (FCS) */
+#define TDESC_CMD_RS   0x08 /* requests status report */
 
 /* ************************************************** */
 
@@ -196,8 +212,15 @@ e1000_get_hwaddr (uint8 a[ETH_ADDR_LEN])
 extern sint
 e1000_transmit (uint8* buffer, sint len)
 {
+  struct e1000_tdesc *td;
   uint32 tdt = TDT;
   DLOG ("TX: (%p, %d) TDH=%d TDT=%d", buffer, len, TDH, tdt);
+  DLOG ("TX:   %.02X %.02X %.02X %.02X %.02X %.02X %.02X %.02X",
+        buffer[0], buffer[1], buffer[2], buffer[3],
+        buffer[4], buffer[5], buffer[6], buffer[7]);
+  DLOG ("TX:   %.02X %.02X %.02X %.02X %.02X %.02X %.02X %.02X",
+        buffer[8], buffer[9], buffer[10], buffer[11],
+        buffer[12], buffer[13], buffer[14], buffer[15]);
 
   if (len > TBUF_SIZE)
     return 0;
@@ -208,7 +231,8 @@ e1000_transmit (uint8* buffer, sint len)
   /* set up the first available descriptor */
   memcpy (e1000->tbufs[tdt], buffer, len);
   e1000->tdescs[tdt].length = len;
-  e1000->tdescs[tdt].cmd = TDESC_CMD_RS | TDESC_CMD_EOP;
+  e1000->tdescs[tdt].cmd = TDESC_CMD_IFCS | TDESC_CMD_RS | TDESC_CMD_EOP;
+  td = &e1000->tdescs[tdt];
 
   /* advance the TDT, notifying hardware */
   tdt++;
@@ -292,22 +316,7 @@ e1000_poll (void)
   handle_tx (ICR_TXQE);
 }
 
-static uint32
-e1000_irq_handler (uint8 vec)
-{
-  /* ICR is cleared upon read; this implicitly acknowledges the
-   * interrupt. */
-  uint32 icr = ICR;
-  DLOG ("IRQ: ICR=%p CTRL=%p CTRLE=%p STA=%p", icr, CTRL, CTRLEXT, STATUS);
-
-  if (icr & ICR_RXT)            /* RX */
-    e1000_rx_poll ();
-  if (icr & ICR_TXQE)           /* TX queue empty */
-    handle_tx (icr);
-
-  return 0;
-}
-
+#ifdef E1000_DEBUG
 static uint16
 mdi_read (uint8 phy_reg)
 {
@@ -345,6 +354,28 @@ mdi_write (uint8 phy_reg, uint16 val)
     return FALSE;
   else
     return TRUE;
+}
+#endif
+
+static uint32
+e1000_irq_handler (uint8 vec)
+{
+  /* ICR is cleared upon read; this implicitly acknowledges the
+   * interrupt. */
+  uint32 icr = ICR;
+  DLOG ("IRQ: ICR=%p CTRL=%p CTRLE=%p STA=%p", icr, CTRL, CTRLEXT, STATUS);
+  DLOG ("PHY_CTL=0x%.04X", mdi_read (0));
+  DLOG ("PHY_STA=0x%.04X", mdi_read (1));
+  DLOG ("PHY_GCON=0x%.04X", mdi_read (9));
+  DLOG ("PHY_GSTA=0x%.04X", mdi_read (10));
+  DLOG ("TPT=%p", TPT);
+
+  if (icr & ICR_RXT)            /* RX */
+    e1000_rx_poll ();
+  if (icr & ICR_TXQE)           /* TX queue empty */
+    handle_tx (icr);
+
+  return 0;
 }
 
 #define udelay tsc_delay_usec
@@ -510,7 +541,9 @@ eeprom_read (uint32 address)
   eeprom_send_bits (NVM_READ_OPCODE, nvm->opcode_bits);
   eeprom_send_bits (address, nvm->address_bits);
 
-  DLOG ("eeprom said 0x%.04X", data=eeprom_recv_bits (16));
+  data = eeprom_recv_bits (16);
+
+  DLOG ("eeprom said 0x%.04X", data);
 
   eeprom_standby ();
 
@@ -522,20 +555,53 @@ eeprom_read (uint32 address)
   return data;
 }
 
+#ifdef LOOPBACK_MODE
+static void
+set_loopback_mode (void)
+{
+  uint32 ctrl;
+  /* p390 8254x_SDM */
+  mdi_write (16, 0x0808);
+  mdi_write (0, 0x9140);
+  mdi_write (0, 0x8140);
+  mdi_write (0, 0x4140);
+  ctrl = CTRL;
+  ctrl &= ~CTRL_SPDSEL;
+  ctrl |= CTRL_FRCSPD | CTRL_FRCDPLX | CTRL_SPD1000 | CTRL_FD;
+  if (!(STATUS & STATUS_FD))
+    ctrl |= CTRL_ILOS | CTRL_SLU;
+  CTRL = ctrl;
+}
+#endif
+
 static void
 reset (void)
 {
   uint i;
 
-  /* phy reset */
+#if 0
+  /* PHY reset (before sw rst) */
   DLOG ("PHY PCTRL=0x%.4X", mdi_read (0));
   mdi_write (0, 0x9200);
   tsc_delay_usec (1000);
   DLOG ("PHY PCTRL=0x%.4X", mdi_read (0));
+#else
+  /* PHY reset via CTRL */
+  CTRL |= CTRL_PHYRST;
+  udelay (3);
+  CTRL &= ~CTRL_PHYRST;
+#endif
+
+  udelay (5000);
 
   /* reset */
-  CTRL |= CTRL_RST;
+  CTRL |= CTRL_RST;             /* self-clearing */
   while (CTRL & CTRL_RST) tsc_delay_usec (1);
+
+  /* EEPROM reset */
+  CTRLEXT |= CTRLEXT_EERST;
+  WRITE_FLUSH;
+  udelay (2000);
 
   /* set hardware address */
   RAL =
@@ -611,7 +677,29 @@ reset (void)
 
   while (! (TCTL & TCTL_EN)) asm volatile ("pause");
 
-  TXCW |= TXCW_ANE;
+#ifndef LOOPBACK_MODE
+  /* disable LRST and begin auto-negotiation */
+  CTRL &= ~CTRL_LRST;
+
+  tsc_delay_usec (10000);
+
+  /* "software must set link up" in internal [G]MII mode
+   * p166 8245x_SDM */
+
+  /* p375 "ASDE should be set with SLU" */
+  CTRL |= CTRL_SLU | CTRL_ASDE;
+#else
+  set_loopback_mode ();
+#endif
+
+
+  DLOG ("PHY_CTL=0x%.04X", mdi_read (0));
+  DLOG ("PHY_STA=0x%.04X", mdi_read (1));
+  DLOG ("PHY_GCON=0x%.04X", mdi_read (9));
+  DLOG ("PHY_GSTA=0x%.04X", mdi_read (10));
+
+
+  (void) TPT;                   /* clear TPT statistic */
 }
 
 extern bool
