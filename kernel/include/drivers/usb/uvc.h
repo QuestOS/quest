@@ -22,6 +22,51 @@
 
 #define USB_TYPE_IA_DESC    0x0B
 
+/* Video Device Class Codes */
+#define CC_VIDEO        0x0E
+
+#define SC_UNDEFINED                     0x00
+#define SC_VIDEOCONTROL                  0x01
+#define SC_VIDEOSTREAMING                0x02
+#define SC_VIDEO_INTERFACE_COLLECTION    0x03
+
+#define PC_PROTOCOL_UNDEFINED            0x00
+
+#define CS_UNDEFINED        0x20
+#define CS_DEVICE           0x21
+#define CS_CONFIGURATION    0x22
+#define CS_STRING           0x23
+#define CS_INTERFACE        0x24
+#define CS_ENDPOINT         0x25
+
+#define VC_DESCRIPTOR_UNDEFINED    0x00
+#define VC_HEADER                  0x01
+#define VC_INPUT_TERMINAL          0x02
+#define VC_OUTPUT_TERMINAL         0x03
+#define VC_SELECTOR_UNIT           0x04
+#define VC_PROCESSING_UNIT         0x05
+#define VC_EXTENSION_UNIT          0x06
+
+#define VS_UNDEFINED               0x00
+#define VS_INPUT_HEADER            0x01
+#define VS_OUTPUT_HEADER           0x02
+#define VS_STILL_IMAGE_FRAME       0x03
+#define VS_FORMAT_UNCOMPRESSED     0x04
+#define VS_FRAME_UNCOMPRESSED      0x05
+#define VS_FORMAT_MJPEG            0x06
+#define VS_FRAME_MJPEG             0x07
+#define VS_FORMAT_MPEG2TS          0x0A
+#define VS_FORMAT_DV               0x0C
+#define VS_COLOR_FORMAT            0x0D
+#define VS_FORMAT_FRAME_BASED      0x10
+#define VS_FRAME_FRAME_BASED       0x11
+#define VS_FORMAT_STREAM_BASED     0x12
+
+#define EP_UNDEFINED    0x00
+#define EP_GENERAL      0x01
+#define EP_ENDPOINT     0x02
+#define EP_INTERRUPT    0x03
+
 /* Video Class-Specific Request Codes */
 #define RC_UNDEFINED    0x00
 #define SET_CUR         0x01
@@ -122,6 +167,13 @@ struct uvc_ia_desc
 
 typedef struct uvc_ia_desc UVC_IA_DESC;
 
+/*
+ * UVC_CSVC_IF_HDR_DESC : Class-Specific VC Interface Header
+ * 
+ * Reference :
+ *     USB Device Class Definition for Video Devices
+ *     Revision 1.1, Page 50 
+ */
 struct uvc_csvc_if_hdr_desc
 {
   uint8_t bLength;
@@ -135,6 +187,72 @@ struct uvc_csvc_if_hdr_desc
 } __attribute__ ((packed));
 
 typedef struct uvc_csvc_if_hdr_desc UVC_CSVC_IF_HDR_DESC;
+
+/*
+ * UVC_IN_TERM_DESC : Input Terminal Descriptor
+ * 
+ * Reference :
+ *     USB Device Class Definition for Video Devices
+ *     Revision 1.1, Page 52
+ */
+struct uvc_in_term_desc
+{
+  uint8_t bLength;
+  uint8_t bDescriptorType;
+  uint8_t bDescriptorSubType;
+  uint8_t bTerminalID;
+  uint16_t wTerminalType;
+  uint8_t bAssocTerminal;
+  uint8_t iTerminal;
+} __attribute__ ((packed));
+
+typedef struct uvc_in_term_desc UVC_IN_TERM_DESC;
+
+/*
+ * UVC_CSVS_IF_HDR_DESC : Class-Specific VS Interface Input Header
+ * 
+ * Reference :
+ *     USB Device Class Definition for Video Devices
+ *     Revision 1.1, Page 62
+ */
+struct uvc_csvs_if_hdr_desc
+{
+  uint8_t bLength;
+  uint8_t bDescriptorType;
+  uint8_t bDescriptorSubType;
+  uint8_t bNumFormats;
+  uint16_t wTotalLength;
+  uint8_t bEndpointAddress;
+  uint8_t bmInfo;
+  uint8_t bTerminalLink;
+  uint8_t bStillCaptureMethod;
+  uint8_t bTriggerSupport;
+  uint8_t bTriggerUsage;
+  uint8_t bControlSize;
+} __attribute__ ((packed));
+
+typedef struct uvc_csvs_if_hdr_desc UVC_CSVS_IF_HDR_DESC;
+
+/*
+ * UVC_OUT_TERM_DESC : Output Terminal Descriptor
+ * 
+ * Reference :
+ *     USB Device Class Definition for Video Devices
+ *     Revision 1.1, Page 53
+ */
+struct uvc_out_term_desc
+{
+  uint8_t bLength;
+  uint8_t bDescriptorType;
+  uint8_t bDescriptorSubType;
+  uint8_t bTerminalID;
+  uint16_t wTerminalType;
+  uint8_t bAssocTerminal;
+  uint8_t bSourceID;
+  uint8_t iTerminal;
+} __attribute__ ((packed));
+
+typedef struct uvc_out_term_desc UVC_OUT_TERM_DESC;
 
 /*
  * UVC_VS_CTL_PAR_BLOCK : Parameter block of VS interface control request
@@ -164,6 +282,55 @@ struct uvc_vs_ctl_par_block
 } __attribute__ ((packed));
 
 typedef struct uvc_vs_ctl_par_block UVC_VS_CTL_PAR_BLOCK;
+
+/*
+ * UVC_MJPEG_FORMAT_DESC : M-JPEG Video Payload Format Descriptor
+ * 
+ * Reference :
+ *     USB Device Class Definition for Video Devices:Motion-JPEG Payload
+ *     Revision 1.1, Page 5
+ */
+struct uvc_mjpeg_format_desc
+{
+  uint8_t bLength;
+  uint8_t bDescriptorType;
+  uint8_t bDescriptorSubType;
+  uint8_t bFormatIndex;
+  uint8_t bNumFrameDescriptors;
+  uint8_t bmFlags;
+  uint8_t bDefaultFrameIndex;
+  uint8_t bAspectRatioX;
+  uint8_t bAspectRatioY;
+  uint8_t bmInterlaceFlags;
+  uint8_t bCopyProtect;
+} __attribute__ ((packed));
+
+typedef struct uvc_mjpeg_format_desc UVC_MJPEG_FORMAT_DESC;
+
+/*
+ * UVC_MJPEG_FRAME_DESC : M-JPEG Video Payload Frame Descriptor
+ * 
+ * Reference :
+ *     USB Device Class Definition for Video Devices:Motion-JPEG Payload
+ *     Revision 1.1, Page 6-7
+ */
+struct uvc_mjpeg_frame_desc
+{
+  uint8_t bLength;
+  uint8_t bDescriptorType;
+  uint8_t bDescriptorSubType;
+  uint8_t bFrameIndex;
+  uint8_t bmCapabilities;
+  uint16_t wWidth;
+  uint16_t wHeight;
+  uint32_t dwMinBitRate;
+  uint32_t dwMaxBitRate;
+  uint32_t dwMaxVideoFrameBufferSize;
+  uint32_t dwDefaultFrameInterval;
+  uint8_t bFrameIntervalType;
+} __attribute__ ((packed));
+
+typedef struct uvc_mjpeg_frame_desc UVC_MJPEG_FRAME_DESC;
 
 extern bool usb_uvc_driver_init (void);
 
