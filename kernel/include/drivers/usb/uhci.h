@@ -21,7 +21,7 @@
 #include <types.h>
 #include <arch/i386.h>
 #include <drivers/pci/pci.h>
-typedef void *addr_t;
+#include <drivers/usb/usb.h>
 
 #define NUM_FRM_PTRS 1024
 
@@ -161,6 +161,12 @@ extern int uhci_get_configuration (uint8_t, uint8_t);
 extern int uhci_set_configuration (uint8_t, uint8_t, uint8_t);
 extern int uhci_get_interface (uint8_t, uint16_t, uint8_t);
 extern int uhci_set_interface (uint8_t, uint16_t, uint16_t, uint8_t);
+extern sint uhci_get_string (uint8_t address, uint16_t index, uint16_t lang,
+                             uint16_t length, void *buffer, uint8_t pktsize);
+extern sint uhci_interp_string (USB_STR_DESC *string, uint16_t length,
+                                uint16_t lang, uint8 *output, uint16_t out_len);
+
+
 
 #endif
 

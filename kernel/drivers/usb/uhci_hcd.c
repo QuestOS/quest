@@ -303,9 +303,12 @@ check_tds (UHCI_TD * tx_tds, uint32 *act_len)
         /* Check for short packet */
         if (tds->act_len != tds->max_len) {
           DLOG ("Short Packet! after %d bytes", len);
+#if 1
           *act_len = len;
-          //debug_dump_sched (tx_tds);
           return status;
+#else
+          debug_dump_sched (tx_tds);
+#endif
         }
       }
 
@@ -419,6 +422,46 @@ find_device_driver (USB_DEVICE_INFO *info, USB_CFG_DESC *cfgd, USB_IF_DESC *ifd)
   }
 }
 
+void
+dlog_devd (USB_DEV_DESC *devd)
+{
+  DLOG ("DEVICE DESCRIPTOR len=%d type=%d bcdUSB=0x%x",
+        devd->bLength, devd->bDescriptorType, devd->bcdUSB);
+  DLOG ("  class=0x%x subclass=0x%x proto=0x%x maxpkt0=%d",
+        devd->bDeviceClass, devd->bDeviceSubClass, devd->bDeviceProtocol,
+        devd->bMaxPacketSize0);
+  DLOG ("  vendor=0x%x product=0x%x bcdDevice=0x%x numcfgs=%d",
+        devd->idVendor, devd->idProduct, devd->bcdDevice,
+        devd->bNumConfigurations);
+}
+
+void
+dlog_info (USB_DEVICE_INFO *info)
+{
+  DLOG ("ADDRESS %d", info->address);
+  dlog_devd (&info->devd);
+
+#if 0
+  uint8 strbuf[64];
+  uint8 str[32];
+#define do_str(slot,label)                                              \
+  if (info->devd.slot != 0 &&                                           \
+      uhci_get_string (info->address, info->devd.slot, 0,               \
+                       sizeof (strbuf), strbuf,                         \
+                       info->devd.bMaxPacketSize0)                      \
+      == 0) {                                                           \
+    memset (str, 0, sizeof (str));                                      \
+    if (uhci_interp_string ((USB_STR_DESC *)strbuf, sizeof (strbuf), 0, \
+                            str, sizeof (str)-1) > 0) {                 \
+      DLOG ("  "label": %s", str);                                      \
+    }                                                                   \
+  }
+
+  do_str (iManufacturer, "Manufacturer");
+  do_str (iProduct, "Product");
+#undef do_str
+#endif
+}
 
 /* figures out what device is attached as address 0 */
 bool
@@ -453,13 +496,27 @@ uhci_enumerate (void)
    * bytes for full speed device. So, do not be surprised if your USB
    * mouse does not work in Quest!
    */
-  (info->devd).bMaxPacketSize0 = 64;
+  info->devd.bMaxPacketSize0 = 64;
+
+  memset (&devd, 0, sizeof (USB_DEV_DESC));
 
   /* get device descriptor */
-  status =
-    usb_get_descriptor (info, USB_TYPE_DEV_DESC, 0, 0, sizeof (USB_DEV_DESC), &devd);
+  status = usb_get_descriptor (info, USB_TYPE_DEV_DESC, 0, 0,
+                               sizeof (USB_DEV_DESC), &devd);
   if (status != 0)
     goto abort;
+
+  if (devd.bMaxPacketSize0 == 8) {
+    /* get device descriptor */
+    info->devd.bMaxPacketSize0 = 8;
+    status = usb_get_descriptor (info, USB_TYPE_DEV_DESC, 0, 0,
+                                 sizeof (USB_DEV_DESC), &devd);
+    if (status != 0)
+      goto abort;
+  }
+
+  if (devd.bNumConfigurations == 255)
+    devd.bNumConfigurations = 1; /* hack */
 
   /* Update device info structure. Put it in USB core might be better */
   memcpy (&info->devd, &devd, sizeof (USB_DEV_DESC));
@@ -467,7 +524,8 @@ uhci_enumerate (void)
   /* assign an address */
   if (usb_set_address (info, curdev) != 0)
     goto abort;
-  DLOG ("uhci_enumerate: set %p to addr %d", devd.bDeviceClass, curdev);
+  DLOG ("uhci_enumerate: set (0x%x, 0x%x, 0x%x) to addr %d",
+        devd.bDeviceClass, devd.idVendor, devd.idProduct, curdev);
   delay (2);
 
   DLOG ("uhci_enumerate: num configs=%d", devd.bNumConfigurations);
@@ -475,11 +533,13 @@ uhci_enumerate (void)
   /* Update device info structure for new address. */
   info->address = curdev;
 
+  dlog_info (info);
+
   for (c=0; c<devd.bNumConfigurations; c++) {
     /* get a config descriptor for size field */
     memset (temp, 0, TEMPSZ);
-    status =
-      usb_get_descriptor (info, USB_TYPE_CFG_DESC, c, 0, sizeof (USB_CFG_DESC), temp);
+    status = usb_get_descriptor (info, USB_TYPE_CFG_DESC, c, 0,
+                                 sizeof (USB_CFG_DESC), temp);
     if (status != 0) {
       DLOG ("uhci_enumerate: failed to get config descriptor for c=%d", c);
       goto abort;
@@ -972,6 +1032,35 @@ uhci_get_descriptor (
       desc, length, packet_size);
 }
 
+sint
+uhci_get_string (uint8_t address, uint16_t index, uint16_t lang,
+                 uint16_t length, void *buffer, uint8_t pktsize)
+{
+  return uhci_get_descriptor (address, USB_TYPE_STR_DESC, index, lang,
+                              length, buffer, pktsize);
+}
+
+sint
+uhci_interp_string (USB_STR_DESC *string, uint16_t length, uint16_t lang,
+                    uint8 *output, uint16_t out_len)
+{
+  sint i, j;
+  if (lang == 0) {
+    /* assume UTF-16 encoding */
+    length = (length < string->bLength ? length : string->bLength);
+    /* skip first 2 bytes */
+    length -= 2;
+    for (i=0, j=0; i<length && j<out_len; i+=2, j++) {
+      output[j] = string->bString[i];
+    }
+    return j;
+  } else {
+    /* unsupported */
+    DLOG ("unimplemented: lang!=0");
+    return 0;
+  }
+}
+
 int
 uhci_set_address (uint8_t old_addr, uint8_t new_addr, uint8_t packet_size)
 {
@@ -1071,6 +1160,7 @@ uhci_irq_handler (uint8 vec)
 
   lock_kernel ();
 
+#if 0
   v = IOAPIC_read64 (0x10 + (irq_line * 2));
 #if 0
   DLOG ("(1) IOAPIC (irq_line=0x%x) says %p %p",
@@ -1171,6 +1261,7 @@ uhci_irq_handler (uint8 vec)
   /* clear the interrupt(s) */
   SET_USBSTS (usb_base, status);
 
+#if 0
   v = IOAPIC_read64 (0x10 + (irq_line * 2));
 
 #if 0

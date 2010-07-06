@@ -918,6 +918,7 @@ _interrupt3e (void)
 void
 _timer (void)
 {
+  void begin_kernel_threads (void);
   extern volatile bool mp_enabled;
   extern bool mp_ISA_PC;
   void net_tmr_process (void);
@@ -958,12 +959,12 @@ _timer (void)
   }
 
   if (!mp_ISA_PC) {
-    void begin_kernel_threads (void);
     if (!mp_enabled)
       com1_printf ("timer: enabling scheduling\n");
     mp_enabled = 1;
     begin_kernel_threads ();
   } else {
+    begin_kernel_threads ();    /* has internal flag */
     /* On an ISA PC, must use PIT IRQ for scheduling */
     if (str () == idleTSS_selector[0]) {
       /* CPU was idling */

@@ -18,12 +18,13 @@
 #include "arch/i386.h"
 #include "kernel.h"
 #include "types.h"
+#include "mem/physical.h"
 
 
 extern uint32 _kernelstart;
 
 
-/* Find free virtual page and map it to a corresponding physical frame 
+/* Find free virtual page and map it to a corresponding physical frame
  *
  * Returns virtual address
  *
@@ -134,8 +135,8 @@ map_virtual_pages (uint32 * phys_frames, uint32 count)
 }
 
 
-/* 
- * Release previously mapped virtual page 
+/*
+ * Release previously mapped virtual page
  */
 void
 unmap_virtual_page (void *virt_addr)
@@ -165,7 +166,7 @@ get_phys_addr (void *virt_addr)
   void *pa;
   uint32 phys_frame;
   uint32 va = (uint32) virt_addr;
-  
+
   uint32 phys_pdbr = (uint32) get_pdbr (), phys_ptbr;
   uint32 *virt_pdbr, *virt_ptbr;
 
@@ -180,13 +181,255 @@ get_phys_addr (void *virt_addr)
   return pa;
 }
 
-/* 
+
+/* ************************************************** */
+
+typedef uint frame_t;
+
+typedef union {
+  uint32 raw;
+  /* 4 kiB page */
+  struct {
+    union {
+      uint raw:12;
+      struct {
+        uint present:1;
+        uint writeable:1;
+        uint supervisor:1;
+        uint write_through:1;
+        uint cache_disabled:1;
+        uint accessed:1;
+        uint dirty:1;
+        uint attribute_index:1;
+        uint global_page:1;
+        uint avail:3;
+      } PACKED;
+    } flags;
+    frame_t frame:20;
+  } PACKED;
+} pgtbl_entry_t;
+
+typedef struct {
+  pgtbl_entry_t *table_va;
+  frame_t table_pa;
+  uint8 *starting_va;
+} pgtbl_t;
+
+#define PGTBL_NUM_ENTRIES 0x400
+
+void *
+map_virtual_page_pt (pgtbl_entry_t entry, pgtbl_t *tbl)
+{
+  uint i;
+  void *va;
+
+  /* perhaps use a "primitive" mapping facility for this */
+  if (tbl->table_va == NULL) return NULL;
+
+  for (i = 0; i < PGTBL_NUM_ENTRIES; i++)
+    if (!tbl->table_va[i].flags.present) { /* Free page */
+      tbl->table_va[i].raw = entry.raw;
+
+      va = (void *) &tbl->starting_va[i << 12];
+
+      /* Invalidate page in case it was cached in the TLB */
+      invalidate_page (va);
+
+      return va;
+    }
+
+  return NULL;                  /* Invalid address */
+}
+
+typedef union {
+  uint32 raw;
+
+  /* 4 KiB page */
+  struct {
+    union {
+      uint32 raw:12;
+      struct {
+        uint present:1;
+        uint writeable:1;
+        uint supervisor:1;
+        uint write_through:1;
+        uint cache_disabled:1;
+        uint accessed:1;
+        uint avail1:1;
+        uint page_size:1;
+        uint global_page:1;     /* ignored */
+        uint avail3:3;
+      } PACKED;
+    } flags;
+    frame_t table_pa:20;
+  } PACKED;
+
+  /* 4 MiB page */
+  struct {
+    union {
+      uint32 raw:22;
+      struct {
+        uint present:1;
+        uint writeable:1;
+        uint supervisor:1;
+        uint write_through:1;
+        uint cache_disabled:1;
+        uint accessed:1;
+        uint dirty:1;
+        uint page_size:1;
+        uint global_page:1;
+        uint avail3:3;
+        uint attribute_index:1;
+        uint reserved:9;
+      } PACKED;
+    } flags;
+    frame_t frame:10;
+  } PACKED;
+} pgdir_entry_t;
+
+typedef pgdir_entry_t *pgdir_t;
+#define PGDIR_NUM_ENTRIES 0x400
+
+/* precondition: entry is valid
+ * postcondition: tbl->table_pa and starting_va are valid */
+bool
+map_pgdir_entry (/* in */ pgdir_t dir,
+                 /* in */ bool from_top,
+                 /* in */ pgdir_entry_t entry,
+                 /* out */ pgtbl_t *tbl)
+{
+  uint i;
+
+  tbl->table_pa = entry.table_pa;
+  tbl->table_va = NULL;
+
+  if (from_top) {
+    for (i=PGDIR_NUM_ENTRIES; i>=0; i--) {
+      if (!dir[i].flags.present) { /* Free entry */
+        dir[i] = entry;
+        tbl->starting_va = (uint8 *) (i << 22);
+        return TRUE;
+      }
+    } 
+  } else {
+    for (i=0; i<PGDIR_NUM_ENTRIES; i++) {
+      if (!dir[i].flags.present) { /* Free entry */
+        dir[i] = entry;
+        tbl->starting_va = (uint8 *) (i << 22);
+        return TRUE;
+      }
+    }
+  }
+
+  return FALSE;
+}
+
+/* for now */
+#define _prim_map_virtual_page map_virtual_page
+#define _prim_unmap_virtual_page unmap_virtual_page
+
+
+/* precondition: all of tbl is valid */
+pgtbl_t
+clone_page_table (pgtbl_t tbl)
+{
+  pgtbl_t new_tbl;
+  uint i;
+
+  new_tbl.table_pa = alloc_phys_frame ();
+  if (new_tbl.table_pa == -1)
+    goto abort;
+  new_tbl.table_va = _prim_map_virtual_page (new_tbl.table_pa | 3);
+  if (new_tbl.table_va == NULL)
+    goto abort_tbl_pa;
+  new_tbl.starting_va = tbl.starting_va;
+
+  memset (new_tbl.table_va, 0, PGTBL_NUM_ENTRIES * sizeof (pgtbl_entry_t));
+
+  for (i=0; i<PGTBL_NUM_ENTRIES; i++) {
+    if (tbl.table_va[i].flags.present) {
+      new_tbl.table_va[i].raw = tbl.table_va[i].raw;
+    }
+  }
+
+  return new_tbl;
+
+ abort_tbl_pa:
+  free_phys_frame (new_tbl.table_pa);
+ abort:
+  new_tbl.table_pa = -1;
+  return new_tbl;
+}
+
+pgdir_t
+clone_page_directory (pgdir_t dir)
+{
+  frame_t new_pgd_pa;
+  pgdir_t new_dir;
+  uint i;
+
+  new_pgd_pa = alloc_phys_frame ();
+
+  if (new_pgd_pa == -1)
+    goto abort;
+
+  new_dir = _prim_map_virtual_page (new_pgd_pa | 3);
+  if (new_dir == NULL)
+    goto abort_pgd_pa;
+
+  memset (new_dir, 0, PGDIR_NUM_ENTRIES * sizeof (pgdir_entry_t));
+
+  /* run through dir and make copies of tables */
+  for (i=0; i<PGDIR_NUM_ENTRIES; i++) {
+    if (dir[i].flags.present) {
+      if (dir[i].flags.page_size) {
+        /* 4 MiB page */
+        new_dir[i].raw = dir[i].raw;
+      } else {
+        /* Page table */
+        pgtbl_t tbl, new_tbl;
+
+        /* setup a pgtbl struct with physical and virtual addresses of
+         * the existing page table */
+        tbl.table_pa = dir[i].table_pa;
+        tbl.table_va = _prim_map_virtual_page (tbl.table_pa | 3);
+        if (tbl.table_va == NULL)
+          goto abort_pgd_va;
+        tbl.starting_va = (uint8 *) (i << 22);
+
+        new_tbl = clone_page_table (tbl);
+
+        _prim_unmap_virtual_page (tbl.table_va);
+        _prim_unmap_virtual_page (new_tbl.table_va);
+
+        if (new_tbl.table_pa == -1)
+          goto abort_pgd_va;
+
+        /* setup new directory entry with flags and new table address */
+        new_dir[i].flags = dir[i].flags;
+        new_dir[i].table_pa = new_tbl.table_pa;
+      }
+    }
+  }
+
+  return new_dir;
+
+ abort_pgd_va:
+  _prim_unmap_virtual_page (new_dir);
+ abort_pgd_pa:
+  free_phys_frame (new_pgd_pa);
+ abort:
+  return NULL;  
+}
+
+
+/*
  * Local Variables:
  * indent-tabs-mode: nil
  * mode: C
  * c-file-style: "gnu"
  * c-basic-offset: 2
- * End: 
+ * End:
  */
 
 /* vi: set et sw=2 sts=2: */

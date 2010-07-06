@@ -27,7 +27,21 @@
 #include "mem/virtual.h"
 #include "kernel.h"
 
-#define DEBUG_E1000
+#define EEPROM_MICROWIRE
+//#define DEBUG_E1000
+//#define LOOPBACK_MODE
+
+typedef struct {
+  uint16 word_size, delay_usec, address_bits, opcode_bits;
+  bool need_acquire;
+} nvm_info_t;
+
+nvm_info_t i82543_nvm = {
+  .word_size = 64, .delay_usec = 50, .address_bits = 6, .opcode_bits = 3,
+  .need_acquire = FALSE
+};
+
+nvm_info_t *nvm = &i82543_nvm;
 
 #ifdef DEBUG_E1000
 #define DLOG(fmt,...) DLOG_PREFIX("e1000",fmt,##__VA_ARGS__)
@@ -52,6 +66,8 @@
 
 /* List of compatible cards (ended by { 0xFFFF, 0xFFFF }) */
 static struct { uint16 vendor, device; } compatible_ids[] = {
+  { 0x8086, 0x1004 },
+  { 0x8086, 0x1008 },
   { 0x8086, 0x100E },
   { 0xFFFF, 0xFFFF }
 };
@@ -68,8 +84,32 @@ static volatile uint32 *mmio_base;
 #define REG(x) (mmio_base[x])
 
 #define CTRL   (REG (0x00))     /* Control */
+#define CTRL_FD   (0x1)         /* Full-Duplex */
+#define CTRL_LRST (0x8)         /* Link Reset */
+#define CTRL_ASDE (0x20)        /* Auto-Speed Detection */
+#define CTRL_SLU (0x40)         /* Set Link Up */
+#define CTRL_ILOS (0x80)        /* Invert Loss-of-Signal */
+#define CTRL_SPDSEL (0x300)     /* Speed Selector bits */
+#define CTRL_SPD1000 (0x200)    /* Set 1000Mbit */
+#define CTRL_FRCSPD (0x800)     /* Force Speed */
+#define CTRL_FRCDPLX (0x1000)   /* Force Duplex */
 #define CTRL_RST (1<<26)        /* Reset */
+#define CTRL_RFCE (1<<27)       /* RX Flow Control Enable */
+#define CTRL_TFCE (1<<28)       /* TX Flow Control Enable */
+#define CTRL_PHYRST (1<<31)     /* PHY Reset */
+#define STATUS (REG (0x02))     /* Device Status */
+#define STATUS_FD (0x1)         /* Full-Duplex indicator */
+#define EECD   (REG (0x04))     /* EEPROM Control/Data */
+#define EECD_SK (0x1)           /* Clock Input */
+#define EECD_CS (0x2)           /* Chip Select */
+#define EECD_DI (0x4)           /* Data Input */
+#define EECD_DO (0x8)           /* Data Output */
+#define EECD_REQ (0x40)         /* Request Access */
+#define EECD_GNT (0x80)         /* Access Granted */
 #define EERD   (REG (0x05))     /* EEPROM Read */
+#define CTRLEXT (REG (0x06))    /* Extended Control */
+#define CTRLEXT_EERST (1<<13)   /* EEPROM Reset */
+#define MDIC   (REG (0x08))     /* MDI Control */
 #define ICR    (REG (0x30))     /* Interrupt Cause Read */
 #define ICR_RXT (0x80)          /* RX Timer Int. */
 #define ICR_RXO (0x40)          /* RX Overrun Int. */
@@ -83,6 +123,8 @@ static volatile uint32 *mmio_base;
 #define RCTL_BAM (1<<15)        /* Accept Broadcast packets */
 #define RCTL_BSIZE (0x30000)    /* Buffer size */
 #define RCTL_BSEX (1<<25)       /* "Extension" (x16) of size */
+#define TXCW   (REG (0x5E))     /* TX Config Word */
+#define TXCW_ANE (1<<31)        /* Auto-Negotiate Enable */
 #define TCTL   (REG (0x100))    /* Transmit Control */
 #define TCTL_EN (0x02)          /* TX Enable */
 #define TCTL_PSP (0x08)         /* TX Pad Short Packets */
@@ -101,6 +143,9 @@ static volatile uint32 *mmio_base;
 #define TDT    (REG (0xE06))    /* TX Desc Tail */
 #define RAL    (REG (0x1500))   /* RX HW Address Low */
 #define RAH    (REG (0x1501))   /* RX HW Address High */
+#define TPT    (REG (0x1035))   /* Total Packets Transmitted */
+
+#define WRITE_FLUSH (void) STATUS
 
 /* ************************************************** */
 
@@ -129,9 +174,10 @@ struct e1000_tdesc {
   uint8  css;                   /* checksum start */
   uint16 special;
 } PACKED;
-#define TDESC_STA_DD  0x01 /* indicates hardware done with descriptor */
-#define TDESC_CMD_EOP 0x01 /* indicates end of packet */
-#define TDESC_CMD_RS 0x08  /* requests status report */
+#define TDESC_STA_DD   0x01 /* indicates hardware done with descriptor */
+#define TDESC_CMD_EOP  0x01 /* indicates end of packet */
+#define TDESC_CMD_IFCS 0x02 /* insert frame checksum (FCS) */
+#define TDESC_CMD_RS   0x08 /* requests status report */
 
 /* ************************************************** */
 
@@ -150,6 +196,7 @@ static struct e1000_interface {
 #define P2V(ty,p) ((ty)((((uint) (p)) - e1000_phys)+((uint) e1000)))
 
 static ethernet_device e1000_ethdev;
+static pci_device e1000_pci_device;
 
 /* ************************************************** */
 
@@ -165,8 +212,15 @@ e1000_get_hwaddr (uint8 a[ETH_ADDR_LEN])
 extern sint
 e1000_transmit (uint8* buffer, sint len)
 {
+  struct e1000_tdesc *td;
   uint32 tdt = TDT;
   DLOG ("TX: (%p, %d) TDH=%d TDT=%d", buffer, len, TDH, tdt);
+  DLOG ("TX:   %.02X %.02X %.02X %.02X %.02X %.02X %.02X %.02X",
+        buffer[0], buffer[1], buffer[2], buffer[3],
+        buffer[4], buffer[5], buffer[6], buffer[7]);
+  DLOG ("TX:   %.02X %.02X %.02X %.02X %.02X %.02X %.02X %.02X",
+        buffer[8], buffer[9], buffer[10], buffer[11],
+        buffer[12], buffer[13], buffer[14], buffer[15]);
 
   if (len > TBUF_SIZE)
     return 0;
@@ -177,7 +231,8 @@ e1000_transmit (uint8* buffer, sint len)
   /* set up the first available descriptor */
   memcpy (e1000->tbufs[tdt], buffer, len);
   e1000->tdescs[tdt].length = len;
-  e1000->tdescs[tdt].cmd = TDESC_CMD_RS | TDESC_CMD_EOP;
+  e1000->tdescs[tdt].cmd = TDESC_CMD_IFCS | TDESC_CMD_RS | TDESC_CMD_EOP;
+  td = &e1000->tdescs[tdt];
 
   /* advance the TDT, notifying hardware */
   tdt++;
@@ -261,13 +316,59 @@ e1000_poll (void)
   handle_tx (ICR_TXQE);
 }
 
+#ifdef E1000_DEBUG
+static uint16
+mdi_read (uint8 phy_reg)
+{
+  uint32 mdic =
+    ((phy_reg & 0x1F) << 16) |
+    (1 << 21) |                 /* PHYADD=1 */
+    (1 << 27);                  /* OP=READ */
+  DLOG ("mdi_read sending %p", mdic);
+  MDIC = mdic;
+  while (!((mdic=MDIC) & 0x50000000LL))
+    asm volatile ("pause");
+  DLOG ("mdi_read MDIC=%p", mdic);
+  if (mdic & 0x40000000LL)
+    /* error */
+    return 0;
+  else
+    return mdic & 0xFFFF;
+}
+
+static bool
+mdi_write (uint8 phy_reg, uint16 val)
+{
+  uint32 mdic =
+    ((phy_reg & 0x1F) << 16) |
+    (1 << 21) |                 /* PHYADD=1 */
+    (1 << 26) |                 /* OP=WRITE */
+    (val & 0xFFFF);
+  DLOG ("mdi_write sending %p", mdic);
+  MDIC = mdic;
+  while (!((mdic=MDIC) & 0x50000000LL))
+    asm volatile ("pause");
+  DLOG ("mdi_write MDIC=%p", mdic);
+  if (mdic & 0x40000000LL)
+    /* error */
+    return FALSE;
+  else
+    return TRUE;
+}
+#endif
+
 static uint32
 e1000_irq_handler (uint8 vec)
 {
   /* ICR is cleared upon read; this implicitly acknowledges the
    * interrupt. */
   uint32 icr = ICR;
-  DLOG ("IRQ: ICR=%p", icr);
+  DLOG ("IRQ: ICR=%p CTRL=%p CTRLE=%p STA=%p", icr, CTRL, CTRLEXT, STATUS);
+  DLOG ("PHY_CTL=0x%.04X", mdi_read (0));
+  DLOG ("PHY_STA=0x%.04X", mdi_read (1));
+  DLOG ("PHY_GCON=0x%.04X", mdi_read (9));
+  DLOG ("PHY_GSTA=0x%.04X", mdi_read (10));
+  DLOG ("TPT=%p", TPT);
 
   if (icr & ICR_RXT)            /* RX */
     e1000_rx_poll ();
@@ -277,14 +378,230 @@ e1000_irq_handler (uint8 vec)
   return 0;
 }
 
+#define udelay tsc_delay_usec
+
+static bool
+eeprom_acquire (void)
+{
+  uint32 eecd = EECD;
+  uint32 timeout = 1000;
+
+  DLOG ("eeprom_acquire EECD=%p", eecd);
+  EECD = eecd | EECD_REQ;
+  for (; timeout > 0; timeout--) {
+    eecd = EECD;
+    if (eecd & EECD_GNT)
+      break;
+    udelay (5);
+  }
+
+  if (timeout == 0) {
+    DLOG ("unable to acquire EEPROM");
+    eecd &= ~EECD_REQ;
+    EECD = eecd;
+    return FALSE;
+  }
+  return TRUE;
+}
+
+static void
+eeprom_release (void)
+{
+  uint32 eecd = EECD;
+
+  eecd &= ~EECD_REQ;
+  EECD = eecd;
+}
+
+static void
+eeprom_raise_clock (uint32 *eecd)
+{
+  *eecd = *eecd | EECD_SK;
+  EECD = *eecd;
+  WRITE_FLUSH;
+  udelay(nvm->delay_usec);
+}
+
+static void
+eeprom_lower_clock (uint32 *eecd)
+{
+  *eecd = *eecd & ~EECD_SK;
+  EECD = *eecd;
+  WRITE_FLUSH;
+  udelay(nvm->delay_usec);
+}
+
+static void
+eeprom_send_bits (uint16 data, uint16 count)
+{
+  uint32 eecd = EECD, mask;
+
+  mask = 1 << (count - 1);
+
+  /* clear data-out */
+  eecd &= ~EECD_DO;
+
+  do {
+    /* send 1 or 0 based on current bit */
+    if (data & mask)
+      eecd |= EECD_DI;
+    else
+      eecd &= ~EECD_DI;
+
+    /* write and flush it */
+    EECD = eecd;
+    WRITE_FLUSH;
+
+    udelay (nvm->delay_usec);
+
+    eeprom_raise_clock (&eecd);
+    eeprom_lower_clock (&eecd);
+
+    mask >>= 1;
+  } while (mask);
+
+  eecd &= ~EECD_DI;
+  EECD = eecd;
+}
+
+static uint16
+eeprom_recv_bits (uint16 count)
+{
+  uint32 eecd, i;
+  uint16 data;
+
+  eecd = EECD;
+  eecd &= ~(EECD_DO | EECD_DI);
+  data = 0;
+
+  for (i=0; i<count; i++) {
+    data <<= 1;
+    eeprom_raise_clock (&eecd);
+    eecd = EECD;
+
+    eecd &= ~EECD_DI;           /* we are required to clear DI */
+
+    if (eecd & EECD_DO)         /* read a bit */
+      data |= 1;
+
+    eeprom_lower_clock (&eecd);
+  }
+
+  return data;
+}
+
+static void
+eeprom_standby (void)
+{
+  uint32 eecd = EECD;
+
+  eecd &= ~(EECD_CS | EECD_SK);
+  EECD = eecd;
+  WRITE_FLUSH;
+  udelay (nvm->delay_usec);
+
+  eeprom_raise_clock (&eecd);
+
+  eecd |= EECD_CS;
+  EECD = eecd;
+  WRITE_FLUSH;
+  udelay (nvm->delay_usec);
+
+  eeprom_lower_clock (&eecd);
+}
+
+static uint16
+eeprom_read (uint32 address)
+{
+  uint32 eecd;
+  uint16 data;
+
+  /* Gain control of EEPROM */
+  if (nvm->need_acquire && !eeprom_acquire ())
+    return 0;
+
+  eecd = EECD;
+
+  DLOG ("eeprom_read EECD=%p", eecd);
+
+  /* Make EEPROM ready */
+
+  /* Clear SK and DI */
+  eecd &= ~(EECD_DI | EECD_SK);
+  EECD = eecd;
+  udelay (1);
+  /* Set CS */
+  eecd |= EECD_CS;
+  EECD = eecd;
+  udelay (1);
+
+  /* Start Read */
+
+#define NVM_READ_OPCODE 6
+  eeprom_send_bits (NVM_READ_OPCODE, nvm->opcode_bits);
+  eeprom_send_bits (address, nvm->address_bits);
+
+  data = eeprom_recv_bits (16);
+
+  DLOG ("eeprom said 0x%.04X", data);
+
+  eeprom_standby ();
+
+  /* Release control back to hardware */
+
+  if (nvm->need_acquire)
+    eeprom_release ();
+
+  return data;
+}
+
+#ifdef LOOPBACK_MODE
+static void
+set_loopback_mode (void)
+{
+  uint32 ctrl;
+  /* p390 8254x_SDM */
+  mdi_write (16, 0x0808);
+  mdi_write (0, 0x9140);
+  mdi_write (0, 0x8140);
+  mdi_write (0, 0x4140);
+  ctrl = CTRL;
+  ctrl &= ~CTRL_SPDSEL;
+  ctrl |= CTRL_FRCSPD | CTRL_FRCDPLX | CTRL_SPD1000 | CTRL_FD;
+  if (!(STATUS & STATUS_FD))
+    ctrl |= CTRL_ILOS | CTRL_SLU;
+  CTRL = ctrl;
+}
+#endif
+
 static void
 reset (void)
 {
   uint i;
 
+#if 0
+  /* PHY reset (before sw rst) */
+  DLOG ("PHY PCTRL=0x%.4X", mdi_read (0));
+  mdi_write (0, 0x9200);
+  tsc_delay_usec (1000);
+  DLOG ("PHY PCTRL=0x%.4X", mdi_read (0));
+#else
+  /* PHY reset via CTRL */
+  CTRL |= CTRL_PHYRST;
+  udelay (3);
+  CTRL &= ~CTRL_PHYRST;
+#endif
+
+  udelay (5000);
+
   /* reset */
-  CTRL |= CTRL_RST;
+  CTRL |= CTRL_RST;             /* self-clearing */
   while (CTRL & CTRL_RST) tsc_delay_usec (1);
+
+  /* EEPROM reset */
+  CTRLEXT |= CTRLEXT_EERST;
+  WRITE_FLUSH;
+  udelay (2000);
 
   /* set hardware address */
   RAL =
@@ -359,12 +676,37 @@ reset (void)
   TIPG = TIPG_MASK;
 
   while (! (TCTL & TCTL_EN)) asm volatile ("pause");
+
+#ifndef LOOPBACK_MODE
+  /* disable LRST and begin auto-negotiation */
+  CTRL &= ~CTRL_LRST;
+
+  tsc_delay_usec (10000);
+
+  /* "software must set link up" in internal [G]MII mode
+   * p166 8245x_SDM */
+
+  /* p375 "ASDE should be set with SLU" */
+  CTRL |= CTRL_SLU | CTRL_ASDE;
+#else
+  set_loopback_mode ();
+#endif
+
+
+  DLOG ("PHY_CTL=0x%.04X", mdi_read (0));
+  DLOG ("PHY_STA=0x%.04X", mdi_read (1));
+  DLOG ("PHY_GCON=0x%.04X", mdi_read (9));
+  DLOG ("PHY_GSTA=0x%.04X", mdi_read (10));
+
+
+  (void) TPT;                   /* clear TPT statistic */
 }
 
 extern bool
 e1000_init (void)
 {
   uint i, frame_count;
+  pci_irq_t irq;
 
   if (mp_ISA_PC) {
     DLOG ("Requires PCI support");
@@ -385,10 +727,20 @@ e1000_init (void)
 
   DLOG ("Found device_index=%d", device_index);
 
+  if (!pci_get_device (device_index, &e1000_pci_device)) {
+    DLOG ("Unable to get PCI device from PCI subsystem");
+    return FALSE;
+  }
+
   if (!pci_decode_bar (device_index, 0, &mem_addr, NULL, NULL)) {
     DLOG ("Invalid PCI configuration or BAR0 not found");
     goto abort;
   }
+
+  DLOG ("Using PCI bus=%x dev=%x func=%x",
+        e1000_pci_device.bus,
+        e1000_pci_device.slot,
+        e1000_pci_device.func);
 
   if (mem_addr == 0) {
     DLOG ("Unable to detect memory mapped IO region");
@@ -438,26 +790,49 @@ e1000_init (void)
     goto abort_virt;
   }
 
+  if (pci_irq_find (e1000_pci_device.bus, e1000_pci_device.slot,
+                    irq_pin, &irq)) {
+    /* use PCI routing table */
+    DLOG ("Found PCI routing entry irq.gsi=0x%x", irq.gsi);
+    pci_irq_map (&irq, E1000_VECTOR, 0x01,
+                 IOAPIC_DESTINATION_LOGICAL, IOAPIC_DELIVERY_FIXED);
+    irq_line = irq.gsi;
+  } else {
+#define IOAPIC_FLAGS 0x010000000000A800LL
+    /* assume irq_line is correct */
+    DLOG ("Falling back to PCI config space INT_LN=0x%x", irq_line);
+    IOAPIC_map_GSI (irq_line, E1000_VECTOR, IOAPIC_FLAGS);
+  }
+
   DLOG ("Using IRQ line=%.02X pin=%X", irq_line, irq_pin);
 
   /* Map IRQ to handler */
-  IOAPIC_map_GSI (IRQ_to_GSI (mp_ISA_bus_id, irq_line),
-                  E1000_VECTOR, 0xFF00000000000800LL);
   set_vector_handler (E1000_VECTOR, e1000_irq_handler);
 
+#ifdef EEPROM_MICROWIRE
+  *((uint16 *) &hwaddr[0]) = eeprom_read (0);
+  *((uint16 *) &hwaddr[2]) = eeprom_read (1);
+  *((uint16 *) &hwaddr[4]) = eeprom_read (2);
+
+  DLOG ("ICW1=0x%.04X", eeprom_read (0xA));
+#else
   /* read hardware individual address from EEPROM */
   EERD = 0x0001;                /* EERD.START=0 EERD.ADDR=0 */
-  while (!(EERD & 0x10)) asm volatile ("pause"); /* wait for EERD.DONE */
+  while (!(EERD & 0x10))
+    asm volatile ("pause"); /* wait for EERD.DONE */
   hwaddr[0] = (EERD >> 16) & 0xFF;
   hwaddr[1] = (EERD >> 24) & 0xFF;
   EERD = 0x0101;                /* EERD.START=0 EERD.ADDR=1 */
-  while (!(EERD & 0x10)) asm volatile ("pause"); /* wait for EERD.DONE */
+  while (!(EERD & 0x10))
+    asm volatile ("pause"); /* wait for EERD.DONE */
   hwaddr[2] = (EERD >> 16) & 0xFF;
   hwaddr[3] = (EERD >> 24) & 0xFF;
   EERD = 0x0201;                /* EERD.START=0 EERD.ADDR=2 */
-  while (!(EERD & 0x10)) asm volatile ("pause"); /* wait for EERD.DONE */
+  while (!(EERD & 0x10))
+    asm volatile ("pause"); /* wait for EERD.DONE */
   hwaddr[4] = (EERD >> 16) & 0xFF;
   hwaddr[5] = (EERD >> 24) & 0xFF;
+#endif
 
   DLOG ("hwaddr=%.02x:%.02x:%.02x:%.02x:%.02x:%.02x",
         hwaddr[0], hwaddr[1], hwaddr[2], hwaddr[3], hwaddr[4], hwaddr[5]);
@@ -487,13 +862,13 @@ e1000_init (void)
   return FALSE;
 }
 
-/* 
+/*
  * Local Variables:
  * indent-tabs-mode: nil
  * mode: C
  * c-file-style: "gnu"
  * c-basic-offset: 2
- * End: 
+ * End:
  */
 
 /* vi: set et sw=2 sts=2: */

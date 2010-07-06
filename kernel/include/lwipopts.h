@@ -40,7 +40,8 @@ a lot of data that needs to be copied, this should be set high. */
 #define PBUF_POOL_SIZE          92
 
 #if 0
-#define LWIP_DBG_TYPES_ON               1
+#define LWIP_DEBUG
+#define LWIP_DBG_TYPES_ON               (~0)
 #define ETHARP_DEBUG                    LWIP_DBG_ON
 #define IP_DEBUG                        LWIP_DBG_ON
 #define UDP_DEBUG                       LWIP_DBG_ON

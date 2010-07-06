@@ -266,8 +266,6 @@ probe (USB_DEVICE_INFO *info, USB_CFG_DESC *cfgd, USB_IF_DESC *ifd)
 
   ethusbdev = info;
 
-  irq_pid = start_kernel_thread ((uint) irq_loop, (uint) &irq_stack[1023]);
-
   if (!reset ())
     return FALSE;
 
@@ -281,6 +279,8 @@ probe (USB_DEVICE_INFO *info, USB_CFG_DESC *cfgd, USB_IF_DESC *ifd)
     DLOG ("registration failed");
     return FALSE;
   }
+
+  irq_pid = start_kernel_thread ((uint) irq_loop, (uint) &irq_stack[1023]);
 
   return TRUE;
 }
