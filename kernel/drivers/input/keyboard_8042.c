@@ -41,10 +41,43 @@ static inline void
 clean_entry (int i)
 {
   cur_event.keys[i].scancode = 0;
-  cur_event.keys[i].present  = 0;          
+  cur_event.keys[i].present  = 0;
   cur_event.keys[i].release  = 0;
   cur_event.keys[i].pressed  = 0;
   cur_event.keys[i].latest   = 0;
+}
+
+static inline void
+check_control_alt_del (void)
+{
+  bool ctrl, alt, del;
+  int i;
+  ctrl = alt = del = FALSE;
+
+  for (i=0; i<KEY_EVENT_MAX; i++) {
+    if (cur_event.keys[i].present && cur_event.keys[i].pressed) {
+      switch (cur_event.keys[i].scancode) {
+      case 0x001d:
+      case 0xe01d:
+        ctrl = TRUE; break;
+      case 0x0038:
+      case 0xe038:
+        alt = TRUE; break;
+      case 0x0053:
+      case 0xe053:
+        del = TRUE; break;
+      }
+    }
+  }
+
+  if (ctrl && alt && del) {
+    uint8 state;
+    printf ("REBOOTING...\n");
+    com1_printf ("REBOOTING...\n");
+    while (((state = inb (KEYBOARD_STATUS_PORT)) & 2) != 0);
+    outb (0xFE, KEYBOARD_STATUS_PORT);
+    asm volatile ("hlt");
+  }
 }
 
 /* Process the keyboard IRQ. */
@@ -62,7 +95,7 @@ kbd_irq_handler (uint8 vec)
     escape = 0;
   }
 
-  if (code == 0xE0 || code == 0xE1) 
+  if (code == 0xE0 || code == 0xE1)
     escape = code;
   else if (code & 0x80) {
     /* Release key */
@@ -86,7 +119,7 @@ kbd_irq_handler (uint8 vec)
           com1_printf ("keyboard_8042: dropped break code: %X\n", code);
           unlock_kernel();
         }
-          
+
         clean_entry (i);      /* remove it from cur_event */
 
         break;
@@ -121,7 +154,7 @@ kbd_irq_handler (uint8 vec)
         }
       }
     }
-      
+
     if (i == KEY_EVENT_MAX) {
       /* no free entry */
       lock_kernel();
@@ -142,11 +175,13 @@ kbd_irq_handler (uint8 vec)
         com1_printf ("keyboard_8042: dropped make code: %X\n", code);
         unlock_kernel();
       }
-          
+
       cur_event.keys[i].latest = 0;
     }
   }
- 
+
+  check_control_alt_del ();
+
   return 0;
 }
 
@@ -161,9 +196,9 @@ init_keyboard_8042 (void)
   for (i=0; i<KEY_EVENT_MAX; i++)
     clean_entry (i);
 
-  circular_init (&keyb_buffer, 
-                 (void *)buffer_space, 
-                 KEYBOARD_BUFFER_SIZE, 
+  circular_init (&keyb_buffer,
+                 (void *)buffer_space,
+                 KEYBOARD_BUFFER_SIZE,
                  sizeof (key_event));
 
   if (mp_ISA_PC) {
@@ -182,13 +217,13 @@ keyboard_8042_next (key_event *e)
   circular_remove (&keyb_buffer, (void *)e);
 }
 
-/* 
+/*
  * Local Variables:
  * indent-tabs-mode: nil
  * mode: C
  * c-file-style: "gnu"
  * c-basic-offset: 2
- * End: 
+ * End:
  */
 
 /* vi: set et sw=2 sts=2: */
