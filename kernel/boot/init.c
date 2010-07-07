@@ -191,11 +191,27 @@ load_module (multiboot_module * pmm, int mod_num)
   uint32 *plPageDirectory = get_phys_addr (pg_dir[mod_num]);
   uint32 *plPageTable = get_phys_addr (pg_table[mod_num]);
   void *pStack = get_phys_addr (ul_stack[mod_num]);
-  Elf32_Ehdr *pe = pmm->pe;
-  Elf32_Phdr *pph = (void *) pmm->pe + pe->e_phoff;
-  void *pEntry = (void *) pe->e_entry;
+  /* temporarily map pmm->pe in order to read pph->p_memsz */
+  Elf32_Ehdr *pe, *pe0 = map_virtual_page ((uint) pmm->pe | 3);
+  Elf32_Phdr *pph = (void *) pe0 + pe0->e_phoff;
+  void *pEntry = (void *) pe0->e_entry;
   int i, c, j;
   uint32 *stack_virt_addr;
+  uint32 page_count = 1;
+
+  /* find out how many pages for the module */
+  for (i = 0; i < pe0->e_phnum; i++) {
+    if (pph->p_type == PT_LOAD)
+      page_count += (pph->p_memsz >> 12);
+    pph = (void *) pph + pe0->e_phentsize;
+  }
+
+  /* now map the entire module */
+  pe = map_contiguous_virtual_pages ((uint) pmm->pe | 3, page_count);
+
+  unmap_virtual_page (pe0);
+
+  pph = (void *) pe + pe->e_phoff;
 
   /* Populate ring 3 page directory with kernel mappings */
   memcpy (&plPageDirectory[1023], (void *) (((uint32) get_pdbr ()) + 4092),
@@ -223,7 +239,7 @@ load_module (multiboot_module * pmm, int mod_num)
           (uint32) pmm->pe + (pph->p_offset & 0xFFFFF000) + (j << 12) + 7;
 
       /* zero remainder of final page */
-      memset ((void *) pmm->pe + pph->p_offset + pph->p_filesz,
+      memset ((void *) pe + pph->p_offset + pph->p_filesz,
               0, (pph->p_memsz - pph->p_filesz) & 0x0FFF);
 
       /* map additional zeroed pages */
@@ -247,10 +263,10 @@ load_module (multiboot_module * pmm, int mod_num)
   /* map stack */
   plPageTable[1023] = (uint32) pStack | 7;
 
-  /* --??-- 
+  /* --??--
    *
    * Special case for tss[1] acting, for now, as our screen/terminal server:
-   * Need to map screen memory. Here we map it in the middle of our 
+   * Need to map screen memory. Here we map it in the middle of our
    * page table
    *
    */
@@ -270,6 +286,7 @@ load_module (multiboot_module * pmm, int mod_num)
   *(uint32 *) ((char *) stack_virt_addr + 0x1000 - 100) = 0;  /* NULL return address -- never used */
 
   unmap_virtual_page (stack_virt_addr);
+  unmap_virtual_pages (pe, page_count);
 
   return alloc_TSS (plPageDirectory, pEntry, mod_num);
 }
@@ -280,7 +297,7 @@ void
 init_pic (void)
 {
 
-  /* Remap IRQs to int 0x20-0x2F 
+  /* Remap IRQs to int 0x20-0x2F
    * Need to set initialization command words (ICWs) and
    * operation command words (OCWs) to PIC master/slave
    */
@@ -389,8 +406,8 @@ init (multiboot * pmb)
        mmap = (memory_map_t *) ((uint32) mmap
                                 + mmap->size + 4 /*sizeof (mmap->size) */ )) {
 
-    /* 
-     * Set mm_table bitmap entries to 1 for all pages of RAM that are free. 
+    /*
+     * Set mm_table bitmap entries to 1 for all pages of RAM that are free.
      */
     if (mmap->type == 1) {      /* Available RAM -- see 'info multiboot' */
       if (mmap->base_addr_high == 0x0) {
@@ -405,9 +422,9 @@ init (multiboot * pmb)
     }
   }
 
-  /* 
+  /*
    * Clear bitmap entries for kernel and bootstrap memory areas,
-   * so as not to use them in dynamic memory allocation. 
+   * so as not to use them in dynamic memory allocation.
    */
   for (i = 0;
        i <
@@ -417,16 +434,16 @@ init (multiboot * pmb)
                                          * See quest.ld
                                          */
 
-  /* 
+  /*
    * --??-- Possible optimization is to free mm_table entries corresponding
-   * to memory above mm_limit on machines with less physical memory than 
-   * table keeps track of -- currently 4GB. 
+   * to memory above mm_limit on machines with less physical memory than
+   * table keeps track of -- currently 4GB.
    */
 
   /* Here, clear mm_table entries for any loadable modules. */
   for (i = 0; i < pmb->mods_count; i++) {
 
-    pe = pmb->mods_addr[i].pe;
+    pe = map_virtual_page ((uint32)pmb->mods_addr[i].pe | 3);
 
     pph = (void *) pe + pe->e_phoff;
 
@@ -440,6 +457,8 @@ init (multiboot * pmb)
       }
       pph = (void *) pph + pe->e_phentsize;
     }
+
+    unmap_virtual_page (pe);
   }
 
 #if 0
@@ -449,8 +468,8 @@ init (multiboot * pmb)
   while (1);
 #endif
 
-  /* Now safe to call alloc_phys_frame() as all free/allocated memory is 
-   *  marked in the mm_table 
+  /* Now safe to call alloc_phys_frame() as all free/allocated memory is
+   *  marked in the mm_table
    */
 
   init_interrupt_handlers ();
@@ -525,7 +544,7 @@ init (multiboot * pmb)
 
   /* Initialize USB mass storage driver */
   { bool usb_mass_storage_driver_init (void); usb_mass_storage_driver_init (); }
-  
+
   /* Initialize USB Video Class driver */
   { bool usb_uvc_driver_init (void); usb_uvc_driver_init ();}
 
@@ -586,7 +605,7 @@ init (multiboot * pmb)
     BREAKPOINT ();
 #endif
   }
-#endif  
+#endif
 
   /* The Shell module is in userspace and therefore interrupts will be
    * enabled after this point.  Then, kernel locking will become
@@ -597,13 +616,13 @@ init (multiboot * pmb)
   panic ("BSP: unreachable");
 }
 
-/* 
+/*
  * Local Variables:
  * indent-tabs-mode: nil
  * mode: C
  * c-file-style: "gnu"
  * c-basic-offset: 2
- * End: 
+ * End:
  */
 
 /* vi: set et sw=2 sts=2: */

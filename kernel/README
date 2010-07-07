@@ -46,11 +46,12 @@ Using the emulators:
   $ bochs -q -f bochsrc-cdrom
 
   # Netboot
-  $ qemu -fda netboot/gpxe.dsk \
-              -net nic,model=pcnet \
-              -net user,tftp=tftp,bootfile=nbgrub \
-              -cdrom quest.iso
+  $ qemu -boot n \
+         -net nic,model=pcnet \
+         -net user,tftp=tftp,bootfile=grub2pxe \
+         -cdrom quest.iso
   #   the options above have the following meanings:
+  #   -boot n                 Boot from Network PXE ROM
   #   -net nic,model=pcnet    Emulate a PCnet network card
   #   -net user,...           QEMU sets up a firewall with TFTP and DHCP
   #   -cdrom quest.iso        Just to have a file-system with programs...
