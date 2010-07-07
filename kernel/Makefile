@@ -1,7 +1,9 @@
 GRUBLIB = grub/x86_64-pc
+GRUB2 = grub2
 TFTPDIR=tftp
 LD = ld -melf_i386
 CC = gcc
+TAR = tar
 ATSCC = atscc 
 ATSOPT = atsopt
 OPT = 0
@@ -124,13 +126,14 @@ vmware: install quest.iso
 	cp c-img.vmdk /mnt/hgfs/shared/quest/
 	cp quest.iso /mnt/hgfs/shared/quest/
 
-quest.iso: quest $(PROGS)
+quest.iso: quest $(PROGS) iso-grub.cfg
 	mkdir -p iso/boot/grub 
-	cp $(GRUBLIB)/stage2_eltorito iso/boot/grub/ 
-	cp iso-menu.lst iso/boot/grub/menu.lst 
+	cp iso-grub.cfg iso/boot/grub/grub.cfg
+	cp $(GRUB2)/eltorito.img iso/boot/grub/
+	$(TAR) -C iso/boot/grub -jxf $(GRUB2)/mods.tar.bz2
 	cp $(PROGS) welcome.raw iso/boot/ 
 	mkisofs -quiet $(MSINFO) \
-		-R -b boot/grub/stage2_eltorito \
+		-R -b boot/grub/eltorito.img \
 		-no-emul-boot -boot-load-size 4 \
 		-boot-info-table -o $@ iso
 
@@ -153,14 +156,16 @@ cleanall: clean cleanacpi cleanlwip
 define ACPI_template
 $(1): $(patsubst %.o,%.c,$(1))
 	$(CC) $(CFLAGS) $(CPPFLAGS) -o $$@ -c $$^
-endef 
+endef
 
 $(foreach obj,$(ACPI_OBJS),$(eval $(call ACPI_template,$(obj))))
 
 netboot: quest.iso
 	mkdir -p $(TFTPDIR)/boot/grub
-	cp $(GRUBLIB)/nbgrub quest shell terminal_server $(TFTPDIR)
-	cp netboot/menu.lst $(TFTPDIR)/boot/grub
+	cp quest sysprogs/shell sysprogs/terminal_server $(TFTPDIR)/boot
+	cp netboot/grub.cfg $(TFTPDIR)/boot/grub
+	cp $(GRUB2)/grub2pxe $(TFTPDIR)
+	$(TAR) -C $(TFTPDIR)/boot/grub -jxf $(GRUB2)/mods.tar.bz2
 
 ##################################################
 # LWIP
