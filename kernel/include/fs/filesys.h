@@ -81,10 +81,15 @@ int vfat_mount (void);
 int vfat_dir (char *pathname);
 int vfat_read (char *buf, int len);
 
-#define VFS_FSYS_NONE  0
-#define VFS_FSYS_EXT2  1
-#define VFS_FSYS_EZISO 2
-#define VFS_FSYS_EZUSB 3
+bool eztftp_mount (char *ifname);
+int eztftp_dir (char *pathname);
+int eztftp_read (char *buf, int len);
+
+#define VFS_FSYS_NONE   0
+#define VFS_FSYS_EZEXT2 1
+#define VFS_FSYS_EZISO  2
+#define VFS_FSYS_EZUSB  3
+#define VFS_FSYS_EZTFTP 4
 
 void vfs_set_root (int type, ata_info * drive_info);
 int vfs_dir (char *);

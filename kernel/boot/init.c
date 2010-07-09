@@ -352,11 +352,40 @@ initialize_serial_port (void)
   com1_puts ("COM1 initialized.\n");
 }
 
+int
+parse_root_type (char *cmdline)
+{
+  char *p, *q;
+  for (p=cmdline; p[0] && p[1] && p[2] && p[3] && p[4]; p++) {
+    if (p[0] == 'r' && p[1] == 'o' && p[2] == 'o' &&
+        p[3] == 't' && p[4] == '=') {
+      p+=5;
+      for (q=p; *q && *q != ' '; q++);
+      *q = '\0';
+      if (q - p >= 4 &&
+          p[0] == '(' && p[1] == 'h' && p[2] == 'd' && p[3] == ')')
+        return VFS_FSYS_EZEXT2;
+      if (q - p >= 4 &&
+          p[0] == '(' && p[1] == 'c' && p[2] == 'd' && p[3] == ')')
+        return VFS_FSYS_EZISO;
+      if (q - p >= 6 &&
+          p[0] == '(' && p[1] == 't' && p[2] == 'f' &&
+          p[3] == 't' && p[4] == 'p' && p[5] == ')')
+        return VFS_FSYS_EZTFTP;
+      if (q - p >= 5 &&
+          p[0] == '(' && p[1] == 'u' && p[2] == 's' &&
+          p[3] == 'b' && p[4] == ')')
+        return VFS_FSYS_EZUSB;
+    }
+  }
+  return VFS_FSYS_NONE;
+}
+
 void
 init (multiboot * pmb)
 {
 
-  int i, j, k, c, num_cpus;
+  int i, j, k, c, num_cpus, root_type;
   uint16 tss[NR_MODS];
   memory_map_t *mmap;
   uint32 limit, boot_device = 0;
@@ -378,6 +407,10 @@ init (multiboot * pmb)
   }
 
   print ("\n\n\n");
+
+  com1_printf ("cmdline: %s\n", pmb->cmdline);
+  root_type = parse_root_type (pmb->cmdline);
+  com1_printf ("root_type=%d\n", root_type);
 
   if (pmb->flags & 0x2) {
     multiboot_drive *d;
@@ -564,18 +597,28 @@ init (multiboot * pmb)
   /* Initialize ATA/ATAPI subsystem */
   ata_init ();
 
-#if 0
-  if (boot_device == 0x8000FFFF && pata_drives[0].ata_type == ATA_TYPE_PATA) {
-    printf ("ROOT: EXT2FS\n");
-    /* Mount root filesystem */
-    if (!ext2fs_mount ())
-      panic ("Filesystem mount failed");
-    vfs_set_root (VFS_FSYS_EXT2, &pata_drives[0]);
-  } else {
-    /* CD-ROM boot, figure out which drive (assume first) */
+  switch (root_type) {
+  case VFS_FSYS_EZEXT2:
+    if (boot_device == 0x8000FFFF && pata_drives[0].ata_type == ATA_TYPE_PATA) {
+      printf ("ROOT: HARD DISK DRIVE: EXT2\n");
+      /* Mount root filesystem */
+      if (!ext2fs_mount ())
+        panic ("Filesystem mount failed");
+      vfs_set_root (VFS_FSYS_EZEXT2, &pata_drives[0]);
+    } else {
+      printf ("ROOT: unable to find ext2 drive\n");
+    }
+    break;
+  case VFS_FSYS_EZUSB:
+  default:
+    printf ("ROOT: USB MASS STORAGE: VFAT\n");
+    vfat_mount ();
+    vfs_set_root (VFS_FSYS_EZUSB, NULL);
+    break;
+  case VFS_FSYS_EZISO:
     for (i = 0; i < 4; i++) {
       if (pata_drives[i].ata_type == ATA_TYPE_PATAPI) {
-        printf ("ROOT: ISO9660\n");
+        printf ("ROOT: CD-ROM: ISO-9660\n");
         if (!eziso_mount (pata_drives[i].ata_bus, pata_drives[i].ata_drive))
           panic ("Filesystem mount failed");
         vfs_set_root (VFS_FSYS_EZISO, &pata_drives[i]);
@@ -583,14 +626,15 @@ init (multiboot * pmb)
       }
     }
     if (i == 4)
-      printf ("Unsupported boot device=%X.\n", boot_device);
+      printf ("Unable to detect CD-ROM drive.\n");
+    break;
+  case VFS_FSYS_EZTFTP:
+    printf ("ROOT: TFTP\n");
+    if (!eztftp_mount ("en0"))
+      panic ("TFTP mount failed");
+    vfs_set_root (VFS_FSYS_EZTFTP, NULL);
+    break;
   }
-#else
-  /* hack */
-  printf ("ROOT: USB\n");
-  vfat_mount ();
-  vfs_set_root (VFS_FSYS_EZUSB, NULL);
-#endif
 
   /* Initialise soundcard, if one exists */
   init_sound ();
