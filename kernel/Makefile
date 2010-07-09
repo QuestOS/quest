@@ -38,6 +38,7 @@ OBJS =  boot/boot.o boot/init.o kernel.o \
 	fs/ext2/fsys_ext2fs.o \
 	fs/iso9660/fsys_iso9660.o \
 	fs/vfat/fsys_vfat.o \
+	fs/tftp/fsys_tftp.o \
 	drivers/sb16/sound.o \
 	drivers/acpi/quest-acpica.o \
 	drivers/usb/uhci_hcd.o drivers/usb/uvc.o drivers/usb/umsc.o \

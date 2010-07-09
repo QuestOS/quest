@@ -364,14 +364,14 @@ parse_root_type (char *cmdline)
       *q = '\0';
       if (q - p >= 4 &&
           p[0] == '(' && p[1] == 'h' && p[2] == 'd' && p[3] == ')')
-        return VFS_FSYS_EXT2;
+        return VFS_FSYS_EZEXT2;
       if (q - p >= 4 &&
           p[0] == '(' && p[1] == 'c' && p[2] == 'd' && p[3] == ')')
         return VFS_FSYS_EZISO;
       if (q - p >= 6 &&
           p[0] == '(' && p[1] == 't' && p[2] == 'f' &&
           p[3] == 't' && p[4] == 'p' && p[5] == ')')
-        return VFS_FSYS_EZISO;
+        return VFS_FSYS_EZTFTP;
       if (q - p >= 5 &&
           p[0] == '(' && p[1] == 'u' && p[2] == 's' &&
           p[3] == 'b' && p[4] == ')')
@@ -598,13 +598,13 @@ init (multiboot * pmb)
   ata_init ();
 
   switch (root_type) {
-  case VFS_FSYS_EXT2:
+  case VFS_FSYS_EZEXT2:
     if (boot_device == 0x8000FFFF && pata_drives[0].ata_type == ATA_TYPE_PATA) {
       printf ("ROOT: HARD DISK DRIVE: EXT2\n");
       /* Mount root filesystem */
       if (!ext2fs_mount ())
         panic ("Filesystem mount failed");
-      vfs_set_root (VFS_FSYS_EXT2, &pata_drives[0]);
+      vfs_set_root (VFS_FSYS_EZEXT2, &pata_drives[0]);
     } else {
       printf ("ROOT: unable to find ext2 drive\n");
     }
@@ -627,6 +627,12 @@ init (multiboot * pmb)
     }
     if (i == 4)
       printf ("Unable to detect CD-ROM drive.\n");
+    break;
+  case VFS_FSYS_EZTFTP:
+    printf ("ROOT: TFTP\n");
+    if (!eztftp_mount ("en0"))
+      panic ("TFTP mount failed");
+    vfs_set_root (VFS_FSYS_EZTFTP, NULL);
     break;
   }
 
