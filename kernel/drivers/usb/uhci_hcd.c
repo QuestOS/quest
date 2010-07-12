@@ -1162,7 +1162,6 @@ uhci_irq_handler (uint8 vec)
 
 #if 0
   v = IOAPIC_read64 (0x10 + (irq_line * 2));
-#if 0
   DLOG ("(1) IOAPIC (irq_line=0x%x) says %p %p",
         irq_line, (uint32) (v >> 32), (uint32) v);
 #endif
@@ -1263,8 +1262,6 @@ uhci_irq_handler (uint8 vec)
 
 #if 0
   v = IOAPIC_read64 (0x10 + (irq_line * 2));
-
-#if 0
   DLOG ("(2) IOAPIC (irq_line=0x%x) says %p %p",
         irq_line, (uint32) (v >> 32), (uint32) v);
 #endif
