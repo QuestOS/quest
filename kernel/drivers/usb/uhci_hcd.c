@@ -755,6 +755,7 @@ uhci_isochronous_transfer (
     uint8_t endpoint,
     addr_t data,
     int data_len,
+    int *act_len,
     uint16_t frm,
     uint8_t direction,
     void (*func)(addr_t))
@@ -770,7 +771,7 @@ uhci_isochronous_transfer (
   iso_td = sched_alloc (TYPE_TD);
   iso_td->status = 0x80;
   iso_td->c_err = 0;
-  iso_td->ioc = 1;
+  iso_td->ioc = 0; // --??-- For test, mask the interrupt
   iso_td->iso = 1;
   iso_td->spd = 0;
   iso_td->pid = (direction == DIR_IN) ? UHCI_PID_IN : UHCI_PID_OUT;
@@ -800,6 +801,14 @@ uhci_isochronous_transfer (
     frame_list[frm] = (uint32_t) get_phys_addr ((void *) iso_td) & 0xFFFFFFF0;
   }
 
+  //queue_append (&uhci_waitq, str ());
+  //schedule ();
+  while (iso_td->status & 0x80);
+
+  *act_len = iso_td->act_len + 1;
+  frame_list[frm] = iso_td->link_ptr;
+  sched_free (TYPE_TD, iso_td);
+  
 #if 0
   delay (500);
   delay (1000);
@@ -1153,6 +1162,7 @@ uhci_irq_handler (uint8 vec)
 
 #if 0
   v = IOAPIC_read64 (0x10 + (irq_line * 2));
+#if 0
   DLOG ("(1) IOAPIC (irq_line=0x%x) says %p %p",
         irq_line, (uint32) (v >> 32), (uint32) v);
 #endif
@@ -1164,9 +1174,11 @@ uhci_irq_handler (uint8 vec)
   status = 0;
   status = GET_USBSTS(usb_base);
 
+#if 0
   DLOG ("An interrupt is caught from usb IRQ_LN! (USBSTS=0x%x PCISTS=0x%x)",
         status,
         pci_config_rd16 (bus, dev, func, 0x06));
+#endif
 
   if((status & 0x3F) == 0) {
     DLOG("Interrupt is probably not from UHCI. Nothing will be done.");
@@ -1207,7 +1219,7 @@ uhci_irq_handler (uint8 vec)
   }
 
   if(status & 0x01) {
-    DLOG("USB Interrupt detected!");
+    //DLOG("USB Interrupt detected!");
     /*
      * This is possibly an IOC or short packet.
      * We need to visit the whole schedule for now
@@ -1251,6 +1263,8 @@ uhci_irq_handler (uint8 vec)
 
 #if 0
   v = IOAPIC_read64 (0x10 + (irq_line * 2));
+
+#if 0
   DLOG ("(2) IOAPIC (irq_line=0x%x) says %p %p",
         irq_line, (uint32) (v >> 32), (uint32) v);
 #endif

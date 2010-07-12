@@ -84,7 +84,7 @@ dispatch_vector (uint32 vec)
 {
   vector_handler func = vector_handlers[(uint8) vec];
   uint32 v;
-  com1_printf ("dispatching vec=0x%x\n", vec);
+  //com1_printf ("dispatching vec=0x%x\n", vec);
 
   if (func)
     v = func (vec);
