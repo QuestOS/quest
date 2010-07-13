@@ -109,10 +109,23 @@ static const struct ieee80211_channel rtl818x_channels[] = {
 #define RFKILL_MASK_8187_89_97	0x2
 #define RFKILL_MASK_8198	0x4
 
+#define RTL8187_RTL8225_ANAPARAM_ON	0xa0000a59
+#define RTL8187_RTL8225_ANAPARAM2_ON	0x860c7312
+#define RTL8187_RTL8225_ANAPARAM_OFF	0xa00beb59
+#define RTL8187_RTL8225_ANAPARAM2_OFF	0x840dec11
+
+#define RTL8187B_RTL8225_ANAPARAM_ON	0x45090658
+#define RTL8187B_RTL8225_ANAPARAM2_ON	0x727f3f52
+#define RTL8187B_RTL8225_ANAPARAM3_ON	0x00
+#define RTL8187B_RTL8225_ANAPARAM_OFF	0x55480658
+#define RTL8187B_RTL8225_ANAPARAM2_OFF	0x72003f50
+#define RTL8187B_RTL8225_ANAPARAM3_OFF	0x00
+
 static USB_DEVICE_INFO *usbdev;
 /* a map of the configuration info on the chipset */
 static struct rtl818x_csr *map = (struct rtl818x_csr *)0xFF00;
 static struct eeprom_93cx6 eeprom;
+static uint8 rfkill_mask;
 static uint8 ethaddr[ETH_ADDR_LEN];
 static bool is_rtl8187b;
 static enum {
@@ -121,6 +134,7 @@ static enum {
 static struct ieee80211_channel channels[14];
 static struct ieee80211_rate rates[12];
 static const struct rtl818x_rf_ops *rf;
+static uint8 slot_time, aifsn[4];
 
 #define udelay(x) tsc_delay_usec (x)
 #define msleep(x) sched_usleep (x*1000);
@@ -213,14 +227,234 @@ eeprom_write (struct eeprom_93cx6 *eeprom)
 /* ************************************************** */
 
 static bool
+is_radio_enabled (void)
+{
+  u8 gpio;
+  gpio = ioread8 (&map->GPIO0);
+  iowrite8 (&map->GPIO0, gpio & ~rfkill_mask);
+  gpio = ioread8 (&map->GPIO1);
+
+  return gpio & rfkill_mask;
+}
+
+static void
+rfkill_init (void)
+{
+  bool enabled = is_radio_enabled ();
+  DLOG ("wireless radio switch is %s",
+        enabled ? "on" : "off");
+
+  /* FIXME: what to do... */
+  /* wiphy_rfkill_set_hwstate (hw->wiphy, !rfkill_off); */
+}
+
+/* ************************************************** */
+
+static bool
+cmd_reset (void)
+{
+  u8 reg;
+  int i;
+
+  reg = ioread8(&map->CMD);
+  reg &= (1 << 1);
+  reg |= RTL818X_CMD_RESET;
+  iowrite8(&map->CMD, reg);
+
+  i = 10;
+  do {
+    msleep(2);
+    if (!(ioread8(&map->CMD) &
+          RTL818X_CMD_RESET))
+      break;
+  } while (--i);
+
+  if (!i) {
+    DLOG("Reset timeout!");
+    return FALSE;
+  }
+
+  /* reload registers from eeprom */
+  iowrite8(&map->EEPROM_CMD, RTL818X_EEPROM_CMD_LOAD);
+
+  i = 10;
+  do {
+    msleep(4);
+    if (!(ioread8(&map->EEPROM_CMD) &
+          RTL818X_EEPROM_CMD_CONFIG))
+      break;
+  } while (--i);
+
+  if (!i) {
+    DLOG("eeprom reset timeout!");
+    return FALSE;
+  }
+
+  DLOG ("reset success");
+  return TRUE;
+}
+
+static const u8 rtl8187b_reg_table[][3] = {
+  {0xF0, 0x32, 0}, {0xF1, 0x32, 0}, {0xF2, 0x00, 0}, {0xF3, 0x00, 0},
+  {0xF4, 0x32, 0}, {0xF5, 0x43, 0}, {0xF6, 0x00, 0}, {0xF7, 0x00, 0},
+  {0xF8, 0x46, 0}, {0xF9, 0xA4, 0}, {0xFA, 0x00, 0}, {0xFB, 0x00, 0},
+  {0xFC, 0x96, 0}, {0xFD, 0xA4, 0}, {0xFE, 0x00, 0}, {0xFF, 0x00, 0},
+
+  {0x58, 0x4B, 1}, {0x59, 0x00, 1}, {0x5A, 0x4B, 1}, {0x5B, 0x00, 1},
+  {0x60, 0x4B, 1}, {0x61, 0x09, 1}, {0x62, 0x4B, 1}, {0x63, 0x09, 1},
+  {0xCE, 0x0F, 1}, {0xCF, 0x00, 1}, {0xE0, 0xFF, 1}, {0xE1, 0x0F, 1},
+  {0xE2, 0x00, 1}, {0xF0, 0x4E, 1}, {0xF1, 0x01, 1}, {0xF2, 0x02, 1},
+  {0xF3, 0x03, 1}, {0xF4, 0x04, 1}, {0xF5, 0x05, 1}, {0xF6, 0x06, 1},
+  {0xF7, 0x07, 1}, {0xF8, 0x08, 1},
+
+  {0x4E, 0x00, 2}, {0x0C, 0x04, 2}, {0x21, 0x61, 2}, {0x22, 0x68, 2},
+  {0x23, 0x6F, 2}, {0x24, 0x76, 2}, {0x25, 0x7D, 2}, {0x26, 0x84, 2},
+  {0x27, 0x8D, 2}, {0x4D, 0x08, 2}, {0x50, 0x05, 2}, {0x51, 0xF5, 2},
+  {0x52, 0x04, 2}, {0x53, 0xA0, 2}, {0x54, 0x1F, 2}, {0x55, 0x23, 2},
+  {0x56, 0x45, 2}, {0x57, 0x67, 2}, {0x58, 0x08, 2}, {0x59, 0x08, 2},
+  {0x5A, 0x08, 2}, {0x5B, 0x08, 2}, {0x60, 0x08, 2}, {0x61, 0x08, 2},
+  {0x62, 0x08, 2}, {0x63, 0x08, 2}, {0x64, 0xCF, 2}, {0x72, 0x56, 2},
+  {0x73, 0x9A, 2},
+
+  {0x34, 0xF0, 0}, {0x35, 0x0F, 0}, {0x5B, 0x40, 0}, {0x84, 0x88, 0},
+  {0x85, 0x24, 0}, {0x88, 0x54, 0}, {0x8B, 0xB8, 0}, {0x8C, 0x07, 0},
+  {0x8D, 0x00, 0}, {0x94, 0x1B, 0}, {0x95, 0x12, 0}, {0x96, 0x00, 0},
+  {0x97, 0x06, 0}, {0x9D, 0x1A, 0}, {0x9F, 0x10, 0}, {0xB4, 0x22, 0},
+  {0xBE, 0x80, 0}, {0xDB, 0x00, 0}, {0xEE, 0x00, 0}, {0x4C, 0x00, 2},
+
+  {0x9F, 0x00, 3}, {0x8C, 0x01, 0}, {0x8D, 0x10, 0}, {0x8E, 0x08, 0},
+  {0x8F, 0x00, 0}
+};
+
+static bool
 init_hw (void)
 {
   uint8 reg;
+  int res, i;
 
   iowrite8 (&map->EEPROM_CMD, RTL818X_EEPROM_CMD_CONFIG);
   reg = ioread8 (&map->CONFIG3);
 
-  DLOG ("CONFIG3=0x%.02X", reg);
+  reg |= RTL818X_CONFIG3_ANAPARAM_WRITE | RTL818X_CONFIG3_GNT_SELECT;
+  iowrite8(&map->CONFIG3, reg);
+  iowrite32(&map->ANAPARAM2,
+                    RTL8187B_RTL8225_ANAPARAM2_ON);
+  iowrite32(&map->ANAPARAM,
+                    RTL8187B_RTL8225_ANAPARAM_ON);
+  iowrite8(&map->ANAPARAM3,
+                   RTL8187B_RTL8225_ANAPARAM3_ON);
+
+  iowrite8((u8 *)0xFF61, 0x10);
+  reg = ioread8((u8 *)0xFF62);
+  iowrite8((u8 *)0xFF62, reg & ~(1 << 5));
+  iowrite8((u8 *)0xFF62, reg | (1 << 5));
+
+  reg = ioread8(&map->CONFIG3);
+  reg &= ~RTL818X_CONFIG3_ANAPARAM_WRITE;
+  iowrite8(&map->CONFIG3, reg);
+
+  iowrite8(&map->EEPROM_CMD,
+                   RTL818X_EEPROM_CMD_NORMAL);
+
+  res = cmd_reset();
+  if (res)
+    return res;
+
+  iowrite16((__le16 *)0xFF2D, 0x0FFF);
+  reg = ioread8(&map->CW_CONF);
+  reg |= RTL818X_CW_CONF_PERPACKET_RETRY_SHIFT;
+  iowrite8(&map->CW_CONF, reg);
+  reg = ioread8(&map->TX_AGC_CTL);
+  reg |= RTL818X_TX_AGC_CTL_PERPACKET_GAIN_SHIFT |
+    RTL818X_TX_AGC_CTL_PERPACKET_ANTSEL_SHIFT;
+  iowrite8(&map->TX_AGC_CTL, reg);
+
+  iowrite16_idx((__le16 *)0xFFE0, 0x0FFF, 1);
+
+  iowrite16(&map->BEACON_INTERVAL, 100);
+  iowrite16(&map->ATIM_WND, 2);
+  iowrite16_idx((__le16 *)0xFFD4, 0xFFFF, 1);
+
+  iowrite8(&map->EEPROM_CMD,
+                   RTL818X_EEPROM_CMD_CONFIG);
+  reg = ioread8(&map->CONFIG1);
+  iowrite8(&map->CONFIG1, (reg & 0x3F) | 0x80);
+  iowrite8(&map->EEPROM_CMD,
+                   RTL818X_EEPROM_CMD_NORMAL);
+
+  iowrite8(&map->WPA_CONF, 0);
+  for (i = 0; i < ARRAY_SIZE(rtl8187b_reg_table); i++) {
+    iowrite8_idx(        (u8 *)(u32)
+                         (rtl8187b_reg_table[i][0] | 0xFF00),
+                         rtl8187b_reg_table[i][1],
+                         rtl8187b_reg_table[i][2]);
+  }
+
+  iowrite16(&map->TID_AC_MAP, 0xFA50);
+  iowrite16(&map->INT_MIG, 0);
+
+  iowrite32_idx((__le32 *)0xFFF0, 0, 1);
+  iowrite32_idx((__le32 *)0xFFF4, 0, 1);
+  iowrite8_idx((u8 *)0xFFF8, 0, 1);
+
+  iowrite32(&map->RF_TIMING, 0x00004001);
+
+  iowrite16_idx((__le16 *)0xFF72, 0x569A, 2);
+
+  iowrite8(&map->EEPROM_CMD,
+                   RTL818X_EEPROM_CMD_CONFIG);
+  reg = ioread8(&map->CONFIG3);
+  reg |= RTL818X_CONFIG3_ANAPARAM_WRITE;
+  iowrite8(&map->CONFIG3, reg);
+  iowrite8(&map->EEPROM_CMD,
+                   RTL818X_EEPROM_CMD_NORMAL);
+
+  iowrite16(&map->RFPinsOutput, 0x0480);
+  iowrite16(&map->RFPinsSelect, 0x2488);
+  iowrite16(&map->RFPinsEnable, 0x1FFF);
+  msleep(100);
+
+  rf->init();
+
+  reg = RTL818X_CMD_TX_ENABLE | RTL818X_CMD_RX_ENABLE;
+  iowrite8(&map->CMD, reg);
+  iowrite16(&map->INT_MASK, 0xFFFF);
+
+  iowrite8((u8 *)0xFE41, 0xF4);
+  iowrite8((u8 *)0xFE40, 0x00);
+  iowrite8((u8 *)0xFE42, 0x00);
+  iowrite8((u8 *)0xFE42, 0x01);
+  iowrite8((u8 *)0xFE40, 0x0F);
+  iowrite8((u8 *)0xFE42, 0x00);
+  iowrite8((u8 *)0xFE42, 0x01);
+
+  reg = ioread8((u8 *)0xFFDB);
+  iowrite8((u8 *)0xFFDB, reg | (1 << 2));
+  iowrite16_idx((__le16 *)0xFF72, 0x59FA, 3);
+  iowrite16_idx((__le16 *)0xFF74, 0x59D2, 3);
+  iowrite16_idx((__le16 *)0xFF76, 0x59D2, 3);
+  iowrite16_idx((__le16 *)0xFF78, 0x19FA, 3);
+  iowrite16_idx((__le16 *)0xFF7A, 0x19FA, 3);
+  iowrite16_idx((__le16 *)0xFF7C, 0x00D0, 3);
+  iowrite8((u8 *)0xFF61, 0);
+  iowrite8_idx((u8 *)0xFF80, 0x0F, 1);
+  iowrite8_idx((u8 *)0xFF83, 0x03, 1);
+  iowrite8((u8 *)0xFFDA, 0x10);
+  iowrite8_idx((u8 *)0xFF4D, 0x08, 2);
+
+  iowrite32(&map->HSSI_PARA, 0x0600321B);
+
+  iowrite16_idx((__le16 *)0xFFEC, 0x0800, 1);
+
+  slot_time = 0x9;
+  aifsn[0] = 2; /* AIFSN[AC_VO] */
+  aifsn[1] = 2; /* AIFSN[AC_VI] */
+  aifsn[2] = 7; /* AIFSN[AC_BK] */
+  aifsn[3] = 3; /* AIFSN[AC_BE] */
+  iowrite8(&map->ACM_CONTROL, 0);
+
+  /* ENEDCA flag must always be set, transmit issues? */
+  iowrite8(&map->MSR, RTL818X_MSR_ENEDCA);
 
   return TRUE;
 }
@@ -235,7 +469,7 @@ probe (USB_DEVICE_INFO *info, USB_CFG_DESC *cfgd, USB_IF_DESC *ifd)
   char *chipname;
   int i;
   uint8 reg;
-  uint16 txpwr;
+  uint16 txpwr, reg16;
   struct ieee80211_channel *channel;
 
   for (i=0; compat_list[i].v != 0xFFFF; i++) {
@@ -365,10 +599,18 @@ probe (USB_DEVICE_INFO *info, USB_CFG_DESC *cfgd, USB_IF_DESC *ifd)
     (*channel++).hw_value = txpwr >> 8;
   }
 
+  rfkill_mask = RFKILL_MASK_8187_89_97;
+  eeprom_93cx6_read (&eeprom, RTL8187_EEPROM_SELECT_GPIO, &reg16);
+  if (reg16 & 0xFF00)
+    rfkill_mask = RFKILL_MASK_8198;
+  DLOG ("rfkill_mask=0x%x", rfkill_mask);
+
   rf = rtl8187_detect_rf ();
   DLOG ("detected RF name: %s", rf->name);
 
   if (is_rtl8187b) queues = 4; else queues = 1;
+
+  rfkill_init ();
 
   return init_hw ();
 }
@@ -388,19 +630,6 @@ usb_rtl8187b_driver_init (void)
 /* ************************************************** */
 
 /* Radio tuning for RTL8225 on RTL8187 */
-
-
-#define RTL8187_RTL8225_ANAPARAM_ON	0xa0000a59
-#define RTL8187_RTL8225_ANAPARAM2_ON	0x860c7312
-#define RTL8187_RTL8225_ANAPARAM_OFF	0xa00beb59
-#define RTL8187_RTL8225_ANAPARAM2_OFF	0x840dec11
-
-#define RTL8187B_RTL8225_ANAPARAM_ON	0x45090658
-#define RTL8187B_RTL8225_ANAPARAM2_ON	0x727f3f52
-#define RTL8187B_RTL8225_ANAPARAM3_ON	0x00
-#define RTL8187B_RTL8225_ANAPARAM_OFF	0x55480658
-#define RTL8187B_RTL8225_ANAPARAM2_OFF	0x72003f50
-#define RTL8187B_RTL8225_ANAPARAM3_OFF	0x00
 
 static inline 
 void rtl8225_write_phy_ofdm(u8 addr, u32 data)
