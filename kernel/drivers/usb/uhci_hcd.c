@@ -50,14 +50,23 @@ static UHCI_QH *ctl_qh = 0;
 static UHCI_QH *blk_qh = 0;
 static uint32 toggles[128];     /* endpoint toggle bit states (bulk transfer) */
 
-uint32 td_phys;
+uint32 td_phys, qh_phys;
 
 /* Virtual-to-Physical */
 #define TD_V2P(ty,p) ((ty)((((uint) (p)) - ((uint) td))+td_phys))
+#define QH_V2P(ty,p) ((ty)((((uint) (p)) - ((uint) qh))+qh_phys))
 /* Physical-to-Virtual */
 #define TD_P2V(ty,p) ((ty)((((uint) (p)) - td_phys)+((uint) td)))
+#define QH_P2V(ty,p) ((ty)((((uint) (p)) - qh_phys)+((uint) qh)))
 
 static task_id uhci_waitq = 0;  /* Tasks waiting for IRQ */
+
+#define TERMINATE 1
+#define SELECT_TD 0
+#define SELECT_QH 2
+#define DEPTH_FIRST 4
+#define LINK_MASK (~0xFL)
+
 
 /*
  * This is non-reentrant! Fortunately, we do not have concurrency yet:-)
@@ -73,7 +82,7 @@ sched_alloc (int type)
     case TYPE_TD:
       for (i = 0; i < TD_POOL_SIZE; i++) {
         if (td[i].link_ptr == 0) {
-          td[i].link_ptr = 0x01;
+          td[i].link_ptr = TERMINATE;
           return &td[i];
         }
       }
@@ -82,7 +91,7 @@ sched_alloc (int type)
     case TYPE_QH:
       for (i = 0; i < QH_POOL_SIZE; i++) {
         if (qh[i].qh_ptr == 0 && qh[i].qe_ptr == 0) {
-          qh[i].qh_ptr = qh[i].qe_ptr = 0x01;
+          qh[i].qh_ptr = qh[i].qe_ptr = TERMINATE;
           return &qh[i];
         }
       }
@@ -138,7 +147,7 @@ free_tds (UHCI_TD * tds, int len)
   for (i = 0; i < len; i++) {
     link_ptr = tds->link_ptr;
 
-    if ((tds->link_ptr & 0x01) == 0x01) {
+    if ((tds->link_ptr & TERMINATE) == TERMINATE) {
       end++;
     }
 
@@ -148,7 +157,7 @@ free_tds (UHCI_TD * tds, int len)
     if (end)
       break;
 
-    tds = TD_P2V (UHCI_TD *, link_ptr & 0xFFFFFFF0);
+    tds = TD_P2V (UHCI_TD *, link_ptr & LINK_MASK);
   }
 
   return count;
@@ -208,12 +217,13 @@ disable_ehci (void)
 static void
 init_schedule (void)
 {
+  UHCI_QH *q;
   int i = 0;
 
   phys_frm = (frm_lst_ptr *) get_phys_addr ((void *) frame_list);
 
   for (i = 0; i < 1024; i++) {
-    frame_list[i] = 0x01;
+    frame_list[i] = TERMINATE;
   }
 
   memset ((void *) td, 0, 32 * TD_POOL_SIZE);
@@ -225,17 +235,26 @@ init_schedule (void)
 
   /* Points to next Queue Head (First Control QH). Set Q=1, T=0 */
   int_qh->qh_ptr =
-    (((uint32_t) get_phys_addr ((void *) ctl_qh)) & 0xFFFFFFF0) + 0x02;
-  int_qh->qe_ptr = 0x01;
+    (((uint32_t) get_phys_addr ((void *) ctl_qh)) & LINK_MASK) + SELECT_QH;
+  int_qh->qe_ptr = TERMINATE;
 
   /* Points to next Queue Head (First Bulk QH). Set Q=1, T=0 */
   ctl_qh->qh_ptr =
-    (((uint32_t) get_phys_addr ((void *) blk_qh)) & 0xFFFFFFF0) + 0x02;
-  ctl_qh->qe_ptr = 0x01;
+    (((uint32_t) get_phys_addr ((void *) blk_qh)) & LINK_MASK) + SELECT_QH;
+  ctl_qh->qe_ptr = TERMINATE;
 
   /* Set this as the last Queue Head for now. T=1 */
-  blk_qh->qh_ptr = 0x01;
-  blk_qh->qe_ptr = 0x01;
+  blk_qh->qh_ptr = TERMINATE;
+  blk_qh->qe_ptr = TERMINATE;
+
+  /* create 2nd level for bulk queue */
+  q = sched_alloc (TYPE_QH);
+  q->qh_ptr = qh->qe_ptr = TERMINATE;
+
+  blk_qh->qe_ptr =
+    (((uint32_t) get_phys_addr ((void *) q)) & LINK_MASK) + SELECT_QH;
+
+  blk_qh = q;
 
 #if 0
   DLOG ("int_qh va=%p ctl_qh va=%p qhp va=%p",
@@ -249,7 +268,7 @@ init_schedule (void)
   /* Link all the frame list pointers to interrupt queue. No ISO TD present now. */
   for (i = 0; i < 1024; i++) {
     frame_list[i] =
-      (((uint32_t) get_phys_addr ((void *) int_qh)) & 0xFFFFFFF0) + 0x02;
+      (((uint32_t) get_phys_addr ((void *) int_qh)) & LINK_MASK) + SELECT_QH;
   }
 }
 
@@ -272,8 +291,8 @@ debug_dump_sched (UHCI_TD * tx_tds)
       DLOG ("    %.08X %.08X %.08X %.08X",
             p[0], p[1], p[2], p[3]);
     }
-    if (tx_tds->link_ptr == 0x01) break;
-    tx_tds = TD_P2V (UHCI_TD *, tx_tds->link_ptr & 0xFFFFFFF0);
+    if (tx_tds->link_ptr == TERMINATE) break;
+    tx_tds = TD_P2V (UHCI_TD *, tx_tds->link_ptr & LINK_MASK);
   }
 }
 
@@ -337,7 +356,7 @@ check_tds (UHCI_TD * tx_tds, uint32 *act_len)
 #endif
 
       /* move to next TD in chain */
-      tds = TD_P2V (UHCI_TD *, tds->link_ptr & 0xFFFFFFF0);
+      tds = TD_P2V (UHCI_TD *, tds->link_ptr & LINK_MASK);
     }
   }
 
@@ -564,7 +583,7 @@ uhci_enumerate (void)
   for (c=0; c<devd.bNumConfigurations; c++) {
     /* obtain precise size info */
     memset (temp, 0, TEMPSZ);
-    status = usb_get_descriptor (info, USB_TYPE_CFG_DESC, c, 0, 
+    status = usb_get_descriptor (info, USB_TYPE_CFG_DESC, c, 0,
                                  sizeof (USB_CFG_DESC), temp);
     if (status != 0) {
       DLOG ("uhci_enumerate: failed to get config descriptor for c=%d", c);
@@ -702,7 +721,9 @@ uhci_init (void)
 
 
   td_phys = (uint32) get_phys_addr ((void *) td);
-  DLOG ("td@%p td_phys@%p", td, td_phys);
+  qh_phys = (uint32) get_phys_addr ((void *) qh);
+  DLOG ("td@%p td_phys@%p qh@%p qh_phys@%p",
+        td, td_phys, qh, qh_phys);
 
 
   if (uhci_device.device != 0x7020)
@@ -785,20 +806,20 @@ uhci_isochronous_transfer (
 
   entry = frame_list[frm];
 
-  if (!(entry & 0x01) && !(entry & 0x02)) {
-    idx_td = TD_P2V (UHCI_TD *, entry & 0xFFFFFFF0);
+  if (!(entry & TERMINATE) && !(entry & SELECT_QH)) {
+    idx_td = TD_P2V (UHCI_TD *, entry & LINK_MASK);
 
-    while (!(idx_td->link_ptr & 0x01) && !(idx_td->link_ptr & 0x02)) {
-      idx_td = TD_P2V (UHCI_TD *, idx_td->link_ptr & 0xFFFFFFF0);
+    while (!(idx_td->link_ptr & TERMINATE) && !(idx_td->link_ptr & SELECT_QH)) {
+      idx_td = TD_P2V (UHCI_TD *, idx_td->link_ptr & LINK_MASK);
     }
 
     iso_td->link_ptr = idx_td->link_ptr;
     idx_td->link_ptr =
-      (uint32_t) get_phys_addr ((void *) iso_td) & 0xFFFFFFF0;
+      (uint32_t) get_phys_addr ((void *) iso_td) & LINK_MASK;
   } else {
     iso_td->link_ptr =
-      (((uint32_t) get_phys_addr ((void *) int_qh)) & 0xFFFFFFF0) + 0x02;
-    frame_list[frm] = (uint32_t) get_phys_addr ((void *) iso_td) & 0xFFFFFFF0;
+      (((uint32_t) get_phys_addr ((void *) int_qh)) & LINK_MASK) + SELECT_QH;
+    frame_list[frm] = (uint32_t) get_phys_addr ((void *) iso_td) & LINK_MASK;
   }
 
   //queue_append (&uhci_waitq, str ());
@@ -808,7 +829,7 @@ uhci_isochronous_transfer (
   *act_len = iso_td->act_len + 1;
   frame_list[frm] = iso_td->link_ptr;
   sched_free (TYPE_TD, iso_td);
-  
+
 #if 0
   delay (500);
   delay (1000);
@@ -820,7 +841,31 @@ uhci_isochronous_transfer (
   return 0;
 }
 
-int uhci_bulk_transfer(
+/* find a free QH to queue up the TDs, or alloc a new one */
+static bool
+link_td_to_free_qh (UHCI_QH *q, UHCI_TD *t)
+{
+  for (;;) {
+    if (q->qe_ptr == TERMINATE) {
+      q->qe_ptr = TD_V2P (uint32, t) & LINK_MASK;
+      return TRUE;
+    }
+    if (q->qh_ptr == TERMINATE) {
+      UHCI_QH *newq = sched_alloc (TYPE_QH);
+      if (newq == NULL) return FALSE;
+      newq->qe_ptr = (TD_V2P (uint32, t) & LINK_MASK) | SELECT_TD;
+      newq->qh_ptr = TERMINATE;
+      q->qh_ptr = (QH_V2P (uint32, newq) & LINK_MASK) | SELECT_QH;
+      return TRUE;
+    }
+
+    /* advance to next qh in list */
+    q = QH_P2V (UHCI_QH *, q->qh_ptr & LINK_MASK);
+  }
+}
+
+int
+uhci_bulk_transfer(
     uint8_t address,
     uint8_t endpoint,
     addr_t data,
@@ -840,11 +885,11 @@ int uhci_bulk_transfer(
 
   for(i = 0; i < num_data_packets; i++) {
     data_td = sched_alloc(TYPE_TD);
-    data_td->link_ptr = 0x01;
+    data_td->link_ptr = TERMINATE;
     if(tx_tds == 0)
       tx_tds = data_td;
     else
-      idx_td->link_ptr = (((uint32_t)get_phys_addr((void*)data_td)) & 0xFFFFFFF0) + 0x04;
+      idx_td->link_ptr = (((uint32_t)get_phys_addr((void*)data_td)) & LINK_MASK) + DEPTH_FIRST;
 
     idx_td = data_td;
     data_td->status = 0x80;
@@ -888,7 +933,7 @@ int uhci_bulk_transfer(
 #endif
 
   /* Initiate our bulk transactions */
-  blk_qh->qe_ptr = (((uint32_t)get_phys_addr((void*)tx_tds)) & 0xFFFFFFF0) + 0x0;
+  link_td_to_free_qh (blk_qh, tx_tds);
 
   /* Check the status of all the packets in the transaction */
   return_status = check_tds(tx_tds, act_len);
@@ -954,7 +999,7 @@ uhci_control_transfer (
 
     /* Link TDs, depth first */
     td_idx->link_ptr =
-      (((uint32_t) get_phys_addr ((void *) data_td)) & 0xFFFFFFF0) + 0x04;
+      (((uint32_t) get_phys_addr ((void *) data_td)) & LINK_MASK) + DEPTH_FIRST;
     td_idx = data_td;
 
     data_td->status = 0x80;
@@ -983,9 +1028,9 @@ uhci_control_transfer (
   toggle = 1;                   // For status stage, always use DATA1
   status_td = sched_alloc (TYPE_TD);
   td_idx->link_ptr =
-    (((uint32_t) get_phys_addr ((void *) status_td)) & 0xFFFFFFF0) + 0x04;
+    (((uint32_t) get_phys_addr ((void *) status_td)) & LINK_MASK) + DEPTH_FIRST;
 
-  status_td->link_ptr = 0x01;   // Terminate
+  status_td->link_ptr = TERMINATE;   // Terminate
   status_td->status = 0x80;
   status_td->c_err = 3;
   status_td->ioc = status_td->iso = status_td->spd = 0;
@@ -1000,7 +1045,7 @@ uhci_control_transfer (
 
   /* Initiate our control transaction */
   ctl_qh->qe_ptr =
-    (((uint32_t) get_phys_addr ((void *) tx_tds)) & 0xFFFFFFF0) + 0x0;
+    (((uint32_t) get_phys_addr ((void *) tx_tds)) & LINK_MASK) + 0x0;
 
   /* Check the status of all the packets in the transaction */
   return_status = check_tds (tx_tds, &act_len);
