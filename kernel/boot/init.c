@@ -587,6 +587,9 @@ init (multiboot * pmb)
   /* Initialize USB asix (network) driver */
   { bool usb_asix_driver_init (void); usb_asix_driver_init (); }
 
+  /* Initialize USB rtl8187b (wifi) driver */
+  { bool usb_rtl8187b_driver_init (void); usb_rtl8187b_driver_init (); }
+
   /* Initialize USB */
   { bool uhci_init (void); uhci_init (); }
 

@@ -43,6 +43,7 @@ OBJS =  boot/boot.o boot/init.o kernel.o \
 	drivers/acpi/quest-acpica.o \
 	drivers/usb/uhci_hcd.o drivers/usb/uvc.o drivers/usb/umsc.o \
 	drivers/usb/hub.o drivers/usb/net.o drivers/usb/asix.o \
+	drivers/usb/rtl8187b.o \
 	drivers/usb/usb_tests.o \
 	drivers/usb/usb.o \
 	kdb/i386-stub.o
