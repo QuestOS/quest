@@ -281,6 +281,25 @@ struct ieee80211_conf {
 	enum nl80211_channel_type channel_type;
 };
 
+/**
+ * struct ieee80211_tx_queue_params - transmit queue configuration
+ *
+ * The information provided in this structure is required for QoS
+ * transmit queue configuration. Cf. IEEE 802.11 7.3.2.29.
+ *
+ * @aifs: arbitration interframe space [0..255]
+ * @cw_min: minimum contention window [a value of the form
+ *	2^n-1 in the range 1..32767]
+ * @cw_max: maximum contention window [like @cw_min]
+ * @txop: maximum burst time in units of 32 usecs, 0 meaning disabled
+ */
+struct ieee80211_tx_queue_params {
+	u16 txop;
+	u16 cw_min;
+	u16 cw_max;
+	u8 aifs;
+};
+
 static inline int
 ieee80211_frequency_to_channel(int freq)
 {
