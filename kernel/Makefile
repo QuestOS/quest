@@ -41,6 +41,7 @@ OBJS =  boot/boot.o boot/init.o kernel.o \
 	fs/tftp/fsys_tftp.o \
 	drivers/sb16/sound.o \
 	drivers/acpi/quest-acpica.o \
+	drivers/eeprom/93cx6.o \
 	drivers/usb/uhci_hcd.o drivers/usb/uvc.o drivers/usb/umsc.o \
 	drivers/usb/hub.o drivers/usb/net.o drivers/usb/asix.o \
 	drivers/usb/rtl8187b.o \
