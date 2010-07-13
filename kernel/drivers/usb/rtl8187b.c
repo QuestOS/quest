@@ -40,6 +40,7 @@
 #include <drivers/usb/usb.h>
 #include <drivers/usb/uhci.h>
 #include <drivers/net/ethernet.h>
+#include <drivers/net/ieee80211.h>
 #include <util/printf.h>
 #include <kernel.h>
 #include <drivers/eeprom/93cx6.h>
@@ -57,6 +58,39 @@ static struct { uint16 v, p; char *s; } compat_list[] = {
   { 0x0846, 0x4260, "Netgear WG111v3 [RTL8187B]" },
   { 0xFFFF, 0xFFFF, NULL }
 };
+
+static const struct ieee80211_rate rtl818x_rates[] = {
+  { .bitrate = 10, .hw_value = 0, },
+  { .bitrate = 20, .hw_value = 1, },
+  { .bitrate = 55, .hw_value = 2, },
+  { .bitrate = 110, .hw_value = 3, },
+  { .bitrate = 60, .hw_value = 4, },
+  { .bitrate = 90, .hw_value = 5, },
+  { .bitrate = 120, .hw_value = 6, },
+  { .bitrate = 180, .hw_value = 7, },
+  { .bitrate = 240, .hw_value = 8, },
+  { .bitrate = 360, .hw_value = 9, },
+  { .bitrate = 480, .hw_value = 10, },
+  { .bitrate = 540, .hw_value = 11, },
+};
+
+static const struct ieee80211_channel rtl818x_channels[] = {
+  { .center_freq = 2412 },
+  { .center_freq = 2417 },
+  { .center_freq = 2422 },
+  { .center_freq = 2427 },
+  { .center_freq = 2432 },
+  { .center_freq = 2437 },
+  { .center_freq = 2442 },
+  { .center_freq = 2447 },
+  { .center_freq = 2452 },
+  { .center_freq = 2457 },
+  { .center_freq = 2462 },
+  { .center_freq = 2467 },
+  { .center_freq = 2472 },
+  { .center_freq = 2484 },
+};
+
 
 #define RTL8187_EEPROM_TXPWR_BASE	0x05
 #define RTL8187_EEPROM_MAC_ADDR		0x07
@@ -80,8 +114,16 @@ static USB_DEVICE_INFO *usbdev;
 static struct rtl818x_csr *map = (struct rtl818x_csr *)0xFF00;
 static struct eeprom_93cx6 eeprom;
 static uint8 ethaddr[ETH_ADDR_LEN];
+static bool is_rtl8187b;
+static enum {
+  RTL8187BvB, RTL8187BvD, RTL8187BvE
+} hw_rev;
+static struct ieee80211_channel channels[14];
+static struct ieee80211_rate rates[12];
+static const struct rtl818x_rf_ops *rf;
 
 #define udelay(x) tsc_delay_usec (x)
+#define msleep(x) sched_usleep (x*1000);
 
 /* ************************************************** */
 
@@ -127,6 +169,20 @@ iowrite_template(32)
 
 /* ************************************************** */
 
+void
+rtl8187_write_phy(u8 addr, u32 data)
+{
+  data <<= 8;
+  data |= addr | 0x80;
+
+  iowrite8(&map->PHY[3], (data >> 24) & 0xFF);
+  iowrite8(&map->PHY[2], (data >> 16) & 0xFF);
+  iowrite8(&map->PHY[1], (data >> 8) & 0xFF);
+  iowrite8(&map->PHY[0], data & 0xFF);
+}
+
+/* ************************************************** */
+
 static void
 eeprom_read (struct eeprom_93cx6 *eeprom)
 {
@@ -169,10 +225,19 @@ init_hw (void)
   return TRUE;
 }
 
+static uint16 txpwr_base;
+static uint8 asic_rev, queues;
+const struct rtl818x_rf_ops * rtl8187_detect_rf(void);
+
 static bool
 probe (USB_DEVICE_INFO *info, USB_CFG_DESC *cfgd, USB_IF_DESC *ifd)
 {
+  char *chipname;
   int i;
+  uint8 reg;
+  uint16 txpwr;
+  struct ieee80211_channel *channel;
+
   for (i=0; compat_list[i].v != 0xFFFF; i++) {
     if (compat_list[i].v == info->devd.idVendor &&
         compat_list[i].p == info->devd.idProduct)
@@ -188,6 +253,7 @@ probe (USB_DEVICE_INFO *info, USB_CFG_DESC *cfgd, USB_IF_DESC *ifd)
   }
 
   usbdev = info;
+  is_rtl8187b = TRUE;           /* assume for now */
 
   eeprom.register_read = eeprom_read;
   eeprom.register_write = eeprom_write;
@@ -205,6 +271,105 @@ probe (USB_DEVICE_INFO *info, USB_CFG_DESC *cfgd, USB_IF_DESC *ifd)
         ethaddr[0], ethaddr[1], ethaddr[2],
         ethaddr[3], ethaddr[4], ethaddr[5]);
 
+  eeprom_93cx6_read (&eeprom, RTL8187_EEPROM_TXPWR_BASE, &txpwr_base);
+  DLOG ("txpwr_base=0x%.04X", txpwr_base);
+
+  reg = ioread8 (&map->PGSELECT) & ~1;
+  iowrite8 (&map->PGSELECT, reg | 1);
+  /* 0 means asic B-cut, we should use SW 3 wire
+   * bit-by-bit banging for radio. 1 means we can use
+   * USB specific request to write radio registers */
+  asic_rev = ioread8 ((uint8*) 0xFFFE) & 0x3;
+  iowrite8 (&map->PGSELECT, reg);
+  iowrite8 (&map->EEPROM_CMD, RTL818X_EEPROM_CMD_NORMAL);
+
+  DLOG ("asic_rev=0x%.02X", asic_rev);
+
+  if (!is_rtl8187b) {
+    u32 reg32;
+    reg32 = ioread32(&map->TX_CONF);
+    reg32 &= RTL818X_TX_CONF_HWVER_MASK;
+    switch (reg32) {
+    case RTL818X_TX_CONF_R8187vD_B:
+      /* Some RTL8187B devices have a USB ID of 0x8187
+       * detect them here */
+      chipname = "RTL8187BvB(early)";
+      is_rtl8187b = TRUE;
+      hw_rev = RTL8187BvB;
+      break;
+    case RTL818X_TX_CONF_R8187vD:
+      chipname = "RTL8187vD";
+      break;
+    default:
+      chipname = "RTL8187vB (default)";
+      break;
+    }
+  } else {
+
+    switch (ioread8 ((u8*)0xFFE1)) {
+    case RTL818X_R8187B_B:
+      hw_rev = RTL8187BvB;
+      chipname = "RTL8187BvB";
+      break;
+    case RTL818X_R8187B_D:
+      hw_rev = RTL8187BvD;
+      chipname = "RTL8187BvD";
+      break;
+    case RTL818X_R8187B_E:
+      hw_rev = RTL8187BvE;
+      chipname = "RTL8187BvE";
+      break;
+    default:
+      hw_rev = RTL8187BvB;
+      chipname = "RTL8187BvB (default)";
+      break;
+    }
+  }
+  DLOG ("hw_rev=%s", chipname);
+
+  memcpy (channels, rtl818x_channels, sizeof (rtl818x_channels));
+  memcpy (rates, rtl818x_rates, sizeof (rtl818x_rates));
+
+  channel = channels;
+  for (i=0; i<3; i++) {
+    eeprom_93cx6_read (&eeprom, RTL8187_EEPROM_TXPWR_CHAN_1 + i,
+                       &txpwr);
+    (*channel++).hw_value = txpwr & 0xFF;
+    (*channel++).hw_value = txpwr >> 8;
+  }
+  for (i=0; i<2; i++) {
+    eeprom_93cx6_read (&eeprom, RTL8187_EEPROM_TXPWR_CHAN_4 + i,
+                       &txpwr);
+    (*channel++).hw_value = txpwr & 0xFF;
+    (*channel++).hw_value = txpwr >> 8;
+  }
+
+  if (!is_rtl8187b) {
+    for (i = 0; i < 2; i++) {
+      eeprom_93cx6_read(&eeprom,
+                        RTL8187_EEPROM_TXPWR_CHAN_6 + i,
+                        &txpwr);
+      (*channel++).hw_value = txpwr & 0xFF;
+      (*channel++).hw_value = txpwr >> 8;
+    }
+  } else {
+    eeprom_93cx6_read(&eeprom, RTL8187_EEPROM_TXPWR_CHAN_6,
+                      &txpwr);
+    (*channel++).hw_value = txpwr & 0xFF;
+
+    eeprom_93cx6_read(&eeprom, 0x0A, &txpwr);
+    (*channel++).hw_value = txpwr & 0xFF;
+
+    eeprom_93cx6_read(&eeprom, 0x1C, &txpwr);
+    (*channel++).hw_value = txpwr & 0xFF;
+    (*channel++).hw_value = txpwr >> 8;
+  }
+
+  rf = rtl8187_detect_rf ();
+  DLOG ("detected RF name: %s", rf->name);
+
+  if (is_rtl8187b) queues = 4; else queues = 1;
+
   return init_hw ();
 }
 
@@ -218,6 +383,982 @@ extern bool
 usb_rtl8187b_driver_init (void)
 {
   return usb_register_driver (&rtl8187b_usb_driver);
+}
+
+/* ************************************************** */
+
+/* Radio tuning for RTL8225 on RTL8187 */
+
+
+#define RTL8187_RTL8225_ANAPARAM_ON	0xa0000a59
+#define RTL8187_RTL8225_ANAPARAM2_ON	0x860c7312
+#define RTL8187_RTL8225_ANAPARAM_OFF	0xa00beb59
+#define RTL8187_RTL8225_ANAPARAM2_OFF	0x840dec11
+
+#define RTL8187B_RTL8225_ANAPARAM_ON	0x45090658
+#define RTL8187B_RTL8225_ANAPARAM2_ON	0x727f3f52
+#define RTL8187B_RTL8225_ANAPARAM3_ON	0x00
+#define RTL8187B_RTL8225_ANAPARAM_OFF	0x55480658
+#define RTL8187B_RTL8225_ANAPARAM2_OFF	0x72003f50
+#define RTL8187B_RTL8225_ANAPARAM3_OFF	0x00
+
+static inline 
+void rtl8225_write_phy_ofdm(u8 addr, u32 data)
+{
+  rtl8187_write_phy (addr, data);
+}
+
+static inline
+void rtl8225_write_phy_cck(u8 addr, u32 data)
+{
+  rtl8187_write_phy (addr, data | 0x10000);
+}
+
+/* used when asic_rev==0 */
+static void 
+rtl8225_write_bitbang (u8 addr, u16 data)
+{
+  u16 reg80, reg84, reg82;
+  u32 bangdata;
+  int i;
+
+  bangdata = (data << 4) | (addr & 0xf);
+
+  reg80 = ioread16(&map->RFPinsOutput) & 0xfff3;
+  reg82 = ioread16(&map->RFPinsEnable);
+
+  iowrite16(&map->RFPinsEnable, reg82 | 0x7);
+
+  reg84 = ioread16(&map->RFPinsSelect);
+  iowrite16(&map->RFPinsSelect, reg84 | 0x7);
+  udelay(10);
+
+  iowrite16(&map->RFPinsOutput, reg80 | (1 << 2));
+  udelay(2);
+  iowrite16(&map->RFPinsOutput, reg80);
+  udelay(10);
+
+  for (i = 15; i >= 0; i--) {
+    u16 reg = reg80 | (bangdata & (1 << i)) >> i;
+
+    if (i & 1)
+      iowrite16(&map->RFPinsOutput, reg);
+
+    iowrite16(&map->RFPinsOutput, reg | (1 << 1));
+    iowrite16(&map->RFPinsOutput, reg | (1 << 1));
+
+    if (!(i & 1))
+      iowrite16(&map->RFPinsOutput, reg);
+  }
+
+  iowrite16(&map->RFPinsOutput, reg80 | (1 << 2));
+  udelay(10);
+
+  iowrite16(&map->RFPinsOutput, reg80 | (1 << 2));
+  iowrite16(&map->RFPinsSelect, reg84);
+}
+
+static void
+rtl8225_write_8051(u8 addr, __le16 data)
+{
+  u16 reg80, reg82, reg84;
+
+  reg80 = ioread16(&map->RFPinsOutput);
+  reg82 = ioread16(&map->RFPinsEnable);
+  reg84 = ioread16(&map->RFPinsSelect);
+
+  reg80 &= ~(0x3 << 2);
+  reg84 &= ~0xF;
+
+  iowrite16(&map->RFPinsEnable, reg82 | 0x0007);
+  iowrite16(&map->RFPinsSelect, reg84 | 0x0007);
+  udelay(10);
+
+  iowrite16(&map->RFPinsOutput, reg80 | (1 << 2));
+  udelay(2);
+
+  iowrite16(&map->RFPinsOutput, reg80);
+  udelay(10);
+
+  control_msg(RTL8187_REQ_SET_REG, RTL8187_REQT_WRITE,
+              addr, 0x8225, (uint8*)&data, sizeof(data));
+
+  iowrite16(&map->RFPinsOutput, reg80 | (1 << 2));
+  udelay(10);
+
+  iowrite16(&map->RFPinsOutput, reg80 | (1 << 2));
+  iowrite16(&map->RFPinsSelect, reg84);
+}
+
+static void rtl8225_write(u8 addr, u16 data)
+{
+  if (asic_rev)
+    rtl8225_write_8051(addr, data);
+  else
+    rtl8225_write_bitbang(addr, data);
+}
+
+static u16 rtl8225_read(u8 addr)
+{
+  u16 reg80, reg82, reg84, out;
+  int i;
+
+  reg80 = ioread16(&map->RFPinsOutput);
+  reg82 = ioread16(&map->RFPinsEnable);
+  reg84 = ioread16(&map->RFPinsSelect);
+
+  reg80 &= ~0xF;
+
+  iowrite16(&map->RFPinsEnable, reg82 | 0x000F);
+  iowrite16(&map->RFPinsSelect, reg84 | 0x000F);
+
+  iowrite16(&map->RFPinsOutput, reg80 | (1 << 2));
+  udelay(4);
+  iowrite16(&map->RFPinsOutput, reg80);
+  udelay(5);
+
+  for (i = 4; i >= 0; i--) {
+    u16 reg = reg80 | ((addr >> i) & 1);
+
+    if (!(i & 1)) {
+      iowrite16(&map->RFPinsOutput, reg);
+      udelay(1);
+    }
+
+    iowrite16(&map->RFPinsOutput,
+                      reg | (1 << 1));
+    udelay(2);
+    iowrite16(&map->RFPinsOutput,
+                      reg | (1 << 1));
+    udelay(2);
+
+    if (i & 1) {
+      iowrite16(&map->RFPinsOutput, reg);
+      udelay(1);
+    }
+  }
+
+  iowrite16(&map->RFPinsOutput,
+                    reg80 | (1 << 3) | (1 << 1));
+  udelay(2);
+  iowrite16(&map->RFPinsOutput,
+                    reg80 | (1 << 3));
+  udelay(2);
+  iowrite16(&map->RFPinsOutput,
+                    reg80 | (1 << 3));
+  udelay(2);
+
+  out = 0;
+  for (i = 11; i >= 0; i--) {
+    iowrite16(&map->RFPinsOutput,
+                      reg80 | (1 << 3));
+    udelay(1);
+    iowrite16(&map->RFPinsOutput,
+                      reg80 | (1 << 3) | (1 << 1));
+    udelay(2);
+    iowrite16(&map->RFPinsOutput,
+                      reg80 | (1 << 3) | (1 << 1));
+    udelay(2);
+    iowrite16(&map->RFPinsOutput,
+                      reg80 | (1 << 3) | (1 << 1));
+    udelay(2);
+
+    if (ioread16(&map->RFPinsInput) & (1 << 1))
+      out |= 1 << i;
+
+    iowrite16(&map->RFPinsOutput,
+                      reg80 | (1 << 3));
+    udelay(2);
+  }
+
+  iowrite16(&map->RFPinsOutput,
+                    reg80 | (1 << 3) | (1 << 2));
+  udelay(2);
+
+  iowrite16(&map->RFPinsEnable, reg82);
+  iowrite16(&map->RFPinsSelect, reg84);
+  iowrite16(&map->RFPinsOutput, 0x03A0);
+
+  return out;
+}
+
+static const u16 rtl8225bcd_rxgain[] = {
+  0x0400, 0x0401, 0x0402, 0x0403, 0x0404, 0x0405, 0x0408, 0x0409,
+  0x040a, 0x040b, 0x0502, 0x0503, 0x0504, 0x0505, 0x0540, 0x0541,
+  0x0542, 0x0543, 0x0544, 0x0545, 0x0580, 0x0581, 0x0582, 0x0583,
+  0x0584, 0x0585, 0x0588, 0x0589, 0x058a, 0x058b, 0x0643, 0x0644,
+  0x0645, 0x0680, 0x0681, 0x0682, 0x0683, 0x0684, 0x0685, 0x0688,
+  0x0689, 0x068a, 0x068b, 0x068c, 0x0742, 0x0743, 0x0744, 0x0745,
+  0x0780, 0x0781, 0x0782, 0x0783, 0x0784, 0x0785, 0x0788, 0x0789,
+  0x078a, 0x078b, 0x078c, 0x078d, 0x0790, 0x0791, 0x0792, 0x0793,
+  0x0794, 0x0795, 0x0798, 0x0799, 0x079a, 0x079b, 0x079c, 0x079d,
+  0x07a0, 0x07a1, 0x07a2, 0x07a3, 0x07a4, 0x07a5, 0x07a8, 0x07a9,
+  0x07aa, 0x07ab, 0x07ac, 0x07ad, 0x07b0, 0x07b1, 0x07b2, 0x07b3,
+  0x07b4, 0x07b5, 0x07b8, 0x07b9, 0x07ba, 0x07bb, 0x07bb
+};
+
+static const u8 rtl8225_agc[] = {
+  0x9e, 0x9e, 0x9e, 0x9e, 0x9e, 0x9e, 0x9e, 0x9e,
+  0x9d, 0x9c, 0x9b, 0x9a, 0x99, 0x98, 0x97, 0x96,
+  0x95, 0x94, 0x93, 0x92, 0x91, 0x90, 0x8f, 0x8e,
+  0x8d, 0x8c, 0x8b, 0x8a, 0x89, 0x88, 0x87, 0x86,
+  0x85, 0x84, 0x83, 0x82, 0x81, 0x80, 0x3f, 0x3e,
+  0x3d, 0x3c, 0x3b, 0x3a, 0x39, 0x38, 0x37, 0x36,
+  0x35, 0x34, 0x33, 0x32, 0x31, 0x30, 0x2f, 0x2e,
+  0x2d, 0x2c, 0x2b, 0x2a, 0x29, 0x28, 0x27, 0x26,
+  0x25, 0x24, 0x23, 0x22, 0x21, 0x20, 0x1f, 0x1e,
+  0x1d, 0x1c, 0x1b, 0x1a, 0x19, 0x18, 0x17, 0x16,
+  0x15, 0x14, 0x13, 0x12, 0x11, 0x10, 0x0f, 0x0e,
+  0x0d, 0x0c, 0x0b, 0x0a, 0x09, 0x08, 0x07, 0x06,
+  0x05, 0x04, 0x03, 0x02, 0x01, 0x01, 0x01, 0x01,
+  0x01, 0x01, 0x01, 0x01, 0x01, 0x01, 0x01, 0x01,
+  0x01, 0x01, 0x01, 0x01, 0x01, 0x01, 0x01, 0x01,
+  0x01, 0x01, 0x01, 0x01, 0x01, 0x01, 0x01, 0x01
+};
+
+static const u8 rtl8225_gain[] = {
+  0x23, 0x88, 0x7c, 0xa5,	/* -82dBm */
+  0x23, 0x88, 0x7c, 0xb5,	/* -82dBm */
+  0x23, 0x88, 0x7c, 0xc5,	/* -82dBm */
+  0x33, 0x80, 0x79, 0xc5,	/* -78dBm */
+  0x43, 0x78, 0x76, 0xc5,	/* -74dBm */
+  0x53, 0x60, 0x73, 0xc5,	/* -70dBm */
+  0x63, 0x58, 0x70, 0xc5,	/* -66dBm */
+};
+
+static const u8 rtl8225_threshold[] = {
+  0x8d, 0x8d, 0x8d, 0x8d, 0x9d, 0xad, 0xbd
+};
+
+static const u8 rtl8225_tx_gain_cck_ofdm[] = {
+  0x02, 0x06, 0x0e, 0x1e, 0x3e, 0x7e
+};
+
+static const u8 rtl8225_tx_power_cck[] = {
+  0x18, 0x17, 0x15, 0x11, 0x0c, 0x08, 0x04, 0x02,
+  0x1b, 0x1a, 0x17, 0x13, 0x0e, 0x09, 0x04, 0x02,
+  0x1f, 0x1e, 0x1a, 0x15, 0x10, 0x0a, 0x05, 0x02,
+  0x22, 0x21, 0x1d, 0x18, 0x11, 0x0b, 0x06, 0x02,
+  0x26, 0x25, 0x21, 0x1b, 0x14, 0x0d, 0x06, 0x03,
+  0x2b, 0x2a, 0x25, 0x1e, 0x16, 0x0e, 0x07, 0x03
+};
+
+static const u8 rtl8225_tx_power_cck_ch14[] = {
+  0x18, 0x17, 0x15, 0x0c, 0x00, 0x00, 0x00, 0x00,
+  0x1b, 0x1a, 0x17, 0x0e, 0x00, 0x00, 0x00, 0x00,
+  0x1f, 0x1e, 0x1a, 0x0f, 0x00, 0x00, 0x00, 0x00,
+  0x22, 0x21, 0x1d, 0x11, 0x00, 0x00, 0x00, 0x00,
+  0x26, 0x25, 0x21, 0x13, 0x00, 0x00, 0x00, 0x00,
+  0x2b, 0x2a, 0x25, 0x15, 0x00, 0x00, 0x00, 0x00
+};
+
+static const u8 rtl8225_tx_power_ofdm[] = {
+  0x80, 0x90, 0xa2, 0xb5, 0xcb, 0xe4
+};
+
+static const u32 rtl8225_chan[] = {
+  0x085c, 0x08dc, 0x095c, 0x09dc, 0x0a5c, 0x0adc, 0x0b5c,
+  0x0bdc, 0x0c5c, 0x0cdc, 0x0d5c, 0x0ddc, 0x0e5c, 0x0f72
+};
+
+#define min(a,b) ((a) < (b) ? (a) : (b))
+
+static void rtl8225_rf_set_tx_power(int channel)
+{
+  u8 cck_power, ofdm_power;
+  const u8 *tmp;
+  u32 reg;
+  int i;
+
+  cck_power = channels[channel - 1].hw_value & 0xF;
+  ofdm_power = channels[channel - 1].hw_value >> 4;
+
+  cck_power = min(cck_power, (u8)11);
+  if (ofdm_power > (u8)15)
+    ofdm_power = 25;
+  else
+    ofdm_power += 10;
+
+  iowrite8(&map->TX_GAIN_CCK,
+                   rtl8225_tx_gain_cck_ofdm[cck_power / 6] >> 1);
+
+  if (channel == 14)
+    tmp = &rtl8225_tx_power_cck_ch14[(cck_power % 6) * 8];
+  else
+    tmp = &rtl8225_tx_power_cck[(cck_power % 6) * 8];
+
+  for (i = 0; i < 8; i++)
+    rtl8225_write_phy_cck(0x44 + i, *tmp++);
+
+  msleep(1); // FIXME: optional?
+
+  /* anaparam2 on */
+  iowrite8(&map->EEPROM_CMD, RTL818X_EEPROM_CMD_CONFIG);
+  reg = ioread8(&map->CONFIG3);
+  iowrite8(&map->CONFIG3,
+                   reg | RTL818X_CONFIG3_ANAPARAM_WRITE);
+  iowrite32(&map->ANAPARAM2,
+                    RTL8187_RTL8225_ANAPARAM2_ON);
+  iowrite8(&map->CONFIG3,
+                   reg & ~RTL818X_CONFIG3_ANAPARAM_WRITE);
+  iowrite8(&map->EEPROM_CMD, RTL818X_EEPROM_CMD_NORMAL);
+
+  rtl8225_write_phy_ofdm(2, 0x42);
+  rtl8225_write_phy_ofdm(6, 0x00);
+  rtl8225_write_phy_ofdm(8, 0x00);
+
+  iowrite8(&map->TX_GAIN_OFDM,
+                   rtl8225_tx_gain_cck_ofdm[ofdm_power / 6] >> 1);
+
+  tmp = &rtl8225_tx_power_ofdm[ofdm_power % 6];
+
+  rtl8225_write_phy_ofdm(5, *tmp);
+  rtl8225_write_phy_ofdm(7, *tmp);
+
+  msleep(1);
+}
+
+static void
+rtl8225_rf_init(void)
+{
+  int i;
+
+  rtl8225_write(0x0, 0x067);
+  rtl8225_write(0x1, 0xFE0);
+  rtl8225_write(0x2, 0x44D);
+  rtl8225_write(0x3, 0x441);
+  rtl8225_write(0x4, 0x486);
+  rtl8225_write(0x5, 0xBC0);
+  rtl8225_write(0x6, 0xAE6);
+  rtl8225_write(0x7, 0x82A);
+  rtl8225_write(0x8, 0x01F);
+  rtl8225_write(0x9, 0x334);
+  rtl8225_write(0xA, 0xFD4);
+  rtl8225_write(0xB, 0x391);
+  rtl8225_write(0xC, 0x050);
+  rtl8225_write(0xD, 0x6DB);
+  rtl8225_write(0xE, 0x029);
+  rtl8225_write(0xF, 0x914); msleep(100);
+
+  rtl8225_write(0x2, 0xC4D); msleep(200);
+  rtl8225_write(0x2, 0x44D); msleep(200);
+
+  if (!(rtl8225_read(6) & (1 << 7))) {
+    rtl8225_write(0x02, 0x0c4d);
+    msleep(200);
+    rtl8225_write(0x02, 0x044d);
+    msleep(100);
+    if (!(rtl8225_read(6) & (1 << 7)))
+      DLOG("RF Calibration Failed! %x\n",
+           rtl8225_read(6));
+  }
+
+  rtl8225_write(0x0, 0x127);
+
+  for (i = 0; i < ARRAY_SIZE(rtl8225bcd_rxgain); i++) {
+    rtl8225_write(0x1, i + 1);
+    rtl8225_write(0x2, rtl8225bcd_rxgain[i]);
+  }
+
+  rtl8225_write(0x0, 0x027);
+  rtl8225_write(0x0, 0x22F);
+
+  for (i = 0; i < ARRAY_SIZE(rtl8225_agc); i++) {
+    rtl8225_write_phy_ofdm(0xB, rtl8225_agc[i]);
+    rtl8225_write_phy_ofdm(0xA, 0x80 + i);
+  }
+
+  msleep(1);
+
+  rtl8225_write_phy_ofdm(0x00, 0x01);
+  rtl8225_write_phy_ofdm(0x01, 0x02);
+  rtl8225_write_phy_ofdm(0x02, 0x42);
+  rtl8225_write_phy_ofdm(0x03, 0x00);
+  rtl8225_write_phy_ofdm(0x04, 0x00);
+  rtl8225_write_phy_ofdm(0x05, 0x00);
+  rtl8225_write_phy_ofdm(0x06, 0x40);
+  rtl8225_write_phy_ofdm(0x07, 0x00);
+  rtl8225_write_phy_ofdm(0x08, 0x40);
+  rtl8225_write_phy_ofdm(0x09, 0xfe);
+  rtl8225_write_phy_ofdm(0x0a, 0x09);
+  rtl8225_write_phy_ofdm(0x0b, 0x80);
+  rtl8225_write_phy_ofdm(0x0c, 0x01);
+  rtl8225_write_phy_ofdm(0x0e, 0xd3);
+  rtl8225_write_phy_ofdm(0x0f, 0x38);
+  rtl8225_write_phy_ofdm(0x10, 0x84);
+  rtl8225_write_phy_ofdm(0x11, 0x06);
+  rtl8225_write_phy_ofdm(0x12, 0x20);
+  rtl8225_write_phy_ofdm(0x13, 0x20);
+  rtl8225_write_phy_ofdm(0x14, 0x00);
+  rtl8225_write_phy_ofdm(0x15, 0x40);
+  rtl8225_write_phy_ofdm(0x16, 0x00);
+  rtl8225_write_phy_ofdm(0x17, 0x40);
+  rtl8225_write_phy_ofdm(0x18, 0xef);
+  rtl8225_write_phy_ofdm(0x19, 0x19);
+  rtl8225_write_phy_ofdm(0x1a, 0x20);
+  rtl8225_write_phy_ofdm(0x1b, 0x76);
+  rtl8225_write_phy_ofdm(0x1c, 0x04);
+  rtl8225_write_phy_ofdm(0x1e, 0x95);
+  rtl8225_write_phy_ofdm(0x1f, 0x75);
+  rtl8225_write_phy_ofdm(0x20, 0x1f);
+  rtl8225_write_phy_ofdm(0x21, 0x27);
+  rtl8225_write_phy_ofdm(0x22, 0x16);
+  rtl8225_write_phy_ofdm(0x24, 0x46);
+  rtl8225_write_phy_ofdm(0x25, 0x20);
+  rtl8225_write_phy_ofdm(0x26, 0x90);
+  rtl8225_write_phy_ofdm(0x27, 0x88);
+
+  rtl8225_write_phy_ofdm(0x0d, rtl8225_gain[2 * 4]);
+  rtl8225_write_phy_ofdm(0x1b, rtl8225_gain[2 * 4 + 2]);
+  rtl8225_write_phy_ofdm(0x1d, rtl8225_gain[2 * 4 + 3]);
+  rtl8225_write_phy_ofdm(0x23, rtl8225_gain[2 * 4 + 1]);
+
+  rtl8225_write_phy_cck(0x00, 0x98);
+  rtl8225_write_phy_cck(0x03, 0x20);
+  rtl8225_write_phy_cck(0x04, 0x7e);
+  rtl8225_write_phy_cck(0x05, 0x12);
+  rtl8225_write_phy_cck(0x06, 0xfc);
+  rtl8225_write_phy_cck(0x07, 0x78);
+  rtl8225_write_phy_cck(0x08, 0x2e);
+  rtl8225_write_phy_cck(0x10, 0x9b);
+  rtl8225_write_phy_cck(0x11, 0x88);
+  rtl8225_write_phy_cck(0x12, 0x47);
+  rtl8225_write_phy_cck(0x13, 0xd0);
+  rtl8225_write_phy_cck(0x19, 0x00);
+  rtl8225_write_phy_cck(0x1a, 0xa0);
+  rtl8225_write_phy_cck(0x1b, 0x08);
+  rtl8225_write_phy_cck(0x40, 0x86);
+  rtl8225_write_phy_cck(0x41, 0x8d);
+  rtl8225_write_phy_cck(0x42, 0x15);
+  rtl8225_write_phy_cck(0x43, 0x18);
+  rtl8225_write_phy_cck(0x44, 0x1f);
+  rtl8225_write_phy_cck(0x45, 0x1e);
+  rtl8225_write_phy_cck(0x46, 0x1a);
+  rtl8225_write_phy_cck(0x47, 0x15);
+  rtl8225_write_phy_cck(0x48, 0x10);
+  rtl8225_write_phy_cck(0x49, 0x0a);
+  rtl8225_write_phy_cck(0x4a, 0x05);
+  rtl8225_write_phy_cck(0x4b, 0x02);
+  rtl8225_write_phy_cck(0x4c, 0x05);
+
+  iowrite8(&map->TESTR, 0x0D);
+
+  rtl8225_rf_set_tx_power(1);
+
+  /* RX antenna default to A */
+  rtl8225_write_phy_cck(0x10, 0x9b);			/* B: 0xDB */
+  rtl8225_write_phy_ofdm(0x26, 0x90);		/* B: 0x10 */
+
+  iowrite8(&map->TX_ANTENNA, 0x03);	/* B: 0x00 */
+  msleep(1);
+  iowrite32((__le32 *)0xFF94, 0x3dc00002);
+
+  /* set sensitivity */
+  rtl8225_write(0x0c, 0x50);
+  rtl8225_write_phy_ofdm(0x0d, rtl8225_gain[2 * 4]);
+  rtl8225_write_phy_ofdm(0x1b, rtl8225_gain[2 * 4 + 2]);
+  rtl8225_write_phy_ofdm(0x1d, rtl8225_gain[2 * 4 + 3]);
+  rtl8225_write_phy_ofdm(0x23, rtl8225_gain[2 * 4 + 1]);
+  rtl8225_write_phy_cck(0x41, rtl8225_threshold[2]);
+}
+
+static const u8 rtl8225z2_agc[] = {
+  0x5e, 0x5e, 0x5e, 0x5e, 0x5d, 0x5b, 0x59, 0x57, 0x55, 0x53, 0x51, 0x4f,
+  0x4d, 0x4b, 0x49, 0x47, 0x45, 0x43, 0x41, 0x3f, 0x3d, 0x3b, 0x39, 0x37,
+  0x35, 0x33, 0x31, 0x2f, 0x2d, 0x2b, 0x29, 0x27, 0x25, 0x23, 0x21, 0x1f,
+  0x1d, 0x1b, 0x19, 0x17, 0x15, 0x13, 0x11, 0x0f, 0x0d, 0x0b, 0x09, 0x07,
+  0x05, 0x03, 0x01, 0x01, 0x01, 0x01, 0x01, 0x01, 0x01, 0x01, 0x01, 0x01,
+  0x01, 0x01, 0x01, 0x01, 0x19, 0x19, 0x19, 0x19, 0x19, 0x19, 0x19, 0x19,
+  0x19, 0x20, 0x21, 0x22, 0x23, 0x24, 0x25, 0x26, 0x26, 0x27, 0x27, 0x28,
+  0x28, 0x29, 0x2a, 0x2a, 0x2a, 0x2b, 0x2b, 0x2b, 0x2c, 0x2c, 0x2c, 0x2d,
+  0x2d, 0x2d, 0x2d, 0x2e, 0x2e, 0x2e, 0x2e, 0x2f, 0x2f, 0x2f, 0x30, 0x30,
+  0x31, 0x31, 0x31, 0x31, 0x31, 0x31, 0x31, 0x31, 0x31, 0x31, 0x31, 0x31,
+  0x31, 0x31, 0x31, 0x31, 0x31, 0x31, 0x31, 0x31
+};
+static const u8 rtl8225z2_ofdm[] = {
+  0x10, 0x0d, 0x01, 0x00, 0x14, 0xfb, 0xfb, 0x60,
+  0x00, 0x60, 0x00, 0x00, 0x00, 0x5c, 0x00, 0x00,
+  0x40, 0x00, 0x40, 0x00, 0x00, 0x00, 0xa8, 0x26,
+  0x32, 0x33, 0x07, 0xa5, 0x6f, 0x55, 0xc8, 0xb3,
+  0x0a, 0xe1, 0x2C, 0x8a, 0x86, 0x83, 0x34, 0x0f,
+  0x4f, 0x24, 0x6f, 0xc2, 0x6b, 0x40, 0x80, 0x00,
+  0xc0, 0xc1, 0x58, 0xf1, 0x00, 0xe4, 0x90, 0x3e,
+  0x6d, 0x3c, 0xfb, 0x07
+};
+
+static const u8 rtl8225z2_tx_power_cck_ch14[] = {
+  0x36, 0x35, 0x2e, 0x1b, 0x00, 0x00, 0x00, 0x00,
+  0x30, 0x2f, 0x29, 0x15, 0x00, 0x00, 0x00, 0x00,
+  0x30, 0x2f, 0x29, 0x15, 0x00, 0x00, 0x00, 0x00,
+  0x30, 0x2f, 0x29, 0x15, 0x00, 0x00, 0x00, 0x00
+};
+
+static const u8 rtl8225z2_tx_power_cck[] = {
+  0x36, 0x35, 0x2e, 0x25, 0x1c, 0x12, 0x09, 0x04,
+  0x30, 0x2f, 0x29, 0x21, 0x19, 0x10, 0x08, 0x03,
+  0x2b, 0x2a, 0x25, 0x1e, 0x16, 0x0e, 0x07, 0x03,
+  0x26, 0x25, 0x21, 0x1b, 0x14, 0x0d, 0x06, 0x03
+};
+
+static const u8 rtl8225z2_tx_power_ofdm[] = {
+  0x42, 0x00, 0x40, 0x00, 0x40
+};
+
+static const u8 rtl8225z2_tx_gain_cck_ofdm[] = {
+  0x00, 0x01, 0x02, 0x03, 0x04, 0x05,
+  0x06, 0x07, 0x08, 0x09, 0x0a, 0x0b,
+  0x0c, 0x0d, 0x0e, 0x0f, 0x10, 0x11,
+  0x12, 0x13, 0x14, 0x15, 0x16, 0x17,
+  0x18, 0x19, 0x1a, 0x1b, 0x1c, 0x1d,
+  0x1e, 0x1f, 0x20, 0x21, 0x22, 0x23
+};
+
+static void rtl8225z2_rf_set_tx_power(int channel)
+{
+  u8 cck_power, ofdm_power;
+  const u8 *tmp;
+  u32 reg;
+  int i;
+
+  cck_power = channels[channel - 1].hw_value & 0xF;
+  ofdm_power = channels[channel - 1].hw_value >> 4;
+
+  cck_power = min(cck_power, (u8)15);
+  cck_power += txpwr_base & 0xF;
+  cck_power = min(cck_power, (u8)35);
+
+  if (ofdm_power > (u8)15)
+    ofdm_power = 25;
+  else
+    ofdm_power += 10;
+  ofdm_power += txpwr_base >> 4;
+  ofdm_power = min(ofdm_power, (u8)35);
+
+  if (channel == 14)
+    tmp = rtl8225z2_tx_power_cck_ch14;
+  else
+    tmp = rtl8225z2_tx_power_cck;
+
+  for (i = 0; i < 8; i++)
+    rtl8225_write_phy_cck(0x44 + i, *tmp++);
+
+  iowrite8(&map->TX_GAIN_CCK,
+                   rtl8225z2_tx_gain_cck_ofdm[cck_power]);
+  msleep(1);
+
+  /* anaparam2 on */
+  iowrite8(&map->EEPROM_CMD, RTL818X_EEPROM_CMD_CONFIG);
+  reg = ioread8(&map->CONFIG3);
+  iowrite8(&map->CONFIG3,
+                   reg | RTL818X_CONFIG3_ANAPARAM_WRITE);
+  iowrite32(&map->ANAPARAM2,
+                    RTL8187_RTL8225_ANAPARAM2_ON);
+  iowrite8(&map->CONFIG3,
+                   reg & ~RTL818X_CONFIG3_ANAPARAM_WRITE);
+  iowrite8(&map->EEPROM_CMD, RTL818X_EEPROM_CMD_NORMAL);
+
+  rtl8225_write_phy_ofdm(2, 0x42);
+  rtl8225_write_phy_ofdm(5, 0x00);
+  rtl8225_write_phy_ofdm(6, 0x40);
+  rtl8225_write_phy_ofdm(7, 0x00);
+  rtl8225_write_phy_ofdm(8, 0x40);
+
+  iowrite8(&map->TX_GAIN_OFDM,
+                   rtl8225z2_tx_gain_cck_ofdm[ofdm_power]);
+  msleep(1);
+}
+
+static void rtl8225z2_b_rf_set_tx_power(int channel)
+{
+  u8 cck_power, ofdm_power;
+  const u8 *tmp;
+  int i;
+
+  cck_power = channels[channel - 1].hw_value & 0xF;
+  ofdm_power = channels[channel - 1].hw_value >> 4;
+
+  if (cck_power > 15)
+    cck_power = (hw_rev == RTL8187BvB) ? 15 : 22;
+  else
+    cck_power += (hw_rev == RTL8187BvB) ? 0 : 7;
+  cck_power += txpwr_base & 0xF;
+  cck_power = min(cck_power, (u8)35);
+
+  if (ofdm_power > 15)
+    ofdm_power = (hw_rev == RTL8187BvB) ? 17 : 25;
+  else
+    ofdm_power += (hw_rev == RTL8187BvB) ? 2 : 10;
+  ofdm_power += (txpwr_base >> 4) & 0xF;
+  ofdm_power = min(ofdm_power, (u8)35);
+
+  if (channel == 14)
+    tmp = rtl8225z2_tx_power_cck_ch14;
+  else
+    tmp = rtl8225z2_tx_power_cck;
+
+  if (hw_rev == RTL8187BvB) {
+    if (cck_power <= 6)
+      ; /* do nothing */
+    else if (cck_power <= 11)
+      tmp += 8;
+    else
+      tmp += 16;
+  } else {
+    if (cck_power <= 5)
+      ; /* do nothing */
+    else if (cck_power <= 11)
+      tmp += 8;
+    else if (cck_power <= 17)
+      tmp += 16;
+    else
+      tmp += 24;
+  }
+
+  for (i = 0; i < 8; i++)
+    rtl8225_write_phy_cck(0x44 + i, *tmp++);
+
+  iowrite8(&map->TX_GAIN_CCK,
+                   rtl8225z2_tx_gain_cck_ofdm[cck_power] << 1);
+  msleep(1);
+
+  iowrite8(&map->TX_GAIN_OFDM,
+                   rtl8225z2_tx_gain_cck_ofdm[ofdm_power] << 1);
+  if (hw_rev == RTL8187BvB) {
+    if (ofdm_power <= 11) {
+      rtl8225_write_phy_ofdm(0x87, 0x60);
+      rtl8225_write_phy_ofdm(0x89, 0x60);
+    } else {
+      rtl8225_write_phy_ofdm(0x87, 0x5c);
+      rtl8225_write_phy_ofdm(0x89, 0x5c);
+    }
+  } else {
+    if (ofdm_power <= 11) {
+      rtl8225_write_phy_ofdm(0x87, 0x5c);
+      rtl8225_write_phy_ofdm(0x89, 0x5c);
+    } else if (ofdm_power <= 17) {
+      rtl8225_write_phy_ofdm(0x87, 0x54);
+      rtl8225_write_phy_ofdm(0x89, 0x54);
+    } else {
+      rtl8225_write_phy_ofdm(0x87, 0x50);
+      rtl8225_write_phy_ofdm(0x89, 0x50);
+    }
+  }
+  msleep(1);
+}
+
+static const u16 rtl8225z2_rxgain[] = {
+  0x0400, 0x0401, 0x0402, 0x0403, 0x0404, 0x0405, 0x0408, 0x0409,
+  0x040a, 0x040b, 0x0502, 0x0503, 0x0504, 0x0505, 0x0540, 0x0541,
+  0x0542, 0x0543, 0x0544, 0x0545, 0x0580, 0x0581, 0x0582, 0x0583,
+  0x0584, 0x0585, 0x0588, 0x0589, 0x058a, 0x058b, 0x0643, 0x0644,
+  0x0645, 0x0680, 0x0681, 0x0682, 0x0683, 0x0684, 0x0685, 0x0688,
+  0x0689, 0x068a, 0x068b, 0x068c, 0x0742, 0x0743, 0x0744, 0x0745,
+  0x0780, 0x0781, 0x0782, 0x0783, 0x0784, 0x0785, 0x0788, 0x0789,
+  0x078a, 0x078b, 0x078c, 0x078d, 0x0790, 0x0791, 0x0792, 0x0793,
+  0x0794, 0x0795, 0x0798, 0x0799, 0x079a, 0x079b, 0x079c, 0x079d,
+  0x07a0, 0x07a1, 0x07a2, 0x07a3, 0x07a4, 0x07a5, 0x07a8, 0x07a9,
+  0x03aa, 0x03ab, 0x03ac, 0x03ad, 0x03b0, 0x03b1, 0x03b2, 0x03b3,
+  0x03b4, 0x03b5, 0x03b8, 0x03b9, 0x03ba, 0x03bb, 0x03bb
+};
+
+static const u8 rtl8225z2_gain_bg[] = {
+  0x23, 0x15, 0xa5, /* -82-1dBm */
+  0x23, 0x15, 0xb5, /* -82-2dBm */
+  0x23, 0x15, 0xc5, /* -82-3dBm */
+  0x33, 0x15, 0xc5, /* -78dBm */
+  0x43, 0x15, 0xc5, /* -74dBm */
+  0x53, 0x15, 0xc5, /* -70dBm */
+  0x63, 0x15, 0xc5  /* -66dBm */
+};
+
+static void
+rtl8225z2_rf_init(void)
+{
+  int i;
+
+  rtl8225_write(0x0, 0x2BF);
+  rtl8225_write(0x1, 0xEE0);
+  rtl8225_write(0x2, 0x44D);
+  rtl8225_write(0x3, 0x441);
+  rtl8225_write(0x4, 0x8C3);
+  rtl8225_write(0x5, 0xC72);
+  rtl8225_write(0x6, 0x0E6);
+  rtl8225_write(0x7, 0x82A);
+  rtl8225_write(0x8, 0x03F);
+  rtl8225_write(0x9, 0x335);
+  rtl8225_write(0xa, 0x9D4);
+  rtl8225_write(0xb, 0x7BB);
+  rtl8225_write(0xc, 0x850);
+  rtl8225_write(0xd, 0xCDF);
+  rtl8225_write(0xe, 0x02B);
+  rtl8225_write(0xf, 0x114);
+  msleep(100);
+
+  rtl8225_write(0x0, 0x1B7);
+
+  for (i = 0; i < ARRAY_SIZE(rtl8225z2_rxgain); i++) {
+    rtl8225_write(0x1, i + 1);
+    rtl8225_write(0x2, rtl8225z2_rxgain[i]);
+  }
+
+  rtl8225_write(0x3, 0x080);
+  rtl8225_write(0x5, 0x004);
+  rtl8225_write(0x0, 0x0B7);
+  rtl8225_write(0x2, 0xc4D);
+
+  msleep(200);
+  rtl8225_write(0x2, 0x44D);
+  msleep(100);
+
+  if (!(rtl8225_read(6) & (1 << 7))) {
+    rtl8225_write(0x02, 0x0C4D);
+    msleep(200);
+    rtl8225_write(0x02, 0x044D);
+    msleep(100);
+    if (!(rtl8225_read(6) & (1 << 7)))
+      DLOG("RF Calibration Failed! %x\n",
+           rtl8225_read(6));
+  }
+
+  msleep(200);
+
+  rtl8225_write(0x0, 0x2BF);
+
+  for (i = 0; i < ARRAY_SIZE(rtl8225_agc); i++) {
+    rtl8225_write_phy_ofdm(0xB, rtl8225_agc[i]);
+    rtl8225_write_phy_ofdm(0xA, 0x80 + i);
+  }
+
+  msleep(1);
+
+  rtl8225_write_phy_ofdm(0x00, 0x01);
+  rtl8225_write_phy_ofdm(0x01, 0x02);
+  rtl8225_write_phy_ofdm(0x02, 0x42);
+  rtl8225_write_phy_ofdm(0x03, 0x00);
+  rtl8225_write_phy_ofdm(0x04, 0x00);
+  rtl8225_write_phy_ofdm(0x05, 0x00);
+  rtl8225_write_phy_ofdm(0x06, 0x40);
+  rtl8225_write_phy_ofdm(0x07, 0x00);
+  rtl8225_write_phy_ofdm(0x08, 0x40);
+  rtl8225_write_phy_ofdm(0x09, 0xfe);
+  rtl8225_write_phy_ofdm(0x0a, 0x08);
+  rtl8225_write_phy_ofdm(0x0b, 0x80);
+  rtl8225_write_phy_ofdm(0x0c, 0x01);
+  rtl8225_write_phy_ofdm(0x0d, 0x43);
+  rtl8225_write_phy_ofdm(0x0e, 0xd3);
+  rtl8225_write_phy_ofdm(0x0f, 0x38);
+  rtl8225_write_phy_ofdm(0x10, 0x84);
+  rtl8225_write_phy_ofdm(0x11, 0x07);
+  rtl8225_write_phy_ofdm(0x12, 0x20);
+  rtl8225_write_phy_ofdm(0x13, 0x20);
+  rtl8225_write_phy_ofdm(0x14, 0x00);
+  rtl8225_write_phy_ofdm(0x15, 0x40);
+  rtl8225_write_phy_ofdm(0x16, 0x00);
+  rtl8225_write_phy_ofdm(0x17, 0x40);
+  rtl8225_write_phy_ofdm(0x18, 0xef);
+  rtl8225_write_phy_ofdm(0x19, 0x19);
+  rtl8225_write_phy_ofdm(0x1a, 0x20);
+  rtl8225_write_phy_ofdm(0x1b, 0x15);
+  rtl8225_write_phy_ofdm(0x1c, 0x04);
+  rtl8225_write_phy_ofdm(0x1d, 0xc5);
+  rtl8225_write_phy_ofdm(0x1e, 0x95);
+  rtl8225_write_phy_ofdm(0x1f, 0x75);
+  rtl8225_write_phy_ofdm(0x20, 0x1f);
+  rtl8225_write_phy_ofdm(0x21, 0x17);
+  rtl8225_write_phy_ofdm(0x22, 0x16);
+  rtl8225_write_phy_ofdm(0x23, 0x80);
+  rtl8225_write_phy_ofdm(0x24, 0x46);
+  rtl8225_write_phy_ofdm(0x25, 0x00);
+  rtl8225_write_phy_ofdm(0x26, 0x90);
+  rtl8225_write_phy_ofdm(0x27, 0x88);
+
+  rtl8225_write_phy_ofdm(0x0b, rtl8225z2_gain_bg[4 * 3]);
+  rtl8225_write_phy_ofdm(0x1b, rtl8225z2_gain_bg[4 * 3 + 1]);
+  rtl8225_write_phy_ofdm(0x1d, rtl8225z2_gain_bg[4 * 3 + 2]);
+  rtl8225_write_phy_ofdm(0x21, 0x37);
+
+  rtl8225_write_phy_cck(0x00, 0x98);
+  rtl8225_write_phy_cck(0x03, 0x20);
+  rtl8225_write_phy_cck(0x04, 0x7e);
+  rtl8225_write_phy_cck(0x05, 0x12);
+  rtl8225_write_phy_cck(0x06, 0xfc);
+  rtl8225_write_phy_cck(0x07, 0x78);
+  rtl8225_write_phy_cck(0x08, 0x2e);
+  rtl8225_write_phy_cck(0x10, 0x9b);
+  rtl8225_write_phy_cck(0x11, 0x88);
+  rtl8225_write_phy_cck(0x12, 0x47);
+  rtl8225_write_phy_cck(0x13, 0xd0);
+  rtl8225_write_phy_cck(0x19, 0x00);
+  rtl8225_write_phy_cck(0x1a, 0xa0);
+  rtl8225_write_phy_cck(0x1b, 0x08);
+  rtl8225_write_phy_cck(0x40, 0x86);
+  rtl8225_write_phy_cck(0x41, 0x8d);
+  rtl8225_write_phy_cck(0x42, 0x15);
+  rtl8225_write_phy_cck(0x43, 0x18);
+  rtl8225_write_phy_cck(0x44, 0x36);
+  rtl8225_write_phy_cck(0x45, 0x35);
+  rtl8225_write_phy_cck(0x46, 0x2e);
+  rtl8225_write_phy_cck(0x47, 0x25);
+  rtl8225_write_phy_cck(0x48, 0x1c);
+  rtl8225_write_phy_cck(0x49, 0x12);
+  rtl8225_write_phy_cck(0x4a, 0x09);
+  rtl8225_write_phy_cck(0x4b, 0x04);
+  rtl8225_write_phy_cck(0x4c, 0x05);
+
+  iowrite8((u8 *)0xFF5B, 0x0D); msleep(1);
+
+  rtl8225z2_rf_set_tx_power(1);
+
+  /* RX antenna default to A */
+  rtl8225_write_phy_cck(0x10, 0x9b);			/* B: 0xDB */
+  rtl8225_write_phy_ofdm(0x26, 0x90);		/* B: 0x10 */
+
+  iowrite8(&map->TX_ANTENNA, 0x03);	/* B: 0x00 */
+  msleep(1);
+  iowrite32((__le32 *)0xFF94, 0x3dc00002);
+}
+
+static void
+rtl8225z2_b_rf_init(void)
+{
+  int i;
+
+  rtl8225_write(0x0, 0x0B7);
+  rtl8225_write(0x1, 0xEE0);
+  rtl8225_write(0x2, 0x44D);
+  rtl8225_write(0x3, 0x441);
+  rtl8225_write(0x4, 0x8C3);
+  rtl8225_write(0x5, 0xC72);
+  rtl8225_write(0x6, 0x0E6);
+  rtl8225_write(0x7, 0x82A);
+  rtl8225_write(0x8, 0x03F);
+  rtl8225_write(0x9, 0x335);
+  rtl8225_write(0xa, 0x9D4);
+  rtl8225_write(0xb, 0x7BB);
+  rtl8225_write(0xc, 0x850);
+  rtl8225_write(0xd, 0xCDF);
+  rtl8225_write(0xe, 0x02B);
+  rtl8225_write(0xf, 0x114);
+
+  rtl8225_write(0x0, 0x1B7);
+
+  for (i = 0; i < ARRAY_SIZE(rtl8225z2_rxgain); i++) {
+    rtl8225_write(0x1, i + 1);
+    rtl8225_write(0x2, rtl8225z2_rxgain[i]);
+  }
+
+  rtl8225_write(0x3, 0x080);
+  rtl8225_write(0x5, 0x004);
+  rtl8225_write(0x0, 0x0B7);
+
+  rtl8225_write(0x2, 0xC4D);
+
+  rtl8225_write(0x2, 0x44D);
+  rtl8225_write(0x0, 0x2BF);
+
+  iowrite8(&map->TX_GAIN_CCK, 0x03);
+  iowrite8(&map->TX_GAIN_OFDM, 0x07);
+  iowrite8(&map->TX_ANTENNA, 0x03);
+
+  rtl8225_write_phy_ofdm(0x80, 0x12);
+  for (i = 0; i < ARRAY_SIZE(rtl8225z2_agc); i++) {
+    rtl8225_write_phy_ofdm(0xF, rtl8225z2_agc[i]);
+    rtl8225_write_phy_ofdm(0xE, 0x80 + i);
+    rtl8225_write_phy_ofdm(0xE, 0);
+  }
+  rtl8225_write_phy_ofdm(0x80, 0x10);
+
+  for (i = 0; i < ARRAY_SIZE(rtl8225z2_ofdm); i++)
+    rtl8225_write_phy_ofdm(i, rtl8225z2_ofdm[i]);
+
+  rtl8225_write_phy_ofdm(0x97, 0x46);
+  rtl8225_write_phy_ofdm(0xa4, 0xb6);
+  rtl8225_write_phy_ofdm(0x85, 0xfc);
+  rtl8225_write_phy_cck(0xc1, 0x88);
+}
+
+static void rtl8225_rf_stop(void)
+{
+  u8 reg;
+
+  rtl8225_write(0x4, 0x1f);
+
+  iowrite8(&map->EEPROM_CMD, RTL818X_EEPROM_CMD_CONFIG);
+  reg = ioread8(&map->CONFIG3);
+  iowrite8(&map->CONFIG3, reg | RTL818X_CONFIG3_ANAPARAM_WRITE);
+  if (!is_rtl8187b) {
+    iowrite32(&map->ANAPARAM2,
+                      RTL8187_RTL8225_ANAPARAM2_OFF);
+    iowrite32(&map->ANAPARAM,
+                      RTL8187_RTL8225_ANAPARAM_OFF);
+  } else {
+    iowrite32(&map->ANAPARAM2,
+                      RTL8187B_RTL8225_ANAPARAM2_OFF);
+    iowrite32(&map->ANAPARAM,
+                      RTL8187B_RTL8225_ANAPARAM_OFF);
+    iowrite8(&map->ANAPARAM3,
+                     RTL8187B_RTL8225_ANAPARAM3_OFF);
+  }
+  iowrite8(&map->CONFIG3, reg & ~RTL818X_CONFIG3_ANAPARAM_WRITE);
+  iowrite8(&map->EEPROM_CMD, RTL818X_EEPROM_CMD_NORMAL);
+}
+
+static void
+rtl8225_rf_set_channel(struct ieee80211_conf *conf)
+{
+  int chan = ieee80211_frequency_to_channel(conf->channel->center_freq);
+
+  if (rf->init == rtl8225_rf_init)
+    rtl8225_rf_set_tx_power(chan);
+  else if (rf->init == rtl8225z2_rf_init)
+    rtl8225z2_rf_set_tx_power(chan);
+  else
+    rtl8225z2_b_rf_set_tx_power(chan);
+
+  rtl8225_write(0x7, rtl8225_chan[chan - 1]);
+  msleep(10);
+}
+
+static const struct rtl818x_rf_ops rtl8225_ops = {
+  .name		= "rtl8225",
+  .init		= rtl8225_rf_init,
+  .stop		= rtl8225_rf_stop,
+  .set_chan	= rtl8225_rf_set_channel
+};
+
+static const struct rtl818x_rf_ops rtl8225z2_ops = {
+  .name		= "rtl8225z2",
+  .init		= rtl8225z2_rf_init,
+  .stop		= rtl8225_rf_stop,
+  .set_chan	= rtl8225_rf_set_channel
+};
+
+static const struct rtl818x_rf_ops rtl8225z2_b_ops = {
+  .name		= "rtl8225z2",
+  .init		= rtl8225z2_b_rf_init,
+  .stop		= rtl8225_rf_stop,
+  .set_chan	= rtl8225_rf_set_channel
+};
+
+const struct rtl818x_rf_ops *
+rtl8187_detect_rf(void)
+{
+  u16 reg8, reg9;
+
+  if (!is_rtl8187b) {
+    rtl8225_write(0, 0x1B7);
+
+    reg8 = rtl8225_read(8);
+    reg9 = rtl8225_read(9);
+
+    rtl8225_write(0, 0x0B7);
+
+    if (reg8 != 0x588 || reg9 != 0x700)
+      return &rtl8225_ops;
+
+    return &rtl8225z2_ops;
+  } else
+    return &rtl8225z2_b_ops;
 }
 
 
