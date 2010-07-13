@@ -250,6 +250,81 @@ rfkill_init (void)
 
 /* ************************************************** */
 
+
+static bool
+add_iface (void)
+{
+  int i;
+  iowrite8 (&map->EEPROM_CMD, RTL818X_EEPROM_CMD_CONFIG);
+  for (i=0; i<ETH_ADDR_LEN; i++)
+    iowrite8 (&map->MAC[i], ethaddr[i]);
+  iowrite8 (&map->EEPROM_CMD, RTL818X_EEPROM_CMD_NORMAL);
+
+  return TRUE;
+}
+
+static bool
+config (struct ieee80211_conf *conf)
+{
+  u32 reg;
+  reg = ioread32 (&map->TX_CONF);
+  /* Enable TX loopback during channel changes to avoid TX */
+  iowrite32 (&map->TX_CONF, reg | RTL818X_TX_CONF_LOOPBACK_MAC);
+  rf->set_chan (conf);
+  msleep (10);
+  iowrite32 (&map->TX_CONF, reg);
+
+  iowrite16 (&map->ATIM_WND, 2);
+  iowrite16 (&map->ATIMTR_INTERVAL, 100);
+  iowrite16 (&map->BEACON_INTERVAL, 100);
+  iowrite16 (&map->BEACON_INTERVAL_TIME, 100);
+
+  return TRUE;
+}
+
+static __le32 *rtl8187b_ac_addr[4] = {
+  (__le32 *) 0xFFF0, /* AC_VO */
+  (__le32 *) 0xFFF4, /* AC_VI */
+  (__le32 *) 0xFFFC, /* AC_BK */
+  (__le32 *) 0xFFF8, /* AC_BE */
+};
+#define SIFS_TIME 0xa
+
+static bool
+conf_tx (u16 queue, const struct ieee80211_tx_queue_params *params)
+{
+  u8 cw_min, cw_max;
+
+  if (queue > 3)
+    return FALSE;
+
+  cw_min = fls(params->cw_min);
+  cw_max = fls(params->cw_max);
+
+  if (is_rtl8187b) {
+    aifsn[queue] = params->aifs;
+
+    /*
+     * This is the structure of AC_*_PARAM registers in 8187B:
+     * - TXOP limit field, bit offset = 16
+     * - ECWmax, bit offset = 12
+     * - ECWmin, bit offset = 8
+     * - AIFS, bit offset = 0
+     */
+    iowrite32(rtl8187b_ac_addr[queue],
+              (params->txop << 16) | (cw_max << 12) |
+              (cw_min << 8) | (params->aifs *
+                               slot_time + SIFS_TIME));
+  } else {
+    if (queue != 0)
+      return FALSE;
+
+    iowrite8(&map->CW_VAL,
+             cw_min | (cw_max << 4));
+  }
+  return TRUE;
+}
+
 static bool
 cmd_reset (void)
 {
