@@ -103,7 +103,8 @@ sched_alloc (int type)
 
   }
 
-  DLOG("Error! No enough descriptor in the pool!");
+  DLOG("Error! Not enough descriptor in the pool! (type=%s)",
+       (type == TYPE_TD ? "TD" : "QH"));
   return (void *) 0;
 }
 
@@ -147,7 +148,7 @@ free_tds (UHCI_TD * tds, int len)
   for (i = 0; i < len; i++) {
     link_ptr = tds->link_ptr;
 
-    if ((tds->link_ptr & TERMINATE) == TERMINATE) {
+    if (tds->link_ptr & TERMINATE) {
       end++;
     }
 
@@ -291,8 +292,29 @@ debug_dump_sched (UHCI_TD * tx_tds)
       DLOG ("    %.08X %.08X %.08X %.08X",
             p[0], p[1], p[2], p[3]);
     }
-    if (tx_tds->link_ptr == TERMINATE) break;
+    if (tx_tds->link_ptr & TERMINATE) break;
     tx_tds = TD_P2V (UHCI_TD *, tx_tds->link_ptr & LINK_MASK);
+  }
+}
+
+static void
+debug_dump_bulk_qhs (void)
+{
+  UHCI_QH *q = blk_qh;
+  uint32 link_ptr;
+
+  for (;;) {
+    link_ptr = q->qe_ptr;
+    if (link_ptr & TERMINATE) {
+      DLOG ("QH %p has no TDs", q);
+    } else {
+      DLOG ("QH %p has:");
+      debug_dump_sched (TD_P2V (UHCI_TD *, q->qe_ptr & LINK_MASK));
+    }
+    link_ptr = q->qh_ptr;
+    if (link_ptr & TERMINATE)
+      break;
+    q = QH_P2V (UHCI_QH *, link_ptr & LINK_MASK);
   }
 }
 
@@ -842,21 +864,24 @@ uhci_isochronous_transfer (
 }
 
 /* find a free QH to queue up the TDs, or alloc a new one */
-static bool
+static UHCI_QH *
 link_td_to_free_qh (UHCI_QH *q, UHCI_TD *t)
 {
   for (;;) {
-    if (q->qe_ptr == TERMINATE) {
+    //DLOG ("examining QH: %p qe=%p qh=%p", q, q->qe_ptr, q->qh_ptr);
+    if (q->qe_ptr & TERMINATE) {
       q->qe_ptr = TD_V2P (uint32, t) & LINK_MASK;
-      return TRUE;
+      //DLOG ("using existing QH %p", q);
+      return q;
     }
-    if (q->qh_ptr == TERMINATE) {
+    if (q->qh_ptr & TERMINATE) {
       UHCI_QH *newq = sched_alloc (TYPE_QH);
-      if (newq == NULL) return FALSE;
+      if (newq == NULL) return NULL;
       newq->qe_ptr = (TD_V2P (uint32, t) & LINK_MASK) | SELECT_TD;
       newq->qh_ptr = TERMINATE;
       q->qh_ptr = (QH_V2P (uint32, newq) & LINK_MASK) | SELECT_QH;
-      return TRUE;
+      //DLOG ("created new QH %p", newq);
+      return newq;
     }
 
     /* advance to next qh in list */
@@ -877,6 +902,7 @@ uhci_bulk_transfer(
   UHCI_TD *tx_tds = 0;
   UHCI_TD *data_td = 0;
   UHCI_TD *idx_td = 0;
+  UHCI_QH *act_qh;
   int max_packet_len = ((packet_len - 1) >= USB_MAX_LEN) ? USB_MAX_LEN : packet_len - 1;
   int i = 0, num_data_packets = 0, data_left = 0, return_status = 0, tog_idx;
 
@@ -933,10 +959,15 @@ uhci_bulk_transfer(
 #endif
 
   /* Initiate our bulk transactions */
-  link_td_to_free_qh (blk_qh, tx_tds);
+  act_qh = link_td_to_free_qh (blk_qh, tx_tds);
+
+  if (act_qh == NULL) return -1;
 
   /* Check the status of all the packets in the transaction */
   return_status = check_tds(tx_tds, act_len);
+
+  /* clear out any remaining active TDs */
+  act_qh->qe_ptr = TERMINATE;
 
   free_tds(tx_tds, num_data_packets);
 
@@ -1233,6 +1264,7 @@ uhci_irq_handler (uint8 vec)
     /* Host Controller Halted */
     DLOG("HCHalted detected!");
     status |= 0x20; /* Clear the interrupt by writing a 1 to it */
+    debug_dump_bulk_qhs ();
   }
 
   if(status & 0x10) {
