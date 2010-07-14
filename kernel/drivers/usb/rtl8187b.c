@@ -41,7 +41,7 @@
 #include <drivers/usb/uhci.h>
 #include <drivers/net/ethernet.h>
 #include <drivers/net/ieee80211.h>
-//#include <drivers/net/mac80211.h>
+#include <drivers/net/ieee80211_standard.h>
 #include <util/printf.h>
 #include <kernel.h>
 #include <drivers/eeprom/93cx6.h>
@@ -642,6 +642,134 @@ static uint32 status_stack[1024] ALIGNED(0x1000);
 #define RX_MAXPKT 64
 
 static void
+debug_info_elements (u8 *buf, s32 len)
+{
+  uint8 ssid[IEEE80211_MAX_SSID_LEN+1];
+  uint8 id = 0;
+  DLOG ("Info Elements: (%p, %d)", buf, len);
+  while (len > 0) {
+    if (buf[0] < id) 
+      /* elements come in ascending order by ID */
+      break;
+    switch ((id=buf[0])) {
+    case WLAN_EID_SSID:
+      memset (ssid, 0, IEEE80211_MAX_SSID_LEN+1);
+      memcpy (ssid, &buf[2], buf[1]);
+      DLOG ("  SSID %d %s", buf[1], ssid);
+      break;
+    case WLAN_EID_DS_PARAMS:
+      DLOG ("  DS PARAMS CURRENT CHANNEL %d", buf[2]);
+      break;
+    case WLAN_EID_COUNTRY:
+      DLOG ("  COUNTRY %d %c%c%c", buf[1], buf[2], buf[3], buf[4]);
+      break;
+    default:
+      DLOG ("  IE-ID %d LEN %d", buf[0], buf[1]);
+      break;
+    }
+    len -= (buf[1] + 2);
+    buf += (buf[1] + 2);
+  }
+}
+
+static void
+debug_rx (u8 *buf, u32 len)
+{
+  u32 req = 0;
+  struct ieee80211_hdr *h = (struct ieee80211_hdr *) buf;
+  char *type;
+  
+  req += sizeof (struct ieee80211_hdr);
+  if (len < req) return;
+
+  if (ieee80211_is_mgmt (h->frame_control))
+    type = "MGMT";
+  else if (ieee80211_is_ctl (h->frame_control))
+    type = "CTRL";
+  else if (ieee80211_is_data (h->frame_control))
+    type = "DATA";
+  else
+    type = "????";
+
+  DLOG ("FC=0x%.04X %s 0x%x", h->frame_control, type,
+        h->frame_control & IEEE80211_FCTL_STYPE);
+
+  if (ieee80211_is_beacon (h->frame_control)) {
+    /* interpret beacon frame */
+    struct ieee80211_mgmt *m = (struct ieee80211_mgmt *) buf;
+    DLOG ("BEACON bssid=%.02X:%.02X:%.02X:%.02X:%.02X:%.02X",
+          m->bssid[0], m->bssid[1], m->bssid[2],
+          m->bssid[3], m->bssid[4], m->bssid[5]);
+    DLOG ("  time=0x%.08X %.08X interval=0x%.04X capability=0x%.04X %s %s",
+          (u32) (m->u.beacon.timestamp >> 32),
+          (u32) (m->u.beacon.timestamp >> 00),
+          m->u.beacon.beacon_int,
+          m->u.beacon.capab_info,
+          m->u.beacon.capab_info & WLAN_CAPABILITY_ESS ? "ESS" : "",
+          m->u.beacon.capab_info & WLAN_CAPABILITY_IBSS ? "IBSS" : "");
+    debug_info_elements (m->u.beacon.variable,
+                         len
+                         /* minus FCS */ 
+                         - 4
+                         /* minus header */
+                         - ((u32) m->u.beacon.variable - (u32) m));
+  } else if (ieee80211_is_data (h->frame_control)) {
+    /* get some info out of a DATA frame */
+    bool toDS, fromDS;
+    toDS = ieee80211_has_tods (h->frame_control);
+    fromDS = ieee80211_has_fromds (h->frame_control);
+    if (!toDS && !fromDS) {
+      DLOG ("  IBSS/DLS");
+      DLOG ("    DA=%.02X:%.02X:%.02X:%.02X:%.02X:%.02X",
+            h->addr1[0], h->addr1[1], h->addr1[2],
+            h->addr1[3], h->addr1[4], h->addr1[5]);
+      DLOG ("    SA=%.02X:%.02X:%.02X:%.02X:%.02X:%.02X",
+            h->addr2[0], h->addr2[1], h->addr2[2],
+            h->addr2[3], h->addr2[4], h->addr2[5]);
+      DLOG ("    BSSID=%.02X:%.02X:%.02X:%.02X:%.02X:%.02X",
+            h->addr3[0], h->addr3[1], h->addr3[2],
+            h->addr3[3], h->addr3[4], h->addr3[5]);
+    } else if (!toDS && fromDS) {
+      DLOG ("  AP -> STA");
+      DLOG ("    DA=%.02X:%.02X:%.02X:%.02X:%.02X:%.02X",
+            h->addr1[0], h->addr1[1], h->addr1[2],
+            h->addr1[3], h->addr1[4], h->addr1[5]);
+      DLOG ("    BSSID=%.02X:%.02X:%.02X:%.02X:%.02X:%.02X",
+            h->addr2[0], h->addr2[1], h->addr2[2],
+            h->addr2[3], h->addr2[4], h->addr2[5]);
+      DLOG ("    SA=%.02X:%.02X:%.02X:%.02X:%.02X:%.02X",
+            h->addr3[0], h->addr3[1], h->addr3[2],
+            h->addr3[3], h->addr3[4], h->addr3[5]);
+    } else if (toDS && !fromDS) {
+      DLOG ("  STA -> AP");
+      DLOG ("    BSSID=%.02X:%.02X:%.02X:%.02X:%.02X:%.02X",
+            h->addr1[0], h->addr1[1], h->addr1[2],
+            h->addr1[3], h->addr1[4], h->addr1[5]);
+      DLOG ("    SA=%.02X:%.02X:%.02X:%.02X:%.02X:%.02X",
+            h->addr2[0], h->addr2[1], h->addr2[2],
+            h->addr2[3], h->addr2[4], h->addr2[5]);
+      DLOG ("    DA=%.02X:%.02X:%.02X:%.02X:%.02X:%.02X",
+            h->addr3[0], h->addr3[1], h->addr3[2],
+            h->addr3[3], h->addr3[4], h->addr3[5]);
+    } else {
+      DLOG ("  unspecified (WDS)");
+      DLOG ("    RA=%.02X:%.02X:%.02X:%.02X:%.02X:%.02X",
+            h->addr1[0], h->addr1[1], h->addr1[2],
+            h->addr1[3], h->addr1[4], h->addr1[5]);
+      DLOG ("    TA=%.02X:%.02X:%.02X:%.02X:%.02X:%.02X",
+            h->addr2[0], h->addr2[1], h->addr2[2],
+            h->addr2[3], h->addr2[4], h->addr2[5]);
+      DLOG ("    DA=%.02X:%.02X:%.02X:%.02X:%.02X:%.02X",
+            h->addr3[0], h->addr3[1], h->addr3[2],
+            h->addr3[3], h->addr3[4], h->addr3[5]);
+      DLOG ("    SA=%.02X:%.02X:%.02X:%.02X:%.02X:%.02X",
+            h->addr4[0], h->addr4[1], h->addr4[2],
+            h->addr4[3], h->addr4[4], h->addr4[5]);
+    }    
+  }
+}
+
+static void
 rx_thread (void)
 {
   u8 buf[RTL8187_MAX_RX];
@@ -653,12 +781,15 @@ rx_thread (void)
     if (usb_bulk_transfer (usbdev, RX_EPT, &buf, sizeof (buf),
                            RX_MAXPKT, DIR_IN, &act_len) == 0) {
       if (act_len > 0) {
+#ifdef DEBUG_RTL8187B
         DLOG ("rx: act_len=%d", act_len);
         for (i=0;i+8<act_len;i+=8) {
           DLOG ("rx: %.02X %.02X %.02X %.02X %.02X %.02X %.02X %.02X",
                 buf[i+0], buf[i+1], buf[i+2], buf[i+3],
                 buf[i+4], buf[i+5], buf[i+6], buf[i+7]);
         }
+        debug_rx (buf, act_len);
+#endif
       }
     }
   }
@@ -1808,6 +1939,7 @@ rtl8225z2_b_rf_init(void)
 
   DLOG ("writing rxgain");
   for (i = 0; i < ARRAY_SIZE(rtl8225z2_rxgain); i++) {
+    DLOG ("rxgain[%d]", i);
     rtl8225_write(0x1, i + 1);
     rtl8225_write(0x2, rtl8225z2_rxgain[i]);
   }
