@@ -20,7 +20,20 @@
 
 #include <types.h>
 
+/* FTDI Commands */
+#define USB_FTDI_RESET                  0x00
+#define USB_FTDI_MODEM_CTRL             0x01
+#define USB_FTDI_SET_FLOW_CTRL          0x02
+#define USB_FTDI_SET_BAUD_RATE          0x03
+#define USB_FTDI_SET_DATA               0x04
+#define USB_FTDI_GET_MODEM_STATUS       0x05
+#define USB_FTDI_SET_EVENT_CHAR         0x06
+#define USB_FTDI_SET_ERROR_CHAR         0x07
+#define USB_FTDI_SET_LATENCY_TIMER      0x09
+#define USB_FTDI_GET_LATENCY_TIMER      0x0A
+
 extern bool usb_ftdi_driver_init (void);
+extern void usb_ftdi_putc (char);
 
 #endif
 
