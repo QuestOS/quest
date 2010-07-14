@@ -41,6 +41,7 @@
 #include <drivers/usb/uhci.h>
 #include <drivers/net/ethernet.h>
 #include <drivers/net/ieee80211.h>
+//#include <drivers/net/mac80211.h>
 #include <util/printf.h>
 #include <kernel.h>
 #include <drivers/eeprom/93cx6.h>
@@ -91,6 +92,7 @@ static const struct ieee80211_channel rtl818x_channels[] = {
   { .center_freq = 2484 },
 };
 
+#define ETH_ALEN ETH_ADDR_LEN
 
 #define RTL8187_EEPROM_TXPWR_BASE	0x05
 #define RTL8187_EEPROM_MAC_ADDR		0x07
@@ -289,6 +291,99 @@ static __le32 *rtl8187b_ac_addr[4] = {
   (__le32 *) 0xFFF8, /* AC_BE */
 };
 #define SIFS_TIME 0xa
+#define DIV_ROUND_UP(n,d) (((n) + (d) - 1) / (d))
+
+static void
+conf_erp(bool use_short_slot,
+         bool use_short_preamble)
+{
+  if (is_rtl8187b) {
+    u8 difs, eifs;
+    u16 ack_timeout;
+    int queue;
+
+    if (use_short_slot) {
+      slot_time = 0x9;
+      difs = 0x1c;
+      eifs = 0x53;
+    } else {
+      slot_time = 0x14;
+      difs = 0x32;
+      eifs = 0x5b;
+    }
+    iowrite8(&map->SIFS, 0x22);
+    iowrite8(&map->SLOT, slot_time);
+    iowrite8(&map->DIFS, difs);
+
+    /*
+     * BRSR+1 on 8187B is in fact EIFS register
+     * Value in units of 4 us
+     */
+    iowrite8((u8 *)&map->BRSR + 1, eifs);
+
+    /*
+     * For 8187B, CARRIER_SENSE_COUNTER is in fact ack timeout
+     * register. In units of 4 us like eifs register
+     * ack_timeout = ack duration + plcp + difs + preamble
+     */
+    ack_timeout = 112 + 48 + difs;
+    if (use_short_preamble)
+      ack_timeout += 72;
+    else
+      ack_timeout += 144;
+    iowrite8(&map->CARRIER_SENSE_COUNTER,
+             DIV_ROUND_UP(ack_timeout, 4));
+
+    for (queue = 0; queue < 4; queue++)
+      iowrite8((u8 *) rtl8187b_ac_addr[queue],
+               aifsn[queue] * slot_time +
+               SIFS_TIME);
+  } else {
+    iowrite8(&map->SIFS, 0x22);
+    if (use_short_slot) {
+      iowrite8(&map->SLOT, 0x9);
+      iowrite8(&map->DIFS, 0x14);
+      iowrite8(&map->EIFS, 91 - 0x14);
+    } else {
+      iowrite8(&map->SLOT, 0x14);
+      iowrite8(&map->DIFS, 0x24);
+      iowrite8(&map->EIFS, 91 - 0x24);
+    }
+  }
+}
+
+static void
+bss_info_changed(struct ieee80211_bss_conf *info,
+                 u32 changed)
+{
+  int i;
+  u8 reg;
+
+  if (changed & BSS_CHANGED_BSSID) {
+    for (i = 0; i < ETH_ALEN; i++)
+      iowrite8(&map->BSSID[i],
+               info->bssid[i]);
+
+    if (is_rtl8187b)
+      reg = RTL818X_MSR_ENEDCA;
+    else
+      reg = 0;
+
+    if (is_valid_ether_addr(info->bssid)) {
+      reg |= RTL818X_MSR_INFRA;
+      iowrite8(&map->MSR, reg);
+    } else {
+      reg |= RTL818X_MSR_NO_LINK;
+      iowrite8(&map->MSR, reg);
+    }
+
+  }
+
+  if (changed & (BSS_CHANGED_ERP_SLOT | BSS_CHANGED_ERP_PREAMBLE))
+    conf_erp(info->use_short_slot,
+             info->use_short_preamble);
+}
+
 
 static bool
 conf_tx (u16 queue, const struct ieee80211_tx_queue_params *params)
@@ -687,7 +782,16 @@ probe (USB_DEVICE_INFO *info, USB_CFG_DESC *cfgd, USB_IF_DESC *ifd)
 
   rfkill_init ();
 
-  return init_hw ();
+  if (!init_hw ())
+    return FALSE;
+
+  struct ieee80211_conf test_conf = {
+    .channel = &channels[0]
+  };
+
+  config (&test_conf);
+
+  return TRUE;
 }
 
 /* ************************************************** */
