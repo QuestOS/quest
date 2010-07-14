@@ -629,6 +629,149 @@ init_hw (void)
   return TRUE;
 }
 
+static u32 rx_conf;
+
+static uint32 rx_stack[1024] ALIGNED(0x1000);
+static uint32 status_stack[1024] ALIGNED(0x1000);
+
+#define RX_EPT (is_rtl8187b ? 3 : 1)
+#define RX_MAXPKT 64
+
+static void
+rx_thread (void)
+{
+  u8 buf[RTL8187_MAX_RX];
+  u32 act_len;
+
+  DLOG ("rx: hello from 0x%x", str ());
+  for (;;) {
+    if (usb_bulk_transfer (usbdev, RX_EPT, &buf, sizeof (buf),
+                           RX_MAXPKT, DIR_IN, &act_len) == 0) {
+      if (act_len > 0) {
+        DLOG ("rx: act_len=%d", act_len);
+      }
+    }
+    DLOG ("rx: tick");
+  }
+}
+
+#define STATUS_EPT 9
+#define STATUS_MAXPKT 64
+
+static void
+status_thread (void)
+{
+  u64 buf;
+  u32 act_len;
+  DLOG ("status: hello from 0x%x", str ());
+  for (;;) {
+    if (usb_bulk_transfer (usbdev, STATUS_EPT, &buf, sizeof (buf),
+                           STATUS_MAXPKT, DIR_IN, &act_len) == 0) {
+      if (act_len > 0) {
+        DLOG ("status: 0x%.08X %.08X",
+              (u32) (buf >> 32), (u32) buf);
+      }
+    }
+    DLOG ("status: tick");
+  }
+}
+
+static void
+init_urbs (void)
+{
+  start_kernel_thread ((u32) rx_thread, (u32) &rx_stack[1023]);
+}
+
+static void
+init_status_urb (void)
+{
+  start_kernel_thread ((u32) status_thread, (u32) &status_stack[1023]);
+}
+
+static int
+start (void)
+{
+  u32 reg;
+  bool ret;
+
+  ret = init_hw();
+
+  if (!ret)
+    goto rtl8187_start_exit;
+
+  //init_usb_anchor(&priv->anchored);
+
+  if (is_rtl8187b) {
+    reg = RTL818X_RX_CONF_MGMT |
+      RTL818X_RX_CONF_DATA |
+      RTL818X_RX_CONF_BROADCAST |
+      RTL818X_RX_CONF_NICMAC |
+      RTL818X_RX_CONF_BSSID |
+      (7 << 13 /* RX FIFO threshold NONE */) |
+      (7 << 10 /* MAX RX DMA */) |
+      RTL818X_RX_CONF_RX_AUTORESETPHY |
+      RTL818X_RX_CONF_ONLYERLPKT |
+      RTL818X_RX_CONF_MULTICAST;
+    rx_conf = reg;
+    iowrite32(&map->RX_CONF, reg);
+
+    iowrite32(&map->TX_CONF,
+                      RTL818X_TX_CONF_HW_SEQNUM |
+                      RTL818X_TX_CONF_DISREQQSIZE |
+                      (7 << 8  /* short retry limit */) |
+                      (7 << 0  /* long retry limit */) |
+                      (7 << 21 /* MAX TX DMA */));
+    init_urbs();
+    init_status_urb();
+    goto rtl8187_start_exit;
+  }
+
+  iowrite16(&map->INT_MASK, 0xFFFF);
+
+  iowrite32(&map->MAR[0], ~0);
+  iowrite32(&map->MAR[1], ~0);
+
+  init_urbs();
+
+  reg = RTL818X_RX_CONF_ONLYERLPKT |
+    RTL818X_RX_CONF_RX_AUTORESETPHY |
+    RTL818X_RX_CONF_BSSID |
+    RTL818X_RX_CONF_MGMT |
+    RTL818X_RX_CONF_DATA |
+    (7 << 13 /* RX FIFO threshold NONE */) |
+    (7 << 10 /* MAX RX DMA */) |
+    RTL818X_RX_CONF_BROADCAST |
+    RTL818X_RX_CONF_NICMAC;
+
+  rx_conf = reg;
+  iowrite32(&map->RX_CONF, reg);
+
+  reg = ioread8(&map->CW_CONF);
+  reg &= ~RTL818X_CW_CONF_PERPACKET_CW_SHIFT;
+  reg |= RTL818X_CW_CONF_PERPACKET_RETRY_SHIFT;
+  iowrite8(&map->CW_CONF, reg);
+
+  reg = ioread8(&map->TX_AGC_CTL);
+  reg &= ~RTL818X_TX_AGC_CTL_PERPACKET_GAIN_SHIFT;
+  reg &= ~RTL818X_TX_AGC_CTL_PERPACKET_ANTSEL_SHIFT;
+  reg &= ~RTL818X_TX_AGC_CTL_FEEDBACK_ANT;
+  iowrite8(&map->TX_AGC_CTL, reg);
+
+  reg  = RTL818X_TX_CONF_CW_MIN |
+    (7 << 21 /* MAX TX DMA */) |
+    RTL818X_TX_CONF_NO_ICV;
+  iowrite32(&map->TX_CONF, reg);
+
+  reg = ioread8(&map->CMD);
+  reg |= RTL818X_CMD_TX_ENABLE;
+  reg |= RTL818X_CMD_RX_ENABLE;
+  iowrite8(&map->CMD, reg);
+  //INIT_DELAYED_WORK(&priv->work, rtl8187_work);
+
+ rtl8187_start_exit:
+  return ret;
+}
+
 static uint16 txpwr_base;
 static uint8 asic_rev, queues;
 const struct rtl818x_rf_ops * rtl8187_detect_rf(void);
@@ -782,7 +925,7 @@ probe (USB_DEVICE_INFO *info, USB_CFG_DESC *cfgd, USB_IF_DESC *ifd)
 
   rfkill_init ();
 
-  if (!init_hw ())
+  if (!start ())
     return FALSE;
 
   struct ieee80211_conf test_conf = {
@@ -810,7 +953,7 @@ usb_rtl8187b_driver_init (void)
 
 /* Radio tuning for RTL8225 on RTL8187 */
 
-static inline 
+static inline
 void rtl8225_write_phy_ofdm(u8 addr, u32 data)
 {
   rtl8187_write_phy (addr, data);
@@ -823,7 +966,7 @@ void rtl8225_write_phy_cck(u8 addr, u32 data)
 }
 
 /* used when asic_rev==0 */
-static void 
+static void
 rtl8225_write_bitbang (u8 addr, u16 data)
 {
   u16 reg80, reg84, reg82;
