@@ -314,6 +314,40 @@ ieee80211_frequency_to_channel(int freq)
 }
 
 
+/**
+ * enum ieee80211_bss_change - BSS change notification flags
+ *
+ * These flags are used with the bss_info_changed() callback
+ * to indicate which BSS parameter changed.
+ *
+ * @BSS_CHANGED_ASSOC: association status changed (associated/disassociated),
+ *	also implies a change in the AID.
+ * @BSS_CHANGED_ERP_CTS_PROT: CTS protection changed
+ * @BSS_CHANGED_ERP_PREAMBLE: preamble changed
+ * @BSS_CHANGED_ERP_SLOT: slot timing changed
+ * @BSS_CHANGED_HT: 802.11n parameters changed
+ * @BSS_CHANGED_BASIC_RATES: Basic rateset changed
+ * @BSS_CHANGED_BEACON_INT: Beacon interval changed
+ * @BSS_CHANGED_BSSID: BSSID changed, for whatever
+ *	reason (IBSS and managed mode)
+ * @BSS_CHANGED_BEACON: Beacon data changed, retrieve
+ *	new beacon (beaconing modes)
+ * @BSS_CHANGED_BEACON_ENABLED: Beaconing should be
+ *	enabled/disabled (beaconing modes)
+ */
+enum ieee80211_bss_change {
+	BSS_CHANGED_ASSOC		= 1<<0,
+	BSS_CHANGED_ERP_CTS_PROT	= 1<<1,
+	BSS_CHANGED_ERP_PREAMBLE	= 1<<2,
+	BSS_CHANGED_ERP_SLOT		= 1<<3,
+	BSS_CHANGED_HT                  = 1<<4,
+	BSS_CHANGED_BASIC_RATES		= 1<<5,
+	BSS_CHANGED_BEACON_INT		= 1<<6,
+	BSS_CHANGED_BSSID		= 1<<7,
+	BSS_CHANGED_BEACON		= 1<<8,
+	BSS_CHANGED_BEACON_ENABLED	= 1<<9,
+};
+
 #endif
 
 /*
