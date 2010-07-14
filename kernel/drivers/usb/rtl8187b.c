@@ -272,6 +272,7 @@ config (struct ieee80211_conf *conf)
   reg = ioread32 (&map->TX_CONF);
   /* Enable TX loopback during channel changes to avoid TX */
   iowrite32 (&map->TX_CONF, reg | RTL818X_TX_CONF_LOOPBACK_MAC);
+  DLOG ("setting channel to freq=%d", conf->channel->center_freq);
   rf->set_chan (conf);
   msleep (10);
   iowrite32 (&map->TX_CONF, reg);
@@ -500,7 +501,10 @@ static bool
 init_hw (void)
 {
   uint8 reg;
-  int res, i;
+  bool res;
+  int i;
+
+  DLOG ("init_hw");
 
   iowrite8 (&map->EEPROM_CMD, RTL818X_EEPROM_CMD_CONFIG);
   reg = ioread8 (&map->CONFIG3);
@@ -527,7 +531,7 @@ init_hw (void)
                    RTL818X_EEPROM_CMD_NORMAL);
 
   res = cmd_reset();
-  if (res)
+  if (!res)
     return res;
 
   iowrite16((__le16 *)0xFF2D, 0x0FFF);
@@ -642,6 +646,7 @@ rx_thread (void)
 {
   u8 buf[RTL8187_MAX_RX];
   u32 act_len;
+  int i;
 
   DLOG ("rx: hello from 0x%x", str ());
   for (;;) {
@@ -649,9 +654,13 @@ rx_thread (void)
                            RX_MAXPKT, DIR_IN, &act_len) == 0) {
       if (act_len > 0) {
         DLOG ("rx: act_len=%d", act_len);
+        for (i=0;i+8<act_len;i+=8) {
+          DLOG ("rx: %.02X %.02X %.02X %.02X %.02X %.02X %.02X %.02X",
+                buf[i+0], buf[i+1], buf[i+2], buf[i+3],
+                buf[i+4], buf[i+5], buf[i+6], buf[i+7]);
+        }
       }
     }
-    DLOG ("rx: tick");
   }
 }
 
@@ -924,6 +933,8 @@ probe (USB_DEVICE_INFO *info, USB_CFG_DESC *cfgd, USB_IF_DESC *ifd)
   if (is_rtl8187b) queues = 4; else queues = 1;
 
   rfkill_init ();
+
+  add_iface ();
 
   if (!start ())
     return FALSE;
@@ -1774,6 +1785,8 @@ rtl8225z2_b_rf_init(void)
 {
   int i;
 
+  DLOG ("rtl8225z2_b_rf_init");
+
   rtl8225_write(0x0, 0x0B7);
   rtl8225_write(0x1, 0xEE0);
   rtl8225_write(0x2, 0x44D);
@@ -1793,6 +1806,7 @@ rtl8225z2_b_rf_init(void)
 
   rtl8225_write(0x0, 0x1B7);
 
+  DLOG ("writing rxgain");
   for (i = 0; i < ARRAY_SIZE(rtl8225z2_rxgain); i++) {
     rtl8225_write(0x1, i + 1);
     rtl8225_write(0x2, rtl8225z2_rxgain[i]);
@@ -1811,6 +1825,7 @@ rtl8225z2_b_rf_init(void)
   iowrite8(&map->TX_GAIN_OFDM, 0x07);
   iowrite8(&map->TX_ANTENNA, 0x03);
 
+  DLOG ("writing agc");
   rtl8225_write_phy_ofdm(0x80, 0x12);
   for (i = 0; i < ARRAY_SIZE(rtl8225z2_agc); i++) {
     rtl8225_write_phy_ofdm(0xF, rtl8225z2_agc[i]);
@@ -1819,6 +1834,7 @@ rtl8225z2_b_rf_init(void)
   }
   rtl8225_write_phy_ofdm(0x80, 0x10);
 
+  DLOG ("writing ofdm");
   for (i = 0; i < ARRAY_SIZE(rtl8225z2_ofdm); i++)
     rtl8225_write_phy_ofdm(i, rtl8225z2_ofdm[i]);
 
@@ -1826,6 +1842,8 @@ rtl8225z2_b_rf_init(void)
   rtl8225_write_phy_ofdm(0xa4, 0xb6);
   rtl8225_write_phy_ofdm(0x85, 0xfc);
   rtl8225_write_phy_cck(0xc1, 0x88);
+
+  DLOG ("rf init finished");
 }
 
 static void rtl8225_rf_stop(void)
