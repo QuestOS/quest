@@ -34,10 +34,10 @@ typedef unsigned short int uint16;
 typedef unsigned long int uint32;
 typedef unsigned long long int uint64;
 
-typedef signed char sint8;
-typedef signed short int sint16;
-typedef signed long int sint32;
-typedef signed long long int sint64;
+typedef signed char sint8, s8;
+typedef signed short int sint16, s16;
+typedef signed long int sint32, s32;
+typedef signed long long int sint64, s64;
 
 typedef signed char bool;
 
