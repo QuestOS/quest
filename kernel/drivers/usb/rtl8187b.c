@@ -642,33 +642,47 @@ static uint32 status_stack[1024] ALIGNED(0x1000);
 #define RX_MAXPKT 64
 
 static void
-debug_info_elements (u8 *buf, s32 len)
+debug_info_element (u8 **p_buf, s32 *p_len)
 {
   uint8 ssid[IEEE80211_MAX_SSID_LEN+1];
+  u8 *buf = *p_buf;
+  s32 i;
+
+  switch (buf[0]) {
+  case WLAN_EID_SSID:
+    memset (ssid, 0, IEEE80211_MAX_SSID_LEN+1);
+    memcpy (ssid, &buf[2], buf[1]);
+    DLOG ("  SSID %s", ssid);
+    break;
+  case WLAN_EID_SUPP_RATES:
+    for (i=0; i<buf[1]; i++)
+      DLOG ("  SUPPORTED-RATE 0x%.02X", buf[2+i]);
+    break;
+  case WLAN_EID_DS_PARAMS:
+    DLOG ("  DS PARAMS CURRENT CHANNEL %d", buf[2]);
+    break;
+  case WLAN_EID_COUNTRY:
+    DLOG ("  COUNTRY %c%c%c", buf[2], buf[3], buf[4]);
+    break;
+  default:
+    DLOG ("  IE-ID %d LEN %d", buf[0], buf[1]);
+    break;
+  }
+  *p_len -= (buf[1] + 2);
+  *p_buf += (buf[1] + 2);
+}
+
+static void
+debug_info_elements (u8 *buf, s32 len)
+{
   uint8 id = 0;
   DLOG ("Info Elements: (%p, %d)", buf, len);
   while (len > 0) {
     if (buf[0] < id) 
       /* elements come in ascending order by ID */
       break;
-    switch ((id=buf[0])) {
-    case WLAN_EID_SSID:
-      memset (ssid, 0, IEEE80211_MAX_SSID_LEN+1);
-      memcpy (ssid, &buf[2], buf[1]);
-      DLOG ("  SSID %d %s", buf[1], ssid);
-      break;
-    case WLAN_EID_DS_PARAMS:
-      DLOG ("  DS PARAMS CURRENT CHANNEL %d", buf[2]);
-      break;
-    case WLAN_EID_COUNTRY:
-      DLOG ("  COUNTRY %d %c%c%c", buf[1], buf[2], buf[3], buf[4]);
-      break;
-    default:
-      DLOG ("  IE-ID %d LEN %d", buf[0], buf[1]);
-      break;
-    }
-    len -= (buf[1] + 2);
-    buf += (buf[1] + 2);
+    id = buf[0];
+    debug_info_element (&buf, &len);
   }
 }
 
@@ -691,8 +705,13 @@ debug_rx (u8 *buf, u32 len)
   else
     type = "????";
 
-  DLOG ("FC=0x%.04X %s 0x%x", h->frame_control, type,
-        h->frame_control & IEEE80211_FCTL_STYPE);
+  DLOG ("FC=0x%.04X %s 0x%x SEQ=0x%.04X", h->frame_control, type,
+        h->frame_control & IEEE80211_FCTL_STYPE,
+        h->seq_ctrl);
+
+  if (h->seq_ctrl & 0x000F)
+    /* don't bother with fragments beyond the first */
+    return;
 
   if (ieee80211_is_beacon (h->frame_control)) {
     /* interpret beacon frame */
@@ -713,6 +732,33 @@ debug_rx (u8 *buf, u32 len)
                          - 4
                          /* minus header */
                          - ((u32) m->u.beacon.variable - (u32) m));
+  } else if (ieee80211_is_assoc_req (h->frame_control)) {
+    struct ieee80211_mgmt *m = (struct ieee80211_mgmt *) buf;
+    uint8 *v = m->u.assoc_req.variable;
+    s32 l = len;
+    DLOG ("ASSOC REQUEST capab=0x%.04X interval=0x%.04X",
+          m->u.assoc_req.capab_info,
+          m->u.assoc_req.listen_interval);
+    //debug_info_element (&v, &l); /* SSID */
+    //debug_info_element (&v, &l); /* Supported Rates */
+  } else if (ieee80211_is_assoc_resp (h->frame_control)) {
+    struct ieee80211_mgmt *m = (struct ieee80211_mgmt *) buf;
+    uint8 *v = m->u.assoc_resp.variable;
+    s32 l = len;
+    DLOG ("ASSOC RESPONSE capab=0x%.04X status=0x%.04X aid=0x%.04X",
+          m->u.assoc_resp.capab_info,
+          m->u.assoc_resp.status_code,
+          m->u.assoc_resp.aid);
+    //debug_info_element (&v, &l); /* Supported Rates */
+  } else if (ieee80211_is_probe_req (h->frame_control)) {
+    struct ieee80211_mgmt *m = (struct ieee80211_mgmt *) buf;
+    uint8 *v = m->u.probe_req.variable;
+    s32 l = len;
+    DLOG ("PROBE REQUEST");
+    debug_info_element (&v, &l); /* SSID */
+    debug_info_element (&v, &l); /* Supported Rates */
+  } else if (ieee80211_is_probe_resp (h->frame_control)) {
+    DLOG ("PROBE RESPONSE");
   } else if (ieee80211_is_data (h->frame_control)) {
     /* get some info out of a DATA frame */
     bool toDS, fromDS;
