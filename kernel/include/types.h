@@ -51,6 +51,9 @@ typedef uint64 uint64_t, u64, __le64;
 
 typedef void *addr_t;
 
+#define cpu_to_le16(x) (x)
+#define unlikely(x) (x)
+
 #endif // [#ifndef __ASSEMBLER__]
 
 #endif
