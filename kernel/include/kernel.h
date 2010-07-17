@@ -40,6 +40,14 @@
 #define NULL ((void*)0)
 #endif
 
+#define ARRAY_SIZE(arr) (sizeof(arr) / sizeof((arr)[0]))
+#define BIT(nr)                 (1UL << (nr))
+#define BIT_MASK(nr)            (1UL << ((nr) % BITS_PER_LONG))
+#define BIT_WORD(nr)            ((nr) / BITS_PER_LONG)
+#define BITS_PER_BYTE           8
+#define BITS_TO_LONGS(nr)       DIV_ROUND_UP(nr, BITS_PER_BYTE * sizeof(long))
+
+
 /* Bitmap utility functions for e.g., physical memory map and also
    scheduling priority queues */
 #define BITMAP_SET(table,index) ((table)[(index)>>5] |= (1 << ((index) & 31)))
@@ -116,7 +124,7 @@ uint16 duplicate_TSS (uint32 ebp,
                       uint32 child_eip,
                       uint32 child_ebp,
                       uint32 child_esp,
-                      uint32 child_eflags, 
+                      uint32 child_eflags,
                       uint32 child_directory);
 
 typedef uint16 task_id;
@@ -168,13 +176,13 @@ checksum (uint8 * ptr, int length)
 #endif /* __ASSEMBLER__ */
 #endif
 
-/* 
+/*
  * Local Variables:
  * indent-tabs-mode: nil
  * mode: C
  * c-file-style: "gnu"
  * c-basic-offset: 2
- * End: 
+ * End:
  */
 
 /* vi: set et sw=2 sts=2: */

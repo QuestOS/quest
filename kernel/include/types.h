@@ -34,19 +34,20 @@ typedef unsigned short int uint16;
 typedef unsigned long int uint32;
 typedef unsigned long long int uint64;
 
-typedef signed char sint8;
-typedef signed short int sint16;
-typedef signed long int sint32;
-typedef signed long long int sint64;
+typedef signed char sint8, s8;
+typedef signed short int sint16, s16;
+typedef signed long int sint32, s32;
+typedef signed long long int sint64, s64;
 
 typedef signed char bool;
 
 typedef unsigned long uint;
 typedef signed long sint;
 
-typedef uint8 uint8_t;
-typedef uint16 uint16_t;
-typedef uint32 uint32_t;
+typedef uint8 uint8_t, u8;
+typedef uint16 uint16_t, u16, __le16;
+typedef uint32 uint32_t, u32, __le32;
+typedef uint64 uint64_t, u64, __le64;
 
 typedef void *addr_t;
 

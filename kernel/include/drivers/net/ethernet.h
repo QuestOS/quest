@@ -26,7 +26,7 @@
 
 struct _ethernet_device;
 
-typedef void (*packet_recv_func_t)(struct _ethernet_device *dev, 
+typedef void (*packet_recv_func_t)(struct _ethernet_device *dev,
                                    uint8* buffer, sint len);
 typedef sint (*packet_send_func_t)(uint8* buffer, sint len);
 typedef bool (*get_hwaddr_func_t)(uint8 addr[ETH_ADDR_LEN]);
@@ -55,5 +55,74 @@ bool net_set_default (char *devname);
 bool net_dhcp_start (char *devname);
 bool net_set_up (char *devname);
 bool net_static_config(char *devname, char *myip_s, char *gwip_s, char *netmask_s);
+
+
+/* From Linux */
+
+/**
+ * is_zero_ether_addr - Determine if give Ethernet address is all zeros.
+ * @addr: Pointer to a six-byte array containing the Ethernet address
+ *
+ * Return true if the address is all zeroes.
+ */
+static inline int
+is_zero_ether_addr(const u8 *addr)
+{
+  return !(addr[0] | addr[1] | addr[2] | addr[3] | addr[4] | addr[5]);
+}
+
+/**
+ * is_multicast_ether_addr - Determine if the Ethernet address is a multicast.
+ * @addr: Pointer to a six-byte array containing the Ethernet address
+ *
+ * Return true if the address is a multicast address.
+ * By definition the broadcast address is also a multicast address.
+ */
+static inline int
+is_multicast_ether_addr(const u8 *addr)
+{
+  return (0x01 & addr[0]);
+}
+
+/**
+ * is_local_ether_addr - Determine if the Ethernet address is locally-assigned one (IEEE 802).
+ * @addr: Pointer to a six-byte array containing the Ethernet address
+ *
+ * Return true if the address is a local address.
+ */
+static inline int
+is_local_ether_addr(const u8 *addr)
+{
+  return (0x02 & addr[0]);
+}
+
+/**
+ * is_broadcast_ether_addr - Determine if the Ethernet address is broadcast
+ * @addr: Pointer to a six-byte array containing the Ethernet address
+ *
+ * Return true if the address is the broadcast address.
+ */
+static inline int
+is_broadcast_ether_addr(const u8 *addr)
+{
+  return (addr[0] & addr[1] & addr[2] & addr[3] & addr[4] & addr[5]) == 0xff;
+}
+
+/**
+ * is_valid_ether_addr - Determine if the given Ethernet address is valid
+ * @addr: Pointer to a six-byte array containing the Ethernet address
+ *
+ * Check that the Ethernet address (MAC) is not 00:00:00:00:00:00, is not
+ * a multicast address, and is not FF:FF:FF:FF:FF:FF.
+ *
+ * Return true if the address is valid.
+ */
+static inline int
+is_valid_ether_addr(const u8 *addr)
+{
+  /* FF:FF:FF:FF:FF:FF is a multicast address so we don't need to
+   * explicitly check for it here. */
+  return !is_multicast_ether_addr(addr) && !is_zero_ether_addr(addr);
+}
 
 #endif
