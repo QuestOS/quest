@@ -98,6 +98,30 @@ ftdi_set_baud (USB_DEVICE_INFO * dev, uint32_t baud, uint16_t port)
       sizeof (USB_DEV_REQ), 0, 0);
 }
 
+/* Setting FTDI data characteristics */
+static int
+ftdi_set_data (
+    USB_DEVICE_INFO * dev,
+    uint8_t bits, /* Number of data bits */
+    uint8_t parity, /* 0 = None, 1 = Odd, 2 = Even, 3 = Mark, 4 = Space */
+    uint8_t stb, /* Stop Bits 0 = 1, 1 = 1.5, 2 = 2 */
+    uint8_t tx, /* 1 = TX ON (break), 0 = TX OFF (normal state) */
+    uint16_t port)
+{
+  USB_DEV_REQ req;
+  uint16_t dc = (tx & 0x1) << 14 |
+    (stb & 0x7) << 11 | (parity & 0x7) << 8 | bits;
+
+  req.bmRequestType = 0x40;
+  req.bRequest = USB_FTDI_SET_DATA;
+  req.wValue = dc;
+  req.wIndex = port;
+  req.wLength = 0;
+
+  return usb_control_transfer (dev, (addr_t) & req,
+      sizeof (USB_DEV_REQ), 0, 0);
+}
+
 static bool
 ftdi_init (USB_DEVICE_INFO *dev, USB_CFG_DESC *cfg, USB_IF_DESC *ifd)
 {
@@ -118,6 +142,13 @@ ftdi_init (USB_DEVICE_INFO *dev, USB_CFG_DESC *cfg, USB_IF_DESC *ifd)
     return FALSE;
   }
 
+  /* Set data characteristics */
+  DLOG ("Setting data characteristics ...");
+  if (ftdi_set_data (dev, 8, 0, 0, 0, 0)) {
+    DLOG ("Setting data characteristics failed!");
+    return FALSE;
+  }
+
   return TRUE;
 }
 
@@ -125,16 +156,20 @@ static void
 ftdi_test (void)
 {
   DLOG ("FTDI Tests");
+#if 0
   unsigned char buf[10];
   int act_len = 0, i = 0;
-
-  act_len = usb_ftdi_read (buf, 2);
+  act_len = usb_ftdi_read (buf, 5);
   DLOG ("%d bytes read", act_len);
   for (i = 0; i < act_len; i++) {
     DLOG ("Byte %d : 0x%X", i + 1, buf[i]);
   }
-
-  usb_ftdi_putc ('F');
+#endif
+  usb_ftdi_putc ('Q');
+  usb_ftdi_putc ('u');
+  usb_ftdi_putc ('e');
+  usb_ftdi_putc ('s');
+  usb_ftdi_putc ('t');
 }
 
 static bool
@@ -143,18 +178,9 @@ ftdi_probe (USB_DEVICE_INFO *dev, USB_CFG_DESC *cfg, USB_IF_DESC *ifd)
   if (dev->devd.idVendor == 0x0403) {
     DLOG ("An FTDI chip is detected");
 
-    switch (dev->devd.idProduct) {
-      case 0x6001 :
-        DLOG ("FT232 is detected");
-        break;
-
-      default :
-        DLOG ("FT232 not found. Product ID is: 0x%X",
-            dev->devd.idProduct);
-        return FALSE;
+    if (dev->devd.idProduct != 0x6001) {
+      DLOG ("FT232 not found. Product ID is: 0x%X", dev->devd.idProduct);
     }
-  } else {
-    return FALSE;
   }
 
   if (!ftdi_init(dev, cfg, ifd)) {
@@ -172,15 +198,22 @@ void
 usb_ftdi_putc (char c)
 {
   unsigned char buf[2];
-  int count = 0;
+  int count = 0, buf_size = 0;
 
+#if 0
+  /* This is not necessary for newer chips */
   /* First byte is reserved, it contains length and Port ID */
   /* B0 = 1, B1 = 0, B2..7 = Length of Message */
   buf[0] = (1 << 2) | 1;
   /* Actual data to be transfered */
   buf[1] = c;
+  buf_size = 2;
+#else
+  buf[0] = c;
+  buf_size = 1;
+#endif
 
-  if ((count = usb_ftdi_write (buf, 2)) != 2)
+  if ((count = usb_ftdi_write (buf, buf_size)) != buf_size)
     DLOG ("usb_ftdi_putc failed, %d bytes sent", count);
   else
     DLOG ("usb_ftdi_putc done, %d bytes sent", count);
@@ -202,7 +235,7 @@ int
 usb_ftdi_read (unsigned char * buf, uint32_t len)
 {
   uint32_t act_len = 0;
-  uint8_t endp = 2;
+  uint8_t endp = 1;
 
   usb_bulk_transfer (&ftdi_dev, endp, (addr_t) buf, len,
       64, DIR_IN, &act_len);
