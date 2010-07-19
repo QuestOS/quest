@@ -34,6 +34,7 @@
 #define FTDI_BASE_CLOCK    48000000
 
 static USB_DEVICE_INFO ftdi_dev;
+static uint8_t in_ept = 0, out_ept = 0;
 
 bool usb_ftdi_driver_init (void);
 void usb_ftdi_putc (char);
@@ -125,8 +126,38 @@ ftdi_set_data (
 static bool
 ftdi_init (USB_DEVICE_INFO *dev, USB_CFG_DESC *cfg, USB_IF_DESC *ifd)
 {
-  // TODO
+  uint8_t tmp[50];
+  int i = 0;
+  USB_EPT_DESC *ftdiept;
+
   ftdi_dev = *(dev);
+  memset (tmp, 0, 50);
+
+  /* Parsing endpoints */
+  DLOG ("Parsing FTDI chip endpoints ...");
+  usb_get_descriptor (dev, USB_TYPE_CFG_DESC, 0, 0, cfg->wTotalLength,
+      (addr_t)tmp);
+  for (i = 0; i < cfg->wTotalLength; i += ftdiept->bLength) {
+    ftdiept = (USB_EPT_DESC *) (tmp + i);
+    if ((ftdiept->bDescriptorType == USB_TYPE_EPT_DESC) &&
+        ((ftdiept->bmAttributes & 0x3) == 0x2)) {
+      DLOG ("Found Bulk Endpoint");
+      switch (ftdiept->bEndpointAddress & 0x80) {
+        case 0x80 :
+          in_ept = ftdiept->bEndpointAddress & 0xF;
+          DLOG ("IN Endpoint. Address is: 0x%X", in_ept);
+          break;
+
+        case 0x00 :
+          out_ept = ftdiept->bEndpointAddress & 0xF;
+          DLOG ("OUT Endpoint. Address is: 0x%X", out_ept);
+          break;
+
+        default :
+          break;
+      }
+    }
+  }
 
   /* Reset the chip */
   DLOG ("Resetting FTDI chip ...");
@@ -156,7 +187,7 @@ static void
 ftdi_test (void)
 {
   DLOG ("FTDI Tests");
-#if 0
+#if 1
   unsigned char buf[10];
   int act_len = 0, i = 0;
   act_len = usb_ftdi_read (buf, 5);
@@ -179,8 +210,12 @@ ftdi_probe (USB_DEVICE_INFO *dev, USB_CFG_DESC *cfg, USB_IF_DESC *ifd)
     DLOG ("An FTDI chip is detected");
 
     if (dev->devd.idProduct != 0x6001) {
-      DLOG ("FT232 not found. Product ID is: 0x%X", dev->devd.idProduct);
+      DLOG ("FT232 not found. Product ID is: 0x%X",
+          dev->devd.idProduct);
+      return FALSE;
     }
+  } else {
+    return FALSE;
   }
 
   if (!ftdi_init(dev, cfg, ifd)) {
@@ -223,9 +258,8 @@ int
 usb_ftdi_write (unsigned char * buf, uint32_t len)
 {
   uint32_t act_len = 0;
-  uint8_t endp = 2;
 
-  usb_bulk_transfer (&ftdi_dev, endp, (addr_t) buf, len,
+  usb_bulk_transfer (&ftdi_dev, out_ept, (addr_t) buf, len,
       64, DIR_OUT, &act_len);
   
   return act_len;
@@ -235,9 +269,8 @@ int
 usb_ftdi_read (unsigned char * buf, uint32_t len)
 {
   uint32_t act_len = 0;
-  uint8_t endp = 1;
 
-  usb_bulk_transfer (&ftdi_dev, endp, (addr_t) buf, len,
+  usb_bulk_transfer (&ftdi_dev, in_ept, (addr_t) buf, len,
       64, DIR_IN, &act_len);
   
   return act_len;
