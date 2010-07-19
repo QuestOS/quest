@@ -1983,12 +1983,14 @@ rtl8225z2_b_rf_init(void)
 
   rtl8225_write(0x0, 0x1B7);
 
+#if 0
   DLOG ("writing rxgain");
   for (i = 0; i < ARRAY_SIZE(rtl8225z2_rxgain); i++) {
     DLOG ("rxgain[%d]", i);
     rtl8225_write(0x1, i + 1);
     rtl8225_write(0x2, rtl8225z2_rxgain[i]);
   }
+#endif
 
   rtl8225_write(0x3, 0x080);
   rtl8225_write(0x5, 0x004);
@@ -2003,6 +2005,7 @@ rtl8225z2_b_rf_init(void)
   iowrite8(&map->TX_GAIN_OFDM, 0x07);
   iowrite8(&map->TX_ANTENNA, 0x03);
 
+#if 0
   DLOG ("writing agc");
   rtl8225_write_phy_ofdm(0x80, 0x12);
   for (i = 0; i < ARRAY_SIZE(rtl8225z2_agc); i++) {
@@ -2020,6 +2023,7 @@ rtl8225z2_b_rf_init(void)
   rtl8225_write_phy_ofdm(0xa4, 0xb6);
   rtl8225_write_phy_ofdm(0x85, 0xfc);
   rtl8225_write_phy_cck(0xc1, 0x88);
+#endif
 
   DLOG ("rf init finished");
 }
