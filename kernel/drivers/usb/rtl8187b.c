@@ -43,6 +43,7 @@
 #include <drivers/net/ieee80211.h>
 #include <drivers/net/ieee80211_standard.h>
 #include <util/printf.h>
+#include <util/crc32.h>
 #include <kernel.h>
 #include <drivers/eeprom/93cx6.h>
 #include "rtl818x.h"
@@ -633,6 +634,96 @@ init_hw (void)
   return TRUE;
 }
 
+/* ************************************************** */
+
+static void
+debug_buf (char *prefix, uint8 *buf, u32 len)
+{
+  s32 i, j;
+
+  for (i=0;i<len;i+=8) {
+    com1_printf ("%s: ", prefix);
+    for (j=0;j<8;j++) {
+      if (i+j >= len) break;
+      com1_printf ("%.02X ", buf[i+j]);
+    }
+    com1_printf ("\n");
+  }
+}
+
+/* ************************************************** */
+
+#define TX_MAXPKT 64
+static u8 tx_endps[4] = { 6, 7, 5, 4 };
+static u8 cur_tx_ep = 0;
+
+struct rtl8187_tx_hdr {
+  __le32 flags;
+  __le16 rts_duration;
+  __le16 len;
+  __le32 retry;
+} PACKED;
+
+struct rtl8187b_tx_hdr {
+  __le32 flags;
+  __le16 rts_duration;
+  __le16 len;
+  __le32 unused_1;
+  __le16 unused_2;
+  __le16 tx_duration;
+  __le32 unused_3;
+  __le32 retry;
+  __le32 unused_4[2];
+} PACKED;
+
+static void
+tx (void)
+{
+  u32 act_len, fcs, len;
+  uint8 pkt[] = {
+    0x00, 0x01,                 /* MGMT AssocReq toDS */
+    0x01, 0x05,
+    0x00, 0x26, 0xCB, 0xD0, 0x77, 0x46, /* DA */
+    0x00, 0x1E, 0x2A, 0x42, 0x73, 0x7E, /* SA */
+    0x00, 0x26, 0xCB, 0xD0, 0x77, 0x46, /* BSS ID */
+    0x00, 0x00,                         /* SeqCtrl */
+    /* SSID BU Wireless Help */
+    0x00, 0x10, 0x42, 0x55, 0x20, 0x57, 0x69, 0x72, 0x65,
+    0x6C, 0x65, 0x73, 0x73, 0x20, 0x48, 0x65, 0x6C, 0x70,
+    /* Supported Rates */
+    0x01, 0x08, 0x82, 0x84, 0x8B, 0x0C, 0x12, 0x96, 0x18, 0x24
+  };
+  struct rtl8187b_tx_hdr hdr;
+  uint8 buf[sizeof (hdr)+sizeof (pkt)+4];     /* including FCS */
+
+  len = sizeof (buf);
+
+  memset (&hdr, 0, sizeof (hdr));
+
+  hdr.flags = hdr.len = sizeof (pkt+4);
+  hdr.flags |= RTL818X_TX_DESC_FLAG_NO_ENC;
+  hdr.flags |= RTL818X_TX_DESC_FLAG_FS;
+  hdr.flags |= RTL818X_TX_DESC_FLAG_LS;
+
+  memcpy (buf, &hdr, sizeof (hdr));
+  memcpy (buf+sizeof (hdr), pkt, sizeof (pkt));
+
+  fcs = ether_crc_le (sizeof (pkt), buf + sizeof (hdr));
+  memcpy (buf + sizeof (hdr) + sizeof (pkt), &fcs, sizeof (fcs));
+
+  debug_buf ("rtl8187b: tx", buf, len);
+
+  if (usb_bulk_transfer (usbdev, tx_endps[cur_tx_ep], &buf, len,
+                         TX_MAXPKT, DIR_OUT, &act_len) == 0) {
+    DLOG ("tx: sent %d bytes (FCS=0x%.08X)", act_len, fcs);
+  }
+
+  cur_tx_ep++;
+  cur_tx_ep &= 0x03;
+}
+
+/* ************************************************** */
+
 static u32 rx_conf;
 
 static uint32 rx_stack[1024] ALIGNED(0x1000);
@@ -678,7 +769,7 @@ debug_info_elements (u8 *buf, s32 len)
   uint8 id = 0;
   DLOG ("Info Elements: (%p, %d)", buf, len);
   while (len > 0) {
-    if (buf[0] < id) 
+    if (buf[0] < id)
       /* elements come in ascending order by ID */
       break;
     id = buf[0];
@@ -686,13 +777,50 @@ debug_info_elements (u8 *buf, s32 len)
   }
 }
 
+struct rtl8187_rx_hdr {
+  __le32 flags;
+  u8 noise;
+  u8 signal;
+  u8 agc;
+  u8 reserved;
+  __le64 mac_time;
+} PACKED;
+
+struct rtl8187b_rx_hdr {
+  __le32 flags;
+  __le64 mac_time;
+  u8 sq;
+  u8 rssi;
+  u8 agc;
+  u8 flags2;
+  __le16 snr_long2end;
+  s8 pwdb_g12;
+  u8 fot;
+} PACKED;
+
 static void
 debug_rx (u8 *buf, u32 len)
 {
   u32 req = 0;
   struct ieee80211_hdr *h = (struct ieee80211_hdr *) buf;
   char *type;
-  
+  struct rtl8187b_rx_hdr *hdr =
+    /* "footer" really */
+    (struct rtl8187b_rx_hdr *) &buf[len - sizeof (struct rtl8187b_rx_hdr)];
+
+  DLOG ("HDR: flags=0x%.08X agc=0x%X rssi=0x%X mactime=0x%.08X %.08X",
+        hdr->flags, hdr->agc, hdr->rssi,
+        (u32) (hdr->mac_time >> 32),
+        (u32) hdr->mac_time);
+
+  DLOG ("CRC_LE=0x%.08X CRC=0x%.08X",
+        ether_crc_le (len - sizeof (struct rtl8187b_rx_hdr) - 4, buf),
+        ether_crc (len - sizeof (struct rtl8187b_rx_hdr) - 4, buf));
+  DLOG ("FCS=0x%.08X ~FCS=0x%.08X rFCS=0x%.08X ~rFCS=0x%.08X",
+        *((u32 *) &buf[len - sizeof (struct rtl8187b_rx_hdr) - 4]),
+        ~(*((u32 *) &buf[len - sizeof (struct rtl8187b_rx_hdr) - 4])),
+        bitrev32 (*((u32 *) &buf[len - sizeof (struct rtl8187b_rx_hdr) - 4])),
+        bitrev32 (~(*((u32 *) &buf[len - sizeof (struct rtl8187b_rx_hdr) - 4]))));
   req += sizeof (struct ieee80211_hdr);
   if (len < req) return;
 
@@ -728,10 +856,11 @@ debug_rx (u8 *buf, u32 len)
           m->u.beacon.capab_info & WLAN_CAPABILITY_IBSS ? "IBSS" : "");
     debug_info_elements (m->u.beacon.variable,
                          len
-                         /* minus FCS */ 
+                         /* minus FCS */
                          - 4
                          /* minus header */
                          - ((u32) m->u.beacon.variable - (u32) m));
+    tx ();
   } else if (ieee80211_is_assoc_req (h->frame_control)) {
     struct ieee80211_mgmt *m = (struct ieee80211_mgmt *) buf;
     uint8 *v = m->u.assoc_req.variable;
@@ -811,7 +940,7 @@ debug_rx (u8 *buf, u32 len)
       DLOG ("    SA=%.02X:%.02X:%.02X:%.02X:%.02X:%.02X",
             h->addr4[0], h->addr4[1], h->addr4[2],
             h->addr4[3], h->addr4[4], h->addr4[5]);
-    }    
+    }
   }
 }
 
@@ -829,11 +958,7 @@ rx_thread (void)
       if (act_len > 0) {
 #ifdef DEBUG_RTL8187B
         DLOG ("rx: act_len=%d", act_len);
-        for (i=0;i+8<act_len;i+=8) {
-          DLOG ("rx: %.02X %.02X %.02X %.02X %.02X %.02X %.02X %.02X",
-                buf[i+0], buf[i+1], buf[i+2], buf[i+3],
-                buf[i+4], buf[i+5], buf[i+6], buf[i+7]);
-        }
+        debug_buf ("rtl8187b: rx", buf, act_len);
         debug_rx (buf, act_len);
 #endif
       }
@@ -920,6 +1045,12 @@ start (void)
 {
   u32 reg;
   bool ret;
+  struct ieee80211_tx_queue_params tx_q_p = {
+    .txop = 94,
+    .cw_min = 7,
+    .cw_max = 15,
+    .aifs = 2
+  };
 
   ret = init_hw();
 
@@ -927,6 +1058,11 @@ start (void)
     goto rtl8187_start_exit;
 
   //init_usb_anchor(&priv->anchored);
+
+  conf_tx (0, &tx_q_p);
+  conf_tx (1, &tx_q_p);
+  conf_tx (2, &tx_q_p);
+  conf_tx (3, &tx_q_p);
 
   if (is_rtl8187b) {
     reg = RTL818X_RX_CONF_MGMT |
