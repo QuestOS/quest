@@ -15,54 +15,30 @@
  *  along with this program.  If not, see <http://www.gnu.org/licenses/>.
  */
 
-#ifndef __TYPES_H__
-#define __TYPES_H__
+/* Adopted from Linux */
 
-#define INT_MAX 0xFFFFFFFF
+#ifndef _UTIL_BITREV_H_
+#define _UTIL_BITREV_H_
 
-#ifndef __ASSEMBLER__
+extern u8 const byte_rev_table[256];
 
-#define TRUE 1
-#define FALSE 0
-#define PRIVATE static
-#define PACKED __attribute__ ((packed))
-#define SQUELCH_UNUSED __attribute__((unused))
-#define ALIGNED(x) __attribute__((aligned (x)))
+static inline u8 bitrev8(u8 byte)
+{
+  return byte_rev_table[byte];
+}
 
-typedef unsigned char uint8;
-typedef unsigned short int uint16;
-typedef unsigned long int uint32;
-typedef unsigned long long int uint64;
-
-typedef signed char sint8, s8;
-typedef signed short int sint16, s16;
-typedef signed long int sint32, s32, size_t;
-typedef signed long long int sint64, s64;
-
-typedef signed char bool;
-
-typedef unsigned long uint;
-typedef signed long sint;
-
-typedef uint8 uint8_t, u8;
-typedef uint16 uint16_t, u16, __le16;
-typedef uint32 uint32_t, u32, __le32;
-typedef uint64 uint64_t, u64, __le64;
-
-typedef void *addr_t;
-
-#endif // [#ifndef __ASSEMBLER__]
+extern u16 bitrev16(u16 in);
+extern u32 bitrev32(u32 in);
 
 #endif
 
-
-/* 
+/*
  * Local Variables:
  * indent-tabs-mode: nil
  * mode: C
  * c-file-style: "gnu"
  * c-basic-offset: 2
- * End: 
+ * End:
  */
 
 /* vi: set et sw=2 sts=2: */
