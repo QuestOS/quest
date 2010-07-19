@@ -844,11 +844,38 @@ rx_thread (void)
 #define STATUS_EPT 9
 #define STATUS_MAXPKT 64
 
+/*
+ * Read from status buffer:
+ *
+ * bits [30:31] = cmd type:
+ * - 0 indicates tx beacon interrupt
+ * - 1 indicates tx close descriptor
+ *
+ * In the case of tx beacon interrupt:
+ * [0:9] = Last Beacon CW
+ * [10:29] = reserved
+ * [30:31] = 00b
+ * [32:63] = Last Beacon TSF
+ *
+ * If it's tx close descriptor:
+ * [0:7] = Packet Retry Count
+ * [8:14] = RTS Retry Count
+ * [15] = TOK
+ * [16:27] = Sequence No
+ * [28] = LS
+ * [29] = FS
+ * [30:31] = 01b
+ * [32:47] = unused (reserved?)
+ * [48:63] = MAC Used Time
+ */
+
 static void
 status_thread (void)
 {
   u64 buf;
-  u32 act_len;
+  u32 act_len, pkt_rc, seq_no;
+  bool tok;
+
   DLOG ("status: hello from 0x%x", str ());
   for (;;) {
     if (usb_bulk_transfer (usbdev, STATUS_EPT, &buf, sizeof (buf),
@@ -856,9 +883,23 @@ status_thread (void)
       if (act_len > 0) {
         DLOG ("status: 0x%.08X %.08X",
               (u32) (buf >> 32), (u32) buf);
+        if (((buf >> 30) & 0x3) == 1) {
+          /* TX close descriptor */
+          pkt_rc = buf & 0xFF;
+          tok = (buf & (1 << 15) ? TRUE : FALSE);
+          seq_no = (buf >> 16) && 0xFFF;
+          DLOG ("status: TX close: pkt_rc=%d tok=%d seq_no=%d LS=%d FS=%d",
+                pkt_rc, tok, seq_no,
+                (buf & (1 << 28)) ? TRUE : FALSE,
+                (buf & (1 << 29)) ? TRUE : FALSE);
+        } else {
+          /* TX beacon interrupt */
+          DLOG ("status: TX beacon: last_CW=%d last_TSF=%d",
+                buf & 0x3FF,
+                buf >> 32);
+        }
       }
     }
-    DLOG ("status: tick");
   }
 }
 
