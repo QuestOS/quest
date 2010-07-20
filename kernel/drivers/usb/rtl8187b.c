@@ -43,7 +43,6 @@
 #include <drivers/net/ieee80211.h>
 #include <drivers/net/ieee80211_standard.h>
 #include <util/printf.h>
-#include <util/crc32.h>
 #include <kernel.h>
 #include <drivers/eeprom/93cx6.h>
 #include "rtl818x.h"
@@ -679,7 +678,8 @@ struct rtl8187b_tx_hdr {
 static void
 tx (void)
 {
-  u32 act_len, fcs, len;
+  u32 act_len, len;
+#if 0
   uint8 pkt[] = {
     0x00, 0x01,                 /* MGMT AssocReq toDS */
     0x01, 0x05,
@@ -693,36 +693,114 @@ tx (void)
     /* Supported Rates */
     0x01, 0x08, 0x82, 0x84, 0x8B, 0x0C, 0x12, 0x96, 0x18, 0x24
   };
+#endif
+#if 0
+  uint8 pkt[] = {
+    0x80, 0x00,                 /* MGMT Beacon */
+    0x00, 0x00,
+    0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, /* DA */
+    0x00, 0x1E, 0x2A, 0x42, 0x73, 0x7E, /* SA */
+    0x00, 0x1E, 0x2A, 0x42, 0x73, 0x7E, /* BSS ID */
+    0x00, 0x00,                         /* SeqCtrl */
+    0x8E, 0x91, 0x42, 0x11, 0x67, 0x00, 0x00, 0x00, /* timestamp */
+    0x64, 0x00,                                     /* interval */
+    0x01, 0x04,                                     /* capability */
+    /* SSID Test */
+    0x00, 0x04, 0x54, 0x65, 0x73, 0x74,
+    /* Supported Rates */
+    0x01, 0x08, 0x82, 0x84, 0x8B, 0x0C, 0x12, 0x96, 0x18, 0x24
+  };
+#endif
+#if 1
+  uint8 pkt[] = {
+    0x80, 0x00, 0x00, 0x00,
+    0xff, 0xff, 0xff, 0xff, 0xff, 0xff,
+    //0x00, 0x23, 0x4d, 0xaf, 0x00, 0x3c,
+    //0xb6, 0x27, 0x07, 0xb6, 0x00, 0x3c,
+    0x00, 0x1E, 0x2A, 0x42, 0x73, 0x7E, /* SA */
+    0xb6, 0x27, 0x07, 0xb6, 0x73, 0x7E, /* BSS ID */
+    0x40, 0x46,
+    0x00, 0x62, 0xc5, 0x02, 0x00, 0x00, 0x00, 0x00,
+    0x64, 0x00, 
+    0x22, 0x00, 
+    0x00, 0x06, 0x6c, 0x65, 0x6e, 0x6f, 0x76, 0x63,
+    0x01, 0x08, 0x82, 0x84, 0x8b, 0x96, 0x0c, 0x12, 0x18, 0x24,
+    0x03, 0x01, 0x01,
+    0x06, 0x02, 0x00, 0x00,
+    0x2a, 0x01, 0x00,
+    0x32, 0x04, 0x30, 0x48, 0x60, 0x6c
+  };
+#endif
   struct rtl8187b_tx_hdr hdr;
-  uint8 buf[sizeof (hdr)+sizeof (pkt)+4];     /* including FCS */
+
+#if 0
+  uint8 buf[] = {
+    0x04, 0x80, 0x00, 0x30, 0x00, 0x00, 0x04, 0x00, 
+    0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 
+    0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 
+    0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 
+    0x00, 0x01, 0x01, 0x05, 0x00, 0x26, 0xCB, 0xD0, 
+    0x77, 0x46, 0x00, 0x1E, 0x2A, 0x42, 0x73, 0x7E, 
+    0x00, 0x26, 0xCB, 0xD0, 0x77, 0x46, 0x00, 0x00, 
+    0x00, 0x10, 0x42, 0x55, 0x20, 0x57, 0x69, 0x72, 
+    0x65, 0x6C, 0x65, 0x73, 0x73, 0x20, 0x48, 0x65, 
+    0x6C, 0x70, 0x01, 0x08, 0x82, 0x84, 0x8B, 0x0C, 
+    0x12, 0x96, 0x18, 0x24, 0x5E, 0xEC, 0xE6, 0x76 
+  };
+
+  len = sizeof (buf);
+#else
+
+  uint8 buf[sizeof (hdr)+sizeof (pkt)];
 
   len = sizeof (buf);
 
   memset (&hdr, 0, sizeof (hdr));
 
-  hdr.flags = hdr.len = sizeof (pkt+4);
+  hdr.len = hdr.flags = sizeof (pkt);
   hdr.flags |= RTL818X_TX_DESC_FLAG_NO_ENC;
   hdr.flags |= RTL818X_TX_DESC_FLAG_FS;
   hdr.flags |= RTL818X_TX_DESC_FLAG_LS;
+  hdr.retry = 1 << 8;
+  hdr.tx_duration = 0x0831;
 
   memcpy (buf, &hdr, sizeof (hdr));
   memcpy (buf+sizeof (hdr), pkt, sizeof (pkt));
 
-  fcs = ether_crc_le (sizeof (pkt), buf + sizeof (hdr));
-  memcpy (buf + sizeof (hdr) + sizeof (pkt), &fcs, sizeof (fcs));
+#endif
 
   debug_buf ("rtl8187b: tx", buf, len);
 
   if (usb_bulk_transfer (usbdev, tx_endps[cur_tx_ep], &buf, len,
                          TX_MAXPKT, DIR_OUT, &act_len) == 0) {
-    DLOG ("tx: sent %d bytes (FCS=0x%.08X)", act_len, fcs);
+    DLOG ("tx: sent %d bytes", act_len);
   }
 
   cur_tx_ep++;
   cur_tx_ep &= 0x03;
 }
 
+static uint32 beacon_stack[1024] ALIGNED(0x1000);
+
+static void
+beacon_thread (void)
+{
+  DLOG ("beacon: hello from 0x%x", str ());
+  for (;;) {
+    msleep (100);
+    tx ();
+  }
+}
+
 /* ************************************************** */
+
+/*
+  15:48:57.615816 314us Probe Request (lenova) [1.0* 2.0* 5.5* 11.0* 6.0 9.0 12.0 
+  18.0 Mbit]
+        0x0000:  4000 3a01 ffff ffff ffff 0023 4daf 003c
+        0x0010:  ffff ffff ffff 7000 0006 6c65 6e6f 7661
+        0x0020:  0108 8284 8b96 0c12 1824 3204 3048 606c
+*/
 
 static u32 rx_conf;
 
@@ -813,14 +891,6 @@ debug_rx (u8 *buf, u32 len)
         (u32) (hdr->mac_time >> 32),
         (u32) hdr->mac_time);
 
-  DLOG ("CRC_LE=0x%.08X CRC=0x%.08X",
-        ether_crc_le (len - sizeof (struct rtl8187b_rx_hdr) - 4, buf),
-        ether_crc (len - sizeof (struct rtl8187b_rx_hdr) - 4, buf));
-  DLOG ("FCS=0x%.08X ~FCS=0x%.08X rFCS=0x%.08X ~rFCS=0x%.08X",
-        *((u32 *) &buf[len - sizeof (struct rtl8187b_rx_hdr) - 4]),
-        ~(*((u32 *) &buf[len - sizeof (struct rtl8187b_rx_hdr) - 4])),
-        bitrev32 (*((u32 *) &buf[len - sizeof (struct rtl8187b_rx_hdr) - 4])),
-        bitrev32 (~(*((u32 *) &buf[len - sizeof (struct rtl8187b_rx_hdr) - 4]))));
   req += sizeof (struct ieee80211_hdr);
   if (len < req) return;
 
@@ -860,7 +930,6 @@ debug_rx (u8 *buf, u32 len)
                          - 4
                          /* minus header */
                          - ((u32) m->u.beacon.variable - (u32) m));
-    tx ();
   } else if (ieee80211_is_assoc_req (h->frame_control)) {
     struct ieee80211_mgmt *m = (struct ieee80211_mgmt *) buf;
     uint8 *v = m->u.assoc_req.variable;
@@ -884,6 +953,9 @@ debug_rx (u8 *buf, u32 len)
     uint8 *v = m->u.probe_req.variable;
     s32 l = len;
     DLOG ("PROBE REQUEST");
+    DLOG ("    SA=%.02X:%.02X:%.02X:%.02X:%.02X:%.02X",
+            h->addr2[0], h->addr2[1], h->addr2[2],
+            h->addr2[3], h->addr2[4], h->addr2[5]);
     debug_info_element (&v, &l); /* SSID */
     debug_info_element (&v, &l); /* Supported Rates */
   } else if (ieee80211_is_probe_resp (h->frame_control)) {
@@ -1023,7 +1095,8 @@ status_thread (void)
                 buf & 0x3FF,
                 buf >> 32);
         }
-      }
+      } else
+        DLOG ("status: act_len==0");
     }
   }
 }
@@ -1298,6 +1371,8 @@ probe (USB_DEVICE_INFO *info, USB_CFG_DESC *cfgd, USB_IF_DESC *ifd)
   };
 
   config (&test_conf);
+
+  start_kernel_thread ((u32) beacon_thread, (u32) &beacon_stack[1023]);
 
   return TRUE;
 }
@@ -2160,7 +2235,7 @@ rtl8225z2_b_rf_init(void)
 
   rtl8225_write(0x0, 0x1B7);
 
-#if 0
+#if 1
   DLOG ("writing rxgain");
   for (i = 0; i < ARRAY_SIZE(rtl8225z2_rxgain); i++) {
     DLOG ("rxgain[%d]", i);
@@ -2182,7 +2257,7 @@ rtl8225z2_b_rf_init(void)
   iowrite8(&map->TX_GAIN_OFDM, 0x07);
   iowrite8(&map->TX_ANTENNA, 0x03);
 
-#if 0
+#if 1
   DLOG ("writing agc");
   rtl8225_write_phy_ofdm(0x80, 0x12);
   for (i = 0; i < ARRAY_SIZE(rtl8225z2_agc); i++) {
