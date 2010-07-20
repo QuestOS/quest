@@ -94,7 +94,7 @@ extern void
 process_sleepqueue (void)
 {
   uint64 now;
-  task_id *q;
+  task_id *q, next;
   quest_tss *tssp;
 
   RDTSC (now);
@@ -106,20 +106,21 @@ process_sleepqueue (void)
   tssp = lookup_TSS (sleepqueue);
   for (;;) {
     /* examine finish time of task */
+    next = tssp->next;
 
     if (tssp->time <= now) {
       DLOG ("waking task 0x%x", *q);
       /* time to wake-up */
       runqueue_append (tssp->priority, *q);
       /* remove from sleepqueue */
-      *q = tssp->next;
+      *q = next;
       tssp->time = 0;
-    }
+    } else
+      q = &tssp->next;
 
     /* move to next sleeper */
-    if (tssp->next == 0)
+    if (next == 0)
       break;
-    q = &tssp->next;
     tssp = lookup_TSS (*q);
   }
 }
