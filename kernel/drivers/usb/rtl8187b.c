@@ -675,10 +675,71 @@ struct rtl8187b_tx_hdr {
   __le32 unused_4[2];
 } PACKED;
 
-static void
-tx (void)
+static bool
+tx (uint8 *pkt, u32 len)
 {
-  u32 act_len, len;
+  u32 act_len;
+  bool ret;
+  struct rtl8187b_tx_hdr hdr;
+  static uint8 buf[2500];
+
+  memset (&hdr, 0, sizeof (hdr));
+
+  hdr.len = hdr.flags = len;
+  hdr.flags |= RTL818X_TX_DESC_FLAG_NO_ENC;
+  hdr.flags |= RTL818X_TX_DESC_FLAG_FS;
+  hdr.flags |= RTL818X_TX_DESC_FLAG_LS;
+  hdr.retry = 1 << 8;
+  hdr.tx_duration = 0x0831;
+
+  memcpy (buf, &hdr, sizeof (hdr));
+  memcpy (buf+sizeof (hdr), pkt, len);
+
+  len += sizeof (hdr);
+
+  debug_buf ("rtl8187b: tx", buf, len);
+
+  if (usb_bulk_transfer (usbdev, tx_endps[cur_tx_ep], &buf, len,
+                         TX_MAXPKT, DIR_OUT, &act_len) == 0) {
+    DLOG ("tx: sent %d bytes", act_len);
+    ret=TRUE;
+  } else ret=FALSE;
+
+  cur_tx_ep++;
+  cur_tx_ep &= 0x03;
+
+  return ret;
+}
+
+static void
+tx_probe_resp (void)
+{
+  uint8 pkt[] = {
+    0x50, 0x00, 0x3A, 0x01,             /* PROBE RESPONSE */
+    0x00, 0x23, 0x4D, 0xAF, 0x00, 0x3C, /* DA */
+
+    //0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF,
+    //0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF,
+    0x00, 0x1E, 0x2A, 0x42, 0x73, 0x7E, /* SA */
+    0xb6, 0x27, 0x07, 0xb6, 0x73, 0x7E, /* BSS ID */
+
+    0x20, 0x00, 
+
+    0x8E, 0x91, 0x42, 0x11, 0x67, 0x00, 0x00, 0x00, /* timestamp */
+    0x64, 0x00,                                     /* interval */
+    0x01, 0x04,                                     /* capability */
+
+    0x00, 0x06, 0x6C, 0x65, 0x6E, 0x6F, 0x76, 0x63, /* SSID lenovc */
+
+    0x01, 0x08, 0x82, 0x84, 0x8B, 0x96, 0x0C, 0x12, 0x18, 0x24
+  };
+  tx (pkt, sizeof (pkt));
+}
+
+static void
+tx_beacon (void)
+{
+  u32 len;
 #if 0
   uint8 pkt[] = {
     0x00, 0x01,                 /* MGMT AssocReq toDS */
@@ -731,53 +792,10 @@ tx (void)
     0x32, 0x04, 0x30, 0x48, 0x60, 0x6c
   };
 #endif
-  struct rtl8187b_tx_hdr hdr;
 
-#if 0
-  uint8 buf[] = {
-    0x04, 0x80, 0x00, 0x30, 0x00, 0x00, 0x04, 0x00, 
-    0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 
-    0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 
-    0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 
-    0x00, 0x01, 0x01, 0x05, 0x00, 0x26, 0xCB, 0xD0, 
-    0x77, 0x46, 0x00, 0x1E, 0x2A, 0x42, 0x73, 0x7E, 
-    0x00, 0x26, 0xCB, 0xD0, 0x77, 0x46, 0x00, 0x00, 
-    0x00, 0x10, 0x42, 0x55, 0x20, 0x57, 0x69, 0x72, 
-    0x65, 0x6C, 0x65, 0x73, 0x73, 0x20, 0x48, 0x65, 
-    0x6C, 0x70, 0x01, 0x08, 0x82, 0x84, 0x8B, 0x0C, 
-    0x12, 0x96, 0x18, 0x24, 0x5E, 0xEC, 0xE6, 0x76 
-  };
+  len = sizeof (pkt);
 
-  len = sizeof (buf);
-#else
-
-  uint8 buf[sizeof (hdr)+sizeof (pkt)];
-
-  len = sizeof (buf);
-
-  memset (&hdr, 0, sizeof (hdr));
-
-  hdr.len = hdr.flags = sizeof (pkt);
-  hdr.flags |= RTL818X_TX_DESC_FLAG_NO_ENC;
-  hdr.flags |= RTL818X_TX_DESC_FLAG_FS;
-  hdr.flags |= RTL818X_TX_DESC_FLAG_LS;
-  hdr.retry = 1 << 8;
-  hdr.tx_duration = 0x0831;
-
-  memcpy (buf, &hdr, sizeof (hdr));
-  memcpy (buf+sizeof (hdr), pkt, sizeof (pkt));
-
-#endif
-
-  debug_buf ("rtl8187b: tx", buf, len);
-
-  if (usb_bulk_transfer (usbdev, tx_endps[cur_tx_ep], &buf, len,
-                         TX_MAXPKT, DIR_OUT, &act_len) == 0) {
-    DLOG ("tx: sent %d bytes", act_len);
-  }
-
-  cur_tx_ep++;
-  cur_tx_ep &= 0x03;
+  tx (pkt, len);
 }
 
 static uint32 beacon_stack[1024] ALIGNED(0x1000);
@@ -788,7 +806,7 @@ beacon_thread (void)
   DLOG ("beacon: hello from 0x%x", str ());
   for (;;) {
     msleep (100);
-    tx ();
+    tx_beacon ();
   }
 }
 
@@ -800,6 +818,32 @@ beacon_thread (void)
         0x0000:  4000 3a01 ffff ffff ffff 0023 4daf 003c
         0x0010:  ffff ffff ffff 7000 0006 6c65 6e6f 7661
         0x0020:  0108 8284 8b96 0c12 1824 3204 3048 606c
+*/
+
+/*
+rtl8187b: rx: act_len=72
+rtl8187b: rx: 40 00 3A 01 FF FF FF FF 
+rtl8187b: rx: FF FF 00 23 4D AF 00 3C 
+rtl8187b: rx: FF FF FF FF FF FF 20 00 
+rtl8187b: rx: 00 06 6C 65 6E 6F 76 63 
+rtl8187b: rx: 01 08 82 84 8B 96 0C 12 
+rtl8187b: rx: 18 24 32 04 30 48 60 6C 
+rtl8187b: rx: 3E 87 B5 87 34 00 01 00 
+rtl8187b: rx: 45 79 A5 0C 00 00 00 00 
+rtl8187b: rx: 4B 90 FE 00 8E F6 EF 1C 
+rtl8187b: HDR: flags=0x00010034 agc=0xFE rssi=0x90 mactime=0x00000000 0CA57945
+rtl8187b: FC=0x0040 MGMT 0x40 SEQ=0x0020
+rtl8187b: PROBE REQUEST
+rtl8187b:     SA=00:23:4D:AF:00:3C
+rtl8187b:   SSID lenovc
+rtl8187b:   SUPPORTED-RATE 0x82
+rtl8187b:   SUPPORTED-RATE 0x84
+rtl8187b:   SUPPORTED-RATE 0x8B
+rtl8187b:   SUPPORTED-RATE 0x96
+rtl8187b:   SUPPORTED-RATE 0x0C
+rtl8187b:   SUPPORTED-RATE 0x12
+rtl8187b:   SUPPORTED-RATE 0x18
+rtl8187b:   SUPPORTED-RATE 0x24
 */
 
 static u32 rx_conf;
