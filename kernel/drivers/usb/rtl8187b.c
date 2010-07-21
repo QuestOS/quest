@@ -41,6 +41,7 @@
 #include <drivers/usb/uhci.h>
 #include <drivers/net/ethernet.h>
 #include <drivers/net/ieee80211.h>
+#include <drivers/net/mac80211.h>
 #include <drivers/net/ieee80211_standard.h>
 #include <util/printf.h>
 #include <kernel.h>
@@ -254,7 +255,8 @@ rfkill_init (void)
 
 
 static bool
-add_iface (void)
+add_iface (struct ieee80211_hw *dev,
+           struct ieee80211_if_init_conf *conf)
 {
   int i;
   iowrite8 (&map->EEPROM_CMD, RTL818X_EEPROM_CMD_CONFIG);
@@ -265,9 +267,17 @@ add_iface (void)
   return TRUE;
 }
 
-static bool
-config (struct ieee80211_conf *conf)
+static void
+rem_iface (struct ieee80211_hw *dev,
+           struct ieee80211_if_init_conf *conf)
 {
+  DLOG ("rem_iface");
+}
+
+static bool
+config (struct ieee80211_hw *dev, u32 changed)
+{
+  struct ieee80211_conf *conf = &dev->conf;
   u32 reg;
   reg = ioread32 (&map->TX_CONF);
   /* Enable TX loopback during channel changes to avoid TX */
@@ -354,7 +364,9 @@ conf_erp(bool use_short_slot,
 }
 
 static void
-bss_info_changed(struct ieee80211_bss_conf *info,
+bss_info_changed(struct ieee80211_hw *dev,
+                 struct ieee80211_vif *vif,
+                 struct ieee80211_bss_conf *info,
                  u32 changed)
 {
   int i;
@@ -387,7 +399,8 @@ bss_info_changed(struct ieee80211_bss_conf *info,
 
 
 static bool
-conf_tx (u16 queue, const struct ieee80211_tx_queue_params *params)
+conf_tx (struct ieee80211_hw *dev,
+         u16 queue, const struct ieee80211_tx_queue_params *params)
 {
   u8 cw_min, cw_max;
 
@@ -675,11 +688,11 @@ struct rtl8187b_tx_hdr {
   __le32 unused_4[2];
 } PACKED;
 
-static bool
-tx (uint8 *pkt, u32 len)
+static int
+_tx (uint8 *pkt, u32 len)
 {
   u32 act_len;
-  bool ret;
+  int ret;
   struct rtl8187b_tx_hdr hdr;
   static uint8 buf[2500];
 
@@ -702,13 +715,19 @@ tx (uint8 *pkt, u32 len)
   if (usb_bulk_transfer (usbdev, tx_endps[cur_tx_ep], &buf, len,
                          TX_MAXPKT, DIR_OUT, &act_len) == 0) {
     DLOG ("tx: sent %d bytes", act_len);
-    ret=TRUE;
-  } else ret=FALSE;
+    ret=act_len;
+  } else ret=0;
 
   cur_tx_ep++;
   cur_tx_ep &= 0x03;
 
   return ret;
+}
+
+static int
+tx (struct ieee80211_hw *dev, sk_buff_t *skb)
+{
+  return _tx (skb->data, skb->len);
 }
 
 static void
@@ -733,7 +752,7 @@ tx_probe_resp (void)
 
     0x01, 0x08, 0x82, 0x84, 0x8B, 0x96, 0x0C, 0x12, 0x18, 0x24
   };
-  tx (pkt, sizeof (pkt));
+  _tx (pkt, sizeof (pkt));
 }
 
 static void
@@ -795,7 +814,7 @@ tx_beacon (void)
 
   len = sizeof (pkt);
 
-  tx (pkt, len);
+  _tx (pkt, len);
 }
 
 static uint32 beacon_stack[1024] ALIGNED(0x1000);
@@ -1158,28 +1177,17 @@ init_status_urb (void)
 }
 
 static int
-start (void)
+start (struct ieee80211_hw *hw)
 {
   u32 reg;
   bool ret;
-  struct ieee80211_tx_queue_params tx_q_p = {
-    .txop = 94,
-    .cw_min = 7,
-    .cw_max = 15,
-    .aifs = 2
-  };
 
-  ret = init_hw();
+  ret = init_hw ();
 
   if (!ret)
     goto rtl8187_start_exit;
 
   //init_usb_anchor(&priv->anchored);
-
-  conf_tx (0, &tx_q_p);
-  conf_tx (1, &tx_q_p);
-  conf_tx (2, &tx_q_p);
-  conf_tx (3, &tx_q_p);
 
   if (is_rtl8187b) {
     reg = RTL818X_RX_CONF_MGMT |
@@ -1252,13 +1260,31 @@ start (void)
   return ret;
 }
 
+static void
+stop (struct ieee80211_hw *hw)
+{
+  DLOG ("stop");
+}
+
 static uint16 txpwr_base;
 static uint8 asic_rev, queues;
 const struct rtl818x_rf_ops * rtl8187_detect_rf(void);
 
+static struct ieee80211_ops rtl8187b_ops = {
+  .start            = start,
+  .stop             = stop,
+  .config           = config,
+  .add_interface    = add_iface,
+  .remove_interface = rem_iface,
+  .bss_info_changed = bss_info_changed,
+  .conf_tx          = conf_tx,
+  .tx               = tx
+};
+
 static bool
 probe (USB_DEVICE_INFO *info, USB_CFG_DESC *cfgd, USB_IF_DESC *ifd)
 {
+  struct ieee80211_hw *dev;
   char *chipname;
   int i;
   uint8 reg;
@@ -1405,16 +1431,12 @@ probe (USB_DEVICE_INFO *info, USB_CFG_DESC *cfgd, USB_IF_DESC *ifd)
 
   rfkill_init ();
 
-  add_iface ();
+  dev = ieee80211_alloc_hw (0, &rtl8187b_ops);
 
-  if (!start ())
+  if (!dev) return FALSE;
+
+  if (!ieee80211_register_hw (dev))
     return FALSE;
-
-  struct ieee80211_conf test_conf = {
-    .channel = &channels[0]
-  };
-
-  config (&test_conf);
 
   start_kernel_thread ((u32) beacon_thread, (u32) &beacon_stack[1023]);
 

@@ -147,51 +147,6 @@ struct ieee80211_rate {
 };
 
 /**
- * struct ieee80211_bss_conf - holds the BSS's changing parameters
- *
- * This structure keeps information about a BSS (and an association
- * to that BSS) that can change during the lifetime of the BSS.
- *
- * @assoc: association status
- * @aid: association ID number, valid only when @assoc is true
- * @use_cts_prot: use CTS protection
- * @use_short_preamble: use 802.11b short preamble;
- *	if the hardware cannot handle this it must set the
- *	IEEE80211_HW_2GHZ_SHORT_PREAMBLE_INCAPABLE hardware flag
- * @use_short_slot: use short slot time (only relevant for ERP);
- *	if the hardware cannot handle this it must set the
- *	IEEE80211_HW_2GHZ_SHORT_SLOT_INCAPABLE hardware flag
- * @dtim_period: num of beacons before the next DTIM, for PSM
- * @timestamp: beacon timestamp
- * @beacon_int: beacon interval
- * @assoc_capability: capabilities taken from assoc resp
- * @basic_rates: bitmap of basic rates, each bit stands for an
- *	index into the rate table configured by the driver in
- *	the current band.
- * @bssid: The BSSID for this BSS
- * @enable_beacon: whether beaconing should be enabled or not
- * @ht_operation_mode: HT operation mode (like in &struct ieee80211_ht_info).
- *	This field is only valid when the channel type is one of the HT types.
- */
-struct ieee80211_bss_conf {
-	const u8 *bssid;
-	/* association related data */
-	bool assoc;
-	u16 aid;
-	/* erp related data */
-	bool use_cts_prot;
-	bool use_short_preamble;
-	bool use_short_slot;
-	bool enable_beacon;
-	u8 dtim_period;
-	u16 beacon_int;
-	u16 assoc_capability;
-	u64 timestamp;
-	u32 basic_rates;
-	u16 ht_operation_mode;
-};
-
-/**
  * enum ieee80211_conf_flags - configuration flags
  *
  * Flags to define PHY configuration options
@@ -312,41 +267,6 @@ ieee80211_frequency_to_channel(int freq)
   /* FIXME: 802.11j 17.3.8.3.2 */
   return freq/5 - 1000;
 }
-
-
-/**
- * enum ieee80211_bss_change - BSS change notification flags
- *
- * These flags are used with the bss_info_changed() callback
- * to indicate which BSS parameter changed.
- *
- * @BSS_CHANGED_ASSOC: association status changed (associated/disassociated),
- *	also implies a change in the AID.
- * @BSS_CHANGED_ERP_CTS_PROT: CTS protection changed
- * @BSS_CHANGED_ERP_PREAMBLE: preamble changed
- * @BSS_CHANGED_ERP_SLOT: slot timing changed
- * @BSS_CHANGED_HT: 802.11n parameters changed
- * @BSS_CHANGED_BASIC_RATES: Basic rateset changed
- * @BSS_CHANGED_BEACON_INT: Beacon interval changed
- * @BSS_CHANGED_BSSID: BSSID changed, for whatever
- *	reason (IBSS and managed mode)
- * @BSS_CHANGED_BEACON: Beacon data changed, retrieve
- *	new beacon (beaconing modes)
- * @BSS_CHANGED_BEACON_ENABLED: Beaconing should be
- *	enabled/disabled (beaconing modes)
- */
-enum ieee80211_bss_change {
-	BSS_CHANGED_ASSOC		= 1<<0,
-	BSS_CHANGED_ERP_CTS_PROT	= 1<<1,
-	BSS_CHANGED_ERP_PREAMBLE	= 1<<2,
-	BSS_CHANGED_ERP_SLOT		= 1<<3,
-	BSS_CHANGED_HT                  = 1<<4,
-	BSS_CHANGED_BASIC_RATES		= 1<<5,
-	BSS_CHANGED_BEACON_INT		= 1<<6,
-	BSS_CHANGED_BSSID		= 1<<7,
-	BSS_CHANGED_BEACON		= 1<<8,
-	BSS_CHANGED_BEACON_ENABLED	= 1<<9,
-};
 
 #endif
 

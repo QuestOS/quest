@@ -35,6 +35,7 @@ OBJS =  boot/boot.o boot/init.o kernel.o \
 	drivers/pci/pci.o drivers/pci/pci_irq.o \
 	drivers/net/ethernetif.o drivers/net/pcnet.o \
 	drivers/net/e1000.o drivers/net/e1000e.o \
+	drivers/net/mac80211.o \
 	fs/fsys.o \
 	fs/ext2/fsys_ext2fs.o \
 	fs/iso9660/fsys_iso9660.o \
