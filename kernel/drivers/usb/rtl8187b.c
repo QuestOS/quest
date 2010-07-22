@@ -44,16 +44,24 @@
 #include <drivers/net/mac80211.h>
 #include <drivers/net/ieee80211_standard.h>
 #include <util/printf.h>
+#include <util/circular.h>
 #include <kernel.h>
 #include <drivers/eeprom/93cx6.h>
 #include "rtl818x.h"
 
-#define DEBUG_RTL8187B
+//#define DEBUG_RTL8187B
+#define DEBUG_RTL8187B_TX
 
 #ifdef DEBUG_RTL8187B
 #define DLOG(fmt,...) DLOG_PREFIX("rtl8187b",fmt,##__VA_ARGS__)
 #else
 #define DLOG(fmt,...) ;
+#endif
+
+#ifdef DEBUG_RTL8187B_TX
+#define DLOGTX(fmt,...) DLOG_PREFIX("rtl8187b",fmt,##__VA_ARGS__)
+#else
+#define DLOGTX(fmt,...) ;
 #endif
 
 static struct { uint16 v, p; char *s; } compat_list[] = {
@@ -138,6 +146,7 @@ static struct ieee80211_channel channels[14];
 static struct ieee80211_rate rates[12];
 static const struct rtl818x_rf_ops *rf;
 static uint8 slot_time, aifsn[4];
+static struct ieee80211_hw *hwdev;
 
 #define udelay(x) tsc_delay_usec (x)
 #define msleep(x) sched_usleep (x*1000);
@@ -259,6 +268,10 @@ add_iface (struct ieee80211_hw *dev,
            struct ieee80211_if_init_conf *conf)
 {
   int i;
+
+  DLOG ("add_iface ethaddr=%.02X:%.02X:%.02X:%.02X:%.02X:%.02X",
+        ethaddr[0], ethaddr[1], ethaddr[2], 
+        ethaddr[3], ethaddr[4], ethaddr[5]);
   iowrite8 (&map->EEPROM_CMD, RTL818X_EEPROM_CMD_CONFIG);
   for (i=0; i<ETH_ADDR_LEN; i++)
     iowrite8 (&map->MAC[i], ethaddr[i]);
@@ -665,9 +678,71 @@ debug_buf (char *prefix, uint8 *buf, u32 len)
 
 /* ************************************************** */
 
+#define STATUS_EPT 9
+#define STATUS_MAXPKT 64
+
+/*
+ * Read from status buffer:
+ *
+ * bits [30:31] = cmd type:
+ * - 0 indicates tx beacon interrupt
+ * - 1 indicates tx close descriptor
+ *
+ * In the case of tx beacon interrupt:
+ * [0:9] = Last Beacon CW
+ * [10:29] = reserved
+ * [30:31] = 00b
+ * [32:63] = Last Beacon TSF
+ *
+ * If it's tx close descriptor:
+ * [0:7] = Packet Retry Count
+ * [8:14] = RTS Retry Count
+ * [15] = TOK
+ * [16:27] = Sequence No
+ * [28] = LS
+ * [29] = FS
+ * [30:31] = 01b
+ * [32:47] = unused (reserved?)
+ * [48:63] = MAC Used Time
+ */
+
+static void
+do_status (void)
+{
+  u64 buf;
+  u32 act_len, pkt_rc, seq_no;
+  bool tok;
+
+  if (usb_bulk_transfer (usbdev, STATUS_EPT, &buf, sizeof (buf),
+                         STATUS_MAXPKT, DIR_IN, &act_len) == 0) {
+    if (act_len > 0) {
+      DLOGTX ("status: 0x%.08X %.08X",
+              (u32) (buf >> 32), (u32) buf);
+      if (((buf >> 30) & 0x3) == 1) {
+        /* TX close descriptor */
+        pkt_rc = buf & 0xFF;
+        tok = (buf & (1 << 15) ? TRUE : FALSE);
+        seq_no = (buf >> 16) && 0xFFF;
+        DLOGTX ("status: TX close: pkt_rc=%d tok=%d seq_no=%d LS=%d FS=%d",
+                pkt_rc, tok, seq_no,
+                (buf & (1 << 28)) ? TRUE : FALSE,
+                (buf & (1 << 29)) ? TRUE : FALSE);
+      } else {
+        /* TX beacon interrupt */
+        DLOGTX ("status: TX beacon: last_CW=%d last_TSF=%d",
+                buf & 0x3FF,
+                buf >> 32);
+      }
+    } else
+      DLOG ("status: act_len==0");
+  }
+}
+
+/* ************************************************** */
+
 #define TX_MAXPKT 64
 static u8 tx_endps[4] = { 6, 7, 5, 4 };
-static u8 cur_tx_ep = 0;
+static volatile u8 cur_tx_ep = 0;
 
 struct rtl8187_tx_hdr {
   __le32 flags;
@@ -696,6 +771,8 @@ _tx (uint8 *pkt, u32 len)
   struct rtl8187b_tx_hdr hdr;
   static uint8 buf[2500];
 
+  DLOGTX ("tx: 0x%x len=%d", pkt[0], len);
+
   memset (&hdr, 0, sizeof (hdr));
 
   hdr.len = hdr.flags = len;
@@ -710,11 +787,14 @@ _tx (uint8 *pkt, u32 len)
 
   len += sizeof (hdr);
 
+#ifdef DEBUG_RTL8187B
   debug_buf ("rtl8187b: tx", buf, len);
+#endif
 
   if (usb_bulk_transfer (usbdev, tx_endps[cur_tx_ep], &buf, len,
                          TX_MAXPKT, DIR_OUT, &act_len) == 0) {
-    DLOG ("tx: sent %d bytes", act_len);
+    do_status ();
+    DLOGTX ("tx: sent %d bytes", act_len);
     ret=act_len;
   } else ret=0;
 
@@ -724,10 +804,38 @@ _tx (uint8 *pkt, u32 len)
   return ret;
 }
 
+#define TX_BUF_DATA_MAX 2500
+typedef struct {
+  u8 data[TX_BUF_DATA_MAX];
+  u32 len;
+} tx_qbuf_t;
+
+#define TX_BUF_LEN 1
+static uint32 tx_stack[1024] ALIGNED(0x1000);
+static circular tx_circ;
+static tx_qbuf_t tx_circ_buf[TX_BUF_LEN];
+static void
+tx_thread (void)
+{
+  DLOG ("tx: hello from 0x%x", str ());
+  for (;;) {
+    tx_qbuf_t qb;
+    circular_remove (&tx_circ, &qb);
+    DLOG ("tx: got %d bytes", qb.len);
+    _tx (qb.data, qb.len);
+  }
+}
+
 static int
 tx (struct ieee80211_hw *dev, sk_buff_t *skb)
 {
-  return _tx (skb->data, skb->len);
+  tx_qbuf_t qb;
+  if (skb->len > TX_BUF_DATA_MAX) return 0;
+  qb.len = skb->len;
+  memcpy (qb.data, skb->data, qb.len);
+  DLOG ("attempting to send %d bytes", skb->len);
+  circular_insert (&tx_circ, &qb);
+  return skb->len;
 }
 
 static void
@@ -742,7 +850,7 @@ tx_probe_resp (void)
     0x00, 0x1E, 0x2A, 0x42, 0x73, 0x7E, /* SA */
     0xb6, 0x27, 0x07, 0xb6, 0x73, 0x7E, /* BSS ID */
 
-    0x20, 0x00, 
+    0x20, 0x00,
 
     0x8E, 0x91, 0x42, 0x11, 0x67, 0x00, 0x00, 0x00, /* timestamp */
     0x64, 0x00,                                     /* interval */
@@ -801,8 +909,8 @@ tx_beacon (void)
     0xb6, 0x27, 0x07, 0xb6, 0x73, 0x7E, /* BSS ID */
     0x40, 0x46,
     0x00, 0x62, 0xc5, 0x02, 0x00, 0x00, 0x00, 0x00,
-    0x64, 0x00, 
-    0x22, 0x00, 
+    0x64, 0x00,
+    0x22, 0x00,
     0x00, 0x06, 0x6c, 0x65, 0x6e, 0x6f, 0x76, 0x63,
     0x01, 0x08, 0x82, 0x84, 0x8b, 0x96, 0x0c, 0x12, 0x18, 0x24,
     0x03, 0x01, 0x01,
@@ -817,22 +925,10 @@ tx_beacon (void)
   _tx (pkt, len);
 }
 
-static uint32 beacon_stack[1024] ALIGNED(0x1000);
-
-static void
-beacon_thread (void)
-{
-  DLOG ("beacon: hello from 0x%x", str ());
-  for (;;) {
-    msleep (100);
-    tx_beacon ();
-  }
-}
-
 /* ************************************************** */
 
 /*
-  15:48:57.615816 314us Probe Request (lenova) [1.0* 2.0* 5.5* 11.0* 6.0 9.0 12.0 
+  15:48:57.615816 314us Probe Request (lenova) [1.0* 2.0* 5.5* 11.0* 6.0 9.0 12.0
   18.0 Mbit]
         0x0000:  4000 3a01 ffff ffff ffff 0023 4daf 003c
         0x0010:  ffff ffff ffff 7000 0006 6c65 6e6f 7661
@@ -841,15 +937,15 @@ beacon_thread (void)
 
 /*
 rtl8187b: rx: act_len=72
-rtl8187b: rx: 40 00 3A 01 FF FF FF FF 
-rtl8187b: rx: FF FF 00 23 4D AF 00 3C 
-rtl8187b: rx: FF FF FF FF FF FF 20 00 
-rtl8187b: rx: 00 06 6C 65 6E 6F 76 63 
-rtl8187b: rx: 01 08 82 84 8B 96 0C 12 
-rtl8187b: rx: 18 24 32 04 30 48 60 6C 
-rtl8187b: rx: 3E 87 B5 87 34 00 01 00 
-rtl8187b: rx: 45 79 A5 0C 00 00 00 00 
-rtl8187b: rx: 4B 90 FE 00 8E F6 EF 1C 
+rtl8187b: rx: 40 00 3A 01 FF FF FF FF
+rtl8187b: rx: FF FF 00 23 4D AF 00 3C
+rtl8187b: rx: FF FF FF FF FF FF 20 00
+rtl8187b: rx: 00 06 6C 65 6E 6F 76 63
+rtl8187b: rx: 01 08 82 84 8B 96 0C 12
+rtl8187b: rx: 18 24 32 04 30 48 60 6C
+rtl8187b: rx: 3E 87 B5 87 34 00 01 00
+rtl8187b: rx: 45 79 A5 0C 00 00 00 00
+rtl8187b: rx: 4B 90 FE 00 8E F6 EF 1C
 rtl8187b: HDR: flags=0x00010034 agc=0xFE rssi=0x90 mactime=0x00000000 0CA57945
 rtl8187b: FC=0x0040 MGMT 0x40 SEQ=0x0020
 rtl8187b: PROBE REQUEST
@@ -1019,6 +1115,15 @@ debug_rx (u8 *buf, u32 len)
     DLOG ("    SA=%.02X:%.02X:%.02X:%.02X:%.02X:%.02X",
             h->addr2[0], h->addr2[1], h->addr2[2],
             h->addr2[3], h->addr2[4], h->addr2[5]);
+#if 0
+    if (h->addr2[0] == 0x00 &&
+        h->addr2[1] == 0x23 &&
+        h->addr2[2] == 0x4D &&
+        h->addr2[3] == 0xAF &&
+        h->addr2[4] == 0x00 &&
+        h->addr2[5] == 0x3C   )
+      tx_probe_resp ();
+#endif
     debug_info_element (&v, &l); /* SSID */
     debug_info_element (&v, &l); /* Supported Rates */
   } else if (ieee80211_is_probe_resp (h->frame_control)) {
@@ -1090,77 +1195,27 @@ rx_thread (void)
   for (;;) {
     if (usb_bulk_transfer (usbdev, RX_EPT, &buf, sizeof (buf),
                            RX_MAXPKT, DIR_IN, &act_len) == 0) {
-      if (act_len > 0) {
+      if (act_len > sizeof (struct rtl8187b_rx_hdr)) {
+        struct sk_buff skb;
 #ifdef DEBUG_RTL8187B
         DLOG ("rx: act_len=%d", act_len);
         debug_buf ("rtl8187b: rx", buf, act_len);
         debug_rx (buf, act_len);
 #endif
-      }
+        skb.data = buf;
+        skb.len = act_len - sizeof (struct rtl8187b_rx_hdr);
+        ieee80211_rx (hwdev, &skb);
+      } else
+        DLOG ("rx: packet < %d", sizeof (struct rtl8187b_rx_hdr));
     }
   }
 }
 
-#define STATUS_EPT 9
-#define STATUS_MAXPKT 64
-
-/*
- * Read from status buffer:
- *
- * bits [30:31] = cmd type:
- * - 0 indicates tx beacon interrupt
- * - 1 indicates tx close descriptor
- *
- * In the case of tx beacon interrupt:
- * [0:9] = Last Beacon CW
- * [10:29] = reserved
- * [30:31] = 00b
- * [32:63] = Last Beacon TSF
- *
- * If it's tx close descriptor:
- * [0:7] = Packet Retry Count
- * [8:14] = RTS Retry Count
- * [15] = TOK
- * [16:27] = Sequence No
- * [28] = LS
- * [29] = FS
- * [30:31] = 01b
- * [32:47] = unused (reserved?)
- * [48:63] = MAC Used Time
- */
-
 static void
 status_thread (void)
 {
-  u64 buf;
-  u32 act_len, pkt_rc, seq_no;
-  bool tok;
-
   DLOG ("status: hello from 0x%x", str ());
   for (;;) {
-    if (usb_bulk_transfer (usbdev, STATUS_EPT, &buf, sizeof (buf),
-                           STATUS_MAXPKT, DIR_IN, &act_len) == 0) {
-      if (act_len > 0) {
-        DLOG ("status: 0x%.08X %.08X",
-              (u32) (buf >> 32), (u32) buf);
-        if (((buf >> 30) & 0x3) == 1) {
-          /* TX close descriptor */
-          pkt_rc = buf & 0xFF;
-          tok = (buf & (1 << 15) ? TRUE : FALSE);
-          seq_no = (buf >> 16) && 0xFFF;
-          DLOG ("status: TX close: pkt_rc=%d tok=%d seq_no=%d LS=%d FS=%d",
-                pkt_rc, tok, seq_no,
-                (buf & (1 << 28)) ? TRUE : FALSE,
-                (buf & (1 << 29)) ? TRUE : FALSE);
-        } else {
-          /* TX beacon interrupt */
-          DLOG ("status: TX beacon: last_CW=%d last_TSF=%d",
-                buf & 0x3FF,
-                buf >> 32);
-        }
-      } else
-        DLOG ("status: act_len==0");
-    }
   }
 }
 
@@ -1173,10 +1228,10 @@ init_urbs (void)
 static void
 init_status_urb (void)
 {
-  start_kernel_thread ((u32) status_thread, (u32) &status_stack[1023]);
+  //start_kernel_thread ((u32) status_thread, (u32) &status_stack[1023]);
 }
 
-static int
+static bool
 start (struct ieee80211_hw *hw)
 {
   u32 reg;
@@ -1188,6 +1243,9 @@ start (struct ieee80211_hw *hw)
     goto rtl8187_start_exit;
 
   //init_usb_anchor(&priv->anchored);
+
+  circular_init (&tx_circ, tx_circ_buf, TX_BUF_LEN, sizeof (tx_qbuf_t));
+  start_kernel_thread ((u32) tx_thread, (u32) &tx_stack[1023]);
 
   if (is_rtl8187b) {
     reg = RTL818X_RX_CONF_MGMT |
@@ -1431,14 +1489,12 @@ probe (USB_DEVICE_INFO *info, USB_CFG_DESC *cfgd, USB_IF_DESC *ifd)
 
   rfkill_init ();
 
-  dev = ieee80211_alloc_hw (0, &rtl8187b_ops);
+  hwdev = dev = ieee80211_alloc_hw (0, &rtl8187b_ops);
 
   if (!dev) return FALSE;
 
   if (!ieee80211_register_hw (dev))
     return FALSE;
-
-  start_kernel_thread ((u32) beacon_thread, (u32) &beacon_stack[1023]);
 
   return TRUE;
 }
