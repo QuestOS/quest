@@ -194,6 +194,8 @@ start_kernel_thread (uint eip, uint esp)
                        eip, 0, esp,
                        eflags, (uint32) page_dir);
 
+  lookup_TSS (pid)->priority = 0x1f;
+
   if (kernel_threads_running)
     wakeup (pid);
   else
