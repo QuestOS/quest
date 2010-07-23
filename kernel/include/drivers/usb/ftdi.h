@@ -34,6 +34,7 @@
 
 extern bool usb_ftdi_driver_init (void);
 extern void usb_ftdi_putc (char);
+extern char usb_ftdi_getc (void);
 
 #endif
 

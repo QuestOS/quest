@@ -38,6 +38,7 @@ static uint8_t in_ept = 0, out_ept = 0;
 
 bool usb_ftdi_driver_init (void);
 void usb_ftdi_putc (char);
+char usb_ftdi_getc (void);
 int usb_ftdi_write (unsigned char *, uint32_t);
 int usb_ftdi_read (unsigned char *, uint32_t);
 
@@ -123,11 +124,48 @@ ftdi_set_data (
       sizeof (USB_DEV_REQ), 0, 0);
 }
 
+static uint16_t
+ftdi_modem_status (USB_DEVICE_INFO * dev, uint16_t port)
+{
+  USB_DEV_REQ req;
+  uint16_t status;
+
+  req.bmRequestType = 0xC0;
+  req.bRequest = USB_FTDI_GET_MODEM_STATUS;
+  req.wValue = 0;
+  req.wIndex = port;
+  req.wLength = 2;
+
+  if (usb_control_transfer (dev, (addr_t) & req,
+        sizeof (USB_DEV_REQ), (addr_t) & status, req.wLength)) {
+    DLOG ("Get modem status failed");
+    return 0xFFFF;
+  }
+
+  return status;
+}
+
+static int
+ftdi_disable_flow_ctl (USB_DEVICE_INFO * dev, uint16_t port)
+{
+  USB_DEV_REQ req;
+
+  req.bmRequestType = 0x40;
+  req.bRequest = USB_FTDI_SET_FLOW_CTRL;
+  req.wValue = 0;
+  req.wIndex = port;
+  req.wLength = 0;
+
+  return usb_control_transfer (dev, (addr_t) & req,
+      sizeof (USB_DEV_REQ), 0, 0);
+}
+
 static bool
 ftdi_init (USB_DEVICE_INFO *dev, USB_CFG_DESC *cfg, USB_IF_DESC *ifd)
 {
   uint8_t tmp[50];
   int i = 0;
+  uint16_t mod_stat = 0;
   USB_EPT_DESC *ftdiept;
 
   ftdi_dev = *(dev);
@@ -180,6 +218,22 @@ ftdi_init (USB_DEVICE_INFO *dev, USB_CFG_DESC *cfg, USB_IF_DESC *ifd)
     return FALSE;
   }
 
+  /* Disable flow control */
+  DLOG ("Disable flow control ...");
+  if (ftdi_disable_flow_ctl (dev, 0)) {
+    DLOG ("Diable flow control failed!");
+    return FALSE;
+  }
+#if 1
+  /* Get modem status */
+  DLOG ("Getting modem status ...");
+  if ((mod_stat = ftdi_modem_status (dev, 0)) == 0xFFFF) {
+    DLOG ("Getting modem status failed!");
+    return FALSE;
+  } else {
+    DLOG ("Modem status is: 0x%X", mod_stat);
+  }
+#endif
   return TRUE;
 }
 
@@ -187,20 +241,13 @@ static void
 ftdi_test (void)
 {
   DLOG ("FTDI Tests");
-#if 1
-  unsigned char buf[10];
-  int act_len = 0, i = 0;
-  act_len = usb_ftdi_read (buf, 5);
-  DLOG ("%d bytes read", act_len);
-  for (i = 0; i < act_len; i++) {
-    DLOG ("Byte %d : 0x%X", i + 1, buf[i]);
+  char c = 0;
+
+  while (c != 0xD) {
+    c = usb_ftdi_getc ();
+    DLOG ("Got character : %c", c);
+    usb_ftdi_putc (c);
   }
-#endif
-  usb_ftdi_putc ('Q');
-  usb_ftdi_putc ('u');
-  usb_ftdi_putc ('e');
-  usb_ftdi_putc ('s');
-  usb_ftdi_putc ('t');
 }
 
 static bool
@@ -227,6 +274,20 @@ ftdi_probe (USB_DEVICE_INFO *dev, USB_CFG_DESC *cfg, USB_IF_DESC *ifd)
   ftdi_test();
 
   return TRUE;
+}
+
+char
+usb_ftdi_getc (void)
+{
+  unsigned char buf[3];
+  int act_len = 0;
+
+  if ((act_len = usb_ftdi_read (buf, 3)) != 3) {
+    DLOG ("usb_ftdi_read () failed. %d bytes returned.", act_len);
+    return '\0';
+  }
+
+  return buf[2];
 }
 
 void
@@ -258,20 +319,51 @@ int
 usb_ftdi_write (unsigned char * buf, uint32_t len)
 {
   uint32_t act_len = 0;
+  int status = 0;
 
-  usb_bulk_transfer (&ftdi_dev, out_ept, (addr_t) buf, len,
-      64, DIR_OUT, &act_len);
+  if ((status = usb_bulk_transfer (&ftdi_dev, out_ept, (addr_t) buf,
+        len, 64, DIR_OUT, &act_len)))
+    DLOG ("Bulk write failed. Error Code: 0x%X", status);
   
   return act_len;
 }
 
+/*
+ * First two bytes read contains modem status and line status.
+ *
+ * Byte 0: Modem Status
+ *
+ * Offset       Description
+ * B0   Reserved - must be 1
+ * B1   Reserved - must be 0
+ * B2   Reserved - must be 0
+ * B3   Reserved - must be 0
+ * B4   Clear to Send (CTS)
+ * B5   Data Set Ready (DSR)
+ * B6   Ring Indicator (RI)
+ * B7   Receive Line Signal Detect (RLSD)
+ *
+ * Byte 1: Line Status
+ *
+ * Offset       Description
+ * B0   Data Ready (DR)
+ * B1   Overrun Error (OE)
+ * B2   Parity Error (PE)
+ * B3   Framing Error (FE)
+ * B4   Break Interrupt (BI)
+ * B5   Transmitter Holding Register (THRE)
+ * B6   Transmitter Empty (TEMT)
+ * B7   Error in RCVR FIFO
+ */
 int
 usb_ftdi_read (unsigned char * buf, uint32_t len)
 {
   uint32_t act_len = 0;
+  int status = 0;
 
-  usb_bulk_transfer (&ftdi_dev, in_ept, (addr_t) buf, len,
-      64, DIR_IN, &act_len);
+  if ((status = usb_bulk_transfer (&ftdi_dev, in_ept, (addr_t) buf,
+        len, 64, DIR_IN, &act_len)))
+    DLOG ("Bulk read failed. Error Code: 0x%X", status);
   
   return act_len;
 }
