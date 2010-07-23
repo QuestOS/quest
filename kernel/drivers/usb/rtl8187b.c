@@ -963,7 +963,7 @@ rtl8187b:   SUPPORTED-RATE 0x24
 
 static u32 rx_conf;
 
-static uint32 rx_stack[1024] ALIGNED(0x1000);
+static uint32 rx_stack[2048] ALIGNED(0x1000);
 static uint32 status_stack[1024] ALIGNED(0x1000);
 
 #define RX_EPT (is_rtl8187b ? 3 : 1)
@@ -1222,7 +1222,7 @@ status_thread (void)
 static void
 init_urbs (void)
 {
-  start_kernel_thread ((u32) rx_thread, (u32) &rx_stack[1023]);
+  start_kernel_thread ((u32) rx_thread, (u32) &rx_stack[2047]);
 }
 
 static void
