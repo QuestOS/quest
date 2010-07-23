@@ -256,6 +256,7 @@ process_acpi_tables (void)
 static int
 acpi_add_processor (ACPI_MADT_LOCAL_APIC * ptr)
 {
+#ifndef NO_SMP
   uint8 this_apic_id = LAPIC_get_physical_ID ();
   uint8 apic_id = ptr->Id;
 
@@ -271,6 +272,9 @@ acpi_add_processor (ACPI_MADT_LOCAL_APIC * ptr)
     return 1;
   } else
     return 0;
+#else
+  return 0;
+#endif
 }
 
 /* ************************************************** */

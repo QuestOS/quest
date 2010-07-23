@@ -316,6 +316,7 @@ process_mp_config (struct mp_config *cfg)
 static int
 add_processor (struct mp_config_processor_entry *proc)
 {
+#ifndef NO_SMP
   uint8 apic_id = proc->APIC_id;
 
   if (!(proc->flags & 1))
@@ -330,6 +331,9 @@ add_processor (struct mp_config_processor_entry *proc)
     return 1;
   } else
     return 0;
+#else
+  return 0;
+#endif
 }
 
 /* End Intel Multiprocessing Specification implementation */
