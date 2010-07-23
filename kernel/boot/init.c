@@ -554,6 +554,9 @@ init (multiboot * pmb)
    * to utilize the dummy TSS without locking the kernel yet. */
   smp_secondary_init ();
 
+  /* Logging thread */
+  logger_init ();
+
   /* Initialize interrupt-driven keyboard driver */
   init_keyboard_8042 ();
 

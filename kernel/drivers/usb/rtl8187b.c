@@ -667,12 +667,12 @@ debug_buf (char *prefix, uint8 *buf, u32 len)
   s32 i, j;
 
   for (i=0;i<len;i+=8) {
-    com1_printf ("%s: ", prefix);
+    logger_printf ("%s: ", prefix);
     for (j=0;j<8;j++) {
       if (i+j >= len) break;
-      com1_printf ("%.02X ", buf[i+j]);
+      logger_printf ("%.02X ", buf[i+j]);
     }
-    com1_printf ("\n");
+    logger_printf ("\n");
   }
 }
 

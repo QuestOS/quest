@@ -228,6 +228,15 @@ com1_printf (const char *fmt, ...)
   va_end (args);
 }
 
+void
+logger_printf (const char *fmt, ...)
+{
+  va_list args;
+  va_start (args, fmt);
+  fun_vprintf (logger_putc, fmt, args);
+  va_end (args);
+}
+
 static void
 _putc (char c)
 {
