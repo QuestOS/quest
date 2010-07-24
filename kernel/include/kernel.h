@@ -135,7 +135,8 @@ uint16 duplicate_TSS (uint32 ebp,
 typedef uint16 task_id;
 
 task_id start_kernel_thread (uint eip, uint esp);
-
+task_id start_kernel_thread_args (uint eip, uint esp, uint n, ...);
+void exit_kernel_thread (void);
 
 /* Declare space for a stack */
 extern uint32 ul_stack[][1024] __attribute__ ((aligned (4096)));

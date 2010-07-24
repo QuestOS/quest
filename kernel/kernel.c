@@ -21,6 +21,8 @@
 #include "util/printf.h"
 #include "util/screen.h"
 #include "util/debug.h"
+#include "mem/virtual.h"
+#include "mem/physical.h"
 
 static spinlock kernel_lock = SPINLOCK_INIT;
 
@@ -181,13 +183,26 @@ static bool kernel_threads_running = FALSE;
 static task_id kernel_thread_waitq = 0;
 
 task_id
-start_kernel_thread (uint eip, uint esp)
+start_kernel_thread_args (uint eip, uint esp, uint n, ...)
 {
   task_id pid;
   uint32 eflags;
   void *page_dir = get_pdbr ();
+  uint *stack, i;
+  va_list args;
 
   asm volatile ("pushfl\n" "pop %0\n":"=r" (eflags):);
+
+  esp -= sizeof (void *) * (n + 1);
+  stack = (uint *) esp;
+
+  /* place arguments on the stack (i386-specific) */
+  va_start (args, n);
+  for (i=0; i<n; i++)
+    stack[i+1] = va_arg (args, uint);
+  va_end (args);
+
+  stack[0] = (uint) exit_kernel_thread; /* set return address */
 
   /* start kernel thread */
   pid = duplicate_TSS (0, NULL,
@@ -204,6 +219,12 @@ start_kernel_thread (uint eip, uint esp)
   return pid;
 }
 
+task_id
+start_kernel_thread (uint eip, uint esp)
+{
+  return start_kernel_thread_args (eip, esp, 0);
+}
+
 void
 begin_kernel_threads (void)
 {
@@ -211,6 +232,33 @@ begin_kernel_threads (void)
     wakeup_queue (&kernel_thread_waitq);
     kernel_threads_running = TRUE;
   }
+}
+
+void
+exit_kernel_thread (void)
+{
+  quest_tss *tss;
+  uint tss_frame;
+  task_id waiter;
+
+  tss = lookup_TSS (str ());
+  tss_frame = (uint) get_phys_addr (tss);
+
+  /* All tasks waiting for us now belong on the runqueue. */
+  while ((waiter = queue_remove_head (&tss->waitqueue)))
+    runqueue_append (lookup_TSS (waiter)->priority, waiter);
+
+  /* clean up TSS memory */
+  memset (tss, 0, sizeof (quest_tss));
+  unmap_virtual_page (tss);
+  free_phys_frame (tss_frame);
+
+  /* use dummy as scratch-pad for task-switch */
+  ltr (dummyTSS_selector);
+
+  schedule ();
+
+  panic ("exit_kernel_thread: unreachable");
 }
 
 /*
