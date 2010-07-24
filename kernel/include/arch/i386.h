@@ -289,6 +289,7 @@ outl (uint32 ul, uint16 usPort)
   asm volatile ("outl %0,%1"::"a" (ul), "Nd" (usPort));
 }
 
+#define GET_ESP(esp) asm volatile ("movl %%esp, %0":"=r" (esp):);
 
 static inline uint16
 str (void)
