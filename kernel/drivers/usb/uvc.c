@@ -38,6 +38,9 @@
 #define DLOG(fmt,...) ;
 #endif
 
+#define BUF_SIZE        38400
+#define PACKET_SIZE     944
+
 struct iso_data_source
 {
   uint8_t endp;
@@ -48,8 +51,8 @@ struct iso_data_source
 typedef struct iso_data_source ISO_DATA_SRC;
 
 static ISO_DATA_SRC iso_src;
-static uint8_t frame_buf[38400];
-static uint8_t jpeg_frame[38400];
+static uint8_t frame_buf[BUF_SIZE];
+static uint8_t jpeg_frame[BUF_SIZE];
 //static uint32_t uvc_test_stack[1024];
 
 bool usb_uvc_driver_init (void);
@@ -77,21 +80,20 @@ uvc_test (void)
   int i = 0;
   uint32_t *dump = (uint32_t*)jpeg_frame;
 
-  memset(frame_buf, 0, 38400);
-  memset(jpeg_frame, 0, 38400);
-  uvc_get_frame (&gdev, &iso_src, frame_buf, 384, jpeg_frame, &frm_len);
-
+  memset(frame_buf, 0, BUF_SIZE);
+  memset(jpeg_frame, 0, BUF_SIZE);
+  uvc_get_frame (&gdev, &iso_src, frame_buf, PACKET_SIZE, jpeg_frame, &frm_len);
   DLOG("Getting the first frame : %d bytes", frm_len);
-
+  
+  memset(frame_buf, 0, BUF_SIZE);
+  memset(jpeg_frame, 0, BUF_SIZE);
+  uvc_get_frame (&gdev, &iso_src, frame_buf, PACKET_SIZE, jpeg_frame, &frm_len);
   DLOG("Getting the second frame : %d bytes", frm_len);
-  memset(frame_buf, 0, 38400);
-  memset(jpeg_frame, 0, 38400);
-  uvc_get_frame (&gdev, &iso_src, frame_buf, 384, jpeg_frame, &frm_len);
 
+  memset(frame_buf, 0, BUF_SIZE);
+  memset(jpeg_frame, 0, BUF_SIZE);
+  uvc_get_frame (&gdev, &iso_src, frame_buf, PACKET_SIZE, jpeg_frame, &frm_len);
   DLOG("Getting the third frame : %d bytes", frm_len);
-  memset(frame_buf, 0, 38400);
-  memset(jpeg_frame, 0, 38400);
-  uvc_get_frame (&gdev, &iso_src, frame_buf, 384, jpeg_frame, &frm_len);
 
   DLOG("Dumping the frame:");
 
@@ -102,8 +104,8 @@ uvc_test (void)
     if ((i % 96) == 0) putchar('\n');
   }
 
-  //for (;;)
-  //  delay (1000);
+  for (;;)
+    delay (1000);
 }
 
 int
@@ -148,6 +150,8 @@ uvc_get_frame (
     }
   }
 
+  DLOG("%d TDs used for one frame", i + 1);
+
   return status;
 }
 
@@ -169,7 +173,7 @@ uvc_init (USB_DEVICE_INFO * dev, USB_CFG_DESC * cfg)
 
   /* Set data source info manually for now */
   iso_src.endp = 1;
-  iso_src.max_packet = 512;
+  iso_src.max_packet = PACKET_SIZE;
   iso_src.sample_size = 0;
 
   memset(tmp, 0, 1300);
@@ -196,9 +200,9 @@ uvc_init (USB_DEVICE_INFO * dev, USB_CFG_DESC * cfg)
   /* Manually set parameters */
   par.bmHint = 1; // Frame Interval Fixed
   par.bFormatIndex = 2;
-  par.bFrameIndex = 2;
-  par.dwFrameInterval = 0x61A80; // 25FPS
-  //par.dwFrameInterval = 0xF4240; // 10FPS
+  par.bFrameIndex = 4;
+  //par.dwFrameInterval = 0x61A80; // 25FPS
+  par.dwFrameInterval = 0xF4240; // 10FPS
   //par.wCompQuality = 5000; // 1 - 10000, with 1 the lowest
   //par.dwMaxPayloadTransferSize = 512;
 
@@ -226,7 +230,7 @@ uvc_init (USB_DEVICE_INFO * dev, USB_CFG_DESC * cfg)
   /* Select Alternate Setting 2 for interface 1 (Std VS interface) */
   /* This is for an isochronous endpoint with MaxPacketSize 384 */
   DLOG("Select Alternate Setting 2 for VS interface");
-  if (usb_set_interface(dev, 2, 1)) {
+  if (usb_set_interface(dev, 6, 1)) {
     DLOG("Cannot configure interface setting for Std VS interface");
     return FALSE;
   }
@@ -269,7 +273,7 @@ uvc_probe (USB_DEVICE_INFO *dev, USB_CFG_DESC *cfg, USB_IF_DESC *ifd)
   }
 
   //start_kernel_thread((uint)uvc_test, (uint)&uvc_test_stack[1023]);
-  //uvc_test ();
+  uvc_test ();
 
 #if 0
   int i = 0;
