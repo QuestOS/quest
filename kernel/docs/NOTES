@@ -1,0 +1,282 @@
+Friday 2010-07-23 md
+
+  I decided that the rtl8187b driver was dropping too many
+  packets because it is too slow at processing and requeuing TDs.
+  I tried doing a direct call to schedule() in the USB IRQ
+  handler to expedite matters, but it seemed to cause other
+  problems.  I removed all logging and observed that, in the
+  Kismet tcpdump, Quest seemed to be producing ACKs in a much
+  more timely manner.  So perhaps there is something to this.  So
+  I added a separate logging thread which is preemptible, going
+  to move all serial port output to this thread in hopes of
+  speeding up debugging output.
+
+Thursday 2010-07-22 md
+
+  Moving packet formation out of rtl8187b into a software MAC
+  implementation based on Linux's idea of mac80211.  Also, there seems
+  to be a problem having multiple threads directly queue up
+  transmission TDs.  It seems that every transmission bulk output has
+  to be paired with a status bulk input.  That seems to defeat the
+  point of having four transmission endpoints, but oh well.  Putting
+  tranmission into its own thread with a feeder circular buffer.
+
+Wednesday 2010-07-21 md
+
+  Importing a lot of Linux headers in order to set the stage for
+  software MAC.
+
+Tuesday 2010-07-20 md
+
+  First confirmed successful packet transmission.  Seems I do need to
+  initialize radio completely.  Don't need to add frame checksum
+  myself, apparently the card does it after all.  Start to separate TX
+  code to do more than one kind of packet.
+
+Monday 2010-07-19 md
+
+  Various attempts to get transmission working.  Trying various
+  approaches to frame checksum.  Imported CRC32 code from Linux.
+  Seems card sends me a status update after each TX: parsing status
+  code and displaying info based what Linux driver does.
+
+Friday 2010-07-16 md
+
+  Parse and dump debugging info about some more kinds of received packets.
+
+Wednesday 2010-07-14 md
+
+  Imported a bunch of initialization code from Linux driver.  First
+  successful packet reception.  Ensure that all TDs are unlinked even
+  in the case of a short packet.  Use the IEEE 802.11 constant and
+  struct definitions from Linux.  Do some parsing of simple packets,
+  like Beacon.
+
+Tuesday 2010-07-13 md
+
+  Instead of having a single QH for bulk transfers, have a list of
+  them and use the first available.  This permits concurrent bulk
+  transfers.  Begin rtl8187b driver: there is no publicly available
+  datasheet.  Begin the process of reverse-engineering by importing
+  pieces of the Linux driver wholesale.  There are many tables of
+  constants with no documentation, especially in the rtl8225 radio
+  initialization code.  Not sure what to do, but copy it.  Also, it
+  appears there is a 93c*6 model EEPROM buried in the card, so import
+  Linux's generic driver for that (which can operate via USB, or any
+  transfer mechanism).  Successfully read the hardware address from
+  EEPROM.
+
+Friday 2010-07-09 md
+
+  Give up on probing for root device: there is now a "root=..."
+  command-line option added to every GRUB configuration and parsed in
+  boot/init.c startup.  Implement a TFTP client using the LWIP client
+  API, arrange for it to be viewed as a "filesystem" by the simple VFS
+  code.
+
+Wednesday 2010-07-07 md
+
+  It is necessary to switch to GRUB2 if we want network-booting
+  support.  Why?  Because GRUB-legacy does not support the Intel 8254x
+  cards (ugh).  GRUB2 doesn't support any cards, but it does support
+  PXE, which apparently provides a simple API for TFTP and UDP code,
+  and gPXE can fill that role.  However, Quest will not work with
+  GRUB2: I found that the reason is because GRUB2 does not put modules
+  in low physical memory -- for whatever reason, it likes to put them
+  higher up.  But the old Quest init code assumes all modules are in
+  low physical memory: modified it to explicitly map all memory it
+  uses.  After applying a workaround "fix" to gPXE, I've put new
+  images in the repository, and we have network booting.  Also, for
+  good measure, I added a CTRL-ALT-DEL handler to the keyboard driver.
+
+Friday 2010-07-02 md
+
+  Finally got the Intel 82544GM NIC working.  There was some funky
+  initialization that was possibly required.  But the main problem
+  seemed to be that the NIC would not add a frame checksum unless you
+  set a certain bit in the TX descriptor.  This manifested by having
+  everything seem to work, LEDs flashing on both ends, but no packets
+  arriving.  Then I got the idea to check the ethtool output for RX
+  errors on the Linux side; sure enough, rx_fcs_error count was
+  rising.
+
+Thursday 2010-07-01 md
+
+  Found a cache of Intel 8254x compatible cards.  Doesn't work with
+  the e1000 driver I wrote for QEMU.  Had to read the hardware address
+  using the bitbanging 4-wire method instead of the easy EERD way that
+  QEMU supports.  Not so hard to do after reading the Linux driver
+  source.  Probably should get the SPI NVM-reading code in there too,
+  for future reference.  I think the 82577LM is going to need it.
+
+Wednesday 2010-06-30 md
+
+  Short packet transfers should be considered complete, many network
+  cards seem to terminate transmission with a short packet.  Got the
+  ASIX driver working, that should handle many common USB Ethernet
+  adapters.
+
+Tuesday 2010-06-29 md
+
+  Better logging of USB device info.  Began a driver for the ASIX chip
+  commonly found in USB Ethernet adapters.
+
+Thursday 2010-06-24 md
+
+  Small project for a long bus ride: trying to clean up and separate
+  the code which does virtual memory manipulation like
+  clone_page_directory, which is currently mixed into _fork, _exec,
+  and other places.
+
+Wednesday 2010-06-23 md
+
+  Leave NAKs alone, try to let HC clean it up.  Make sure kernel
+  threads do not get woken up until after scheduling is really
+  enabled.
+
+Tuesday 2010-06-22 md
+
+  Short packet detection, necessary for USB network drivers.  Managed
+  to get an echo server working with QEMU's emulated USB network
+  adapter.  Bulk transfers now have an output parameter called
+  "actual_length".  The USB network driver, and others, are going to
+  require some kind of kernel threads.  Since there is no per-device
+  IRQ, instead the drivers need kernel threads which block while
+  waiting for their TDs to complete.  I suppose there are other ways
+  to do this, but this was actually rather simple.  I've consolidated
+  the "kernel thread" creating code into a new API:
+  start_kernel_thread.  It is also useful for running the LWIP TCP
+  timers, instead of hacking that into the PIT IRQ handler.
+
+Monday 2010-06-21 md
+
+  Wake up tasks blocked on USB transfers when the IRQ comes.  Clean up
+  UHCI a tad, and add String descriptors.
+
+Sunday 2010-06-20 md
+
+  Add a crude version of blocking usleep integrated with the scheduler.
+
+Saturday 2010-06-19 md
+
+  Have VFAT driver skip 32256 bytes into the disk before reading the
+  partition.  Just like our simple EXT2 driver.
+
+Friday 2010-06-18 md
+
+  Finally introduce a simple but proper PCI IRQ routing framework.
+  The only way to get the correct information is by parsing the MP
+  tables, or by interpreting AML code in ACPI (ACPICA handles this).
+  Remove various hacks associated with IRQ handling.
+
+Thursday 2010-06-17 md
+
+  Fixed a bunch of things and finally worked out what was wrong with
+  my PCI drivers.  First of all, the INT_LN field in PCI configuration
+  space is just useless on modern systems.  You must parse PCI routing
+  table information from ACPI or MP tables.  Secondly, I didn't
+  realize that not only are PCI IRQs by default level-triggered
+  active-LOW, but the IO-APIC has to be configured with polarity too.
+  Emulators just don't care about this sort of stuff.  Also, ACPICA
+  does something special when you invoke "\_PIC(1)" method, else you
+  can't get the right PCI routing tables out of it.  Now I can get the
+  IRQ from the UHCI controller device.  Also it turns out there is no
+  standard vendor, product ID for UHCI: you have to rely on the class,
+  subclass, and progIF fields.
+
+Monday 2010-06-14 md
+
+  Create a framework for USB drivers, each with a probe function.
+  Enumerate devices and invoke probe to get the drivers to the
+  addresses they need.  Move hub, umsc drivers into this framework.
+
+Saturday 2010-06-12 md
+
+  Created uhci_enumerate and the beginning of a hub driver with
+  probe_hub.
+
+Friday 2010-06-11 md
+
+  Separate USB mass storage controller driver into its own file.
+
+Thursday 2010-06-10 md
+
+  First successful USB mass storage sector read.  Add array of toggle
+  bits, one for each possible endpoint, to maintain state and
+  correctly set the TDs.
+
+Wednesday 2010-06-09 md
+
+  Fix up UHCI driver a bit, use PCI decode_bar to get the base address
+  properly.  Add a bulk transfer function.
+
+Monday 2010-06-07 md
+
+  Get USB working on percy and my laptop.  Added Quest-specific stub
+  to MAME.  Added "getcode" variation of "getchar" syscall, to replace
+  the old code in MAME which stole keycodes directly from the I/O
+  port.  We use IRQ-driver keyboard I/O now.
+
+Sunday 2010-06-06 md
+
+  Merge Ye Li's USB UHCI driver.  Probe PCI bus for UHCI controller.
+
+Saturday 2010-06-05 md
+
+  Add what I got for e1000e (Intel 82567LM/82577LM).  It doesn't work.
+  Use -fno-strict-aliasing because we do stupid pointer tricks.
+
+Friday 2010-06-04 md
+
+  Poll TX as well as RX.  Also, it is okay to output serial-port
+  logging if we are using GDBSTUB_TCP.
+
+Thursday 2010-06-03 md
+
+  Got e1000 packet reception, IRQ, and transmission working.  Create
+  an ethernet_device to integrate with LWIP.
+
+Wednesday 2010-06-02 md
+
+  Begin e1000 driver, configure descriptors, reset the card, and
+  enable reception.
+
+Tuesday 2010-06-01 md
+
+  Network cards now must also support a polling interface.  This is
+  used to implement GDBSTUB_TCP: over-the-network kernel debugger.
+
+Monday 2010-05-31 md
+
+  Create a framework for ethernet cards and have the PCnet driver
+  implement it.
+
+Sunday 2010-05-30 md
+
+  Implement PCnet transmit.  Import LWIP source into Quest.  Add
+  ethernetif template and modify it for Quest.  Get a basic echo
+  server working with PCnet card, and use DHCP client.
+
+Saturday 2010-05-29 md
+
+  Got IRQ handling working for PCnet.
+
+Friday 2010-05-28 md
+
+  Careful about preserving registers across syscalls.  Finally add
+  check on argv in _exec.  Import database of PCI vendors and cards.
+  Enumerate the PCI bus.  Implement basic PCI bus API.  Begin PCnet
+  driver: PCI bus scan, initialization, and reset.
+
+Thursday 2010-05-27 md
+
+  Syscalls can clobber memory and flags too, so make sure gcc is
+  aware.  Preserve %ebx register properly during splash screen, so
+  terminal_server doesn't output garbage for the first character.
+  Improper inline asm turns out to be the culprit with the
+  optimization woes.
+
+Sunday 2010-05-23 md
+
+  Begin PCI driver.  But before that, there seems to be a problem with
+  gcc optimization enabled.
