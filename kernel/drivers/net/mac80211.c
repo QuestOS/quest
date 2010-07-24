@@ -106,9 +106,8 @@ static struct ieee80211_channel channels[] = {
   { .center_freq = 2484 },
 };
 
-static local_t *tmplocal;
 static uint32 beacon_stack[1024] ALIGNED(0x1000);
-static void beacon_thread (void);
+static void beacon_thread (local_t *);
 
 bool
 ieee80211_register_hw (struct ieee80211_hw *hw)
@@ -146,8 +145,8 @@ ieee80211_register_hw (struct ieee80211_hw *hw)
   if (!local->ops->config (hw, 0))
     return FALSE;
 
-  tmplocal = local;
-  start_kernel_thread ((u32) beacon_thread, (u32) &beacon_stack[1023]);
+  start_kernel_thread_args ((u32) beacon_thread, (u32) &beacon_stack[1023],
+                            1, local);
 
   return TRUE;
 }
@@ -276,9 +275,8 @@ tx_beacon (struct ieee80211_local *local)
 }
 
 static void
-beacon_thread (void)
+beacon_thread (local_t *local)
 {
-  local_t *local = tmplocal;
   DLOG ("beacon: hello from 0x%x", str ());
   for (;;) {
     sched_usleep (500000);
