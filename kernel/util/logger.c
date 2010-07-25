@@ -19,6 +19,7 @@
 #include "util/printf.h"
 #include "util/debug.h"
 
+#ifndef NO_LOGGER
 static u32 logger_stack[1024] ALIGNED(0x1000);
 
 #define LOGGER_BUF_SIZE 65536   /* power of 2 please */
@@ -65,16 +66,22 @@ logger_thread (void)
     }
   }
 }
+#endif
 
 extern void
 logger_init (void)
 {
+#ifndef NO_LOGGER
   start_kernel_thread ((u32) logger_thread, (u32) &logger_stack[1023]);
+#endif
 }
 
 extern void
 logger_putc (char c)
 {
+#ifdef NO_LOGGER
+  com1_putc (c);
+#else
   if (logger_running) {
     u32 newhead = (head + 1) & LOGGER_BUF_MOD_MASK;
     if (newhead == tail) {
@@ -86,6 +93,7 @@ logger_putc (char c)
     }
   } else
     com1_putc (c);
+#endif
 }
 
 /*
