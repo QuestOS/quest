@@ -966,8 +966,9 @@ uhci_bulk_transfer(
   /* Check the status of all the packets in the transaction */
   return_status = check_tds(tx_tds, act_len);
 
-  /* clear out any remaining active TDs */
-  act_qh->qe_ptr = TERMINATE;
+  /* unlink any remaining active TDs if short packet was detected */
+  if (*act_len != data_len)
+    act_qh->qe_ptr = TERMINATE;
 
   free_tds(tx_tds, num_data_packets);
 
