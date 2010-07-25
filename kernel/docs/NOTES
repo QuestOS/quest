@@ -1,3 +1,13 @@
+Saturday 2010-07-24 md
+
+  Finally implemented exit_kernel_thread and start_kernel_thread with
+  arguments.  It writes the new stack with the appropriate values.  I
+  don't think it is possible to do hardware thread switching that
+  avoids flushing the TLB.  The Intel manual says it loads CR3 every
+  time you task switch.  This issue will have to be revisited with
+  either a full implementation of software task switching, or a hybrid
+  scheme.
+
 Friday 2010-07-23 md
 
   I decided that the rtl8187b driver was dropping too many
@@ -38,7 +48,8 @@ Monday 2010-07-19 md
   Various attempts to get transmission working.  Trying various
   approaches to frame checksum.  Imported CRC32 code from Linux.
   Seems card sends me a status update after each TX: parsing status
-  code and displaying info based what Linux driver does.
+  code and displaying info based what Linux driver does.  Try to skip
+  some radio initialization, since it takes forever.
 
 Friday 2010-07-16 md
 
