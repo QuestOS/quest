@@ -1,3 +1,15 @@
+Sunday 2010-07-25 md
+
+  Set priority of rx_thread to highest, in an effort to ensure that it
+  runs as soon as possible after the IRQ handler queues it.  That
+  still could mean up to a 10ms delay before a CPU quantum is
+  finished.  Found bug in bulk transfer clean-up of non-short packets:
+  it is redundant to set the QH vertical pointer back to TERMINATE
+  since the HC did it already.  But since the HC did it already,
+  another thread might have started using that QH.  Therefore, we
+  might end up cutting off someone's TDs.  That's what kept happening
+  to the rx_thread when the status thread cleaned itself up.
+
 Saturday 2010-07-24 md
 
   Finally implemented exit_kernel_thread and start_kernel_thread with
