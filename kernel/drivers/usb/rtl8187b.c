@@ -1192,6 +1192,7 @@ rx_thread (void)
   int i;
 
   DLOG ("rx: hello from 0x%x", str ());
+  lookup_TSS (str ())->priority = 0;
   for (;;) {
     if (usb_bulk_transfer (usbdev, RX_EPT, &buf, sizeof (buf),
                            RX_MAXPKT, DIR_IN, &act_len) == 0) {
