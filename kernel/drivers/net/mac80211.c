@@ -285,14 +285,15 @@ beacon_thread (local_t *local)
 }
 
 static bool
-find_eid (struct ieee80211_mgmt *m, u32 len, u8 eid, u8 *output, u8 *act_len)
+find_eid (struct ieee80211_mgmt *m, s32 len, u8 eid, u8 *output, u8 *act_len)
 {
+  //char *what;
   uint8 *ptr;
   u32 hdr_len;
 #define CASE(x)                                         \
   if (ieee80211_is_##x (m->frame_control)) {            \
     ptr = m->u.x.variable;                              \
-    hdr_len = ((u32) &m->u.x.variable) - ((u32) &m);    \
+    hdr_len = ((u32) m->u.x.variable) - ((u32) m);      \
   }
   CASE(beacon);
   CASE(probe_req);
@@ -300,15 +301,17 @@ find_eid (struct ieee80211_mgmt *m, u32 len, u8 eid, u8 *output, u8 *act_len)
   CASE(assoc_req);
   CASE(assoc_resp);
 #undef CASE
+  //DLOG ("find_eid: eid=%d len=%d hdr_len=%d what=%s", eid, len, hdr_len, what);
   len -= hdr_len;
   for (;len > 0;) {
+    //DLOG ("len=%d ptr[0]=%d ptr[1]=%d", len, ptr[0], ptr[1]);
     if (ptr[0] == eid) {
       memcpy (output, &ptr[2], ptr[1]);
       *act_len = ptr[1];
       return TRUE;
     }
-    len -= ptr[1];
-    ptr += ptr[1];
+    len -= (ptr[1] + 2);
+    ptr += (ptr[1] + 2);
   }
   return FALSE;
 }
