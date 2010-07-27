@@ -1,3 +1,20 @@
+Monday 2010-07-26 md
+
+  I wrote a function to quickly parse the SSID from various MAC
+  frames, but it had a couple of flaws: the length variable was
+  unsigned, but I was using a "len > 0" test in a loop, which is
+  dangerous.  Then it was mis-reading the length of the header, and
+  also forgetting to skip the first 2 bytes of every EI.  Somehow,
+  that it managed to work at all is amazing.  Anyway, it would lead to
+  seemingly random "crashes" (spinning w/o interrupts) that are now
+  resolved.  In other news, my laptop seems to be fairly happy with
+  the combination of beacon frames and probe responses that I throw at
+  it.  I've observed some ARP and IP packets in the wild, attempting
+  to duplicate their structure in combination with lwIP now.
+  Unfortunately, for some reason, my rtl8187b transmitter is deciding
+  to glob separate packets together to spit out some giant mal-formed
+  thing, according to Kismet.
+
 Sunday 2010-07-25 md
 
   Set priority of rx_thread to highest, in an effort to ensure that it
