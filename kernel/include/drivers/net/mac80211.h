@@ -2464,6 +2464,8 @@ conf_is_ht(struct ieee80211_conf *conf)
 
 #endif
 
+u16 ieee80211_calc_duration (u32 len, s16 rate);
+
 #endif /* MAC80211_H */
 
 /*

@@ -768,8 +768,9 @@ uint seq_no = 1;
 static int
 _tx (uint8 *pkt, u32 len)
 {
-  u16 fc = ((struct ieee80211_hdr *) pkt)->frame_control;
-  u32 act_len;
+  struct ieee80211_hdr * dot11hdr = ((struct ieee80211_hdr *) pkt);
+  u16 fc = dot11hdr->frame_control, dur_id;
+  u32 act_len, rate=3 /*11mbps*/, acktime;
   int ret, ep;
   struct rtl8187b_tx_hdr hdr;
   static uint8 buf[2500];
@@ -782,9 +783,25 @@ _tx (uint8 *pkt, u32 len)
   hdr.flags |= RTL818X_TX_DESC_FLAG_NO_ENC;
   hdr.flags |= RTL818X_TX_DESC_FLAG_FS;
   hdr.flags |= RTL818X_TX_DESC_FLAG_LS;
-  hdr.retry = 1 << 8;
-  hdr.tx_duration = 0x0831;
+  hdr.retry = 0 << 8;
+  hdr.tx_duration = ieee80211_calc_duration (len, rate);
+#define ACK_LEN 10
+  acktime = ieee80211_calc_duration (ACK_LEN, rate);
+  if (is_broadcast_ether_addr(dot11hdr->addr1))
+    dur_id = 0;
+  else {
+    /* until I do fragmentation of packets...
+    if (i == nr_frags - 1)
+      dur_id = acktime + ieee->sifs_time;
+    else {
+      dur_id = 2*acktime + 3*ieee->sifs_time + hdr_len +
+        ( i == nr_frags - 2) ? last_payload_size : payload_size;
+    }
+    */
+    dur_id = 2*acktime + 3*SIFS_TIME + sizeof (struct ieee80211_hdr) + len;
+  }
 
+  dot11hdr->duration_id = __cpu_to_le16 (dur_id);
   memcpy (buf, &hdr, sizeof (hdr));
   memcpy (buf+sizeof (hdr), pkt, len);
 

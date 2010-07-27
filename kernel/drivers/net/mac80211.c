@@ -634,6 +634,46 @@ mac80211_poll (void)
 {
 }
 
+u16
+ieee80211_calc_duration (u32 len, s16 rate)
+{
+  u16 duration;
+  u16 drift;
+  switch (rate) {
+  case 0: //1mbps
+    duration = ((len+4)<<4) / 0x2;
+    drift = ((len+4)<<4) % 0x2;
+    if (drift == 0) break;
+    duration++;
+    break;
+
+  case 1: //2mbps
+    duration = ((len+4)<<4) / 0x4;
+    drift = ((len+4)<<4) % 0x4;
+    if (drift == 0) break;
+    duration++;
+    break;
+
+  case 2: //5.5mbps
+    duration = ((len+4)<<4) / 0xb;
+    drift = ((len+4)<<4) % 0xb;
+    if (drift == 0) break;
+    duration++;
+    break;
+
+  default:
+  case 3: //11mbps                         
+    duration = ((len+4)<<4) / 0x16;
+    drift = ((len+4)<<4) % 0x16;
+    if (drift == 0) break;
+    duration++;
+    break;
+  }
+
+  return duration;
+}
+
+
 
 /*
  * Local Variables:
