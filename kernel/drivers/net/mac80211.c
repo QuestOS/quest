@@ -26,7 +26,15 @@
 #include <util/debug.h>
 #include <mem/pow2.h>
 #include <sched/sched.h>
+#include <arch/i386.h>
 #include <string.h>
+
+typedef uint8 ethaddr_t[ETH_ADDR_LEN];
+#define SSID "quest"
+ethaddr_t quest_bssid = {
+  0xb6, 0x27, 0x07, 0xb6, 0x73, 0x7E
+};
+#define TIME_UNIT 1024          /* usec */
 
 #define DEBUG_MAC80211
 
@@ -43,6 +51,9 @@ struct ieee80211_local {
   struct ieee80211_hw hw;
   const struct ieee80211_ops *ops;
   ethernet_device ethdev;
+  char *ssid;
+  u64 prev_time_update;
+  struct ieee80211_vif vif;
   char priv[0] ALIGNED(32);
 };
 typedef struct ieee80211_local local_t;
@@ -113,6 +124,7 @@ local_t *hack_local = NULL;
 sint mac80211_tx (uint8* buffer, sint len);
 bool mac80211_get_hwaddr (uint8 addr[ETH_ADDR_LEN]);
 void mac80211_poll (void);
+static void init_tsc_ufreq (void);
 
 bool
 ieee80211_register_hw (struct ieee80211_hw *hw)
@@ -150,6 +162,12 @@ ieee80211_register_hw (struct ieee80211_hw *hw)
   if (!local->ops->config (hw, 0))
     return FALSE;
 
+  local->vif.bss_conf.bssid = quest_bssid;
+  local->vif.bss_conf.timestamp = 0;
+  local->vif.bss_conf.beacon_int = 0x64;       /* FIXME */
+  local->vif.bss_conf.assoc_capability = 0x22; /* FIXME */
+  local->ssid = SSID;
+
   local->ethdev.recv_func = NULL;
   local->ethdev.send_func = mac80211_tx;
   local->ethdev.get_hwaddr_func = mac80211_get_hwaddr;
@@ -160,6 +178,8 @@ ieee80211_register_hw (struct ieee80211_hw *hw)
     return FALSE;
   }
 
+  init_tsc_ufreq ();
+
   start_kernel_thread_args ((u32) beacon_thread, (u32) &beacon_stack[1023],
                             1, local);
 
@@ -168,7 +188,42 @@ ieee80211_register_hw (struct ieee80211_hw *hw)
 
 /* ************************************************** */
 
-typedef uint8 ethaddr_t[ETH_ADDR_LEN];
+static u32 tsc_ufreq;           /* tsc per usec */
+extern u64 tsc_freq;
+
+static void
+init_tsc_ufreq (void)
+{
+  u64 f;
+  u32 f_hi, f_lo;
+  u32 divisor = 1000000;
+  f = tsc_freq;
+
+  f_hi = (u32) (f >> 32);
+  f_lo = (u32) (f & 0xFFFFFFFF);
+  asm volatile ("div %1":"=a" (tsc_ufreq):"r" (divisor),"a" (f_lo),"d" (f_hi));
+
+  DLOG ("tsc_ufreq=%d", tsc_ufreq);
+}
+
+static void
+update_timestamp (local_t *local)
+{
+  u64 new_time_update, diff;
+  RDTSC (new_time_update);
+  if (local->prev_time_update == 0) {
+    local->prev_time_update = new_time_update;
+  } else {
+    diff = new_time_update - local->prev_time_update;
+    u32 f_hi, f_lo, udiff;
+    f_hi = (u32) (diff >> 32);
+    f_lo = (u32) (diff & 0xFFFFFFFF);
+    asm volatile ("div %1":"=a" (udiff):"r" (tsc_ufreq),"a" (f_lo),"d" (f_hi));
+    local->vif.bss_conf.timestamp += udiff;
+  }
+}
+
+/* ************************************************** */
 
 #if 0
 static bool
@@ -185,12 +240,14 @@ static u8 *insert_eid (u8 *ptr, u8 eid, u8 len, void *data)
 }
 
 static u32
-make_beacon_pkt (ethaddr_t sa, ethaddr_t bssid,
-                 char *ssid,
+make_beacon_pkt (local_t *local,
+                 ethaddr_t sa,
                  u8 *rates, u8 rates_len,
                  u8 chan,
                  u8 *buf, u32 len)
 {
+  uint8 *bssid = local->vif.bss_conf.bssid;
+  char *ssid = local->ssid;
   struct ieee80211_mgmt *m = (struct ieee80211_mgmt *)buf;
   int i;
   u8 *ptr, ssid_len = strlen (ssid);
@@ -208,10 +265,9 @@ make_beacon_pkt (ethaddr_t sa, ethaddr_t bssid,
     m->sa[i] = sa[i];
     m->bssid[i] = bssid[i];
   }
-  m->seq_ctrl = 0x4640;         /* FIXME */
-  m->u.beacon.timestamp = 0x02c56200; /* FIXME */
-  m->u.beacon.beacon_int = 0x64;      /* FIXME */
-  m->u.beacon.capab_info = 0x22;      /* FIXME */
+  m->u.beacon.timestamp = local->vif.bss_conf.timestamp;
+  m->u.beacon.beacon_int = local->vif.bss_conf.beacon_int;
+  m->u.beacon.capab_info = local->vif.bss_conf.assoc_capability;
   ptr = m->u.beacon.variable;
   ptr = insert_eid (ptr, WLAN_EID_SSID, ssid_len, ssid);
   ptr = insert_eid (ptr, WLAN_EID_SUPP_RATES, rates_len, rates);
@@ -277,10 +333,7 @@ tx_beacon (struct ieee80211_local *local)
   ethaddr_t sa = {
     0x00, 0x1E, 0x2A, 0x42, 0x73, 0x7E
   };
-  ethaddr_t bssid = {
-    0xb6, 0x27, 0x07, 0xb6, 0x73, 0x7E
-  };
-  u32 len = make_beacon_pkt (sa, bssid, "quest", rates, 8, 1, pkt, 128);
+  u32 len = make_beacon_pkt (local, sa, rates, 8, 1, pkt, 128);
   if (len > 128) { DLOG ("make_beacon_pkt wants %d bytes", len); return; }
   struct sk_buff skb = {
     .data = pkt,
@@ -294,7 +347,10 @@ beacon_thread (local_t *local)
 {
   DLOG ("beacon: hello from 0x%x", str ());
   for (;;) {
-    sched_usleep (500000);
+    sched_usleep (1000000);
+    DLOG ("sending beacon timestamp=0x%.08X %.08X",
+          (u32) (local->vif.bss_conf.timestamp >> 32),
+          (u32) local->vif.bss_conf.timestamp);
     tx_beacon (local);
   }
 }
@@ -338,8 +394,6 @@ find_eid (struct ieee80211_mgmt *m, s32 len, u8 eid,
   return FALSE;
 }
 
-#define SSID "quest"
-
 static void
 tx_probe_resp (struct ieee80211_local *local)
 {
@@ -366,6 +420,8 @@ tx_probe_resp (struct ieee80211_local *local)
     .data = pkt,
     .len = sizeof (pkt)
   };
+  struct ieee80211_mgmt *m = (struct ieee80211_mgmt *) pkt;
+  m->u.probe_resp.timestamp = __cpu_to_le64 (local->vif.bss_conf.timestamp);
   local->ops->tx (local_to_hw (local), &skb);
 }
 
@@ -450,6 +506,8 @@ ieee80211_rx (struct ieee80211_hw *hw, struct sk_buff *skb)
     0xB6, 0x27, 0x07, 0xB6, 0x73, 0x7E
   };
 
+  update_timestamp (local);
+
   hdr = (struct ieee80211_hdr *)skb->data;
 
   if (ieee80211_is_mgmt (hdr->frame_control)) {
@@ -458,7 +516,19 @@ ieee80211_rx (struct ieee80211_hw *hw, struct sk_buff *skb)
       if (find_eid (m, skb->len, WLAN_EID_SSID,
                     (u8 *)ssid, IEEE80211_MAX_SSID_LEN, &act_len)) {
         ssid[act_len] = 0;
-        DLOG ("beacon %s", ssid);
+        //DLOG ("beacon %s", ssid);
+        if (strncmp (SSID, ssid, act_len) == 0) {
+          local->vif.bss_conf.timestamp = m->u.beacon.timestamp + TIME_UNIT;
+          local->vif.bss_conf.beacon_int = m->u.beacon.beacon_int;
+          local->vif.bss_conf.assoc_capability = m->u.beacon.capab_info;
+          DLOG ("beacon %s; synchronizing beacon_int=0x%x capab=0x%x",
+                ssid, local->vif.bss_conf.beacon_int,
+                local->vif.bss_conf.assoc_capability);
+          DLOG ("  new timestamp=0x%.08X %.08X",
+                (u32) (local->vif.bss_conf.timestamp >> 32),
+                (u32) local->vif.bss_conf.timestamp);
+        }
+#if 0
         len = make_probe_req_pkt (sa, m->bssid, ssid, rates, 8,
                                   pkt, sizeof (pkt));
         if (len <= sizeof (pkt)) {
@@ -468,8 +538,9 @@ ieee80211_rx (struct ieee80211_hw *hw, struct sk_buff *skb)
           };
           local->ops->tx (local_to_hw (local), &skb);
         }
+#endif
       } else {
-        DLOG ("beacon, no SSID");
+        //DLOG ("beacon, no SSID");
       }
     } else if (ieee80211_is_probe_req (hdr->frame_control)) {
       if (find_eid (m, skb->len, WLAN_EID_SSID,
