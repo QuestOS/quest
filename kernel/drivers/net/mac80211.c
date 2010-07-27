@@ -578,10 +578,15 @@ ieee80211_rx (struct ieee80211_hw *hw, struct sk_buff *skb)
       for (i=0; i<ETH_ADDR_LEN; i++)
         if (hdr->addr3[i] != bssid[i])
           return;
+#ifdef DEBUG_MAC80211
       debug_buf ("mac80211: data", skb->data, skb->len);
+#endif
+      /* hack in an "ethernet frame" */
+      memcpy (skb->data + 18, skb->data + 4, ETH_ADDR_LEN);
+      memcpy (skb->data + 24, skb->data + 10, ETH_ADDR_LEN);
       local->ethdev.recv_func (&local->ethdev,
-                               skb->data + 0x20,
-                               skb->len - 0x20);
+                               skb->data + 18,
+                               skb->len - 18);
     }
   } else if (ieee80211_is_ctl (hdr->frame_control)) {
     if (ieee80211_is_ack (hdr->frame_control)) {
@@ -597,21 +602,37 @@ sint
 mac80211_tx (uint8* buffer, sint len)
 {
   struct ieee80211_hw *hw = local_to_hw (hack_local);
+  bool is_arp=FALSE;
   u8 hdr[] = {
     0x08, 0x00, 0x3a, 0x01,
     0x00, 0x23, 0x4d, 0xaf, 0x00, 0x3c,
     0x00, 0x1e, 0x2a, 0x42, 0x73, 0x7e,
     0xb6, 0x27, 0x07, 0xb6, 0x73, 0x7e,
-    0x90, 0x94, 0xaa, 0xaa, 0x03, 0x00, 0x00, 0x00, 0x08, 0x06
+    0x90, 0x94,
+    /* RFC 1042 SNAP header */
+    0xaa, 0xaa, 0x03, 0x00, 0x00, 0x00,
+    /* ARP */
+    //0x08, 0x06
+    /* IP */
+    0x08, 0x00
   };
+
+  /* skip ethernet link layer header */
+  len -= 14;
+  buffer += 14;
+
+  DLOG ("mac80211_tx: %p %d bytes: %x %x", buffer, len, buffer[0], buffer[1]);
+  if (buffer[0] == 0 && buffer[1] == 1)
+    is_arp = TRUE;              /* guess ARP */
+
   struct sk_buff skb = {
     .data = tx_buf,
     .len = len + sizeof (hdr)
   };
   memcpy (tx_buf, hdr, sizeof (hdr));
   memcpy (tx_buf + sizeof (hdr), buffer, len);
+  if (is_arp) tx_buf[sizeof (hdr) - 1] = 6;
 
-  DLOG ("mac80211_tx: %p %d bytes", buffer, len);
   return hack_local->ops->tx (hw, &skb);
 }
 
