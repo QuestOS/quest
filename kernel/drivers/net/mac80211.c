@@ -22,6 +22,7 @@
 #include <drivers/net/ieee80211.h>
 #include <drivers/net/mac80211.h>
 #include <drivers/net/ieee80211_standard.h>
+#include <drivers/net/ethernet.h>
 #include <util/debug.h>
 #include <mem/pow2.h>
 #include <sched/sched.h>
@@ -41,7 +42,7 @@
 struct ieee80211_local {
   struct ieee80211_hw hw;
   const struct ieee80211_ops *ops;
-  bool link_up;
+  ethernet_device ethdev;
   char priv[0] ALIGNED(32);
 };
 typedef struct ieee80211_local local_t;
@@ -108,6 +109,10 @@ static struct ieee80211_channel channels[] = {
 
 static uint32 beacon_stack[1024] ALIGNED(0x1000);
 static void beacon_thread (local_t *);
+local_t *hack_local = NULL;
+sint mac80211_tx (uint8* buffer, sint len);
+bool mac80211_get_hwaddr (uint8 addr[ETH_ADDR_LEN]);
+void mac80211_poll (void);
 
 bool
 ieee80211_register_hw (struct ieee80211_hw *hw)
@@ -144,6 +149,16 @@ ieee80211_register_hw (struct ieee80211_hw *hw)
 
   if (!local->ops->config (hw, 0))
     return FALSE;
+
+  local->ethdev.recv_func = NULL;
+  local->ethdev.send_func = mac80211_tx;
+  local->ethdev.get_hwaddr_func = mac80211_get_hwaddr;
+  local->ethdev.poll_func = mac80211_poll;
+  hack_local = local;           /* until I fix ethernet_device */
+  if (!net_register_device (&local->ethdev)) {
+    DLOG ("registration failed");
+    return FALSE;
+  }
 
   start_kernel_thread_args ((u32) beacon_thread, (u32) &beacon_stack[1023],
                             1, local);
@@ -354,6 +369,71 @@ tx_probe_resp (struct ieee80211_local *local)
   local->ops->tx (local_to_hw (local), &skb);
 }
 
+/*
+
+18:16:40.153738 314us arp who-has 169.254.237.67 tell 0.0.0.0
+        0x0000:  0800 3a01 ffff ffff ffff 0023 4daf 003c
+        0x0010:  b627 07b6 737e 4002 aaaa 0300 0000 0806
+        0x0020:  0001 0800 0604 0001 0023 4daf 003c 0000
+        0x0030:  0000 0000 0000 0000 a9fe ed43
+
+18:16:40.181611 314us IP6 (hlim 1, next-header: Options (0), length: 36) fe80::e196:3567:8822:ed43 > ff02::16: HBH (rtalert: 0x0000) (padn)[icmp6 sum ok] ICMP6, multicast listener report v2, length 28, 1 group record(s) [gaddr ff02::1:3 to_ex { }]
+        0x0000:  0800 3a01 3333 0000 0016 0023 4daf 003c
+        0x0010:  b627 07b6 737e 5002 aaaa 0300 0000 86dd
+        0x0020:  6000 0000 0024 0001 fe80 0000 0000 0000
+        0x0030:  e196 3567 8822 ed43 ff02 0000 0000 0000
+        0x0040:  0000 0000 0000 0016 3a00 0502 0000 0100
+        0x0050:  8f00 e3a2 0000 0001 0400 0000 ff02 0000
+        0x0060:  0000 0000 0000 0000 0001 0003
+
+18:16:40.184486 314us IP (tos 0x0, ttl   1, id 10136, offset 0, flags [none], proto: IGMP (2), length: 40, options ( RA (148) len 4 )) 169.254.237.67 > IGMP.MCAST.NET: igmp v3 report, 1 group record(s) [gaddr 224.0.0.252 to_ex { }]
+        0x0000:  0800 3a01 0100 5e00 0016 0023 4daf 003c
+        0x0010:  b627 07b6 737e 6002 aaaa 0300 0000 0800
+        0x0020:  4600 0028 2798 0000 0102 85df a9fe ed43
+        0x0030:  e000 0016 9404 0000 2200 f901 0000 0001
+        0x0040:  0400 0000 e000 00fc
+
+18:16:40.196611 314us IP6 (hlim 1, next-header: UDP (17), length: 32) fe80::e196:3567:8822:ed43.49845 > ff02::1:3.hostmon: [udp sum ok] UDP, length 24
+        0x0000:  0800 3a01 3333 0001 0003 0023 4daf 003c
+        0x0010:  b627 07b6 737e 7002 aaaa 0300 0000 86dd
+        0x0020:  6000 0000 0020 1101 fe80 0000 0000 0000
+        0x0030:  e196 3567 8822 ed43 ff02 0000 0000 0000
+        0x0040:  0000 0000 0001 0003 c2b5 14eb 0020 3ecf
+        0x0050:  1115 0000 0001 0000 0000 0000 0663 686f
+        0x0060:  7069 6e00 00ff 0001
+
+18:16:40.197611 314us IP (tos 0x0, ttl   1, id 10137, offset 0, flags [none], proto: UDP (17), length: 52) 169.254.237.67.55152 > 224.0.0.252.hostmon: [udp sum ok] UDP, length 24
+        0x0000:  0800 3a01 0100 5e00 00fc 0023 4daf 003c
+        0x0010:  b627 07b6 737e 8002 aaaa 0300 0000 0800
+        0x0020:  4500 0034 2799 0000 0111 19e2 a9fe ed43
+        0x0030:  e000 00fc d770 14eb 0020 3bc1 1115 0000
+        0x0040:  0001 0000 0000 0000 0663 686f 7069 6e00
+        0x0050:  00ff 0001
+
+
+18:33:49.213779 314us arp who-has 169.254.237.1 tell 169.254.237.67
+        0x0000:  0800 3a01 ffff ffff ffff 0023 4daf 003c
+        0x0010:  b627 07b6 737e 9094 aaaa 0300 0000 0806
+        0x0020:  0001 0800 0604 0001 0023 4daf 003c a9fe
+        0x0030:  ed43 0000 0000 0000 a9fe ed01
+
+ */
+
+static void
+debug_buf (char *prefix, uint8 *buf, u32 len)
+{
+  s32 i, j;
+
+  for (i=0;i<len;i+=8) {
+    logger_printf ("%s: ", prefix);
+    for (j=0;j<8;j++) {
+      if (i+j >= len) break;
+      logger_printf ("%.02X ", buf[i+j]);
+    }
+    logger_printf ("\n");
+  }
+}
+
 extern void
 ieee80211_rx (struct ieee80211_hw *hw, struct sk_buff *skb)
 {
@@ -362,9 +442,12 @@ ieee80211_rx (struct ieee80211_hw *hw, struct sk_buff *skb)
   char ssid[IEEE80211_MAX_SSID_LEN+1];
   u8 act_len;
   u8 pkt[128];
-  u32 len;
+  u32 len, i;
   ethaddr_t sa = {
     0x00, 0x1E, 0x2A, 0x42, 0x73, 0x7E
+  };
+  ethaddr_t bssid = {
+    0xB6, 0x27, 0x07, 0xB6, 0x73, 0x7E
   };
 
   hdr = (struct ieee80211_hdr *)skb->data;
@@ -417,11 +500,69 @@ ieee80211_rx (struct ieee80211_hw *hw, struct sk_buff *skb)
       }
     }
   } else if (ieee80211_is_data (hdr->frame_control)) {
-    DLOG ("data for %.02X:%.02X:%.02X:%.02X:%.02X:%.02X",
-          hdr->addr1[0], hdr->addr1[1], hdr->addr1[2],
-          hdr->addr1[3], hdr->addr1[4], hdr->addr1[5]);
+    if ((hdr->seq_ctrl & 0xF) == 0) {
+      DLOG ("data for %.02X:%.02X:%.02X:%.02X:%.02X:%.02X",
+            hdr->addr1[0], hdr->addr1[1], hdr->addr1[2],
+            hdr->addr1[3], hdr->addr1[4], hdr->addr1[5]);
+      for (i=0; i<ETH_ADDR_LEN; i++)
+        if (hdr->addr3[i] != bssid[i])
+          return;
+      debug_buf ("mac80211: data", skb->data, skb->len);
+      local->ethdev.recv_func (&local->ethdev,
+                               skb->data + 0x20,
+                               skb->len - 0x20);
+    }
+  } else if (ieee80211_is_ctl (hdr->frame_control)) {
+    if (ieee80211_is_ack (hdr->frame_control)) {
+      DLOG ("ack");
+    }
   }
 }
+
+
+static u8 tx_buf[2500];
+
+sint
+mac80211_tx (uint8* buffer, sint len)
+{
+  struct ieee80211_hw *hw = local_to_hw (hack_local);
+  u8 hdr[] = {
+    0x08, 0x00, 0x3a, 0x01,
+    0x00, 0x23, 0x4d, 0xaf, 0x00, 0x3c,
+    0x00, 0x1e, 0x2a, 0x42, 0x73, 0x7e,
+    0xb6, 0x27, 0x07, 0xb6, 0x73, 0x7e,
+    0x90, 0x94, 0xaa, 0xaa, 0x03, 0x00, 0x00, 0x00, 0x08, 0x06
+  };
+  struct sk_buff skb = {
+    .data = tx_buf,
+    .len = len + sizeof (hdr)
+  };
+  memcpy (tx_buf, hdr, sizeof (hdr));
+  memcpy (tx_buf + sizeof (hdr), buffer, len);
+
+  DLOG ("mac80211_tx: %p %d bytes", buffer, len);
+  return hack_local->ops->tx (hw, &skb);
+}
+
+bool
+mac80211_get_hwaddr (uint8 addr[ETH_ADDR_LEN])
+{
+  int i;
+  /* FIXME */
+  ethaddr_t sa = {
+    0x00, 0x1E, 0x2A, 0x42, 0x73, 0x7E
+  };
+
+  for (i=0; i<ETH_ADDR_LEN; i++)
+    addr[i] = sa[i];
+  return TRUE;
+}
+
+void
+mac80211_poll (void)
+{
+}
+
 
 /*
  * Local Variables:
