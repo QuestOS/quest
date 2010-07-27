@@ -285,7 +285,8 @@ beacon_thread (local_t *local)
 }
 
 static bool
-find_eid (struct ieee80211_mgmt *m, s32 len, u8 eid, u8 *output, u8 *act_len)
+find_eid (struct ieee80211_mgmt *m, s32 len, u8 eid,
+          u8 *output, u8 max_len, u8 *act_len)
 {
   //char *what;
   uint8 *ptr;
@@ -306,9 +307,15 @@ find_eid (struct ieee80211_mgmt *m, s32 len, u8 eid, u8 *output, u8 *act_len)
   for (;len > 0;) {
     //DLOG ("len=%d ptr[0]=%d ptr[1]=%d", len, ptr[0], ptr[1]);
     if (ptr[0] == eid) {
-      memcpy (output, &ptr[2], ptr[1]);
-      *act_len = ptr[1];
-      return TRUE;
+      if (ptr[1] > max_len) {
+        return FALSE;
+      } if (ptr[1] + 2 > len) {
+        return FALSE;
+      } else {
+        memcpy (output, &ptr[2], ptr[1]);
+        *act_len = ptr[1];
+        return TRUE;
+      }
     }
     len -= (ptr[1] + 2);
     ptr += (ptr[1] + 2);
@@ -365,7 +372,8 @@ ieee80211_rx (struct ieee80211_hw *hw, struct sk_buff *skb)
   if (ieee80211_is_mgmt (hdr->frame_control)) {
     struct ieee80211_mgmt *m = (struct ieee80211_mgmt *)skb->data;
     if (ieee80211_is_beacon (hdr->frame_control)) {
-      if (find_eid (m, skb->len, WLAN_EID_SSID, (u8 *)ssid, &act_len)) {
+      if (find_eid (m, skb->len, WLAN_EID_SSID,
+                    (u8 *)ssid, IEEE80211_MAX_SSID_LEN, &act_len)) {
         ssid[act_len] = 0;
         DLOG ("beacon %s", ssid);
         len = make_probe_req_pkt (sa, m->bssid, ssid, rates, 8,
@@ -381,7 +389,8 @@ ieee80211_rx (struct ieee80211_hw *hw, struct sk_buff *skb)
         DLOG ("beacon, no SSID");
       }
     } else if (ieee80211_is_probe_req (hdr->frame_control)) {
-      if (find_eid (m, skb->len, WLAN_EID_SSID, (u8 *)ssid, &act_len)) {
+      if (find_eid (m, skb->len, WLAN_EID_SSID,
+                    (u8 *)ssid, IEEE80211_MAX_SSID_LEN, &act_len)) {
         ssid[act_len] = 0;
         DLOG ("probe_req %s", ssid);
         if (strncmp (SSID, ssid, act_len) == 0) {
@@ -391,7 +400,8 @@ ieee80211_rx (struct ieee80211_hw *hw, struct sk_buff *skb)
         DLOG ("probe_req, no SSID");
       }
     } else if (ieee80211_is_probe_resp (hdr->frame_control)) {
-      if (find_eid (m, skb->len, WLAN_EID_SSID, (u8 *)ssid, &act_len)) {
+      if (find_eid (m, skb->len, WLAN_EID_SSID,
+                    (u8 *)ssid, IEEE80211_MAX_SSID_LEN, &act_len)) {
         ssid[act_len] = 0;
         DLOG ("probe_resp %s", ssid);
       } else {
