@@ -722,8 +722,8 @@ do_status (void)
         /* TX close descriptor */
         pkt_rc = buf & 0xFF;
         tok = (buf & (1 << 15) ? TRUE : FALSE);
-        seq_no = (buf >> 16) && 0xFFF;
-        DLOGTX ("status: TX close: pkt_rc=%d tok=%d seq_no=%d LS=%d FS=%d",
+        seq_no = (buf >> 16) & 0xFFF;
+        DLOGTX ("status: TX close: pkt_rc=%d tok=%d seq_no=0x%x LS=%d FS=%d",
                 pkt_rc, tok, seq_no,
                 (buf & (1 << 28)) ? TRUE : FALSE,
                 (buf & (1 << 29)) ? TRUE : FALSE);
@@ -734,7 +734,7 @@ do_status (void)
                 buf >> 32);
       }
     } else
-      DLOG ("status: act_len==0");
+      DLOGTX ("status: act_len==0");
   }
 }
 
