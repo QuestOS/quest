@@ -763,11 +763,14 @@ struct rtl8187b_tx_hdr {
   __le32 unused_4[2];
 } PACKED;
 
+uint seq_no = 1;
+
 static int
 _tx (uint8 *pkt, u32 len)
 {
+  u16 fc = ((struct ieee80211_hdr *) pkt)->frame_control;
   u32 act_len;
-  int ret;
+  int ret, ep;
   struct rtl8187b_tx_hdr hdr;
   static uint8 buf[2500];
 
@@ -775,7 +778,7 @@ _tx (uint8 *pkt, u32 len)
 
   memset (&hdr, 0, sizeof (hdr));
 
-  hdr.len = hdr.flags = len;
+  hdr.flags = len;
   hdr.flags |= RTL818X_TX_DESC_FLAG_NO_ENC;
   hdr.flags |= RTL818X_TX_DESC_FLAG_FS;
   hdr.flags |= RTL818X_TX_DESC_FLAG_LS;
@@ -785,21 +788,35 @@ _tx (uint8 *pkt, u32 len)
   memcpy (buf, &hdr, sizeof (hdr));
   memcpy (buf+sizeof (hdr), pkt, len);
 
+  /* set sequence number */
+  buf[sizeof (hdr)+22] = (seq_no & 0xF) << 4;
+  buf[sizeof (hdr)+23] = (seq_no >> 4) & 0xFF;
+
   len += sizeof (hdr);
 
-#ifdef DEBUG_RTL8187B
+#ifdef DEBUG_RTL8187B_TX
   debug_buf ("rtl8187b: tx", buf, len);
 #endif
 
-  if (usb_bulk_transfer (usbdev, tx_endps[cur_tx_ep], &buf, len,
+  if ((fc & IEEE80211_FCTL_FTYPE) == IEEE80211_FTYPE_MGMT)
+    ep = 12;
+  else
+    ep = tx_endps[cur_tx_ep];
+
+  if (usb_bulk_transfer (usbdev, ep, &buf, len,
                          TX_MAXPKT, DIR_OUT, &act_len) == 0) {
     do_status ();
     DLOGTX ("tx: sent %d bytes", act_len);
     ret=act_len;
   } else ret=0;
 
-  cur_tx_ep++;
-  cur_tx_ep &= 0x03;
+  if ((fc & IEEE80211_FCTL_FTYPE) != IEEE80211_FTYPE_MGMT) {
+    cur_tx_ep++;
+    cur_tx_ep &= 0x03;
+  }
+
+  seq_no++;
+  seq_no &= 0xFFF;
 
   return ret;
 }
@@ -817,11 +834,10 @@ static tx_qbuf_t tx_circ_buf[TX_BUF_LEN];
 static void
 tx_thread (void)
 {
-  DLOG ("tx: hello from 0x%x", str ());
+  DLOGTX ("tx: hello from 0x%x", str ());
   for (;;) {
     tx_qbuf_t qb;
     circular_remove (&tx_circ, &qb);
-    DLOG ("tx: got %d bytes", qb.len);
     _tx (qb.data, qb.len);
   }
 }
@@ -830,10 +846,10 @@ static int
 tx (struct ieee80211_hw *dev, sk_buff_t *skb)
 {
   tx_qbuf_t qb;
+
   if (skb->len > TX_BUF_DATA_MAX) return 0;
   qb.len = skb->len;
   memcpy (qb.data, skb->data, qb.len);
-  DLOG ("attempting to send %d bytes", skb->len);
   circular_insert (&tx_circ, &qb);
   return skb->len;
 }
