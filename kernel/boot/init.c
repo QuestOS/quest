@@ -584,6 +584,9 @@ init (multiboot * pmb)
   /* Initialize USB FTDI Serial Converter driver */
   { bool usb_ftdi_driver_init (void); usb_ftdi_driver_init ();}
 
+  /* Initialize USB PL2303 Serial Converter driver */
+  { bool usb_pl2303_driver_init (void); usb_pl2303_driver_init ();}
+
   /* Initialize USB Video Class driver */
   { bool usb_uvc_driver_init (void); usb_uvc_driver_init ();}
 
