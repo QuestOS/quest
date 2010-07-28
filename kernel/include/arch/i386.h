@@ -374,6 +374,25 @@ strcpy (char *dest, const char *src)
   return memcpy (dest, src, strlen (src) + 1);
 }
 
+static inline uint64
+rdmsr (uint32 ecx)
+{
+  uint32 edx, eax;
+
+  asm volatile ("rdmsr":"=d" (edx), "=a" (eax):"c" (ecx));
+  return (((uint64) edx) << 32) | ((uint64) eax);
+}
+
+static inline void
+wrmsr (uint32 ecx, uint64 val)
+{
+  uint32 edx, eax;
+
+  edx = (uint32) (val >> 32);
+  eax = (uint32) val;
+
+  asm volatile ("wrmsr"::"d" (edx), "a" (eax), "c" (ecx));
+}
 
 /* from Linux */
 
