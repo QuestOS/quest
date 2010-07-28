@@ -174,9 +174,9 @@ pl2303_init (USB_DEVICE_INFO *dev, USB_CFG_DESC *cfg, USB_IF_DESC *ifd)
   DLOG ("Current Data Bits: %d", conf.data_bits);
 
 #if 1
-  /* Disable flow control */
-  DLOG ("Diabling flow control ...");
-  if (pl2303_set_control (dev, 0)) {
+  /* Setting flow control */
+  DLOG ("Setting flow control ...");
+  if (pl2303_set_control (dev, 1)) {
     DLOG ("Setting flow control failed");
     return FALSE;
   }
@@ -188,12 +188,12 @@ pl2303_init (USB_DEVICE_INFO *dev, USB_CFG_DESC *cfg, USB_IF_DESC *ifd)
 static void
 test ()
 {
-  printf ("PL2303 Test\n");
+  DLOG ("PL2303 Test\n");
 #if 1
   char c = 0;
   while (c != 0xD) {
     c = usb_pl2303_getc ();
-    printf ("Got character : %c", c);
+    DLOG ("Got character : %c", c);
     usb_pl2303_putc (c);
   }
 #else
@@ -227,7 +227,7 @@ pl2303_probe (USB_DEVICE_INFO *dev, USB_CFG_DESC *cfg, USB_IF_DESC *ifd)
 
   DLOG ("PL2303 Serial Converter configured");
 
-  test();
+  //test();
 
   return TRUE;
 }
@@ -265,9 +265,8 @@ usb_pl2303_getc (void)
   unsigned char buf[3];
   int act_len = 0;
 
-  printf ("In getc\n");
-  if ((act_len = usb_pl2303_read (buf, 3)) != 3) {
-    printf ("usb_ftdi_read () failed. %d bytes returned.", act_len);
+  if ((act_len = usb_pl2303_read (buf, 1)) != 1) {
+    DLOG ("usb_ftdi_read () failed. %d bytes returned.", act_len);
     return '\0';
   }
 
@@ -280,13 +279,10 @@ usb_pl2303_read (unsigned char * buf, uint32_t len)
   uint32_t act_len = 0;
   int status = 0;
 
-  printf ("In read\n");
   if ((status = usb_bulk_transfer (&pl2303_dev, in_ept, (addr_t) buf,
         len, 64, DIR_IN, &act_len)))
-    printf ("Bulk read failed. Error Code: 0x%X", status);
+    DLOG ("Bulk read failed. Error Code: 0x%X", status);
 
-  printf ("After bulk read\n");
-  
   return act_len;
 }
 
