@@ -57,6 +57,22 @@ cpuid_get_brand_string (char *str, uint32 n)
 }
 
 bool
+cpuid_tsc_support (void)
+{
+  int edx;
+  cpuid (1, 0, NULL, NULL, NULL, &edx);
+  return (edx & (1 << 4));
+}
+
+bool
+cpuid_msr_support (void)
+{
+  int edx;
+  cpuid (1, 0, NULL, NULL, NULL, &edx);
+  return (edx & (1 << 5));
+}
+
+bool
 cpuid_vmx_support (void)
 {
   int ecx;
@@ -64,13 +80,13 @@ cpuid_vmx_support (void)
   return (ecx & (1 << 5));
 }
 
-/* 
+/*
  * Local Variables:
  * indent-tabs-mode: nil
  * mode: C
  * c-file-style: "gnu"
  * c-basic-offset: 2
- * End: 
+ * End:
  */
 
 /* vi: set et sw=2 sts=2: */

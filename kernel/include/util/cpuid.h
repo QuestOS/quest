@@ -46,16 +46,18 @@ cpuid (in_eax, in_ecx, out_eax, out_ebx, out_ecx, out_edx)
 
 void cpuid_get_brand_string (char *, uint32);
 bool cpuid_vmx_support (void);
+bool cpuid_tsc_support (void);
+bool cpuid_msr_support (void);
 
 #endif
 
-/* 
+/*
  * Local Variables:
  * indent-tabs-mode: nil
  * mode: C
  * c-file-style: "gnu"
  * c-basic-offset: 2
- * End: 
+ * End:
  */
 
 /* vi: set et sw=2 sts=2: */
