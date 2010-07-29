@@ -56,6 +56,29 @@ cpuid_get_brand_string (char *str, uint32 n)
   str[n - 1] = 0;
 }
 
+uint32
+cpuid_display_family_model (void)
+{
+  u32 family, model;
+  u32 eax, display = 0;
+
+  cpuid (1, 0, &eax, NULL, NULL, NULL);
+  model = (eax >> 4) & 0xF;
+  family = (eax >> 8) & 0xF;
+
+  if (family != 0xF)
+    display |= family << 8;
+  else
+    display |= (family + ((eax >> 20) & 0xFF)) << 8;
+
+  if (family == 0xF || family == 0x6)
+    display |= model + (((eax >> 16) & 0xF) << 4);
+  else
+    display |= model;
+
+  return display;
+}
+
 bool
 cpuid_tsc_support (void)
 {
