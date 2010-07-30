@@ -26,7 +26,7 @@ void
 closure_vprintf (void putc_clo (void *, char), void *data, const char *fmt,
                  va_list args)
 {
-  int precision, width, mode, upper;
+  int precision, width, mode, upper, ells;
   char padding;
 #define putc(c) putc_clo(data,c)
   while (*fmt) {
@@ -40,6 +40,7 @@ closure_vprintf (void putc_clo (void *, char), void *data, const char *fmt,
       width = 0;
       upper = 1;
       padding = ' ';
+      ells = 0;
 #define PRINTF_MODE_PRECISION 1
       mode = 0;
       /* handle directive arguments */
@@ -62,11 +63,17 @@ closure_vprintf (void putc_clo (void *, char), void *data, const char *fmt,
           upper = 0;
         case 'X':{
             /* hexadecimal output */
-            uint32 x = va_arg (args, uint32);
+            uint64 x;
             int i, li, print_padding = 0, print_digits = 0;
+            int w = (ells == 2 ? 16 : 8);
 
-            for (i = 0; i < 8; i++) {
-              li = (x >> ((7 - i) << 2)) & 0x0F;
+            if (ells == 2)
+              x = va_arg (args, uint64);
+            else
+              x = va_arg (args, uint32);
+
+            for (i = 0; i < w; i++) {
+              li = (x >> (((w - 1) - i) << 2)) & 0x0F;
 
 #define HANDLE_OPTIONS(q,max_w,end_i)                                   \
             if (q != 0 || i == end_i)                                   \
@@ -78,7 +85,7 @@ closure_vprintf (void putc_clo (void *, char), void *data, const char *fmt,
             if (q == 0 && print_padding && !print_digits)               \
               putc(padding);
 
-              HANDLE_OPTIONS (li, 8, 7);
+              HANDLE_OPTIONS (li, w, (w-1));
 
               if (print_digits) {
                 if (li > 9)
@@ -163,6 +170,10 @@ closure_vprintf (void putc_clo (void *, char), void *data, const char *fmt,
             putc ('%');
             goto directive_finished;
           }
+        case 'l':
+          /* "long" annotation */
+          ells++;
+          break;
         case '.':
           mode = PRINTF_MODE_PRECISION;
           break;
