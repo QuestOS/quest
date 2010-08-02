@@ -28,6 +28,7 @@
 #include "util/printf.h"
 #include "util/screen.h"
 #include "util/debug.h"
+#include "util/perfmon.h"
 #include "drivers/input/keyboard.h"
 
 extern descriptor idt[];
@@ -562,6 +563,9 @@ init (multiboot * pmb)
 
   /* Logging thread */
   logger_init ();
+
+  /* Performance monitoring */
+  perfmon_init ();
 
   /* Initialize interrupt-driven keyboard driver */
   init_keyboard_8042 ();
