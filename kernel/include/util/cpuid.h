@@ -48,6 +48,7 @@ void cpuid_get_brand_string (char *, uint32);
 uint32 cpuid_display_family_model (void);
 bool cpuid_vmx_support (void);
 bool cpuid_tsc_support (void);
+bool cpuid_invariant_tsc_support (void);
 bool cpuid_msr_support (void);
 
 #endif

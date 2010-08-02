@@ -428,11 +428,17 @@ init (multiboot * pmb)
   }
 
   cpuid_get_brand_string (brandstring, I386_CPUID_BRAND_STRING_LENGTH);
-  print ("CPUID reports: ");
-  print (brandstring);
-  putchar ('\n');
+  printf ("CPUID says: %s\n", brandstring);
   if (cpuid_vmx_support ())
     print ("VMX support detected\n");
+  if (!cpuid_msr_support ())
+    panic ("Model-specific registers not supported!\n");
+  if (!cpuid_tsc_support ())
+    panic ("Timestamp counter not supported!");
+  if (cpuid_invariant_tsc_support ()) {
+     print ("Invariant TSC support detected\n");
+     com1_printf ("Invariant TSC support detected\n");
+  }
 
   for (mmap = (memory_map_t *) pmb->mmap_addr;
        (uint32) mmap < pmb->mmap_addr + pmb->mmap_length;
