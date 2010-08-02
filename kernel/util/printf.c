@@ -21,6 +21,19 @@
 #include "util/screen.h"
 #include "util/debug.h"
 
+static uint32 base10_u32_divisors[10] = {
+  1000000000, 100000000, 10000000, 1000000, 100000, 10000, 1000, 100, 10, 1
+};
+
+#if 0
+static uint64 base10_u64_divisors[20] = {
+  10000000000000000000ULL, 1000000000000000000ULL, 100000000000000000ULL,
+  10000000000000000ULL, 1000000000000000ULL, 100000000000000ULL,
+  10000000000000ULL, 1000000000000ULL, 100000000000ULL, 10000000000ULL,
+  1000000000ULL, 100000000ULL, 10000000ULL, 1000000ULL, 100000ULL, 10000ULL,
+  1000ULL, 100ULL, 10ULL, 1ULL
+};
+#endif
 
 void
 closure_vprintf (void putc_clo (void *, char), void *data, const char *fmt,
@@ -101,10 +114,7 @@ closure_vprintf (void putc_clo (void *, char), void *data, const char *fmt,
             /* decimal output */
             uint32 x = va_arg (args, uint32);
             int i, q, print_padding = 0, print_digits = 0;
-            int divisors[10] =
-              { 1000000000, 100000000, 10000000, 1000000, 100000, 10000, 1000,
-              100, 10, 1
-            };
+            uint32 *divisors = base10_u32_divisors;
 
             for (i = 0; i < 10; i++) {
               q = x / divisors[i];
@@ -122,10 +132,7 @@ closure_vprintf (void putc_clo (void *, char), void *data, const char *fmt,
             /* decimal output */
             signed long x = va_arg (args, signed long);
             int i, q, print_padding = 0, print_digits = 0;
-            int divisors[10] =
-              { 1000000000, 100000000, 10000000, 1000000, 100000, 10000, 1000,
-              100, 10, 1
-            };
+            uint32 *divisors = base10_u32_divisors;
 
             if (x < 0) {
               putc ('-');
@@ -277,13 +284,13 @@ _printf (const char *fmt, ...)
   va_end (args);
 }
 
-/* 
+/*
  * Local Variables:
  * indent-tabs-mode: nil
  * mode: C
  * c-file-style: "gnu"
  * c-basic-offset: 2
- * End: 
+ * End:
  */
 
 /* vi: set et sw=2 sts=2: */
