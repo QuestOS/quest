@@ -274,6 +274,7 @@ ethernetif_input(struct netif *netif)
     break;
 
   default:
+    logger_printf("ethernetif_input: unknown type %d\n", htons (ethhdr->type));
     pbuf_free(p);
     p = NULL;
     break;
