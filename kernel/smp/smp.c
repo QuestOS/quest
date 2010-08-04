@@ -16,6 +16,7 @@
  */
 
 #include "arch/i386.h"
+#include "arch/i386-percpu.h"
 #include "kernel.h"
 #include "mem/mem.h"
 #include "smp/smp.h"
@@ -273,6 +274,9 @@ ap_init (void)
    * be locked before any shared resources are utilized.  The dummy
    * TSS is a shared resource. */
   lock_kernel ();
+
+  /* Allocate pages and GDT entry to setup per-CPU memory space */
+  percpu_per_cpu_init ();
 
   /* Load the dummy TSS so that when the CPU executes jmp_gate it has
    * a place to write the state of the CPU -- even though we don't

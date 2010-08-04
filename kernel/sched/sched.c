@@ -16,6 +16,7 @@
  */
 
 #include "arch/i386.h"
+#include "arch/i386-percpu.h"
 #include "kernel.h"
 #include "smp/smp.h"
 #include "smp/apic.h"
@@ -30,6 +31,15 @@ static uint32 runq_bitmap[(MAX_PRIO_QUEUES + 31) / 32];
 
 static int bitmap_find_first_set (uint32 *table, uint32 limit);
 
+#define preserve_segment(next)                                  \
+  {                                                             \
+    tss *tssp = (tss *)lookup_TSS (next);                       \
+    u16 sel;                                                    \
+    asm volatile ("movw %%"PER_CPU_SEG_STR", %0":"=r" (sel));   \
+    tssp->usFS = sel;                                           \
+  }
+
+#define switch_to(next) do { preserve_segment (next); jmp_gate (next); } while (0)
 
 extern void
 queue_append (uint16 * queue, uint16 selector)
@@ -145,7 +155,7 @@ schedule (void)
       return;
     }
 
-    jmp_gate (next);
+    switch_to (next);
   } else {                      /* Replenish timeslices for expired
                                    tasks */
 
@@ -162,7 +172,7 @@ schedule (void)
 
     /* Only switch tasks to IDLE if we are not already running IDLE. */
     if (str () != idle_sel)
-      jmp_gate (idle_sel);
+      switch_to (idle_sel);
   }
 }
 

@@ -17,6 +17,7 @@
 
 #include "boot/multiboot.h"
 #include "arch/i386.h"
+#include "arch/i386-percpu.h"
 #include "util/cpuid.h"
 #include "kernel.h"
 #include "fs/filesys.h"
@@ -520,6 +521,19 @@ init (multiboot * pmb)
   /* Initialise the programmable interval timer (PIT) */
   init_pit ();
 
+  if (!pmb->mods_count)
+    panic ("No modules available");
+
+  for (i = 0; i < pmb->mods_count; i++) {
+    tss[i] = load_module (pmb->mods_addr + i, i);
+    lookup_TSS (tss[i])->priority = MIN_PRIO;
+  }
+
+  /* Setup per-CPU area for bootstrap CPU */
+  /* NB: this uses a GDT entry and must occur after modules are loaded
+   * due to code that expects terminal_server to have id=0x30 */
+  percpu_per_cpu_init ();
+
   /* Start up other processors, which may allocate pages for stacks */
   num_cpus = smp_init ();
   if (num_cpus > 1) {
@@ -528,14 +542,6 @@ init (multiboot * pmb)
     putchar ('\n');
   } else {
     print ("Uni-processor mode.\n");
-  }
-
-  if (!pmb->mods_count)
-    panic ("No modules available");
-
-  for (i = 0; i < pmb->mods_count; i++) {
-    tss[i] = load_module (pmb->mods_addr + i, i);
-    lookup_TSS (tss[i])->priority = MIN_PRIO;
   }
 
   /* Remove identity mapping of first 4MB */

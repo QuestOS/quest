@@ -10,19 +10,22 @@
  * kernel data segment by loading the appropriate segment
  * registers */
 
-#define SREGS_SAVE       \
-        pushw %ds;       \
-        pushw %es;       \
-        pushw %fs;       \
-        pushw %gs;       \
-                         \
-        pushl %edx;      \
-        movw $0x10, %dx; \
-        movw %dx, %ds;   \
-        movw %dx, %es;   \
-        movw %dx, %fs;   \
-        movw %dx, %gs;   \
-                         \
+#include "arch/i386-percpu.h"
+
+#define SREGS_SAVE               \
+        pushw %ds;               \
+        pushw %es;               \
+        pushw %fs;               \
+        pushw %gs;               \
+                                 \
+        pushl %edx;              \
+        movw $0x10, %dx;         \
+        movw %dx, %ds;           \
+        movw %dx, %es;           \
+        movw %dx, %gs;           \
+        movl %PER_CPU_DBG, %edx; \
+        movw %dx, %PER_CPU_SEG;  \
+                                 \
         popl %edx
 
 #define REGS_RESTORE                                           \
