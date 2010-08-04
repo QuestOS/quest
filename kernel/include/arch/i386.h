@@ -374,6 +374,25 @@ strcpy (char *dest, const char *src)
   return memcpy (dest, src, strlen (src) + 1);
 }
 
+static inline uint64
+rdmsr (uint32 ecx)
+{
+  uint32 edx, eax;
+
+  asm volatile ("rdmsr":"=d" (edx), "=a" (eax):"c" (ecx));
+  return (((uint64) edx) << 32) | ((uint64) eax);
+}
+
+static inline void
+wrmsr (uint32 ecx, uint64 val)
+{
+  uint32 edx, eax;
+
+  edx = (uint32) (val >> 32);
+  eax = (uint32) val;
+
+  asm volatile ("wrmsr"::"d" (edx), "a" (eax), "c" (ecx));
+}
 
 /* from Linux */
 
@@ -386,7 +405,9 @@ strcpy (char *dest, const char *src)
     (((u32)(x) & (u32)0xff000000UL) >> 24)))
 #define __constant_cpu_to_le32(x) (x)
 #define cpu_to_le16(x) (x)
+#define __cpu_to_le16(x) (x)
 #define __cpu_to_le32(x) (x)
+#define __cpu_to_le64(x) (x)
 #define __cpu_to_be32(x) (___constant_swab32(x))
 #define __be32_to_cpu(x) (___constant_swab32(x))
 #define __le32_to_cpu(x) (x)

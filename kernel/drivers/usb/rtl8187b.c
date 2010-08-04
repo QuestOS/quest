@@ -722,8 +722,8 @@ do_status (void)
         /* TX close descriptor */
         pkt_rc = buf & 0xFF;
         tok = (buf & (1 << 15) ? TRUE : FALSE);
-        seq_no = (buf >> 16) && 0xFFF;
-        DLOGTX ("status: TX close: pkt_rc=%d tok=%d seq_no=%d LS=%d FS=%d",
+        seq_no = (buf >> 16) & 0xFFF;
+        DLOGTX ("status: TX close: pkt_rc=%d tok=%d seq_no=0x%x LS=%d FS=%d",
                 pkt_rc, tok, seq_no,
                 (buf & (1 << 28)) ? TRUE : FALSE,
                 (buf & (1 << 29)) ? TRUE : FALSE);
@@ -734,7 +734,7 @@ do_status (void)
                 buf >> 32);
       }
     } else
-      DLOG ("status: act_len==0");
+      DLOGTX ("status: act_len==0");
   }
 }
 
@@ -763,11 +763,15 @@ struct rtl8187b_tx_hdr {
   __le32 unused_4[2];
 } PACKED;
 
+uint seq_no = 1;
+
 static int
 _tx (uint8 *pkt, u32 len)
 {
-  u32 act_len;
-  int ret;
+  struct ieee80211_hdr * dot11hdr = ((struct ieee80211_hdr *) pkt);
+  u16 fc = dot11hdr->frame_control, dur_id;
+  u32 act_len, rate=3 /*11mbps*/, acktime;
+  int ret, ep;
   struct rtl8187b_tx_hdr hdr;
   static uint8 buf[2500];
 
@@ -775,31 +779,61 @@ _tx (uint8 *pkt, u32 len)
 
   memset (&hdr, 0, sizeof (hdr));
 
-  hdr.len = hdr.flags = len;
+  hdr.flags = len;
   hdr.flags |= RTL818X_TX_DESC_FLAG_NO_ENC;
   hdr.flags |= RTL818X_TX_DESC_FLAG_FS;
   hdr.flags |= RTL818X_TX_DESC_FLAG_LS;
-  hdr.retry = 1 << 8;
-  hdr.tx_duration = 0x0831;
+  hdr.retry = 0 << 8;
+  hdr.tx_duration = ieee80211_calc_duration (len, rate);
+#define ACK_LEN 10
+  acktime = ieee80211_calc_duration (ACK_LEN, rate);
+  if (is_broadcast_ether_addr(dot11hdr->addr1))
+    dur_id = 0;
+  else {
+    /* until I do fragmentation of packets...
+    if (i == nr_frags - 1)
+      dur_id = acktime + ieee->sifs_time;
+    else {
+      dur_id = 2*acktime + 3*ieee->sifs_time + hdr_len +
+        ( i == nr_frags - 2) ? last_payload_size : payload_size;
+    }
+    */
+    dur_id = 2*acktime + 3*SIFS_TIME + sizeof (struct ieee80211_hdr) + len;
+  }
 
+  dot11hdr->duration_id = __cpu_to_le16 (dur_id);
   memcpy (buf, &hdr, sizeof (hdr));
   memcpy (buf+sizeof (hdr), pkt, len);
 
+  /* set sequence number */
+  buf[sizeof (hdr)+22] = (seq_no & 0xF) << 4;
+  buf[sizeof (hdr)+23] = (seq_no >> 4) & 0xFF;
+
   len += sizeof (hdr);
 
-#ifdef DEBUG_RTL8187B
+#ifdef DEBUG_RTL8187B_TX
   debug_buf ("rtl8187b: tx", buf, len);
 #endif
 
-  if (usb_bulk_transfer (usbdev, tx_endps[cur_tx_ep], &buf, len,
+  if ((fc & IEEE80211_FCTL_FTYPE) == IEEE80211_FTYPE_MGMT)
+    ep = 12;
+  else
+    ep = tx_endps[cur_tx_ep];
+
+  if (usb_bulk_transfer (usbdev, ep, &buf, len,
                          TX_MAXPKT, DIR_OUT, &act_len) == 0) {
     do_status ();
     DLOGTX ("tx: sent %d bytes", act_len);
     ret=act_len;
   } else ret=0;
 
-  cur_tx_ep++;
-  cur_tx_ep &= 0x03;
+  if ((fc & IEEE80211_FCTL_FTYPE) != IEEE80211_FTYPE_MGMT) {
+    cur_tx_ep++;
+    cur_tx_ep &= 0x03;
+  }
+
+  seq_no++;
+  seq_no &= 0xFFF;
 
   return ret;
 }
@@ -817,11 +851,10 @@ static tx_qbuf_t tx_circ_buf[TX_BUF_LEN];
 static void
 tx_thread (void)
 {
-  DLOG ("tx: hello from 0x%x", str ());
+  DLOGTX ("tx: hello from 0x%x", str ());
   for (;;) {
     tx_qbuf_t qb;
     circular_remove (&tx_circ, &qb);
-    DLOG ("tx: got %d bytes", qb.len);
     _tx (qb.data, qb.len);
   }
 }
@@ -830,10 +863,10 @@ static int
 tx (struct ieee80211_hw *dev, sk_buff_t *skb)
 {
   tx_qbuf_t qb;
+
   if (skb->len > TX_BUF_DATA_MAX) return 0;
   qb.len = skb->len;
   memcpy (qb.data, skb->data, qb.len);
-  DLOG ("attempting to send %d bytes", skb->len);
   circular_insert (&tx_circ, &qb);
   return skb->len;
 }

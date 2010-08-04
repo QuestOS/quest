@@ -22,10 +22,19 @@
 #include <drivers/net/ieee80211.h>
 #include <drivers/net/mac80211.h>
 #include <drivers/net/ieee80211_standard.h>
+#include <drivers/net/ethernet.h>
 #include <util/debug.h>
 #include <mem/pow2.h>
 #include <sched/sched.h>
+#include <arch/i386.h>
 #include <string.h>
+
+typedef uint8 ethaddr_t[ETH_ADDR_LEN];
+#define SSID "quest"
+ethaddr_t quest_bssid = {
+  0xb6, 0x27, 0x07, 0xb6, 0x73, 0x7E
+};
+#define TIME_UNIT 1024          /* usec */
 
 #define DEBUG_MAC80211
 
@@ -41,7 +50,10 @@
 struct ieee80211_local {
   struct ieee80211_hw hw;
   const struct ieee80211_ops *ops;
-  bool link_up;
+  ethernet_device ethdev;
+  char *ssid;
+  u64 prev_time_update;
+  struct ieee80211_vif vif;
   char priv[0] ALIGNED(32);
 };
 typedef struct ieee80211_local local_t;
@@ -108,6 +120,11 @@ static struct ieee80211_channel channels[] = {
 
 static uint32 beacon_stack[1024] ALIGNED(0x1000);
 static void beacon_thread (local_t *);
+local_t *hack_local = NULL;
+sint mac80211_tx (uint8* buffer, sint len);
+bool mac80211_get_hwaddr (uint8 addr[ETH_ADDR_LEN]);
+void mac80211_poll (void);
+static void init_tsc_ufreq (void);
 
 bool
 ieee80211_register_hw (struct ieee80211_hw *hw)
@@ -145,6 +162,24 @@ ieee80211_register_hw (struct ieee80211_hw *hw)
   if (!local->ops->config (hw, 0))
     return FALSE;
 
+  local->vif.bss_conf.bssid = quest_bssid;
+  local->vif.bss_conf.timestamp = 0;
+  local->vif.bss_conf.beacon_int = 0x64;       /* FIXME */
+  local->vif.bss_conf.assoc_capability = 0x22; /* FIXME */
+  local->ssid = SSID;
+
+  local->ethdev.recv_func = NULL;
+  local->ethdev.send_func = mac80211_tx;
+  local->ethdev.get_hwaddr_func = mac80211_get_hwaddr;
+  local->ethdev.poll_func = mac80211_poll;
+  hack_local = local;           /* until I fix ethernet_device */
+  if (!net_register_device (&local->ethdev)) {
+    DLOG ("registration failed");
+    return FALSE;
+  }
+
+  init_tsc_ufreq ();
+
   start_kernel_thread_args ((u32) beacon_thread, (u32) &beacon_stack[1023],
                             1, local);
 
@@ -153,7 +188,42 @@ ieee80211_register_hw (struct ieee80211_hw *hw)
 
 /* ************************************************** */
 
-typedef uint8 ethaddr_t[ETH_ADDR_LEN];
+static u32 tsc_ufreq;           /* tsc per usec */
+extern u64 tsc_freq;
+
+static void
+init_tsc_ufreq (void)
+{
+  u64 f;
+  u32 f_hi, f_lo;
+  u32 divisor = 1000000;
+  f = tsc_freq;
+
+  f_hi = (u32) (f >> 32);
+  f_lo = (u32) (f & 0xFFFFFFFF);
+  asm volatile ("div %1":"=a" (tsc_ufreq):"r" (divisor),"a" (f_lo),"d" (f_hi));
+
+  DLOG ("tsc_ufreq=%d", tsc_ufreq);
+}
+
+static void
+update_timestamp (local_t *local)
+{
+  u64 new_time_update, diff;
+  RDTSC (new_time_update);
+  if (local->prev_time_update == 0) {
+    local->prev_time_update = new_time_update;
+  } else {
+    diff = new_time_update - local->prev_time_update;
+    u32 f_hi, f_lo, udiff;
+    f_hi = (u32) (diff >> 32);
+    f_lo = (u32) (diff & 0xFFFFFFFF);
+    asm volatile ("div %1":"=a" (udiff):"r" (tsc_ufreq),"a" (f_lo),"d" (f_hi));
+    local->vif.bss_conf.timestamp += udiff;
+  }
+}
+
+/* ************************************************** */
 
 #if 0
 static bool
@@ -170,12 +240,14 @@ static u8 *insert_eid (u8 *ptr, u8 eid, u8 len, void *data)
 }
 
 static u32
-make_beacon_pkt (ethaddr_t sa, ethaddr_t bssid,
-                 char *ssid,
+make_beacon_pkt (local_t *local,
+                 ethaddr_t sa,
                  u8 *rates, u8 rates_len,
                  u8 chan,
                  u8 *buf, u32 len)
 {
+  uint8 *bssid = local->vif.bss_conf.bssid;
+  char *ssid = local->ssid;
   struct ieee80211_mgmt *m = (struct ieee80211_mgmt *)buf;
   int i;
   u8 *ptr, ssid_len = strlen (ssid);
@@ -193,10 +265,9 @@ make_beacon_pkt (ethaddr_t sa, ethaddr_t bssid,
     m->sa[i] = sa[i];
     m->bssid[i] = bssid[i];
   }
-  m->seq_ctrl = 0x4640;         /* FIXME */
-  m->u.beacon.timestamp = 0x02c56200; /* FIXME */
-  m->u.beacon.beacon_int = 0x64;      /* FIXME */
-  m->u.beacon.capab_info = 0x22;      /* FIXME */
+  m->u.beacon.timestamp = local->vif.bss_conf.timestamp;
+  m->u.beacon.beacon_int = local->vif.bss_conf.beacon_int;
+  m->u.beacon.capab_info = local->vif.bss_conf.assoc_capability;
   ptr = m->u.beacon.variable;
   ptr = insert_eid (ptr, WLAN_EID_SSID, ssid_len, ssid);
   ptr = insert_eid (ptr, WLAN_EID_SUPP_RATES, rates_len, rates);
@@ -262,10 +333,7 @@ tx_beacon (struct ieee80211_local *local)
   ethaddr_t sa = {
     0x00, 0x1E, 0x2A, 0x42, 0x73, 0x7E
   };
-  ethaddr_t bssid = {
-    0xb6, 0x27, 0x07, 0xb6, 0x73, 0x7E
-  };
-  u32 len = make_beacon_pkt (sa, bssid, "quest", rates, 8, 1, pkt, 128);
+  u32 len = make_beacon_pkt (local, sa, rates, 8, 1, pkt, 128);
   if (len > 128) { DLOG ("make_beacon_pkt wants %d bytes", len); return; }
   struct sk_buff skb = {
     .data = pkt,
@@ -279,20 +347,25 @@ beacon_thread (local_t *local)
 {
   DLOG ("beacon: hello from 0x%x", str ());
   for (;;) {
-    sched_usleep (500000);
+    sched_usleep (1000000);
+    DLOG ("sending beacon timestamp=0x%.08X %.08X",
+          (u32) (local->vif.bss_conf.timestamp >> 32),
+          (u32) local->vif.bss_conf.timestamp);
     tx_beacon (local);
   }
 }
 
 static bool
-find_eid (struct ieee80211_mgmt *m, u32 len, u8 eid, u8 *output, u8 *act_len)
+find_eid (struct ieee80211_mgmt *m, s32 len, u8 eid,
+          u8 *output, u8 max_len, u8 *act_len)
 {
+  //char *what;
   uint8 *ptr;
   u32 hdr_len;
 #define CASE(x)                                         \
   if (ieee80211_is_##x (m->frame_control)) {            \
     ptr = m->u.x.variable;                              \
-    hdr_len = ((u32) &m->u.x.variable) - ((u32) &m);    \
+    hdr_len = ((u32) m->u.x.variable) - ((u32) m);      \
   }
   CASE(beacon);
   CASE(probe_req);
@@ -300,20 +373,26 @@ find_eid (struct ieee80211_mgmt *m, u32 len, u8 eid, u8 *output, u8 *act_len)
   CASE(assoc_req);
   CASE(assoc_resp);
 #undef CASE
+  //DLOG ("find_eid: eid=%d len=%d hdr_len=%d what=%s", eid, len, hdr_len, what);
   len -= hdr_len;
   for (;len > 0;) {
+    //DLOG ("len=%d ptr[0]=%d ptr[1]=%d", len, ptr[0], ptr[1]);
     if (ptr[0] == eid) {
-      memcpy (output, &ptr[2], ptr[1]);
-      *act_len = ptr[1];
-      return TRUE;
+      if (ptr[1] > max_len) {
+        return FALSE;
+      } if (ptr[1] + 2 > len) {
+        return FALSE;
+      } else {
+        memcpy (output, &ptr[2], ptr[1]);
+        *act_len = ptr[1];
+        return TRUE;
+      }
     }
-    len -= ptr[1];
-    ptr += ptr[1];
+    len -= (ptr[1] + 2);
+    ptr += (ptr[1] + 2);
   }
   return FALSE;
 }
-
-#define SSID "quest"
 
 static void
 tx_probe_resp (struct ieee80211_local *local)
@@ -341,7 +420,74 @@ tx_probe_resp (struct ieee80211_local *local)
     .data = pkt,
     .len = sizeof (pkt)
   };
+  struct ieee80211_mgmt *m = (struct ieee80211_mgmt *) pkt;
+  m->u.probe_resp.timestamp = __cpu_to_le64 (local->vif.bss_conf.timestamp);
   local->ops->tx (local_to_hw (local), &skb);
+}
+
+/*
+
+18:16:40.153738 314us arp who-has 169.254.237.67 tell 0.0.0.0
+        0x0000:  0800 3a01 ffff ffff ffff 0023 4daf 003c
+        0x0010:  b627 07b6 737e 4002 aaaa 0300 0000 0806
+        0x0020:  0001 0800 0604 0001 0023 4daf 003c 0000
+        0x0030:  0000 0000 0000 0000 a9fe ed43
+
+18:16:40.181611 314us IP6 (hlim 1, next-header: Options (0), length: 36) fe80::e196:3567:8822:ed43 > ff02::16: HBH (rtalert: 0x0000) (padn)[icmp6 sum ok] ICMP6, multicast listener report v2, length 28, 1 group record(s) [gaddr ff02::1:3 to_ex { }]
+        0x0000:  0800 3a01 3333 0000 0016 0023 4daf 003c
+        0x0010:  b627 07b6 737e 5002 aaaa 0300 0000 86dd
+        0x0020:  6000 0000 0024 0001 fe80 0000 0000 0000
+        0x0030:  e196 3567 8822 ed43 ff02 0000 0000 0000
+        0x0040:  0000 0000 0000 0016 3a00 0502 0000 0100
+        0x0050:  8f00 e3a2 0000 0001 0400 0000 ff02 0000
+        0x0060:  0000 0000 0000 0000 0001 0003
+
+18:16:40.184486 314us IP (tos 0x0, ttl   1, id 10136, offset 0, flags [none], proto: IGMP (2), length: 40, options ( RA (148) len 4 )) 169.254.237.67 > IGMP.MCAST.NET: igmp v3 report, 1 group record(s) [gaddr 224.0.0.252 to_ex { }]
+        0x0000:  0800 3a01 0100 5e00 0016 0023 4daf 003c
+        0x0010:  b627 07b6 737e 6002 aaaa 0300 0000 0800
+        0x0020:  4600 0028 2798 0000 0102 85df a9fe ed43
+        0x0030:  e000 0016 9404 0000 2200 f901 0000 0001
+        0x0040:  0400 0000 e000 00fc
+
+18:16:40.196611 314us IP6 (hlim 1, next-header: UDP (17), length: 32) fe80::e196:3567:8822:ed43.49845 > ff02::1:3.hostmon: [udp sum ok] UDP, length 24
+        0x0000:  0800 3a01 3333 0001 0003 0023 4daf 003c
+        0x0010:  b627 07b6 737e 7002 aaaa 0300 0000 86dd
+        0x0020:  6000 0000 0020 1101 fe80 0000 0000 0000
+        0x0030:  e196 3567 8822 ed43 ff02 0000 0000 0000
+        0x0040:  0000 0000 0001 0003 c2b5 14eb 0020 3ecf
+        0x0050:  1115 0000 0001 0000 0000 0000 0663 686f
+        0x0060:  7069 6e00 00ff 0001
+
+18:16:40.197611 314us IP (tos 0x0, ttl   1, id 10137, offset 0, flags [none], proto: UDP (17), length: 52) 169.254.237.67.55152 > 224.0.0.252.hostmon: [udp sum ok] UDP, length 24
+        0x0000:  0800 3a01 0100 5e00 00fc 0023 4daf 003c
+        0x0010:  b627 07b6 737e 8002 aaaa 0300 0000 0800
+        0x0020:  4500 0034 2799 0000 0111 19e2 a9fe ed43
+        0x0030:  e000 00fc d770 14eb 0020 3bc1 1115 0000
+        0x0040:  0001 0000 0000 0000 0663 686f 7069 6e00
+        0x0050:  00ff 0001
+
+
+18:33:49.213779 314us arp who-has 169.254.237.1 tell 169.254.237.67
+        0x0000:  0800 3a01 ffff ffff ffff 0023 4daf 003c
+        0x0010:  b627 07b6 737e 9094 aaaa 0300 0000 0806
+        0x0020:  0001 0800 0604 0001 0023 4daf 003c a9fe
+        0x0030:  ed43 0000 0000 0000 a9fe ed01
+
+ */
+
+static void
+debug_buf (char *prefix, uint8 *buf, u32 len)
+{
+  s32 i, j;
+
+  for (i=0;i<len;i+=8) {
+    logger_printf ("%s: ", prefix);
+    for (j=0;j<8;j++) {
+      if (i+j >= len) break;
+      logger_printf ("%.02X ", buf[i+j]);
+    }
+    logger_printf ("\n");
+  }
 }
 
 extern void
@@ -352,19 +498,37 @@ ieee80211_rx (struct ieee80211_hw *hw, struct sk_buff *skb)
   char ssid[IEEE80211_MAX_SSID_LEN+1];
   u8 act_len;
   u8 pkt[128];
-  u32 len;
+  u32 len, i;
   ethaddr_t sa = {
     0x00, 0x1E, 0x2A, 0x42, 0x73, 0x7E
   };
+  ethaddr_t bssid = {
+    0xB6, 0x27, 0x07, 0xB6, 0x73, 0x7E
+  };
+
+  update_timestamp (local);
 
   hdr = (struct ieee80211_hdr *)skb->data;
 
   if (ieee80211_is_mgmt (hdr->frame_control)) {
     struct ieee80211_mgmt *m = (struct ieee80211_mgmt *)skb->data;
     if (ieee80211_is_beacon (hdr->frame_control)) {
-      if (find_eid (m, skb->len, WLAN_EID_SSID, (u8 *)ssid, &act_len)) {
+      if (find_eid (m, skb->len, WLAN_EID_SSID,
+                    (u8 *)ssid, IEEE80211_MAX_SSID_LEN, &act_len)) {
         ssid[act_len] = 0;
-        DLOG ("beacon %s", ssid);
+        //DLOG ("beacon %s", ssid);
+        if (strncmp (SSID, ssid, act_len) == 0) {
+          local->vif.bss_conf.timestamp = m->u.beacon.timestamp + TIME_UNIT;
+          local->vif.bss_conf.beacon_int = m->u.beacon.beacon_int;
+          local->vif.bss_conf.assoc_capability = m->u.beacon.capab_info;
+          DLOG ("beacon %s; synchronizing beacon_int=0x%x capab=0x%x",
+                ssid, local->vif.bss_conf.beacon_int,
+                local->vif.bss_conf.assoc_capability);
+          DLOG ("  new timestamp=0x%.08X %.08X",
+                (u32) (local->vif.bss_conf.timestamp >> 32),
+                (u32) local->vif.bss_conf.timestamp);
+        }
+#if 0
         len = make_probe_req_pkt (sa, m->bssid, ssid, rates, 8,
                                   pkt, sizeof (pkt));
         if (len <= sizeof (pkt)) {
@@ -374,11 +538,13 @@ ieee80211_rx (struct ieee80211_hw *hw, struct sk_buff *skb)
           };
           local->ops->tx (local_to_hw (local), &skb);
         }
+#endif
       } else {
-        DLOG ("beacon, no SSID");
+        //DLOG ("beacon, no SSID");
       }
     } else if (ieee80211_is_probe_req (hdr->frame_control)) {
-      if (find_eid (m, skb->len, WLAN_EID_SSID, (u8 *)ssid, &act_len)) {
+      if (find_eid (m, skb->len, WLAN_EID_SSID,
+                    (u8 *)ssid, IEEE80211_MAX_SSID_LEN, &act_len)) {
         ssid[act_len] = 0;
         DLOG ("probe_req %s", ssid);
         if (strncmp (SSID, ssid, act_len) == 0) {
@@ -388,7 +554,8 @@ ieee80211_rx (struct ieee80211_hw *hw, struct sk_buff *skb)
         DLOG ("probe_req, no SSID");
       }
     } else if (ieee80211_is_probe_resp (hdr->frame_control)) {
-      if (find_eid (m, skb->len, WLAN_EID_SSID, (u8 *)ssid, &act_len)) {
+      if (find_eid (m, skb->len, WLAN_EID_SSID,
+                    (u8 *)ssid, IEEE80211_MAX_SSID_LEN, &act_len)) {
         ssid[act_len] = 0;
         DLOG ("probe_resp %s", ssid);
       } else {
@@ -404,11 +571,130 @@ ieee80211_rx (struct ieee80211_hw *hw, struct sk_buff *skb)
       }
     }
   } else if (ieee80211_is_data (hdr->frame_control)) {
-    DLOG ("data for %.02X:%.02X:%.02X:%.02X:%.02X:%.02X",
-          hdr->addr1[0], hdr->addr1[1], hdr->addr1[2],
-          hdr->addr1[3], hdr->addr1[4], hdr->addr1[5]);
+    if ((hdr->seq_ctrl & 0xF) == 0) {
+      DLOG ("data for %.02X:%.02X:%.02X:%.02X:%.02X:%.02X",
+            hdr->addr1[0], hdr->addr1[1], hdr->addr1[2],
+            hdr->addr1[3], hdr->addr1[4], hdr->addr1[5]);
+      for (i=0; i<ETH_ADDR_LEN; i++)
+        if (hdr->addr3[i] != bssid[i])
+          return;
+#ifdef DEBUG_MAC80211
+      debug_buf ("mac80211: data", skb->data, skb->len);
+#endif
+      /* hack in an "ethernet frame" */
+      memcpy (skb->data + 18, skb->data + 4, ETH_ADDR_LEN);
+      memcpy (skb->data + 24, skb->data + 10, ETH_ADDR_LEN);
+      local->ethdev.recv_func (&local->ethdev,
+                               skb->data + 18,
+                               skb->len - 18);
+    }
+  } else if (ieee80211_is_ctl (hdr->frame_control)) {
+    if (ieee80211_is_ack (hdr->frame_control)) {
+      DLOG ("ack");
+    }
   }
 }
+
+
+static u8 tx_buf[2500];
+
+sint
+mac80211_tx (uint8* buffer, sint len)
+{
+  struct ieee80211_hw *hw = local_to_hw (hack_local);
+  bool is_arp=FALSE;
+  u8 hdr[] = {
+    0x08, 0x00, 0x3a, 0x01,
+    0x00, 0x23, 0x4d, 0xaf, 0x00, 0x3c,
+    0x00, 0x1e, 0x2a, 0x42, 0x73, 0x7e,
+    0xb6, 0x27, 0x07, 0xb6, 0x73, 0x7e,
+    0x90, 0x94,
+    /* RFC 1042 SNAP header */
+    0xaa, 0xaa, 0x03, 0x00, 0x00, 0x00,
+    /* ARP */
+    //0x08, 0x06
+    /* IP */
+    0x08, 0x00
+  };
+
+  /* skip ethernet link layer header */
+  len -= 14;
+  buffer += 14;
+
+  DLOG ("mac80211_tx: %p %d bytes: %x %x", buffer, len, buffer[0], buffer[1]);
+  if (buffer[0] == 0 && buffer[1] == 1)
+    is_arp = TRUE;              /* guess ARP */
+
+  struct sk_buff skb = {
+    .data = tx_buf,
+    .len = len + sizeof (hdr)
+  };
+  memcpy (tx_buf, hdr, sizeof (hdr));
+  memcpy (tx_buf + sizeof (hdr), buffer, len);
+  if (is_arp) tx_buf[sizeof (hdr) - 1] = 6;
+
+  return hack_local->ops->tx (hw, &skb);
+}
+
+bool
+mac80211_get_hwaddr (uint8 addr[ETH_ADDR_LEN])
+{
+  int i;
+  /* FIXME */
+  ethaddr_t sa = {
+    0x00, 0x1E, 0x2A, 0x42, 0x73, 0x7E
+  };
+
+  for (i=0; i<ETH_ADDR_LEN; i++)
+    addr[i] = sa[i];
+  return TRUE;
+}
+
+void
+mac80211_poll (void)
+{
+}
+
+u16
+ieee80211_calc_duration (u32 len, s16 rate)
+{
+  u16 duration;
+  u16 drift;
+  switch (rate) {
+  case 0: //1mbps
+    duration = ((len+4)<<4) / 0x2;
+    drift = ((len+4)<<4) % 0x2;
+    if (drift == 0) break;
+    duration++;
+    break;
+
+  case 1: //2mbps
+    duration = ((len+4)<<4) / 0x4;
+    drift = ((len+4)<<4) % 0x4;
+    if (drift == 0) break;
+    duration++;
+    break;
+
+  case 2: //5.5mbps
+    duration = ((len+4)<<4) / 0xb;
+    drift = ((len+4)<<4) % 0xb;
+    if (drift == 0) break;
+    duration++;
+    break;
+
+  default:
+  case 3: //11mbps                         
+    duration = ((len+4)<<4) / 0x16;
+    drift = ((len+4)<<4) % 0x16;
+    if (drift == 0) break;
+    duration++;
+    break;
+  }
+
+  return duration;
+}
+
+
 
 /*
  * Local Variables:
