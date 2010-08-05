@@ -7,6 +7,13 @@ PHDRS {
   virtualdata PT_LOAD;
 }
 SECTIONS {
+  /* Place per-CPU data in phantom segment, to be dynamically allocated */
+  . = 0x0;
+  _percpustart = .;
+  .percpu (NOLOAD) : { *(.percpu) } : NONE
+  _percpuend = ALIGN(0x1000);
+  _percpu_pages = (_percpuend - _percpustart) / 0x1000;
+
   /* Bootstrap physical section, at virtual and physical address 0x100000 */
   . = 0x100000 + SIZEOF_HEADERS;
   .physicaltext : {   boot/boot.o (.text) } : physical
@@ -24,9 +31,16 @@ SECTIONS {
   . = ALIGN(4);
   .rodata : AT ( ( LOADADDR(.text) + SIZEOF(.text) + 3 ) & 0xFFFFFFFC )
     { *(.rodata*) } : virtualtext
+
+  . = ALIGN(4);
+  /* Insert a read-only null-terminated array of pointers to constructors */
+  _percpu_ctor_list = .;
+  .ctors : AT ( ( LOADADDR (.rodata) + SIZEOF (.rodata) + 3 ) & 0xFFFFFFFC )
+              { *(.percpu.ctor); LONG(0) } : virtualtext
+
   . = ALIGN(0x1000);
    _kernel_readwrite = .;
-  .data : AT ( ( LOADADDR(.rodata) + SIZEOF(.rodata) + 0xFFF ) & 0xFFFFF000 ) 
+  .data : AT ( ( LOADADDR(.ctors) + SIZEOF(.ctors) + 0xFFF ) & 0xFFFFF000 ) 
              { *(.data) } : virtualdata
   .bss : AT ( LOADADDR(.data) + SIZEOF(.data) )
             { *(.bss) *(COMMON) } : virtualdata

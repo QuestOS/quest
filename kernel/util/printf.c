@@ -21,12 +21,25 @@
 #include "util/screen.h"
 #include "util/debug.h"
 
+static uint32 base10_u32_divisors[10] = {
+  1000000000, 100000000, 10000000, 1000000, 100000, 10000, 1000, 100, 10, 1
+};
+
+#if 0
+static uint64 base10_u64_divisors[20] = {
+  10000000000000000000ULL, 1000000000000000000ULL, 100000000000000000ULL,
+  10000000000000000ULL, 1000000000000000ULL, 100000000000000ULL,
+  10000000000000ULL, 1000000000000ULL, 100000000000ULL, 10000000000ULL,
+  1000000000ULL, 100000000ULL, 10000000ULL, 1000000ULL, 100000ULL, 10000ULL,
+  1000ULL, 100ULL, 10ULL, 1ULL
+};
+#endif
 
 void
 closure_vprintf (void putc_clo (void *, char), void *data, const char *fmt,
                  va_list args)
 {
-  int precision, width, mode, upper;
+  int precision, width, mode, upper, ells;
   char padding;
 #define putc(c) putc_clo(data,c)
   while (*fmt) {
@@ -40,6 +53,7 @@ closure_vprintf (void putc_clo (void *, char), void *data, const char *fmt,
       width = 0;
       upper = 1;
       padding = ' ';
+      ells = 0;
 #define PRINTF_MODE_PRECISION 1
       mode = 0;
       /* handle directive arguments */
@@ -62,11 +76,17 @@ closure_vprintf (void putc_clo (void *, char), void *data, const char *fmt,
           upper = 0;
         case 'X':{
             /* hexadecimal output */
-            uint32 x = va_arg (args, uint32);
+            uint64 x;
             int i, li, print_padding = 0, print_digits = 0;
+            int w = (ells == 2 ? 16 : 8);
 
-            for (i = 0; i < 8; i++) {
-              li = (x >> ((7 - i) << 2)) & 0x0F;
+            if (ells == 2)
+              x = va_arg (args, uint64);
+            else
+              x = va_arg (args, uint32);
+
+            for (i = 0; i < w; i++) {
+              li = (x >> (((w - 1) - i) << 2)) & 0x0F;
 
 #define HANDLE_OPTIONS(q,max_w,end_i)                                   \
             if (q != 0 || i == end_i)                                   \
@@ -78,7 +98,7 @@ closure_vprintf (void putc_clo (void *, char), void *data, const char *fmt,
             if (q == 0 && print_padding && !print_digits)               \
               putc(padding);
 
-              HANDLE_OPTIONS (li, 8, 7);
+              HANDLE_OPTIONS (li, w, (w-1));
 
               if (print_digits) {
                 if (li > 9)
@@ -94,10 +114,7 @@ closure_vprintf (void putc_clo (void *, char), void *data, const char *fmt,
             /* decimal output */
             uint32 x = va_arg (args, uint32);
             int i, q, print_padding = 0, print_digits = 0;
-            int divisors[10] =
-              { 1000000000, 100000000, 10000000, 1000000, 100000, 10000, 1000,
-              100, 10, 1
-            };
+            uint32 *divisors = base10_u32_divisors;
 
             for (i = 0; i < 10; i++) {
               q = x / divisors[i];
@@ -115,10 +132,7 @@ closure_vprintf (void putc_clo (void *, char), void *data, const char *fmt,
             /* decimal output */
             signed long x = va_arg (args, signed long);
             int i, q, print_padding = 0, print_digits = 0;
-            int divisors[10] =
-              { 1000000000, 100000000, 10000000, 1000000, 100000, 10000, 1000,
-              100, 10, 1
-            };
+            uint32 *divisors = base10_u32_divisors;
 
             if (x < 0) {
               putc ('-');
@@ -163,6 +177,10 @@ closure_vprintf (void putc_clo (void *, char), void *data, const char *fmt,
             putc ('%');
             goto directive_finished;
           }
+        case 'l':
+          /* "long" annotation */
+          ells++;
+          break;
         case '.':
           mode = PRINTF_MODE_PRECISION;
           break;
@@ -266,13 +284,13 @@ _printf (const char *fmt, ...)
   va_end (args);
 }
 
-/* 
+/*
  * Local Variables:
  * indent-tabs-mode: nil
  * mode: C
  * c-file-style: "gnu"
  * c-basic-offset: 2
- * End: 
+ * End:
  */
 
 /* vi: set et sw=2 sts=2: */

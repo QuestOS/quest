@@ -103,7 +103,7 @@ perfmon_init (void)
   perfmon_pmc_config (0, 0x3C, 0);
   u64 tsc;
   RDTSC (tsc);
-  DLOG ("pmc0=%d tsc=%u", (u32) perfmon_pmc_read (0), (u32) tsc);
+  DLOG ("pmc0=0x%llX tsc=0x%llX", perfmon_pmc_read (0), tsc);
   for (i=0; i<NUM_PREDEFINED_ARCH_PERFEVTS; i++) {
     if ((ebx & (1 << i)) == 0) {
       DLOG ("Predefined event \"%s\" supported", predefined_arch_perfevts[i].name);
@@ -112,7 +112,7 @@ perfmon_init (void)
       predefined_arch_perfevts[i].supported = FALSE;
   }
   RDTSC (tsc);
-  DLOG ("pmc0=%d tsc=%u", (u32) perfmon_pmc_read (0), (u32) tsc);
+  DLOG ("pmc0=0x%llX tsc=0x%llX", perfmon_pmc_read (0), tsc);
 }
 
 /*

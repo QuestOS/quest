@@ -15,33 +15,28 @@
  *  along with this program.  If not, see <http://www.gnu.org/licenses/>.
  */
 
-#ifndef _KERNEL_DEFS_H_
-#define _KERNEL_DEFS_H_
+/* Quick CPP macro utility adopted from Linux */
 
-/* Define some constants for virtual addresses */
-#define KERN_STK 0xFF800000     /* Kernel stack */
-#define KERN_IDT 0xFFFEF000     /* Kernel IDT */
-#define KERN_IDT_LEN 0x7FF      /* 255 entries */
-#define KERN_GDT 0xFFFEF800     /* kernel GDT */
-#define KERN_SCR 0xFFFF0000     /* Screen (kernel virtual) memory  */
-#define KERN_PGT 0xFFFF1000     /* kernel page table */
+#ifndef _UTIL_STRINGIFY_H_
+#define _UTIL_STRINGIFY_H_
 
-#define PHYS_INDEX_MAX 32768
+/* Indirect stringification.  Doing two levels allows the parameter to be a
+ * macro itself.  For example, compile with -DFOO=bar, __stringify(FOO)
+ * converts to "bar".
+ */
 
-#define NR_MODS 10              /* Establish support for modules loaded by
-                                   grub at boot time */
-
-#define QUANTUM_HZ 100
+#define __stringify_1(x...)     #x
+#define __stringify(x...)       __stringify_1(x)
 
 #endif
 
-/* 
+/*
  * Local Variables:
  * indent-tabs-mode: nil
  * mode: C
  * c-file-style: "gnu"
  * c-basic-offset: 2
- * End: 
+ * End:
  */
 
 /* vi: set et sw=2 sts=2: */

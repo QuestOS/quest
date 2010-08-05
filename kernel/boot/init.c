@@ -17,6 +17,7 @@
 
 #include "boot/multiboot.h"
 #include "arch/i386.h"
+#include "arch/i386-percpu.h"
 #include "util/cpuid.h"
 #include "kernel.h"
 #include "fs/filesys.h"
@@ -28,6 +29,7 @@
 #include "util/printf.h"
 #include "util/screen.h"
 #include "util/debug.h"
+#include "util/perfmon.h"
 #include "drivers/input/keyboard.h"
 
 extern descriptor idt[];
@@ -428,11 +430,17 @@ init (multiboot * pmb)
   }
 
   cpuid_get_brand_string (brandstring, I386_CPUID_BRAND_STRING_LENGTH);
-  print ("CPUID reports: ");
-  print (brandstring);
-  putchar ('\n');
+  printf ("CPUID says: %s\n", brandstring);
   if (cpuid_vmx_support ())
     print ("VMX support detected\n");
+  if (!cpuid_msr_support ())
+    panic ("Model-specific registers not supported!\n");
+  if (!cpuid_tsc_support ())
+    panic ("Timestamp counter not supported!");
+  if (cpuid_invariant_tsc_support ()) {
+     print ("Invariant TSC support detected\n");
+     com1_printf ("Invariant TSC support detected\n");
+  }
 
   for (mmap = (memory_map_t *) pmb->mmap_addr;
        (uint32) mmap < pmb->mmap_addr + pmb->mmap_length;
@@ -513,6 +521,19 @@ init (multiboot * pmb)
   /* Initialise the programmable interval timer (PIT) */
   init_pit ();
 
+  if (!pmb->mods_count)
+    panic ("No modules available");
+
+  for (i = 0; i < pmb->mods_count; i++) {
+    tss[i] = load_module (pmb->mods_addr + i, i);
+    lookup_TSS (tss[i])->priority = MIN_PRIO;
+  }
+
+  /* Setup per-CPU area for bootstrap CPU */
+  /* NB: this uses a GDT entry and must occur after modules are loaded
+   * due to code that expects terminal_server to have id=0x30 */
+  percpu_per_cpu_init ();
+
   /* Start up other processors, which may allocate pages for stacks */
   num_cpus = smp_init ();
   if (num_cpus > 1) {
@@ -521,14 +542,6 @@ init (multiboot * pmb)
     putchar ('\n');
   } else {
     print ("Uni-processor mode.\n");
-  }
-
-  if (!pmb->mods_count)
-    panic ("No modules available");
-
-  for (i = 0; i < pmb->mods_count; i++) {
-    tss[i] = load_module (pmb->mods_addr + i, i);
-    lookup_TSS (tss[i])->priority = MIN_PRIO;
   }
 
   /* Remove identity mapping of first 4MB */
@@ -556,6 +569,9 @@ init (multiboot * pmb)
 
   /* Logging thread */
   logger_init ();
+
+  /* Performance monitoring */
+  perfmon_init ();
 
   /* Initialize interrupt-driven keyboard driver */
   init_keyboard_8042 ();

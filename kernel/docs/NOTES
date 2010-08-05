@@ -1,3 +1,53 @@
+Wednesday 2010-08-04 md
+
+  Finished implementing per-CPU memory areas including per-CPU
+  initialization functions which are invoked immediately after the
+  memory areas are configured for each CPU.
+  
+  All per-CPU variables are declared in a special non-loaded section
+  so they all gain distinct addresses.  Then space is allocated after
+  the number of CPUs is determined.  A segment descriptor for each
+  space is setup, and each CPU loads a spare segment register with it
+  (like %fs).  Per-CPU variable access is done, via macros, relative
+  to that segment override.  The segment selector is currently stored
+  in %dr3 so that when we return from userspace, we can setup %fs with
+  the proper value again.  In the future, when we switch to software
+  tasks, it will be possible to avoid using %dr3 by exploiting the
+  fact that every CPU has a different selector in %tr.  For example,
+  you can allocate the per-CPU TSS next to the per-CPU %fs descriptor,
+  so in the end all you need to do is
+
+    str %eax; leal 8(%eax), %eax; movw %ax, %fs
+
+  which should be faster than debug registers.
+
+  Another section is declared, adjacent to read-only data, which
+  contains a null-terminated array of pointers to initialization
+  functions.  Each CPU invokes these functions to initialize per-CPU
+  variables.  This is similar to how C++ global constructors work.
+
+Tuesday 2010-08-03 md
+
+  Started implementing per-CPU memory areas based on segment register
+  %fs and debug register %dr3.
+
+Monday 2010-08-02 md
+
+  Investigating options for per-CPU memory areas.  Using %dr3 has some
+  advantages, like the fact that task-switch does not touch it.  Best
+  measurements I can make show a 30-50 cycle cost to read %dr3, and a
+  110-170 cycle cost to write %dr3.  Reading LAPIC ID register seems
+  to cost around 25-45 cycles.  Loading an index into segment register
+  %fs takes about 15-25 cycles.  Probably looking at up to 25-45
+  cycles for a segment load plus memory read: though this is likely
+  coming from cache.  STR is another option for getting an index
+  quickly, but only works with software task switching because then
+  each CPU gets one exclusive TSS entry.
+
+Friday 2010-07-30 md
+
+  Did some measurement of scheduler tick jitter.
+
 Thursday 2010-07-29 md
 
   Adding the beginning of a performance monitoring counter module.

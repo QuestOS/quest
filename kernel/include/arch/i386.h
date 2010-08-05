@@ -149,22 +149,18 @@ get_pdbr (void)
   return p;
 }
 
-
 static inline void
 jmp_gate (uint16 us)
 {
-
   uint16 gate[3];
 
   asm volatile ("movw %1,0x4(%0)\n" /* Set segment selector -- ignore 4-byte offset */
                 "ljmp *(%0)"::"r" (gate),"r"(us));
 }
 
-
 static inline void
 call_gate (uint16 us)
 {
-
   uint16 gate[3];
 
   gate[2] = us;                 /* Set segment selector -- ignore 4-byte offset */

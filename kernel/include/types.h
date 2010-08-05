@@ -36,8 +36,13 @@ typedef unsigned long long int uint64;
 
 typedef signed char sint8, s8;
 typedef signed short int sint16, s16;
-typedef signed long int sint32, s32, size_t;
+typedef signed long int sint32, s32;
 typedef signed long long int sint64, s64;
+
+#ifndef _SIZE_T
+typedef int size_t;
+#define _SIZE_T 1
+#endif
 
 typedef signed char bool;
 

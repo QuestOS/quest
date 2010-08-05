@@ -16,6 +16,7 @@
  */
 
 #include "arch/i386.h"
+#include "arch/i386-percpu.h"
 #include "kernel.h"
 #include "mem/mem.h"
 #include "smp/smp.h"
@@ -149,7 +150,7 @@ smp_enable_scheduling (void)
                      FALSE,  /* one-shot mode. */
                      1);     /* set LAPIC timer divisor to 1 */
 
-  LAPIC_start_timer(cpu_bus_freq / 100); /* 100 Hz */
+  LAPIC_start_timer(cpu_bus_freq / QUANTUM_HZ); /* quantum */
 
   sched_enabled = 1;
 }
@@ -267,12 +268,15 @@ ap_init (void)
     asm volatile ("pause");
 
   LAPIC_enable_timer(0x3e, FALSE, 1);    /* vector=0x3e, one-shot, divisor=1 */
-  LAPIC_start_timer(cpu_bus_freq / 100); /* 100 Hz */
+  LAPIC_start_timer(cpu_bus_freq / QUANTUM_HZ); /* quantum */
   
   /* The AP is now operating in an SMP environment so the kernel must
    * be locked before any shared resources are utilized.  The dummy
    * TSS is a shared resource. */
   lock_kernel ();
+
+  /* Allocate pages and GDT entry to setup per-CPU memory space */
+  percpu_per_cpu_init ();
 
   /* Load the dummy TSS so that when the CPU executes jmp_gate it has
    * a place to write the state of the CPU -- even though we don't

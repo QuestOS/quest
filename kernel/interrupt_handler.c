@@ -894,7 +894,7 @@ _interrupt3e (void)
 {
   uint8 phys_id = LAPIC_get_physical_ID ();
   send_eoi ();
-  LAPIC_start_timer (cpu_bus_freq / 100);       /* 100 Hz */
+  LAPIC_start_timer (cpu_bus_freq / QUANTUM_HZ); /* setup next tick */
 
   if (str () == idleTSS_selector[phys_id]) {
     lock_kernel ();

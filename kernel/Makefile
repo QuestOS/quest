@@ -26,6 +26,7 @@ PROGS = quest \
 OBJS =  boot/boot.o boot/init.o kernel.o \
 	interrupt.o interrupt_handler.o \
 	smp/boot-smp.o smp/smp.o smp/intel.o smp/acpi.o smp/apic.o \
+	arch/i386/percpu.o \
 	sched/sched.o sched/sleep.o \
 	mem/physical.o mem/virtual.o mem/pow2.o \
 	util/cpuid.o util/printf.o util/screen.o util/debug.o util/circular.o \
