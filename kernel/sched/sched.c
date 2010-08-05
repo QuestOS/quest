@@ -31,16 +31,15 @@ static uint32 runq_bitmap[(MAX_PRIO_QUEUES + 31) / 32];
 
 static int bitmap_find_first_set (uint32 *table, uint32 limit);
 
-#define reload_percpu_seg do {                          \
-    asm volatile ("movl %%"PER_CPU_DBG_STR", %%eax\n"   \
-                  "movw %%ax, %%"PER_CPU_SEG_STR        \
-                  :::"eax");                            \
-  } while (0)
+#define preserve_segment(next)                                  \
+  {                                                             \
+    tss *tssp = (tss *)lookup_TSS (next);                       \
+    u16 sel;                                                    \
+    asm volatile ("movw %%"PER_CPU_SEG_STR", %0":"=r" (sel));   \
+    tssp->usFS = sel;                                           \
+  }
 
-#define switch_to(next) do { \
-    jmp_gate (next);         \
-    reload_percpu_seg;       \
-  } while (0)
+#define switch_to(next) do { preserve_segment (next); jmp_gate (next); } while (0)
 
 extern void
 queue_append (uint16 * queue, uint16 selector)
