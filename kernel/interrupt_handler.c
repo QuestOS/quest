@@ -22,6 +22,7 @@
  */
 
 #include "arch/i386.h"
+#include "arch/i386-percpu.h"
 #include "kernel.h"
 #include "mem/mem.h"
 #include "util/elf.h"
@@ -218,7 +219,7 @@ handle_interrupt (uint32 fs_gs, uint32 ds_es, uint32 ulInt, uint32 ulCode)
 
   uint32 eax, ebx, ecx, edx, esi, edi, eflags, eip, esp, ebp;
   uint32 cr0, cr2, cr3;
-  uint16 tr;
+  uint16 tr, fs;
 
   asm volatile ("movl %%eax, %0\n"
                 "movl %%ebx, %1\n"
@@ -242,10 +243,13 @@ handle_interrupt (uint32 fs_gs, uint32 ds_es, uint32 ulInt, uint32 ulCode)
                 "movl %%eax, %12\n"
                 "xorl %%eax, %%eax\n"
                 "str  %%ax\n"
-                "movw %%ax, %13\n":"=m" (eax), "=m" (ebx), "=m" (ecx),
-                "=m" (edx), "=m" (esi), "=m" (edi), "=m" (ebp), "=m" (eip),
-                "=m" (eflags), "=m" (esp), "=m" (cr0), "=m" (cr2), "=m" (cr3),
-                "=m" (tr):);
+                "movw %%ax, %13\n"
+                "movw %%fs, %%ax\n"
+                "movw %%ax, %14\n"
+                :"=m" (eax), "=m" (ebx), "=m" (ecx),
+                 "=m" (edx), "=m" (esi), "=m" (edi), "=m" (ebp), "=m" (eip),
+                 "=m" (eflags), "=m" (esp), "=m" (cr0), "=m" (cr2), "=m" (cr3),
+                 "=m" (tr), "=m" (fs):);
 
   spinlock_lock (&screen_lock);
   _putchar ('I');
@@ -273,6 +277,7 @@ handle_interrupt (uint32 fs_gs, uint32 ds_es, uint32 ulInt, uint32 ulCode)
   _printf ("EDX=%.8X ESP=%.8X\n", edx, esp);
   _printf ("EFL=%.8X EIP=%.8X\n", eflags, eip);
   _printf ("CR0=%.8X CR2=%.8X\nCR3=%.8X TR=%.4X\n", cr0, cr2, cr3, tr);
+  _printf (" FS=%.4X\n", fs);
   stacktrace ();
 
 #ifndef ENABLE_GDBSTUB
