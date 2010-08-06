@@ -33,6 +33,7 @@
 #include <mem/physical.h>
 #include <mem/virtual.h>
 #include <arch/i386-percpu.h>
+#include <smp/apic.h>
 
 //#define DEBUG_PERCPU
 
@@ -44,6 +45,8 @@
 
 extern u8 _percpu_pages;
 extern void (*_percpu_ctor_list)();
+
+u8 *percpu_virt[MAX_CPUS];
 
 extern void
 percpu_per_cpu_init (void)
@@ -71,6 +74,8 @@ percpu_per_cpu_init (void)
   if (start_frame == -1) panic ("out of physical RAM");
   uint start_virt = (uint) map_contiguous_virtual_pages (start_frame | 3, pages);
   if (start_virt == 0) panic ("out of virtual RAM");
+
+  percpu_virt[LAPIC_get_physical_ID ()] = (u8 *) start_virt;
 
   descriptor seg = {
     .pBase0 = start_virt & 0xFFFF,
