@@ -166,6 +166,10 @@ duplicate_TSS (uint32 ebp,
   pTSS->usSS0 = 0x10;           /* Kernel stack segment */
   pTSS->ulESP0 = (uint32) KERN_STK + 0x1000;
 
+#ifdef MPQ
+  quest_tss *tssp = (quest_tss *)pTSS;
+  tssp->cpu = 0xFF;
+#endif
 
   /* Return the index into the GDT for the segment */
   return i << 3;
@@ -387,6 +391,8 @@ _fork (uint32 ebp, uint32 *esp)
   if (eip == 0) {
     /* We are in the child process now */
     unlock_kernel ();
+    /* don't need to reload per-CPU segment here because we are going
+     * straight to userspace */
     return 0;
   }
 

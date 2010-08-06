@@ -95,6 +95,9 @@ typedef struct _quest_tss
   uint64 time;                  /* A field for time values associated
                                    with task, for example, to be used
                                    by waitqueue managers. */
+#ifdef MPQ
+  u8 cpu;                       /* CPU binding */
+#endif
 } quest_tss;
 
 extern char *kernel_version;

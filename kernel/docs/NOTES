@@ -1,3 +1,15 @@
+Friday 2010-08-06 md
+
+  Added API to access other CPU's variables.  Need this to queue tasks
+  back on their assigned CPU (at least, until proper inter-CPU
+  messaging exists).  Now the "MPQ" per-CPU queue scheduler will keep
+  pulling tasks from the local queue, then fall back to a global
+  queue.
+
+Thursday 2010-08-05 md
+
+  Tinkering with a per-CPU queue scheduler.
+
 Wednesday 2010-08-04 md
 
   Finished implementing per-CPU memory areas including per-CPU
@@ -25,6 +37,10 @@ Wednesday 2010-08-04 md
   contains a null-terminated array of pointers to initialization
   functions.  Each CPU invokes these functions to initialize per-CPU
   variables.  This is similar to how C++ global constructors work.
+
+  Ye notes that if we have software task switching then we can have
+  separate GDTs per CPU and then hard-code the per-CPU segment number.
+  Or, perhaps the LDT will work.
 
 Tuesday 2010-08-03 md
 
