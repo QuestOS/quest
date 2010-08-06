@@ -20,6 +20,12 @@
 
 #include "types.h"
 
+/* Intel Manual 3A 8.10.6.7 recommends no more than one lock or
+ * semaphore be present within each 128-byte aligned block of memory,
+ * to reduce bus traffic. */
+#define LOCK_ALIGNMENT_LOG2 7
+#define LOCK_ALIGNMENT (1<<LOCK_ALIGNMENT_LOG2)
+
 static inline uint32
 atomic_load_dword (uint32 * addr)
 {

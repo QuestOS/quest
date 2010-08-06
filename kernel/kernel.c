@@ -24,7 +24,7 @@
 #include "mem/virtual.h"
 #include "mem/physical.h"
 
-static spinlock kernel_lock = SPINLOCK_INIT;
+static spinlock kernel_lock ALIGNED(LOCK_ALIGNMENT) = SPINLOCK_INIT;
 
 /* Declare space for a stack */
 uint32 ul_stack[NR_MODS][1024] __attribute__ ((aligned (4096)));
