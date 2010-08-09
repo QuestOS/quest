@@ -62,6 +62,8 @@ static struct predefined_arch_perfevts {
 #define NUM_PREDEFINED_ARCH_PERFEVTS \
   (sizeof (predefined_arch_perfevts) / sizeof (struct predefined_arch_perfevts))
 
+bool perfmon_enabled = FALSE;
+
 extern void
 perfmon_init (void)
 {
@@ -113,6 +115,8 @@ perfmon_init (void)
   }
   RDTSC (tsc);
   DLOG ("pmc0=0x%llX tsc=0x%llX", perfmon_pmc_read (0), tsc);
+
+  perfmon_enabled = TRUE;
 }
 
 /*
