@@ -529,10 +529,7 @@ init (multiboot * pmb)
     lookup_TSS (tss[i])->priority = MIN_PRIO;
   }
 
-  /* Setup per-CPU area for bootstrap CPU */
-  /* NB: this uses a GDT entry and must occur after modules are loaded
-   * due to code that expects terminal_server to have id=0x30 */
-  percpu_per_cpu_init ();
+  pow2_init ();                 /* initialize power-of-2 memory allocator */
 
   /* Start up other processors, which may allocate pages for stacks */
   num_cpus = smp_init ();
@@ -548,14 +545,17 @@ init (multiboot * pmb)
   *((uint32 *)get_pdbr()) = 0;
   flush_tlb_all ();
 
-  pow2_init ();                 /* initialize power-of-2 memory allocator */
-
   /* Dummy TSS used when CPU needs somewhere to write scratch values */
   dummyTSS_selector = alloc_dummy_TSS ();
 
   /* Create IDLE tasks */
   for (i = 0; i < num_cpus; i++)
     idleTSS_selector[i] = alloc_idle_TSS (i);
+
+  /* Setup per-CPU area for bootstrap CPU */
+  /* NB: this uses a GDT entry and must occur after modules are loaded
+   * due to code that expects terminal_server to have id=0x30 */
+  percpu_per_cpu_init ();
 
   /* Load the dummy TSS so that when the CPU executes jmp_gate it has
    * a place to write the state of the CPU -- even though we don't

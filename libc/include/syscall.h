@@ -45,7 +45,7 @@ static inline void
 putchar (int c)
 {
 
-  asm volatile ("int $0x30\n"::"a" (0x0), "b" (c):CLOBBERS2);
+  asm volatile ("int $0x30\n"::"a" (0L), "b" (c):CLOBBERS2);
 
 }
 
@@ -142,7 +142,7 @@ meminfo (void)
 
   unsigned c;
 
-  asm volatile ("int $0x38\n":"=a" (c):"a" (0):CLOBBERS1);
+  asm volatile ("int $0x38\n":"=a" (c):"a" (0L):CLOBBERS1);
 
   return c;
 }
@@ -152,7 +152,7 @@ shared_mem_alloc (void)
 {
   unsigned c;
 
-  asm volatile ("int $0x38\n":"=a" (c):"a" (1):CLOBBERS1);
+  asm volatile ("int $0x38\n":"=a" (c):"a" (1L):CLOBBERS1);
 
   return c;
 }
@@ -162,7 +162,7 @@ shared_mem_attach (unsigned id)
 {
   unsigned c;
 
-  asm volatile ("int $0x38\n":"=a" (c):"a" (2), "d" (id):CLOBBERS4);
+  asm volatile ("int $0x38\n":"=a" (c):"a" (2L), "d" (id):CLOBBERS4);
 
   return (void *) c;
 }
@@ -172,7 +172,7 @@ shared_mem_detach (void *addr)
 {
   unsigned c;
 
-  asm volatile ("int $0x38\n":"=a" (c):"a" (3), "d" ((unsigned) addr):CLOBBERS4);
+  asm volatile ("int $0x38\n":"=a" (c):"a" (3L), "d" ((unsigned) addr):CLOBBERS4);
 
   return c;
 }
@@ -182,7 +182,7 @@ shared_mem_free (unsigned id)
 {
   unsigned c;
 
-  asm volatile ("int $0x38\n":"=a" (c):"a" (4), "d" (id):CLOBBERS4);
+  asm volatile ("int $0x38\n":"=a" (c):"a" (4L), "d" (id):CLOBBERS4);
 
   return c;
 }

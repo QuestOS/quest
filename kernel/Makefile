@@ -1,3 +1,4 @@
+include config.mk
 GRUBLIB = grub/x86_64-pc
 GRUB2 = grub2
 TFTPDIR=tftp
@@ -6,8 +7,7 @@ CC = gcc
 TAR = tar
 ATSCC = atscc 
 ATSOPT = atsopt
-OPT = 0
-CFLAGS = -m32 -fno-builtin -fno-stack-protector -fno-strict-aliasing -nostdinc -g -Wall -Wno-attributes -O$(OPT) $(EXTRA_CFLAGS)
+CFLAGS = -m32 -fno-builtin -fno-stack-protector -fno-strict-aliasing -nostdinc -g -Wall -Wno-attributes -O$(OPT) $(CFG) $(EXTRA_CFLAGS)
 CPPFLAGS = -D_QUEST -Wa,--32 -MMD -Iinclude -Iinclude/drivers/acpi -I. -I../libc/include 
 ATSFLAGS = -IATS include -I. -Iinclude -Iinclude/drivers/acpi -I../libc/include -g -O$(OPT) -D_ATS_PRELUDE_NONE -D_ATS_DYNLOADFUN_NONE -D_ATS_STALOADFUN_NONE -DATS_TYPES_H -DATS_EXCEPTION_H -DATS_MEMORY_H -D_QUEST
 INDENT = indent
@@ -19,7 +19,7 @@ MNT_POINT=/mnt/quest
 PROGS = quest \
 	sysprogs/terminal_server sysprogs/shell \
 	tests/exec tests/race tests/test1 tests/test2 \
-	tests/test3 tests/test4 tests/test5 tests/test6
+	tests/test3 tests/test4 tests/test5 tests/test6 tests/test7
 
 ##################################################
 
@@ -186,5 +186,7 @@ cleanlwip:
 
 ##################################################
 
+config.mk: default-config.mk
+	cp -f default-config.mk config.mk
 
 #-include $(shell find . -name '*.d')

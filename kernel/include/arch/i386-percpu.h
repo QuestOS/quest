@@ -48,6 +48,10 @@
 /* Initialization for each CPU */
 extern void percpu_per_cpu_init (void);
 
+/* Get a pointer to a per-CPU variable, with explicit CPU parameter */
+extern u8 *percpu_virt[];
+#define percpu_pointer(cpu, var) ((void *) (&percpu_virt[cpu][(uint) &var]))
+
 /* ************************************************** */
 
 #define PER_CPU_ATTR __attribute__((section(".percpu")))

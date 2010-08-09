@@ -20,9 +20,15 @@
 #include "kernel.h"
 #include "smp/smp.h"
 #include "smp/apic.h"
-#include "util/printf.h"
+#include "util/debug.h"
+#include "sched/sched.h"
 
 //#define DEBUG_SCHED
+#ifdef DEBUG_SCHED
+#define DLOG(fmt,...) DLOG_PREFIX("sched",fmt,##__VA_ARGS__)
+#else
+#define DLOG(fmt,...) ;
+#endif
 
 uint16 runqueue[MAX_PRIO_QUEUES];
 uint16 waitqueue[MAX_PRIO_QUEUES];      /* For tasks having expired
@@ -31,16 +37,15 @@ static uint32 runq_bitmap[(MAX_PRIO_QUEUES + 31) / 32];
 
 static int bitmap_find_first_set (uint32 *table, uint32 limit);
 
-#define reload_percpu_seg do {                          \
-    asm volatile ("movl %%"PER_CPU_DBG_STR", %%eax\n"   \
-                  "movw %%ax, %%"PER_CPU_SEG_STR        \
-                  :::"eax");                            \
-  } while (0)
+#define preserve_segment(next)                                  \
+  {                                                             \
+    tss *tssp = (tss *)lookup_TSS (next);                       \
+    u16 sel;                                                    \
+    asm volatile ("movw %%"PER_CPU_SEG_STR", %0":"=r" (sel));   \
+    tssp->usFS = sel;                                           \
+  }
 
-#define switch_to(next) do { \
-    jmp_gate (next);         \
-    reload_percpu_seg;       \
-  } while (0)
+#define switch_to(next) do { preserve_segment (next); jmp_gate (next); } while (0)
 
 extern void
 queue_append (uint16 * queue, uint16 selector)
@@ -73,11 +78,10 @@ queue_append (uint16 * queue, uint16 selector)
 
 
 extern void
-runqueue_append (uint32 prio, uint16 selector)
+sprr_runqueue_append (uint32 prio, uint16 selector)
 {
-#ifdef DEBUG_SCHED
-  com1_printf ("runqueue_append(%x, %x)\n", prio, selector);
-#endif
+  DLOG ("runqueue_append(%x, %x)", prio, selector);
+
   queue_append (&runqueue[prio], selector);
 
   BITMAP_SET (runq_bitmap, prio);
@@ -124,7 +128,7 @@ uint8 sched_enabled = 0;
 
 /* Pick from the highest priority non-empty queue */
 extern void
-schedule (void)
+sprr_schedule (void)
 {
 
   uint16 next;
@@ -137,14 +141,14 @@ schedule (void)
       BITMAP_CLR (runq_bitmap, prio);
 
 #ifdef DEBUG_SCHED
-    com1_printf ("CPU %x: switching to task: %x runqueue(%x):",
-                 LAPIC_get_physical_ID (), next, prio);
+    DLOG ("CPU %x: switching to task: %x runqueue(%x):",
+          LAPIC_get_physical_ID (), next, prio);
     {                           /* print runqueue to com1 */
       quest_tss *tssp;
       int sel = runqueue[prio];
       while (sel) {
         tssp = lookup_TSS (sel);
-        com1_printf (" %x", sel);
+        logger_printf (" %x", sel);
         sel = tssp->next;
       }
     }
@@ -160,23 +164,20 @@ schedule (void)
   } else {                      /* Replenish timeslices for expired
                                    tasks */
 
-    /* 
+    /*
      * If a task calls schedule() and is selected from the runqueue,
-     * then it must be switched out.  Go to IDLE task if nothing else. 
+     * then it must be switched out.  Go to IDLE task if nothing else.
      */
     uint8 phys_id = LAPIC_get_physical_ID ();
     uint16 idle_sel = idleTSS_selector[phys_id];
 
-#ifdef DEBUG_SCHED
-    com1_printf ("CPU %x: idling\n", phys_id);
-#endif
+    DLOG ("CPU %x: idling", phys_id);
 
     /* Only switch tasks to IDLE if we are not already running IDLE. */
     if (str () != idle_sel)
       switch_to (idle_sel);
   }
 }
-
 
 /* NB: If limit is not a multiple of the system word size then all bits in
    table beyond limit must be set to zero */
@@ -193,13 +194,88 @@ bitmap_find_first_set (uint32 *table, uint32 limit)
   return -1;
 }
 
-/* 
+/* ************************************************** */
+#ifdef MPQ
+
+/* global queue (for unbound tasks) */
+
+static u16 mpq_global_runqueue = 0;
+
+/* per-cpu queues */
+
+DEF_PER_CPU (u16, mpq_runqueue);
+INIT_PER_CPU (mpq_runqueue) {
+  percpu_write (mpq_runqueue, 0);
+}
+DEF_PER_CPU (u16, mpq_idle_task);
+INIT_PER_CPU (mpq_idle_task) {
+  percpu_write (mpq_idle_task, idleTSS_selector[LAPIC_get_physical_ID ()]);
+}
+
+extern void
+mpq_runqueue_append (uint32 prio, uint16 selector)
+{
+#ifdef DEBUG_SCHED
+  //logger_printf ("runqueue_append(%x, %x)\n", prio, selector);
+#endif
+
+  quest_tss *tssp = lookup_TSS (selector);
+
+  if (tssp->cpu == 0xFF) {
+    queue_append (&mpq_global_runqueue, selector);
+  } else {
+    if (tssp->cpu != LAPIC_get_physical_ID ()) {
+      queue_append (percpu_pointer (tssp->cpu, mpq_runqueue), selector);
+    } else {
+      u16 q = percpu_read (mpq_runqueue);
+      queue_append (&q, selector);
+      percpu_write (mpq_runqueue, q);
+    }
+  }
+}
+
+extern void
+mpq_schedule (void)
+{
+  u16 q = percpu_read (mpq_runqueue), next;
+  if (q) {
+    next = queue_remove_head (&q);
+    percpu_write (mpq_runqueue, q);
+    DLOG ("cpu %d running task 0x%x", (u32) LAPIC_get_physical_ID (), next);
+  } else if (mpq_global_runqueue) {
+    next = queue_remove_head (&mpq_global_runqueue);
+    quest_tss *tssp = lookup_TSS (next);
+    tssp->cpu = LAPIC_get_physical_ID ();
+    DLOG ("binding task 0x%x to cpu %d", next, tssp->cpu);
+  } else {
+    next = percpu_read (mpq_idle_task);
+  }
+  if (str () == next)
+    return;
+  else
+    switch_to (next);
+}
+
+#endif
+/* ************************************************** */
+
+/* Hooks for scheduler */
+
+#if defined(SPRR) || !defined(MPQ)
+void (*schedule) (void) = sprr_schedule;
+void (*runqueue_append) (uint32, uint16) = sprr_runqueue_append;
+#elif defined(MPQ)
+void (*schedule) (void) = mpq_schedule;
+void (*runqueue_append) (uint32, uint16) = mpq_runqueue_append;
+#endif
+
+/*
  * Local Variables:
  * indent-tabs-mode: nil
  * mode: C
  * c-file-style: "gnu"
  * c-basic-offset: 2
- * End: 
+ * End:
  */
 
 /* vi: set et sw=2 sts=2: */

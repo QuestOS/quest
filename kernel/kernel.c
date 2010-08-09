@@ -24,25 +24,25 @@
 #include "mem/virtual.h"
 #include "mem/physical.h"
 
-static spinlock kernel_lock = SPINLOCK_INIT;
+static spinlock kernel_lock ALIGNED(LOCK_ALIGNMENT) = SPINLOCK_INIT;
 
 /* Declare space for a stack */
-uint32 ul_stack[NR_MODS][1024] __attribute__ ((aligned (4096)));
+uint32 ul_stack[NR_MODS][1024] ALIGNED (0x1000);
 
 /* Declare space for a task state segment */
-uint32 ul_tss[NR_MODS][1024] __attribute__ ((aligned (4096)));
+uint32 ul_tss[NR_MODS][1024] ALIGNED (0x1000);
 
 /* Declare space for a page directory */
-uint32 pg_dir[NR_MODS][1024] __attribute__ ((aligned (4096)));
+uint32 pg_dir[NR_MODS][1024] ALIGNED (0x1000);
 
 /* Declare space for a page table */
-uint32 pg_table[NR_MODS][1024] __attribute__ ((aligned (4096)));
+uint32 pg_table[NR_MODS][1024] ALIGNED (0x1000);
 
 /* Declare space for per process kernel stack */
-uint32 kl_stack[NR_MODS][1024] __attribute__ ((aligned (4096)));
+uint32 kl_stack[NR_MODS][1024] ALIGNED (0x1000);
 
 /* Declare space for a page table mappings for kernel stacks */
-uint32 kls_pg_table[NR_MODS][1024] __attribute__ ((aligned (4096)));
+uint32 kls_pg_table[NR_MODS][1024] ALIGNED (0x1000);
 
 /* Declare space for a dummy TSS -- used for kernel switch_to/jmp_gate
    semantics */
@@ -100,7 +100,7 @@ idle_task (void)
   unlock_kernel ();
   sti ();                       /* when we initially jump here, IF=0 */
   for (;;) {
-    asm volatile ("hlt");
+    asm volatile ("pause");
   }
 }
 

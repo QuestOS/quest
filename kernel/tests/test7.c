@@ -15,45 +15,70 @@
  *  along with this program.  If not, see <http://www.gnu.org/licenses/>.
  */
 
-#ifndef _ATOMIC_H_
-#define _ATOMIC_H_
+#include "syscall.h"
 
-#include "types.h"
+#define ITERATIONS 1000000
+#define NUM_THREADS 4
 
-/* Intel Manual 3A 8.10.6.7 recommends no more than one lock or
- * semaphore be present within each 128-byte aligned block of memory,
- * to reduce bus traffic. */
-#define LOCK_ALIGNMENT_LOG2 7
-#define LOCK_ALIGNMENT (1<<LOCK_ALIGNMENT_LOG2)
-
-static inline uint32
-atomic_load_dword (uint32 * addr)
+void
+putx (unsigned long l)
 {
-  return *((volatile uint32 *) addr);
+  int i, li;
+
+  for (i = 7; i >= 0; i--)
+    if ((li = (l >> (i << 2)) & 0x0F) > 9)
+      putchar ('A' + li - 0x0A);
+    else
+      putchar ('0' + li);
 }
 
-static inline void
-atomic_store_dword (uint32 * addr, uint32 x)
+void
+print (char *s)
 {
-  *((volatile uint32 *) addr) = x;
+  while (*s) {
+    putchar (*s++);
+  }
 }
 
-static inline uint32
-atomic_xchg_dword (uint32 * addr, uint32 x)
+void
+child (int idx)
 {
-  asm volatile ("xchgl %1,(%0)":"=r" (addr), "=ir" (x):"0" (addr), "1" (x));
-  return x;
+  int id, i;
+  unsigned long ebx, eax = 1;
+
+  for (i=0;i<ITERATIONS;i++) {
+    if (!(i & 0xFFF)) {
+      asm volatile ("cpuid":"=b" (ebx), "+a" (eax)::"ecx", "edx");
+      id = (ebx >> 24) & 0xFF;
+      putchar (id + '0');
+    }
+  }
+
+  _exit (0);
 }
 
-#endif
+void
+_start ()
+{
+  int pid[NUM_THREADS];
+  int i;
 
-/* 
+  for (i=0; i<NUM_THREADS; i++) {
+    if ((pid[i]=fork ()) == 0) {
+      child (i);
+    } else putchar ('F');
+  }
+  _exit (0);
+}
+
+
+/*
  * Local Variables:
  * indent-tabs-mode: nil
  * mode: C
  * c-file-style: "gnu"
  * c-basic-offset: 2
- * End: 
+ * End:
  */
 
 /* vi: set et sw=2 sts=2: */
