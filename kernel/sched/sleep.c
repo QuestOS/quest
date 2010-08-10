@@ -111,7 +111,7 @@ process_sleepqueue (void)
     if (tssp->time <= now) {
       DLOG ("waking task 0x%x", *q);
       /* time to wake-up */
-      runqueue_append (tssp->priority, *q);
+      wakeup (*q);
       /* remove from sleepqueue */
       *q = next;
       tssp->time = 0;

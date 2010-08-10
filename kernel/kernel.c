@@ -246,7 +246,7 @@ exit_kernel_thread (void)
 
   /* All tasks waiting for us now belong on the runqueue. */
   while ((waiter = queue_remove_head (&tss->waitqueue)))
-    runqueue_append (lookup_TSS (waiter)->priority, waiter);
+    wakeup (waiter);
 
   /* clean up TSS memory */
   memset (tss, 0, sizeof (quest_tss));

@@ -344,7 +344,7 @@ handle_syscall0 (int eax, int ebx)
     /* Somebody else is waiting for the server -- wake them up (and leave
        the busy flag set).  This will eventually cause the schedule() call
        in the waiting task to return (see above). */
-    runqueue_append (lookup_TSS (head)->priority, head);
+    wakeup (head);
   else
     /* We were the last task using the server; mark it as available.
        Clearing this flag must be atomic with the queue_remove_head()
@@ -472,7 +472,7 @@ _fork (uint32 ebp, uint32 *esp)
   priority = lookup_TSS (child_gdt_index)->priority =
     lookup_TSS (str ())->priority;
 
-  runqueue_append (priority, child_gdt_index);
+  wakeup (child_gdt_index);
 
   /* --??-- Duplicate any other parent resources as necessary */
 
@@ -908,21 +908,17 @@ _interrupt3e (void)
   send_eoi ();
   LAPIC_start_timer (cpu_bus_freq / QUANTUM_HZ); /* setup next tick */
 
-  if (str () == idleTSS_selector[phys_id]) {
-    lock_kernel ();
-    /* CPU was idling */
-    schedule ();
-    /* if returned, go back to idling */
-    unlock_kernel ();
-    return;
-  } else {
-    lock_kernel ();
+  lock_kernel ();
+
+  if (str () != idleTSS_selector[phys_id]) {
+    /* CPU was not idling */
     /* add the current task to the back of the run queue */
-    runqueue_append (lookup_TSS (str ())->priority, str ());
-    /* with kernel locked, go ahead and schedule */
-    schedule ();
-    unlock_kernel ();
+    wakeup (str ());
   }
+
+  /* with kernel locked, go ahead and schedule */
+  schedule ();
+  unlock_kernel ();
 }
 
 /* IRQ0 system timer interrupt handler: simply updates the system clock
@@ -985,7 +981,7 @@ _timer (void)
       return;
     } else {
       /* add the current task to the back of the run queue */
-      runqueue_append (lookup_TSS (str ())->priority, str ());
+      wakeup (str ());
       /* with kernel locked, go ahead and schedule */
       schedule ();
     }
@@ -1051,7 +1047,7 @@ __exit (int status)
 
   /* All tasks waiting for us now belong on the runqueue. */
   while ((waiter = queue_remove_head (&ptss->waitqueue)))
-    runqueue_append (lookup_TSS (waiter)->priority, waiter);
+    wakeup (waiter);
 
   BITMAP_SET (mm_table,
               kern_page_table[((uint32) ptss >> 12) & 0x3FF] >> 12);
@@ -1110,7 +1106,7 @@ _sched_setparam (task_id pid, const struct sched_param *p)
     else
       ptss->priority = p->sched_priority;
 
-    runqueue_append ((lookup_TSS (str ()))->priority, str ());
+    wakeup (str ());
 
     schedule ();
     unlock_kernel ();

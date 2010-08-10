@@ -78,7 +78,7 @@ queue_append (uint16 * queue, uint16 selector)
 
 
 extern void
-sprr_runqueue_append (uint32 prio, uint16 selector)
+runqueue_append (uint32 prio, uint16 selector)
 {
   DLOG ("runqueue_append(%x, %x)", prio, selector);
 
@@ -108,7 +108,7 @@ queue_remove_head (uint16 * queue)
 }
 
 extern void
-wakeup (uint16 selector)
+sprr_wakeup (uint16 selector)
 {
   quest_tss *tssp;
   tssp = lookup_TSS (selector);
@@ -121,7 +121,7 @@ wakeup_queue (uint16 * q)
   uint16 head;
 
   while ((head = queue_remove_head (q)))
-    runqueue_append (lookup_TSS (head)->priority, head);
+    wakeup (head);
 }
 
 uint8 sched_enabled = 0;
@@ -213,7 +213,7 @@ INIT_PER_CPU (mpq_idle_task) {
 }
 
 extern void
-mpq_runqueue_append (uint32 prio, uint16 selector)
+mpq_wakeup (uint16 selector)
 {
 #ifdef DEBUG_SCHED
   //logger_printf ("runqueue_append(%x, %x)\n", prio, selector);
@@ -263,10 +263,10 @@ mpq_schedule (void)
 
 #if defined(SPRR) || !defined(MPQ)
 void (*schedule) (void) = sprr_schedule;
-void (*runqueue_append) (uint32, uint16) = sprr_runqueue_append;
+void (*wakeup) (uint16) = sprr_wakeup;
 #elif defined(MPQ)
 void (*schedule) (void) = mpq_schedule;
-void (*runqueue_append) (uint32, uint16) = mpq_runqueue_append;
+void (*wakeup) (uint16) = mpq_wakeup;
 #endif
 
 /*
