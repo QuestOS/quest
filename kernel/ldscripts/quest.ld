@@ -12,7 +12,7 @@ SECTIONS {
   _percpustart = .;
   .percpu (NOLOAD) : { *(.percpu) } : NONE
   _percpuend = ALIGN(0x1000);
-  _percpu_pages = (_percpuend - _percpustart) / 0x1000;
+  _percpu_pages_plus_one = (_percpuend - _percpustart) / 0x1000 + 1;
 
   /* Bootstrap physical section, at virtual and physical address 0x100000 */
   . = 0x100000 + SIZEOF_HEADERS;

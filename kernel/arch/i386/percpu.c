@@ -43,7 +43,7 @@
 #define DLOG(fmt,...) ;
 #endif
 
-extern u8 _percpu_pages;
+extern s8 _percpu_pages_plus_one;
 extern void (*_percpu_ctor_list)();
 
 u8 *percpu_virt[MAX_CPUS];
@@ -52,10 +52,14 @@ extern void
 percpu_per_cpu_init (void)
 {
   descriptor *ad = (descriptor *)KERN_GDT;
-  int i, pages = (int) &_percpu_pages;
+  int i, pages = (int) &_percpu_pages_plus_one;
   int limit = pages * 0x1000 - 1;
 
-  if (pages == 0) {
+  /* workaround: GCC will eliminate this if-statement when the check
+   * is (pages == 0) because it thinks it knows the address of a
+   * symbol can never be zero.  So, check (pages + 1 == 1) and then
+   * subtract one. */
+  if (pages == 1) {
     DLOG ("no per-CPU variables in system");
     /* fall back to the usual data segment */
     asm volatile ("movw %%ds, %%ax\n"
@@ -64,6 +68,8 @@ percpu_per_cpu_init (void)
                   "movl %%eax, %%"PER_CPU_DBG_STR"":::"eax");
     return;
   }
+
+  pages--;
 
   for (i=1; i<256; i++)
     if (ad[i].fPresent == 0)
