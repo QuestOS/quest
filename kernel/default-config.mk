@@ -14,3 +14,6 @@ OPT = 0
 
 # Use per-CPU SMP scheduling queues
 # CFG += -DMPQ
+
+# Use VCPU scheduler
+# CFG += -DVCPU
