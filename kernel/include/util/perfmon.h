@@ -62,6 +62,7 @@ perfmon_pmc_read (int x)
 }
 
 extern void perfmon_init (void);
+extern bool perfmon_enabled;
 
 #endif
 

@@ -23,6 +23,7 @@
 
 #include "arch/i386.h"
 #include "arch/i386-percpu.h"
+#include "arch/i386-measure.h"
 #include "kernel.h"
 #include "mem/mem.h"
 #include "util/elf.h"
