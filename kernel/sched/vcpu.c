@@ -185,7 +185,7 @@ extern void
 vcpu_init (void)
 {
   DLOG ("init num_vcpus=%d num_cpus=%d", NUM_VCPUS, mp_num_cpus);
-  memset (vcpus, 0, sizeof(vcpus) * NUM_VCPUS);
+  memset (vcpus, 0, sizeof(vcpus));
 
   int cpu_i=0, vcpu_i;
   vcpu *vcpu;
