@@ -61,8 +61,6 @@ vcpu_unlock (vcpu *vcpu)
 void
 vcpu_internal_schedule (vcpu *vcpu)
 {
-  if (vcpu->tr)
-    queue_append (&vcpu->runqueue, vcpu->tr);
   vcpu->tr = queue_remove_head (&vcpu->runqueue);
 }
 
