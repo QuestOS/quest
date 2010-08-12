@@ -97,13 +97,13 @@ vcpu_is_idle (vcpu *vcpu)
 void
 vcpu_queue_append (vcpu **queue, vcpu *vcpu)
 {
-  vcpu->next = NULL;
   while (*queue) {
     if (*queue == vcpu)
       /* already on queue */
       return;
     queue = &((*queue)->next);
   }
+  vcpu->next = NULL;
   *queue = vcpu;
 }
 
