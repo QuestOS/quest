@@ -136,19 +136,19 @@ INIT_PER_CPU (vcpu_idle_task) {
 extern void
 vcpu_schedule (void)
 {
+  task_id next = 0;
   vcpu *queue = percpu_read (vcpu_queue), *vcpu;
-  task_id next;
   if (queue) {
     vcpu = vcpu_queue_remove_head (&queue);
-    vcpu_internal_schedule (vcpu); /* for now */
-    next = vcpu->tr;
+    next = vcpu->tr = queue_remove_head (&vcpu->runqueue);
     if (vcpu->runqueue)
       vcpu_queue_append (&queue, vcpu);
     percpu_write (vcpu_queue, queue);
     percpu_write (vcpu_current, vcpu);
-    DLOG ("vcpu_schedule: pcpu=%d vcpu=%p next=0x%x",
-          LAPIC_get_physical_ID (), vcpu, next);
-  } else {
+    DLOG ("vcpu_schedule: pcpu=%d vcpu=%p vcpu->tr=0x%x ->runqueue=0x%x next=0x%x",
+          LAPIC_get_physical_ID (), vcpu, vcpu->tr, vcpu->runqueue, next);
+  }
+  if (next == 0) {
     next = percpu_read (vcpu_idle_task);
     DLOG ("vcpu_schedule: pcpu=%d going idle", LAPIC_get_physical_ID ());
   }
