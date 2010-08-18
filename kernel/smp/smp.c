@@ -26,6 +26,7 @@
 #include "drivers/acpi/acmacros.h"
 #include "drivers/acpi/acexcep.h"
 #include "util/printf.h"
+#include "util/perfmon.h"
 
 //#define DEBUG_SMP 1
 
@@ -274,6 +275,9 @@ ap_init (void)
    * be locked before any shared resources are utilized.  The dummy
    * TSS is a shared resource. */
   lock_kernel ();
+
+  /* Performance monitoring */
+  perfmon_init ();
 
   /* Load the dummy TSS so that when the CPU executes jmp_gate it has
    * a place to write the state of the CPU -- even though we don't
