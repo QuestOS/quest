@@ -31,8 +31,10 @@ typedef struct _vcpu
       u16 cpu;                  /* cpu affinity for vcpu */
       u16 tr;                   /* task register */
       u16 runqueue;             /* per-VCPU runqueue */
-      u64 cycles_counted;
-      u64 instr_retired;
+      u64 prev_tsc;
+      u64 timestamps_counted;
+      u64 prev_pmc[2];
+      u64 pmc_total[2];
       u64 local_miss_count;     /* incl. pre-fetches */
       u64 global_miss_count;    /* 0x09, 0x03 UNC_L3_MISS.ANY (Neh.) */
     };

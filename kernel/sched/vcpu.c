@@ -20,6 +20,7 @@
 #include "sched/vcpu.h"
 #include "sched/sched.h"
 #include "arch/i386-percpu.h"
+#include "util/perfmon.h"
 #include "smp/smp.h"
 #include "smp/apic.h"
 #include "smp/spinlock.h"
@@ -130,17 +131,75 @@ INIT_PER_CPU (vcpu_current) {
 
 DEF_PER_CPU (task_id, vcpu_idle_task);
 INIT_PER_CPU (vcpu_idle_task) {
-  percpu_write (vcpu_idle_task, idleTSS_selector[LAPIC_get_physical_ID ()]);
+  percpu_write (vcpu_idle_task, 0);
+}
+
+/* end of timeslice */
+static void
+vcpu_acnt_before_switch (vcpu *vcpu)
+{
+  static int tick = 0;
+  u64 now;
+  int i;
+
+  RDTSC (now);
+
+  if (vcpu->prev_tsc)
+    vcpu->timestamps_counted += now - vcpu->prev_tsc;
+
+  for (i=0; i<2; i++) {
+    u64 value = perfmon_pmc_read (i);
+    if (vcpu->prev_pmc[i])
+      vcpu->pmc_total[i] += value - vcpu->prev_pmc[i];
+  }
+
+  if (tick++ > 1021) {
+    for (i=0; i<NUM_VCPUS; i++) {
+      vcpu = &vcpus[i];
+      logger_printf ("vcpu=%p (%d) tsc=0x%llX pmc[0]=0x%llX pmc[1]=0x%llX\n",
+                     vcpu, vcpu->cpu,
+                     vcpu->timestamps_counted,
+                     vcpu->pmc_total[0],
+                     vcpu->pmc_total[1]);
+      tick = 0;
+    }
+  }
+}
+
+/* beginning of timeslice */
+static void
+vcpu_acnt_after_switch (vcpu *vcpu)
+{
+  u64 now;
+  int i;
+
+  RDTSC (now);
+  vcpu->prev_tsc = now;
+
+  for (i=0; i<2; i++) {
+    u64 value = perfmon_pmc_read (i);
+    vcpu->prev_pmc[i] = value;
+  }
 }
 
 extern void
 vcpu_schedule (void)
 {
   task_id next = 0;
-  vcpu *queue = percpu_read (vcpu_queue), *vcpu;
+  vcpu
+    *queue = percpu_read (vcpu_queue),
+    *cur   = percpu_read (vcpu_current),
+    *vcpu  = NULL;
+
+  if (cur)
+    /* handle end-of-timeslice accounting */
+    vcpu_acnt_before_switch (cur);
   if (queue) {
+    /* get next vcpu from queue */
     vcpu = vcpu_queue_remove_head (&queue);
+    /* perform 2nd-level scheduling (round-robin) */
     next = vcpu->tr = queue_remove_head (&vcpu->runqueue);
+    /* if vcpu still has a runqueue, put it back on 1st-level queue */
     if (vcpu->runqueue)
       vcpu_queue_append (&queue, vcpu);
     percpu_write (vcpu_queue, queue);
@@ -148,13 +207,21 @@ vcpu_schedule (void)
     DLOG ("vcpu_schedule: pcpu=%d vcpu=%p vcpu->tr=0x%x ->runqueue=0x%x next=0x%x",
           LAPIC_get_physical_ID (), vcpu, vcpu->tr, vcpu->runqueue, next);
   }
+  if (vcpu)
+    /* handle beginning-of-timeslice accounting */
+    vcpu_acnt_after_switch (vcpu);
   if (next == 0) {
+    /* no task selected, go idle */
     next = percpu_read (vcpu_idle_task);
+    percpu_write (vcpu_current, NULL);
   }
   if (next == 0) {
+    /* workaround: vcpu_idle_task was not initialized yet */
     next = idleTSS_selector[LAPIC_get_physical_ID ()];
     percpu_write (vcpu_idle_task, next);
   }
+
+  /* switch to new task or continue running same task */
   if (str () == next)
     return;
   else
