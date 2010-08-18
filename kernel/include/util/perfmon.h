@@ -47,6 +47,7 @@ perfmon_pmc_config (int x, u8 event_select, u8 unit_mask)
 {
   ia32_perfevtsel_t conf;
 
+  conf.raw = 0;
   conf.event_select = event_select;
   conf.unit_mask = unit_mask;
   conf.enable_counters = 1;
