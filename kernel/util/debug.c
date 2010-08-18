@@ -84,6 +84,19 @@ stacktrace (void)
   }
 }
 
+void
+stacktrace_frame (uint esp, uint ebp)
+{
+  extern void com1_putc (char);
+  extern void com1_puts (char *);
+  extern void com1_putx (uint32);
+  com1_printf ("Stacktrace:\n");
+  while (ebp >= KERN_STK && ebp <= KERN_STK + 0x1000) {
+    com1_printf ("%0.8X\n", *((uint32 *) (ebp + 4)));
+    ebp = *((uint32 *) ebp);
+  }
+}
+
 
 /*
  * Local Variables:

@@ -28,6 +28,10 @@ void logger_printf (const char *fmt, ...);
 extern void logger_init (void);
 extern void logger_putc (char);
 
+void stacktrace_frame (uint esp, uint ebp);
+void stacktrace (void);
+
+
 #endif
 
 /* 

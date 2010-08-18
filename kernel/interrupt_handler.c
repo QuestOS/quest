@@ -279,7 +279,7 @@ handle_interrupt (uint32 fs_gs, uint32 ds_es, uint32 ulInt, uint32 ulCode)
   _printf ("EFL=%.8X EIP=%.8X\n", eflags, eip);
   _printf ("CR0=%.8X CR2=%.8X\nCR3=%.8X TR=%.4X\n", cr0, cr2, cr3, tr);
   _printf (" FS=%.4X\n", fs);
-  stacktrace ();
+  stacktrace_frame (esp, ebp);
 
 #ifndef ENABLE_GDBSTUB
 #undef _putx
