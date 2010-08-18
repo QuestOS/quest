@@ -25,7 +25,7 @@
 #include "smp/spinlock.h"
 #include "util/debug.h"
 
-#define DEBUG_VCPU
+//#define DEBUG_VCPU
 
 #ifdef DEBUG_VCPU
 #define DLOG(fmt,...) DLOG_PREFIX("vcpu",fmt,##__VA_ARGS__)
@@ -33,7 +33,7 @@
 #define DLOG(fmt,...) ;
 #endif
 
-#define NUM_VCPUS 1
+#define NUM_VCPUS 8
 static vcpu vcpus[NUM_VCPUS] ALIGNED (VCPU_ALIGNMENT);
 
 vcpu *
@@ -150,7 +150,10 @@ vcpu_schedule (void)
   }
   if (next == 0) {
     next = percpu_read (vcpu_idle_task);
-    DLOG ("vcpu_schedule: pcpu=%d going idle", LAPIC_get_physical_ID ());
+  }
+  if (next == 0) {
+    next = idleTSS_selector[LAPIC_get_physical_ID ()];
+    percpu_write (vcpu_idle_task, next);
   }
   if (str () == next)
     return;
