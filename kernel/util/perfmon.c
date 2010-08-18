@@ -103,6 +103,7 @@ perfmon_init (void)
   }
 
   perfmon_pmc_config (0, 0x3C, 0);
+  perfmon_pmc_config (1, 0x3C, 1);
   u64 tsc;
   RDTSC (tsc);
   DLOG ("pmc0=0x%llX tsc=0x%llX", perfmon_pmc_read (0), tsc);
