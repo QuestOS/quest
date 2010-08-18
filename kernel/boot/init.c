@@ -667,6 +667,11 @@ init (multiboot * pmb)
   /* Initialise soundcard, if one exists */
   init_sound ();
 
+#ifdef VCPU
+  /* Initialize VCPU scheduler */
+  { extern void vcpu_init (void); vcpu_init (); }
+#endif
+
   smp_enable_scheduling ();
 
 #ifdef ENABLE_GDBSTUB

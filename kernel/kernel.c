@@ -241,6 +241,9 @@ exit_kernel_thread (void)
   uint tss_frame;
   task_id waiter;
 
+  for (;;)
+    sched_usleep (1000000);
+
   tss = lookup_TSS (str ());
   tss_frame = (uint) get_phys_addr (tss);
 

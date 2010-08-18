@@ -6,6 +6,9 @@ OPT = 0
 # Disable SMP
 # CFG += -DNO_SMP
 
+# Disable "logger" thread
+# CFG += -DNO_LOGGER
+
 # Disable ACPI support
 # CFG += -DNO_ACPI
 
@@ -14,3 +17,6 @@ OPT = 0
 
 # Use per-CPU SMP scheduling queues
 # CFG += -DMPQ
+
+# Use VCPU scheduler
+# CFG += -DVCPU

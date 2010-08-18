@@ -138,6 +138,8 @@ duplicate_TSS (uint32 ebp,
   if (i == 256)
     panic ("No free selector for TSS");
 
+  logger_printf ("duplicate_TSS: pTSS=%p i=0x%x\n", pTSS, i << 3);
+
   /* See pp 6-7 in IA-32 vol 3 docs for meanings of these assignments */
   ad[i].uLimit0 = 0xFFF;        /* --??-- Right now, a page per TSS */
   ad[i].uLimit1 = 0;
@@ -168,10 +170,8 @@ duplicate_TSS (uint32 ebp,
   pTSS->usSS0 = 0x10;           /* Kernel stack segment */
   pTSS->ulESP0 = (uint32) KERN_STK + 0x1000;
 
-#ifdef MPQ
   quest_tss *tssp = (quest_tss *)pTSS;
   tssp->cpu = 0xFF;
-#endif
 
   /* Return the index into the GDT for the segment */
   return i << 3;
