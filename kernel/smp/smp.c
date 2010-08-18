@@ -275,9 +275,6 @@ ap_init (void)
    * TSS is a shared resource. */
   lock_kernel ();
 
-  /* Allocate pages and GDT entry to setup per-CPU memory space */
-  percpu_per_cpu_init ();
-
   /* Load the dummy TSS so that when the CPU executes jmp_gate it has
    * a place to write the state of the CPU -- even though we don't
    * care about the state and it will be discarded. */

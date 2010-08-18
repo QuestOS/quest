@@ -67,6 +67,9 @@ ap_pmode:
         addl $0x1000, %eax
         movl %eax, %esp
 
+        /* Allocate pages and GDT entry to setup per-CPU memory space */
+        lcall $0x8, $percpu_per_cpu_init
+
         /* Write 1 to status indicator */
         movl $status_code - patch_code_start + MP_BOOTADDR, %eax
         movl $0x1, (%eax)
