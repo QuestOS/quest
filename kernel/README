@@ -1,3 +1,9 @@
+CONFIGURATION:
+~~~~~~~~~~~~~~
+
+$ make config.mk
+# Edit config.mk and make desired changes
+
 COMPILE AND INSTALL:
 ~~~~~~~~~~~~~~~~~~~~
 

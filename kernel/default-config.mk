@@ -15,8 +15,8 @@ OPT = 0
 # Disable Intel Multiprocessor Specification parsing
 # CFG += -DNO_INTEL_MPS
 
-# Use per-CPU SMP scheduling queues
-# CFG += -DMPQ
-
-# Use VCPU scheduler
-# CFG += -DVCPU
+# Scheduler selection:
+#   sprr    Static Priority Round Robin
+#   mpq     Multiple Processor Queues
+#   vcpu    Virtual CPU
+CFG += -DQUEST_SCHED=sprr

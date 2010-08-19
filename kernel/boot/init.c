@@ -667,7 +667,7 @@ init (multiboot * pmb)
   /* Initialise soundcard, if one exists */
   init_sound ();
 
-#ifdef VCPU
+#if QUEST_SCHED==vcpu
   /* Initialize VCPU scheduler */
   { extern void vcpu_init (void); vcpu_init (); }
 #endif

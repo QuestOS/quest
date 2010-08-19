@@ -261,18 +261,14 @@ mpq_schedule (void)
 
 /* Hooks for scheduler */
 
-#if defined(SPRR) || (!defined(MPQ) && !defined(VCPU))
-void (*schedule) (void) = sprr_schedule;
-void (*wakeup) (uint16) = sprr_wakeup;
-#elif defined(MPQ)
-void (*schedule) (void) = mpq_schedule;
-void (*wakeup) (uint16) = mpq_wakeup;
-#elif defined(VCPU)
-extern void vcpu_schedule (void);
-extern void vcpu_wakeup (u16);
-void (*schedule) (void) = vcpu_schedule;
-void (*wakeup) (uint16) = vcpu_wakeup;
-#endif
+#define ___glue(a,b) a##b
+#define __glue(a,b) ___glue(a,b)
+#define S __glue(QUEST_SCHED,_schedule)
+#define W __glue(QUEST_SCHED,_wakeup)
+extern void S (void);
+void (*schedule) (void) = S;
+extern void W (uint16);
+void (*wakeup) (uint16) = W;
 
 /*
  * Local Variables:
