@@ -90,7 +90,7 @@ cpuid_tsc_support (void)
 bool
 cpuid_invariant_tsc_support (void)
 {
-  int edx;
+  uint edx;
   cpuid (0x80000007, 0, NULL, NULL, NULL, &edx);
   return (edx & (1 << 8));
 }
