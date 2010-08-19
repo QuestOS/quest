@@ -59,10 +59,52 @@ vcpu_unlock (vcpu *vcpu)
 
 /* locked functions */
 
+bool
+vcpu_in_runqueue (vcpu *vcpu, task_id task)
+{
+  task_id i = vcpu->runqueue;
+
+  while (i != 0) {
+    if (task == i) return TRUE;
+    i = lookup_TSS (i)->next;
+  }
+  return task == i;
+}
+
+void
+vcpu_remove_from_runqueue (vcpu *vcpu, task_id task)
+{
+  task_id *q = &vcpu->runqueue;
+  while (*q != 0) {
+    if (*q == task) {
+      *q = lookup_TSS (*q)->next;
+      return;
+    }
+    q = &lookup_TSS (*q)->next;
+  }
+}
+
 void
 vcpu_internal_schedule (vcpu *vcpu)
 {
+  u64 now;
+  RDTSC (now);
+
+  if (vcpu->next_schedule == 0 || vcpu->next_schedule <= now)
+    goto sched;
+
+  if (vcpu_in_runqueue (vcpu, vcpu->tr) == TRUE) {
+    /* keep vcpu->tr running, remove from runqueue */
+    vcpu_remove_from_runqueue (vcpu, vcpu->tr);
+  } else
+    goto sched;
+
+  return;
+
+ sched:
+  /* round-robin */
   vcpu->tr = queue_remove_head (&vcpu->runqueue);
+  vcpu->next_schedule = now + vcpu->quantum;
 }
 
 void
@@ -197,8 +239,9 @@ vcpu_schedule (void)
   if (queue) {
     /* get next vcpu from queue */
     vcpu = vcpu_queue_remove_head (&queue);
-    /* perform 2nd-level scheduling (round-robin) */
-    next = vcpu->tr = queue_remove_head (&vcpu->runqueue);
+    /* perform 2nd-level scheduling */
+    vcpu_internal_schedule (vcpu);
+    next = vcpu->tr;
     /* if vcpu still has a runqueue, put it back on 1st-level queue */
     if (vcpu->runqueue)
       vcpu_queue_append (&queue, vcpu);
@@ -266,6 +309,7 @@ vcpu_init (void)
     vcpu->cpu = cpu_i++;
     if (cpu_i >= mp_num_cpus)
       cpu_i = 0;
+    vcpu->quantum = div_u64_u32_u32 (tsc_freq, QUANTUM_HZ);
   }
 }
 

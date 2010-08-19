@@ -35,6 +35,7 @@
 #include "util/debug.h"
 #include "drivers/input/keymap.h"
 #include "drivers/input/keyboard.h"
+#include "sched/vcpu.h"
 
 //#define DEBUG_SYSCALL
 //#define DEBUG_PIT
@@ -341,8 +342,16 @@ handle_syscall0 (int eax, int ebx)
 
   call_gate (0x30);             /* --??-- Hard-coded for the segment selector for
                                    terminal server task */
-
   lock_kernel ();
+
+#if QUEST_SCHED==vcpu
+  /* workaround to avoid vcpu state getting out-of-sync with cpu state */
+  extern vcpu *vcpu_current;
+  void vcpu_remove_from_runqueue (vcpu *, u16);
+  vcpu *vcpu = percpu_read (vcpu_current);
+  if (vcpu) vcpu->tr = str ();
+  if (vcpu) vcpu_remove_from_runqueue (vcpu, 0x30);
+#endif
 
   if ((head = queue_remove_head (&pTSS->waitqueue)))
     /* Somebody else is waiting for the server -- wake them up (and leave

@@ -19,6 +19,7 @@
 #define _SCHED_VCPU_H_
 
 #include "kernel.h"
+#include "util/cassert.h"
 
 #define VCPU_ALIGNMENT LOCK_ALIGNMENT
 /* Virtual CPU */
@@ -31,6 +32,8 @@ typedef struct _vcpu
       u16 cpu;                  /* cpu affinity for vcpu */
       u16 tr;                   /* task register */
       u16 runqueue;             /* per-VCPU runqueue */
+      u32 quantum;              /* internal VCPU scheduling quantum */
+      u64 next_schedule;        /* when to trigger internal schedule */
       u64 prev_tsc;
       u64 timestamps_counted;
       u64 prev_pmc[2];
@@ -41,6 +44,7 @@ typedef struct _vcpu
     u8 raw[VCPU_ALIGNMENT];     /* pad to VCPU_ALIGNMENT */
   };
 } vcpu;
+CASSERT (sizeof (vcpu) == VCPU_ALIGNMENT, vcpu);
 
 #endif
 

@@ -1,3 +1,8 @@
+Thursday 2010-08-19 md
+
+  Worked out a bit of theory on second-level VCPU scheduling.
+  Implemented VCPU internal scheduling with fixed quantum.
+
 Wednesday 2010-08-18 md
 
   Merged basic two-level VCPU scheduler.  Added some basic accounting
