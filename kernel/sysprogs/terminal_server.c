@@ -38,9 +38,13 @@ _putchar (int ch, int attribute)
     return (int) (unsigned char) ch;
   }
 
+  if (y * 160 + x * 2 >= 0x1000) return ch;
+
   pchVideo[y * 160 + x * 2] = ch;
   pchVideo[y * 160 + x * 2 + 1] = attribute;
   x++;
+
+  if (y * 160 + x * 2 >= 0x1000) return ch;
 
   pchVideo[y * 160 + x * 2] = ' ';
   pchVideo[y * 160 + x * 2 + 1] = attribute;
