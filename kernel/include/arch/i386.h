@@ -390,6 +390,19 @@ wrmsr (uint32 ecx, uint64 val)
   asm volatile ("wrmsr"::"d" (edx), "a" (eax), "c" (ecx));
 }
 
+static inline u32
+div_u64_u32_u32 (u64 a, u32 b)
+{
+  uint32 c, a_hi, a_lo;
+
+  a_hi = (u32) (a >> 32);
+  a_lo = (u32) (a & 0xFFFFFFFF);
+  asm volatile ("div %1":"=a" (c):"r" (b), "a" (a_lo), "d" (a_hi));
+
+  return c;
+}
+
+
 /* from Linux */
 
 #define __constant_cpu_to_be32(x) (___constant_swab32((x)))
