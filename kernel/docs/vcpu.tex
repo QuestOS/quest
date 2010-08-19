@@ -1,0 +1,39 @@
+% -*- Mode: LaTeX; TeX-PDF-mode: t -*-
+\documentclass{article}
+\usepackage{amsmath}
+\newcommand\paren[1]{\left( {#1} \right)}
+\newcommand\set[1]{\left\{ {#1} \right\}}
+\newcommand\sched{\mapsto^S}
+\newcommand\wake[1]{\mapsto^W_{#1}}
+\newcommand\vcpu[1]{\paren{#1}}
+
+\begin{document}
+
+\section{Scheduling}
+
+\paragraph{Terminology} $\tau$ denotes a task, $Q$ denotes the quantum
+(in time units), $n$ denotes remaining time, $\sched$ denotes {\tt
+  schedule}, and $\wake{\tau}$ denotes {\tt wakeup} on task $\tau$.
+VCPUs are represented as a tuple $\vcpu{\tau, n, \tau, \ldots}$
+containing the current task, the remaining quantum, and the tasks in
+the runqueue.  For convenience, assume that the runqueue entries are
+filled with the idle task $\tau_0$ whenever needed.
+
+\subsection{Second level scheduling}
+\begin{flalign}
+  \vcpu{\tau, 0, \tau', \tau'', \ldots} &\sched \vcpu{\tau', Q, \tau'', \ldots} \label{vcpu:s1}\\
+  \vcpu{\tau, n, \ldots, \tau, \ldots} &\sched \vcpu{\tau, n, \ldots}\quad\text{where }n > 0 \label{vcpu:s2}\\
+  \vcpu{\tau, n, \tau', \ldots} &\sched \vcpu{\tau', n, \ldots}\quad\text{where }n > 0, \tau\neq\tau' \label{vcpu:s3}\\
+  \vcpu{\tau, n, \tau', \ldots} &\wake{\tau''} \vcpu{\tau, n, \tau', \ldots, \tau''}\quad\text{where }\tau''\not\in\set{\tau',\ldots}\label{vcpu:w1} \\
+  \vcpu{\tau, n, \ldots, \tau'', \ldots} &\wake{\tau''} \vcpu{\tau, n, \ldots, \tau'', \ldots} \label{vcpu:w2}
+\end{flalign}
+
+Transition~\ref{vcpu:s1} occurs when the quantum expires.
+Transition~\ref{vcpu:s2} occurs when the quantum has not expired and
+the current task also appears on the runqueue.
+Transition~\ref{vcpu:s3} is the remaining case for when the quantum
+has not expired but the task is not runnable.
+Transition~\ref{vcpu:w1} shows how tasks are added to the runqueue.
+Transition~\ref{vcpu:w2} indicates idempotency of {\tt wakeup}.
+
+\end{document}
