@@ -1,15 +1,25 @@
 % -*- Mode: LaTeX; TeX-PDF-mode: t -*-
 \documentclass{article}
-\usepackage{amsmath}
+\usepackage{amsmath,proof,amsthm}
 \newcommand\paren[1]{\left( {#1} \right)}
 \newcommand\set[1]{\left\{ {#1} \right\}}
-\newcommand\sched{\mapsto^S}
-\newcommand\wake[1]{\mapsto^W_{#1}}
+\newcommand\len[1]{\left| {#1} \right|}
+% \newcommand\sched{\overset{s}{\mapsto}}
+% \newcommand\wake[1]{\overset{w_{#1}}{\mapsto}}
+\newcommand\sched{\xrightarrow{s}}
+\newcommand\msched{\sched^{\!{\raisebox{-1.5ex}{*}}}}
+\newcommand\wake[1]{\xrightarrow{w_{#1}}}
 \newcommand\vcpu[1]{\paren{#1}}
+\newcommand\pcpu[1]{\paren{#1}}
+\newcommand\running[1]{\ensuremath{\text{running}\paren{#1}}}
+\newcommand\runnable[1]{\ensuremath{\text{runnable}\paren{#1}}}
+\newtheorem{thm}{Theorem}
+\newtheorem{lma}{Lemma}
+\newtheorem{prop}{Property}
+% \numberwithin{equation}{subsection}
+% \renewcommand{\theequation}{\thesubsection\arabic{equation}}
 
 \begin{document}
-
-\section{Scheduling}
 
 \paragraph{Terminology} $\tau$ denotes a task, $Q$ denotes the quantum
 (in time units), $n$ denotes remaining time, $\sched$ denotes {\tt
@@ -17,16 +27,66 @@
 VCPUs are represented as a tuple $\vcpu{\tau, n, \tau, \ldots}$
 containing the current task, the remaining quantum, and the tasks in
 the runqueue.  For convenience, assume that the runqueue entries are
-filled with the idle task $\tau_0$ whenever needed.
+filled with the idle task $\tau_0$ whenever needed.  VCPUs are denoted
+with $V$.  $V_{\tau}$ is the VCPU associated with task $\tau$.  $0$
+denotes idle or empty activity.  PCPUs are represented as a tuple
+$\pcpu{V, V', \ldots}$ where $V$ is the current VCPU and $V',\ldots$
+are in the VCPU queue.
+
+\section{Round-Robin/Round-Robin Scheduling}
+
+\subsection{First level scheduling}
+
+\begin{subequations}
+  \begin{equation}
+    \label{pcpu:s1}
+    \infer{\pcpu{V,V',\ldots}\sched\pcpu{V'',\ldots}}{
+      V'\sched V'' & V''=(\tau, n, 0)
+    }
+  \end{equation}
+  \begin{equation}
+    \label{pcpu:s2}
+    \infer{\pcpu{V,V',\ldots}\sched\pcpu{V'',V'',\ldots}}{
+      V'\sched V'' & V''=(\tau, n, \tau', \ldots)
+    }
+  \end{equation}
+  \begin{equation}
+    \label{pcpu:s3}
+    \infer{\pcpu{V,0}\sched\pcpu{0,0}}{}
+  \end{equation}
+  \begin{equation}
+    \label{pcpu:w1}
+    \infer{\pcpu{V,\ldots}\wake{\tau}\pcpu{V,\ldots,V'_{\tau}}}{
+      V_{\tau}\wake{\tau}V'_{\tau} & V_{\tau} \not\in \set{\ldots}
+    }
+  \end{equation}
+  \begin{equation}
+    \label{pcpu:w2}
+    \infer{\pcpu{V,\ldots,V_{\tau},\ldots}\wake{\tau}\pcpu{V,\ldots,V'_{\tau},\ldots}}{
+      V_{\tau}\wake{\tau}V'_{\tau} &
+    }
+  \end{equation}
+\end{subequations}
+Rule~\ref{pcpu:s1} takes a VCPU $V'$ off the queue, transitions it to
+$V''$ (with an empty runqueue) and then makes it the current VCPU.
+Rule~\ref{pcpu:s2} applies when the VCPU has a non-empty runqueue.
+Rule~\ref{pcpu:s3} handles the empty queue case.  Rule~\ref{pcpu:w1}
+shows that both the task and the VCPU are placed on their respective
+queues during wakeup, and rule~\ref{pcpu:w2} indicates idempotency of
+VCPU {\tt wakeup}.
 
 \subsection{Second level scheduling}
-\begin{flalign}
-  \vcpu{\tau, 0, \tau', \tau'', \ldots} &\sched \vcpu{\tau', Q, \tau'', \ldots} \label{vcpu:s1}\\
-  \vcpu{\tau, n, \ldots, \tau, \ldots} &\sched \vcpu{\tau, n, \ldots}\quad\text{where }n > 0 \label{vcpu:s2}\\
-  \vcpu{\tau, n, \tau', \ldots} &\sched \vcpu{\tau', n, \ldots}\quad\text{where }n > 0, \tau\neq\tau' \label{vcpu:s3}\\
-  \vcpu{\tau, n, \tau', \ldots} &\wake{\tau''} \vcpu{\tau, n, \tau', \ldots, \tau''}\quad\text{where }\tau''\not\in\set{\tau',\ldots}\label{vcpu:w1} \\
-  \vcpu{\tau, n, \ldots, \tau'', \ldots} &\wake{\tau''} \vcpu{\tau, n, \ldots, \tau'', \ldots} \label{vcpu:w2}
-\end{flalign}
+
+\begin{subequations}
+  \begin{flalign}
+    \vcpu{\tau, 0, \tau', \ldots} &\sched \vcpu{\tau', Q, \ldots} \label{vcpu:s1}\\
+    \vcpu{\tau, n, \ldots, \tau, \ldots} &\sched \vcpu{\tau, n, \ldots}\quad\text{where }n > 0 \label{vcpu:s2}\\
+    \vcpu{\tau, n, \tau', \ldots} &\sched \vcpu{\tau', n, \ldots}\quad\text{where }n > 0, \tau\neq\tau' \label{vcpu:s3}\\
+    \vcpu{\tau, n, \ldots} &\wake{\tau'} \vcpu{\tau, n, \ldots, \tau'}\quad\text{where }\tau'\not\in\set{\ldots}\label{vcpu:w1} \\
+    \vcpu{\tau, n, \ldots, \tau', \ldots} &\wake{\tau'} \vcpu{\tau,
+      n, \ldots, \tau', \ldots} \label{vcpu:w2}
+  \end{flalign}
+\end{subequations}
 
 Transition~\ref{vcpu:s1} occurs when the quantum expires.
 Transition~\ref{vcpu:s2} occurs when the quantum has not expired and
@@ -34,6 +94,169 @@ the current task also appears on the runqueue.
 Transition~\ref{vcpu:s3} is the remaining case for when the quantum
 has not expired but the task is not runnable.
 Transition~\ref{vcpu:w1} shows how tasks are added to the runqueue.
-Transition~\ref{vcpu:w2} indicates idempotency of {\tt wakeup}.
+Transition~\ref{vcpu:w2} indicates idempotency of task {\tt wakeup}.
 
+\section{Properties}
+
+\begin{prop}
+  \begin{subequations}
+    \begin{equation}
+      \label{eq:runningP}
+      \infer{\running{\tau,(V,\ldots)}}{\running{\tau,V}}
+    \end{equation}
+    \begin{equation}
+      \label{eq:runningV}
+      \infer{\running{\tau,(\tau',n,\ldots)}}{\tau=\tau'}
+    \end{equation}
+  \end{subequations}
+\end{prop}
+\begin{prop}
+  \begin{subequations}
+    \begin{equation}
+      \label{eq:runnableP}
+      \infer{\runnable{\tau,(V,V_1,V_2,\ldots,V_m)}}{
+        \exists_{j\in\set{1,\ldots,m}}\runnable{\tau,V_j}
+      }
+    \end{equation}
+    \begin{equation}
+      \label{eq:runnableV}
+      \infer{\runnable{\tau,(\tau',n,\ldots,\tau'',\ldots)}}{\tau=\tau''}
+    \end{equation}
+  \end{subequations}
+\end{prop}
+
+\begin{prop}[Multiple step {\tt schedule}]
+  \begin{subequations}
+    \begin{equation}
+      \label{msched:refl}
+      \infer{P\msched P}{}
+    \end{equation}
+    \begin{equation}
+      \label{msched:trans}
+      \infer{P\msched P''}{P\sched P' & P'\msched P''}
+    \end{equation}
+  \end{subequations}
+\end{prop}
+
+\begin{lma}\label{lma:wakerun}
+  If $P\wake{\tau} P'$ then \runnable{\tau,P'}.
+\end{lma}
+\begin{proof}
+  Inversion on rules (\ref{pcpu:w1}) or (\ref{pcpu:w2}) gives
+  $V_{\tau}\wake{\tau}V'_{\tau}$ and
+  $P'=\pcpu{V,\ldots,V'_{\tau},\ldots}$.  Inversion on
+  $V_{\tau}\wake{\tau}V'_{\tau}$ by (\ref{vcpu:w1}) or (\ref{vcpu:w2})
+  says that $V'_{\tau}=\vcpu{\tau',n,\ldots,\tau,\ldots}$.  Therefore,
+  \[
+  \infer{\runnable{\tau, P'}}{
+    \infer{\runnable{\tau,\pcpu{V,\ldots,V'_{\tau},\ldots}}}{
+      \infer{\runnable{\tau,V'_{\tau}}}{
+        \infer{\runnable{\tau,(\tau',n,\ldots,\tau,\ldots)}}{\tau=\tau}
+      }
+    }
+  }
+  \]
+\end{proof}
+
+\begin{thm}[Preservation]\label{thm:preserv}
+  If \runnable{\tau,P} and $P\sched P'$ then either \runnable{\tau,P'} or \running{\tau, P'}.
+\end{thm}
+
+\newcommand\metric[1]{\ensuremath{\text{metric}\paren{#1}}}
+\renewcommand\bar\overline
+\begin{prop}[Induction Metric]
+  The size of a VCPU is the length of its queue.
+  \begin{equation}
+    \label{eq:metric}
+    \metric{(\tau,n,\bar\tau)}={\len{\bar\tau}}
+  \end{equation}
+  The size of a PCPU is double the number of VCPUs in the queue, plus
+  the active VPCU if any.
+  \begin{equation}
+    \label{eq:metric}
+    \metric{(V,\bar V)}=2\sum_{v\in\bar V}{\metric{v}}+\len V
+  \end{equation}
+  The metric on a PCPU is the sum of the metrics on each queued VCPU,
+  plus one if the PCPU is not idle.  Notably,
+  $\metric{(0,0)}=0$, in other words, the idle PCPU is the lowest
+  metric.
+\end{prop}
+
+\begin{lma}\label{lma:nonzerometricV}
+  If $V\wake{\tau'}V'$ then $\metric {V'}>0$.
+\end{lma}
+\begin{proof}
+  In the case of rule~(\ref{vcpu:w1}) the VCPU transition is
+  $\vcpu{\tau,n,\ldots}\wake{\tau'}\vcpu{\tau,n,\ldots,\tau'}$,
+  therefore the number of queued tasks is non-zero.  In the case of
+  rule~(\ref{vcpu:w2}) the transition is
+  $\vcpu{\tau,n,\ldots,\tau',\ldots}\wake{\tau'}\vcpu{\tau,n,\ldots,\tau',\ldots}$
+  and the task is already queued, therefore the metric is unchanged,
+  and cannot be zero.
+\end{proof}
+
+\begin{lma}\label{lma:nonzerometric}
+  If a VCPU is on a PCPU queue then it has non-zero metric.
+\end{lma}
+\begin{proof}
+  The only way a VCPU can arrive on a PCPU queue is through
+  rules~(\ref{pcpu:w1}) or (\ref{pcpu:w2}), both of which require a
+  derivation of $V\wake{\tau'}V'$, and by
+  lemma~\ref{lma:nonzerometricV} this means $\metric{V'}>0$.
+\end{proof}
+
+\begin{lma}\label{lma:indstep}
+  If $P\sched P'$ then $\metric{P'}<\metric{P}$.
+\end{lma}
+\begin{proof}
+  First consider rule~(\ref{pcpu:s1}) where
+  $\pcpu{V,V',\ldots}\sched\pcpu{V'',\ldots}$.  Working backwards,
+  \begin{flalign*}
+    \metric{\pcpu{V'',\ldots}} &< \metric{\pcpu{V,V',\ldots}} \\
+    2\paren{\cdots} + 1 &< 2\paren{\metric{V'}+\cdots}+\len V \\
+    1 &< 2\cdot\metric{V'} + \len V
+  \end{flalign*}
+  since by lemma~\ref{lma:nonzerometric}, $\metric{V'}>0$, this
+  inequality is true regardless of $\len V$.
+
+  The next rule is (\ref{pcpu:s2}) where
+  $\pcpu{V,V',\ldots}\sched\pcpu{V'',V'',\ldots}$.  By inversion we
+  find that $V'\sched V''$ and $V''=\vcpu{\tau,n,\tau',\ldots}$.
+  Using lemma~\ref{lma:indstepV} we know that $\metric{V''}<\metric{V'}$.
+  Working backwards,
+  \begin{flalign*}
+    \metric{\pcpu{V'',V'',\ldots}} &< \metric{\pcpu{V,V',\ldots}} \\
+    2\paren{\metric{V''}+\cdots} + 1 &< 2\paren{\metric{V'}+\cdots}+\len V \\
+    2\cdot\metric{V''} + 1 &< 2\cdot\metric{V'} + \len V
+  \end{flalign*}
+  Since $\metric{V''}<\metric{V'}$, this inequality is always true even
+  if $\len V=0$.
+
+  Finally, rule~(\ref{pcpu:s3}) where $\pcpu{V,0}\sched\pcpu{0,0}$
+  leads to $\metric{\pcpu{0,0}}<\metric{\pcpu{V,0}}$ which unfolds
+  into $0<1$.
+\end{proof}
+
+\begin{lma}
+  \label{lma:indstepV}
+  If $V\sched V'$ then $\metric{V'}<\metric{V}$.
+\end{lma}
+\begin{proof}
+  In all three rules (\ref{vcpu:s1}), (\ref{vcpu:s2}), and
+  (\ref{vcpu:s3}), the length of the queue is reduced by one,
+  therefore, $\metric{V'}<\metric{V}$.
+\end{proof}
+
+\begin{thm}[Exhaustion]\label{thm:exhaust}
+  $P\msched (0,0)$
+\end{thm}
+\begin{proof}[Proof by induction on \metric{P}]
+  The base case where $\metric{P}=0$ implies $P=(0,0)$ and by
+  property~(\ref{msched:refl}) you have $(0,0)\msched (0,0)$.  The
+  interesting property is (\ref{msched:trans}).  By inversion,
+  $P\sched P'$ and $P'\msched P''$.  By lemma~\ref{lma:indstep},
+  $\metric{P'}<\metric{P}$.  Therefore, by induction, $P'\msched
+  (0,0)$.  Using property~(\ref{msched:trans}) and $P\sched P'$, we
+  arrive at $P\msched (0,0)$.
+\end{proof}
 \end{document}
