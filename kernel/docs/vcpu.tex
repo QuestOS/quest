@@ -158,9 +158,49 @@ Transition~\ref{vcpu:w2} indicates idempotency of task {\tt wakeup}.
   \]
 \end{proof}
 
+\begin{lma}\label{lma:preservV}
+  If \runnable{\tau,V} and $V\sched V'$ then either \runnable{\tau,V'}
+  or \running {\tau,V'}.
+\end{lma}
+\begin{proof}
+  In the case of rule~(\ref{vcpu:s1}) or rule~(\ref{vcpu:s3}), if
+  $\tau$ is first on queue then it will start running.  If $\tau$ is
+  not first in queue, then it remains runnable.
+
+  In the case of rule~(\ref{vcpu:s2}), if $\tau$ is currently running
+  then it will continue running.  If $\tau$ is on queue but not
+  running, it will remain runnable.
+\end{proof}
+
 \begin{thm}[Preservation]\label{thm:preserv}
-  If \runnable{\tau,P} and $P\sched P'$ then either \runnable{\tau,P'} or \running{\tau, P'}.
+  If \runnable{\tau,P} and $P\sched P'$ then either \runnable{\tau,P'}
+  or \running{\tau, P'}.
 \end{thm}
+\begin{proof}
+  Consider the case of rule~(\ref{pcpu:s1})
+  \begin{equation*}
+    \infer{\pcpu{V,V',\ldots}\sched\pcpu{V'',\ldots}}{
+      V'\sched V'' & V''=(\tau, n, 0)
+    }
+  \end{equation*}
+  If $V_{\tau}\neq V'$ then it is still on queue and still runnable.
+  Suppose instead that $V_{\tau}=V'$, then by lemma~\ref{lma:preservV}
+  we know that either \runnable{\tau,V''} or \running{\tau,V''}.  But
+  since $V''=\vcpu{\tau,n,0}$ we know $V''$ has an empty runqueue,
+  therefore it must be the case that we have $\running{\tau,V''}$
+  which implies $\running{\tau,P'}$.
+
+  The other possible case is rule~(\ref{pcpu:s2})
+  \begin{equation*}
+    \infer{\pcpu{V,V',\ldots}\sched\pcpu{V'',V'',\ldots}}{
+      V'\sched V'' & V''=(\tau, n, \tau', \ldots)
+    }
+  \end{equation*}
+  This case is similar to the previous one except that $V''$ does not
+  have an empty runqueue.  Therefore we must consider the subcase when
+  $\runnable{\tau,V''}$.  Since $V''$ appears on the queue of $P'$,
+  property~(\ref{eq:runnableP}) applies and \runnable{\tau,P'} can be derived.
+\end{proof}
 
 \newcommand\metric[1]{\ensuremath{\text{metric}\paren{#1}}}
 \renewcommand\bar\overline
@@ -205,6 +245,16 @@ Transition~\ref{vcpu:w2} indicates idempotency of task {\tt wakeup}.
   lemma~\ref{lma:nonzerometricV} this means $\metric{V'}>0$.
 \end{proof}
 
+\begin{lma}
+  \label{lma:indstepV}
+  If $V\sched V'$ then $\metric{V'}<\metric{V}$.
+\end{lma}
+\begin{proof}
+  In all three rules (\ref{vcpu:s1}), (\ref{vcpu:s2}), and
+  (\ref{vcpu:s3}), the length of the queue is reduced by one,
+  therefore, $\metric{V'}<\metric{V}$.
+\end{proof}
+
 \begin{lma}\label{lma:indstep}
   If $P\sched P'$ then $\metric{P'}<\metric{P}$.
 \end{lma}
@@ -235,16 +285,6 @@ Transition~\ref{vcpu:w2} indicates idempotency of task {\tt wakeup}.
   Finally, rule~(\ref{pcpu:s3}) where $\pcpu{V,0}\sched\pcpu{0,0}$
   leads to $\metric{\pcpu{0,0}}<\metric{\pcpu{V,0}}$ which unfolds
   into $0<1$.
-\end{proof}
-
-\begin{lma}
-  \label{lma:indstepV}
-  If $V\sched V'$ then $\metric{V'}<\metric{V}$.
-\end{lma}
-\begin{proof}
-  In all three rules (\ref{vcpu:s1}), (\ref{vcpu:s2}), and
-  (\ref{vcpu:s3}), the length of the queue is reduced by one,
-  therefore, $\metric{V'}<\metric{V}$.
 \end{proof}
 
 \begin{thm}[Exhaustion]\label{thm:exhaust}
