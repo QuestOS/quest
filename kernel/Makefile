@@ -17,7 +17,7 @@ INDENTFLAGS = -gnu -br -ce --no-tabs
 
 MNT_POINT=/mnt/quest
 PROGS = quest \
-	sysprogs/terminal_server sysprogs/shell \
+	sysprogs/shell \
 	tests/exec tests/race tests/test1 tests/test2 \
 	tests/test3 tests/test4 tests/test5 tests/test6 tests/test7
 

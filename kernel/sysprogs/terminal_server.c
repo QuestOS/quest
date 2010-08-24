@@ -94,7 +94,6 @@ splash_screen (void)
     _putchar (*p, 4);
 }
 
-
 int
 main ()
 {

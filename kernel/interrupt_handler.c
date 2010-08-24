@@ -302,67 +302,89 @@ handle_interrupt (uint32 fs_gs, uint32 ds_es, uint32 ulInt, uint32 ulCode)
   send_eoi ();
 }
 
+static int
+user_putchar (int ch, int attribute)
+{
+  static int x, y;
+
+  if (ch == '\n') {
+    x = 0;
+    y++;
+
+    if (y > 24) {
+      memcpy (pchVideo, pchVideo + 160, 24 * 160);
+      memset (pchVideo + (24 * 160), 0, 160);
+      y = 24;
+    }
+    return (int) (unsigned char) ch;
+  }
+
+  if (y * 160 + x * 2 >= 0x1000) return ch;
+
+  pchVideo[y * 160 + x * 2] = ch;
+  pchVideo[y * 160 + x * 2 + 1] = attribute;
+  x++;
+
+  if (y * 160 + x * 2 >= 0x1000) return ch;
+
+  pchVideo[y * 160 + x * 2] = ' ';
+  pchVideo[y * 160 + x * 2 + 1] = attribute;
+
+  /* Move cursor */
+  outb (0x0E, 0x3D4);           /* CRTC Cursor location high index */
+  outb ((y * 80 + x) >> 8, 0x3D5);      /* CRTC Cursor location high data */
+  outb (0x0F, 0x3D4);           /* CRTC Cursor location low index */
+  outb ((y * 80 + x) & 0xFF, 0x3D5);    /* CRTC Cursor location low data */
+
+  return (int) (unsigned char) ch;
+}
+
+static void
+_user_putchar_attr_4 (char c)
+{
+  user_putchar (c, 4);
+}
+
+static void
+splash_screen (void)
+{
+  int _uname (char *);
+  u32 _meminfo (u32, u32);
+  u32 free = _meminfo (0, 0);
+  char vers[80];
+
+  _uname (vers);
+
+  fun_printf (_user_putchar_attr_4,
+              "**** Quest kernel version: %s *****"
+              "   //---\\ \\\\  \\ //-- //--\\ \\\\---\\ \n",
+              vers);
+
+  fun_printf (_user_putchar_attr_4,
+              "* Copyright Boston University, 2010 *"
+              "   ||   | ||  | ||-- \\\\--\\   || \n");
+
+  fun_printf (_user_putchar_attr_4,
+              "******** 0x%.08X bytes free ******"
+              "   \\\\__\\_  \\\\_/ \\\\__ \\\\__/   || \n",
+              free);
+}
+
 /* Syscall: putchar */
 void
 handle_syscall0 (int eax, int ebx)
 {
-
-  quest_tss *pTSS = (quest_tss *) ul_tss[1];    /* --??-- tss index hard-coded to 1 for now */
-  uint16 head;
+  static bool first = TRUE;
 
   if (eax) {                    /* eax should be 0 for syscall0 */
     print ("Invalid syscall number!\n");
     return;
   }
 
-  /* NB: The code below relies on atomic execution.  Currently, that
-     atomicity is guaranteed by assuming we are running on a
-     uniprocessor with interrupts disabled. */
-
   lock_kernel ();
 
-  if (pTSS->busy) {
-    /* somebody else is already using the server; block */
-    queue_append (&pTSS->waitqueue, str ());    /* add ourselves to the wait
-                                                   queue -- this operation
-                                                   must be atomic with the
-                                                   busy check above */
-    schedule ();
-    /* We can now safely assume that we have exclusive access to the
-       server (since the only way we could possibly have woken up after
-       the schedule() call is by the previous head task placing us on
-       the run queue -- see below). */
-  } else
-    pTSS->busy = 1;             /* mark the server busy -- this set must be atomic
-                                   with the test above */
-
-  pTSS->tss.ulEBX = ebx;        /* pass arg in EBX from client to server */
-
-  unlock_kernel ();
-
-  call_gate (0x30);             /* --??-- Hard-coded for the segment selector for
-                                   terminal server task */
-  lock_kernel ();
-
-#if QUEST_SCHED==vcpu
-  /* workaround to avoid vcpu state getting out-of-sync with cpu state */
-  extern vcpu *vcpu_current;
-  void vcpu_remove_from_runqueue (vcpu *, u16);
-  vcpu *vcpu = percpu_read (vcpu_current);
-  if (vcpu) vcpu->tr = str ();
-  if (vcpu) vcpu_remove_from_runqueue (vcpu, 0x30);
-#endif
-
-  if ((head = queue_remove_head (&pTSS->waitqueue)))
-    /* Somebody else is waiting for the server -- wake them up (and leave
-       the busy flag set).  This will eventually cause the schedule() call
-       in the waiting task to return (see above). */
-    wakeup (head);
-  else
-    /* We were the last task using the server; mark it as available.
-       Clearing this flag must be atomic with the queue_remove_head()
-       check. */
-    pTSS->busy = 0;
+  if (first) { splash_screen (); first = FALSE; }
+  user_putchar (ebx, 7);
 
   unlock_kernel ();
 }

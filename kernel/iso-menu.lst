@@ -5,5 +5,3 @@ title quest
 # root (hd0,0)
 kernel /boot/quest
 module /boot/shell
-module /boot/terminal_server
-
