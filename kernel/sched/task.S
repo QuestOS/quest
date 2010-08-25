@@ -90,7 +90,7 @@ _sw_init_task:
         leal 32(%edi), %eax
         jmp *(%eax)
 
-        /* Start initial task */
+        /* Start initial task in userspace */
         /* %edi: TSS pointer */
         .globl _sw_init_user_task
 _sw_init_user_task:
