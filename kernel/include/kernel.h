@@ -157,13 +157,13 @@ extern uint32 kl_stack[][1024] __attribute__ ((aligned (4096)));
 /* Declare space for a page table mappings for kernel stacks */
 extern uint32 kls_pg_table[][1024] __attribute__ ((aligned (4096)));
 
-extern tss dummyTSS;
-
-extern uint16 dummyTSS_selector;
-
 extern tss idleTSS[MAX_CPUS];
 
+extern tss cpuTSS[MAX_CPUS];
+
 extern uint16 idleTSS_selector[MAX_CPUS];
+
+extern uint16 cpuTSS_selector[MAX_CPUS];
 
 extern spinlock screen_lock;
 

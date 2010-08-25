@@ -272,17 +272,14 @@ ap_init (void)
   LAPIC_start_timer(cpu_bus_freq / QUANTUM_HZ); /* quantum */
   
   /* The AP is now operating in an SMP environment so the kernel must
-   * be locked before any shared resources are utilized.  The dummy
-   * TSS is a shared resource. */
+   * be locked before any shared resources are utilized. */
   lock_kernel ();
 
   /* Performance monitoring */
   perfmon_init ();
 
-  /* Load the dummy TSS so that when the CPU executes jmp_gate it has
-   * a place to write the state of the CPU -- even though we don't
-   * care about the state and it will be discarded. */
-  ltr (dummyTSS_selector);
+  /* Load the per-CPU TSS for this AP */
+  hw_ltr (cpuTSS_selector[phys_id]);
 
   /* The IDLE task runs in kernelspace, therefore it is capable of
    * unlocking the kernel and manually enabling interrupts.  This
@@ -293,7 +290,12 @@ ap_init (void)
    * protect the dummy TSS from simultaneous usage by multiple CPUs in
    * this case. */
 
-  jmp_gate (idleTSS_selector[phys_id]); /* begin in IDLE task */
+  ltr (idleTSS_selector[phys_id]);
+
+  /* task-switch to IDLE task */
+  asm volatile ("jmp _sw_init_task":
+                :"D" (lookup_TSS (idleTSS_selector[phys_id])));
+
   /* never return */
 
   panic ("AP: unreachable");

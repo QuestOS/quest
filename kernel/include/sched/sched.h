@@ -18,6 +18,8 @@
 #ifndef _SCHED_H_
 #define _SCHED_H_
 
+#include "kernel.h"
+#include "arch/i386-percpu.h"
 #include "sched/sched-defs.h"
 
 extern void runqueue_append (uint32 prio, uint16 selector);
@@ -29,6 +31,33 @@ extern void wakeup_queue (uint16 *);
 
 extern void sched_usleep (uint32);
 extern void process_sleepqueue (void);
+
+extern DEF_PER_CPU (task_id, current_task);
+static inline task_id
+str (void)
+{
+  return percpu_read (current_task);
+}
+static inline void
+ltr (task_id id)
+{
+  percpu_write (current_task, id);
+}
+
+static inline void
+software_context_switch (task_id next)
+{
+  u16 tr = percpu_read (current_task);
+  tss *cur_TSS = (tr == 0 ? NULL : (tss *) lookup_TSS (tr));
+  tss *nxt_TSS = (tss *) lookup_TSS (next);
+
+  percpu_write (current_task, next);
+
+  asm volatile ("call _sw_jmp_task":
+                :"S" (cur_TSS), "D" (nxt_TSS)
+                :"eax", "ebx", "ecx", "edx");
+}
+
 
 #endif
 

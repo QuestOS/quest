@@ -116,7 +116,6 @@ duplicate_TSS (uint32 ebp,
   tss *pTSS;
   uint32 pa;
 
-
   pa = alloc_phys_frame (); /* --??-- For now, whole page per tss */
   /* --??-- Error checking in the future */
 
@@ -139,7 +138,9 @@ duplicate_TSS (uint32 ebp,
   if (i == 256)
     panic ("No free selector for TSS");
 
-  logger_printf ("duplicate_TSS: pTSS=%p i=0x%x\n", pTSS, i << 3);
+  logger_printf ("duplicate_TSS: pTSS=%p i=0x%x esp=%p ebp=%p\n",
+                 pTSS, i << 3,
+                 child_esp, child_ebp);
 
   /* See pp 6-7 in IA-32 vol 3 docs for meanings of these assignments */
   ad[i].uLimit0 = 0xFFF;        /* --??-- Right now, a page per TSS */
@@ -427,7 +428,9 @@ _fork (uint32 ebp, uint32 *esp)
                 "movl $0, %0\n"
                 "jmp 2f\n"
                 "1:\n"
-                "movl (%%esp), %0\n" "addl $4, %%esp\n" "2:\n":"=r" (eip):);
+                "movl (%%esp), %0\n"
+                "addl $4, %%esp\n"
+                "2:\n":"=r" (eip):);
 
   if (eip == 0) {
     /* We are in the child process now */
@@ -1074,7 +1077,7 @@ __exit (int status)
      been able to check the status of the child... */
 
   tss = str ();
-  ltr (dummyTSS_selector);
+  ltr (0);
 
   /* Remove space for tss -- but first we need to construct the linear
      address of where it is in memory from the TSS descriptor */

@@ -45,7 +45,7 @@ static int bitmap_find_first_set (uint32 *table, uint32 limit);
     tssp->usFS = sel;                                           \
   }
 
-#define switch_to(next) do { preserve_segment (next); jmp_gate (next); } while (0)
+#define switch_to(next) software_context_switch (next)
 
 extern void
 queue_append (uint16 * queue, uint16 selector)
@@ -258,6 +258,11 @@ mpq_schedule (void)
 
 #endif
 /* ************************************************** */
+
+DEF_PER_CPU (u16, current_task);
+INIT_PER_CPU (current_task) {
+  percpu_write (current_task, 0);
+}
 
 /* Hooks for scheduler */
 

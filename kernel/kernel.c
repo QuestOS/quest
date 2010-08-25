@@ -44,16 +44,13 @@ uint32 kl_stack[NR_MODS][1024] ALIGNED (0x1000);
 /* Declare space for a page table mappings for kernel stacks */
 uint32 kls_pg_table[NR_MODS][1024] ALIGNED (0x1000);
 
-/* Declare space for a dummy TSS -- used for kernel switch_to/jmp_gate
-   semantics */
-tss dummyTSS;
-
-/* This is a global index into the GDT for a dummyTSS */
-uint16 dummyTSS_selector;
-
 /* Each CPU gets an IDLE task -- something to do when nothing else */
 tss idleTSS[MAX_CPUS];
 uint16 idleTSS_selector[MAX_CPUS];
+
+/* Each CPU gets a CPU TSS for sw task switching */
+tss cpuTSS[MAX_CPUS];
+uint16 cpuTSS_selector[MAX_CPUS];
 
 char *pchVideo = (char *) KERN_SCR;
 
@@ -237,6 +234,7 @@ begin_kernel_threads (void)
 void
 exit_kernel_thread (void)
 {
+  uint8 LAPIC_get_physical_ID (void);
   quest_tss *tss;
   uint tss_frame;
   task_id waiter;
@@ -256,8 +254,8 @@ exit_kernel_thread (void)
   unmap_virtual_page (tss);
   free_phys_frame (tss_frame);
 
-  /* use dummy as scratch-pad for task-switch */
-  ltr (dummyTSS_selector);
+  /* clear current task */
+  ltr (0);
 
   schedule ();
 

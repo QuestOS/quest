@@ -121,7 +121,7 @@ vcpu_runqueue_append (vcpu *vcpu, task_id task)
     tssp->usFS = sel;                                           \
   }
 
-#define switch_to(next) do { preserve_segment (next); jmp_gate (next); } while (0)
+#define switch_to(next) software_context_switch (next)
 
 void
 vcpu_switch_to (vcpu *vcpu)

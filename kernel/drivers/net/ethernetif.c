@@ -567,7 +567,7 @@ getDebugChar (void)
 /* external init routine */
 
 static task_id net_tmr_pid;
-static uint32 net_tmr_stack[1024];
+static uint32 net_tmr_stack[1024] ALIGNED (0x1000);
 
 #define NET_TMR_THREAD_WAIT_MSEC 50
 

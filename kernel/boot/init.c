@@ -42,13 +42,10 @@ uint32 stack[1024] __attribute__ ((aligned (0x1000)));
 
 extern void init_sound (void);
 
-/* We use this function to create a dummy TSS so that when we issue a
-   switch_to/jmp_gate e.g. at the end of init() or __exit(), we have a
-   valid previous TSS for the processor to store state info */
+/* Each CPU needs a TSS for the SS0, ESP0 fields */
 static uint16
-alloc_dummy_TSS (void)
+alloc_CPU_TSS (tss *tssp)
 {
-
   int i;
   descriptor *ad = (descriptor *)KERN_GDT;
 
@@ -62,9 +59,9 @@ alloc_dummy_TSS (void)
 
   ad[i].uLimit0 = sizeof (tss);
   ad[i].uLimit1 = 0;
-  ad[i].pBase0 = (uint32) & dummyTSS & 0xFFFF;
-  ad[i].pBase1 = ((uint32) & dummyTSS >> 16) & 0xFF;
-  ad[i].pBase2 = (uint32) & dummyTSS >> 24;
+  ad[i].pBase0 = (uint32) tssp & 0xFFFF;
+  ad[i].pBase1 = ((uint32) tssp >> 16) & 0xFF;
+  ad[i].pBase2 = (uint32) tssp >> 24;
   ad[i].uType = 0x09;
   ad[i].uDPL = 0;               /* Only let kernel perform task-switching */
   ad[i].fPresent = 1;
@@ -72,10 +69,12 @@ alloc_dummy_TSS (void)
   ad[i].fX = 0;
   ad[i].fGranularity = 0;       /* Set granularity of tss in bytes */
 
+  tssp->usSS0 = 0x10;
+  tssp->ulESP0 = (uint32) KERN_STK + 0x1000;
+
   return i << 3;
 
 }
-
 static uint16
 alloc_idle_TSS (int cpu_num)
 {
@@ -104,13 +103,14 @@ alloc_idle_TSS (int cpu_num)
   ad[i].fX = 0;
   ad[i].fGranularity = 0;       /* Set granularity of tss in bytes */
 
+  u32 *stk = map_virtual_page (alloc_phys_frame () | 3);
+
   pTSS->pCR3 = get_pdbr ();
   pTSS->ulEIP = (uint32) & idle_task;
 
   pTSS->ulEFlags = F_1 | F_IOPL0;
 
-  pTSS->ulESP =
-    (uint32) map_virtual_page (alloc_phys_frame () | 3) + 0x1000;
+  pTSS->ulESP = (u32) &stk[1023];
   pTSS->ulEBP = pTSS->ulESP;
   pTSS->usCS = 0x08;
   pTSS->usES = 0x10;
@@ -526,6 +526,7 @@ init (multiboot * pmb)
 
   for (i = 0; i < pmb->mods_count; i++) {
     tss[i] = load_module (pmb->mods_addr + i, i);
+    com1_printf ("module loaded id=0x%x\n", tss[i]);
     lookup_TSS (tss[i])->priority = MIN_PRIO;
   }
 
@@ -545,22 +546,19 @@ init (multiboot * pmb)
   *((uint32 *)get_pdbr()) = 0;
   flush_tlb_all ();
 
-  /* Dummy TSS used when CPU needs somewhere to write scratch values */
-  dummyTSS_selector = alloc_dummy_TSS ();
-
-  /* Create IDLE tasks */
-  for (i = 0; i < num_cpus; i++)
+  /* Create CPU and IDLE TSSes */
+  for (i = 0; i < num_cpus; i++) {
     idleTSS_selector[i] = alloc_idle_TSS (i);
+    cpuTSS_selector[i] = alloc_CPU_TSS (&cpuTSS[i]);
+  }
 
   /* Setup per-CPU area for bootstrap CPU */
   /* NB: this uses a GDT entry and must occur after modules are loaded
    * due to code that expects terminal_server to have id=0x30 */
   percpu_per_cpu_init ();
 
-  /* Load the dummy TSS so that when the CPU executes jmp_gate it has
-   * a place to write the state of the CPU -- even though we don't
-   * care about the state and it will be discarded. */
-  ltr (dummyTSS_selector);
+  /* Load the per-CPU TSS for the bootstrap CPU */
+  hw_ltr (cpuTSS_selector[0]);
 
   /* The APs do not begin actually operating until the PIT fires the
    * first IRQ after interrupts are re-enabled.  That's why it is safe
@@ -687,7 +685,10 @@ init (multiboot * pmb)
   /* The Shell module is in userspace and therefore interrupts will be
    * enabled after this point.  Then, kernel locking will become
    * necessary. */
-  jmp_gate (tss[0]);            /* task-switch to shell module */
+
+  ltr (tss[0]);
+  /* task-switch to shell module */
+  asm volatile ("jmp _sw_init_user_task"::"D" (lookup_TSS (tss[0])));
 
   /* never return */
   panic ("BSP: unreachable");

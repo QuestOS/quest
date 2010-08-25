@@ -114,7 +114,6 @@ typedef struct _idt_descriptor
   uint32 pBase1:16;       /* Offset (bits 16-31) */
 } idt_descriptor;
 
-
 static inline void
 cli (void)
 {
@@ -149,6 +148,7 @@ get_pdbr (void)
   return p;
 }
 
+#if 0
 static inline void
 jmp_gate (uint16 us)
 {
@@ -167,7 +167,7 @@ call_gate (uint16 us)
 
   asm volatile ("lcall *(%0)"::"r" (gate));
 }
-
+#endif
 
 static inline void
 bochs_instr_trace (void)
@@ -288,7 +288,7 @@ outl (uint32 ul, uint16 usPort)
 #define GET_ESP(esp) asm volatile ("movl %%esp, %0":"=r" (esp):);
 
 static inline uint16
-str (void)
+hw_str (void)
 {
 
   uint16 us;
@@ -299,7 +299,7 @@ str (void)
 
 
 static inline void
-ltr (uint16 us)
+hw_ltr (uint16 us)
 {
 
   asm volatile ("ltr %0"::"r" (us));
