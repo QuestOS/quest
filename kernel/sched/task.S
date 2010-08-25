@@ -22,13 +22,13 @@
 _sw_jmp_task:
         /* check if source is NULL */
         testl %esi, %esi
-        jz 1f
+        jz 2f
 
         /* save EIP */
-        call 2f
+        call 1f
         /* resume point */
         ret
-2:      popl %eax
+1:      popl %eax
         movl %eax, 32(%esi)
 
         /* save EBP */
@@ -39,20 +39,26 @@ _sw_jmp_task:
         popl %eax
         movl %eax, 36(%esi)
 
-        /* save CR3 */
-        movl %cr3, %ebp
-        movl %ebp, 28(%esi)
-
         /* save stack */
         movl %esp, %ebp
         movl %ebp, 56(%esi)
 
         /* -------------------- */
-1:
-        /* restore CR3 */
+2:
+        /* restore CR3 if necessary */
         movl 28(%edi), %eax
-        movl %eax, %cr3
 
+        /* skip if kernel thread */
+        movl $pgd, %edx
+        cmpl %eax, %edx
+        je 3f
+
+        /* skip if already loaded */
+        movl %cr3, %edx
+        cmpl %eax, %edx
+        je 3f
+        movl %eax, %cr3
+3:
         /* restore stack */
         movl 56(%edi), %ebp
         movl %ebp, %esp
@@ -60,7 +66,7 @@ _sw_jmp_task:
         /* restore EBP */
         movl 60(%edi), %ebp
 
-        /* restore flags */
+        /* restore EFLAGS */
         movl 36(%edi), %eax
         pushl %eax
         popf

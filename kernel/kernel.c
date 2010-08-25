@@ -184,7 +184,8 @@ start_kernel_thread_args (uint eip, uint esp, uint n, ...)
 {
   task_id pid;
   uint32 eflags;
-  void *page_dir = get_pdbr ();
+  extern u32 *pgd;              /* original page-global dir */
+  void *page_dir = &pgd;
   uint *stack, i;
   va_list args;
 
