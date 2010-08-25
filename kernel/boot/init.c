@@ -265,16 +265,6 @@ load_module (multiboot_module * pmm, int mod_num)
   /* map stack */
   plPageTable[1023] = (uint32) pStack | 7;
 
-  /* --??--
-   *
-   * Special case for tss[1] acting, for now, as our screen/terminal server:
-   * Need to map screen memory. Here we map it in the middle of our
-   * page table
-   *
-   */
-  if (mod_num == 1)
-    plPageTable[512] = (uint32) 0x000B8000 | 7;
-
   stack_virt_addr = map_virtual_page ((uint32) pStack | 3);
 
   /* This sets up the module's stack with command-line args from grub */
@@ -290,7 +280,9 @@ load_module (multiboot_module * pmm, int mod_num)
   unmap_virtual_page (stack_virt_addr);
   unmap_virtual_pages (pe, page_count);
 
-  return alloc_TSS (plPageDirectory, pEntry, mod_num);
+  u16 pid = alloc_TSS (plPageDirectory, pEntry, mod_num);
+  com1_printf ("module %d loaded: task_id=0x%x\n", mod_num, pid);
+  return pid;
 }
 
 
@@ -386,7 +378,6 @@ parse_root_type (char *cmdline)
 void
 init (multiboot * pmb)
 {
-
   int i, j, k, c, num_cpus, root_type;
   uint16 tss[NR_MODS];
   memory_map_t *mmap;
@@ -521,16 +512,10 @@ init (multiboot * pmb)
   /* Initialise the programmable interval timer (PIT) */
   init_pit ();
 
-  if (!pmb->mods_count)
-    panic ("No modules available");
-
-  for (i = 0; i < pmb->mods_count; i++) {
-    tss[i] = load_module (pmb->mods_addr + i, i);
-    com1_printf ("module loaded id=0x%x\n", tss[i]);
-    lookup_TSS (tss[i])->priority = MIN_PRIO;
-  }
-
   pow2_init ();                 /* initialize power-of-2 memory allocator */
+
+  /* Setup per-CPU area for bootstrap CPU */
+  percpu_per_cpu_init ();
 
   /* Start up other processors, which may allocate pages for stacks */
   num_cpus = smp_init ();
@@ -542,20 +527,23 @@ init (multiboot * pmb)
     print ("Uni-processor mode.\n");
   }
 
+  /* Create CPU and IDLE TSSes */
+  for (i = 0; i < num_cpus; i++) {
+    cpuTSS_selector[i] = alloc_CPU_TSS (&cpuTSS[i]);
+    idleTSS_selector[i] = alloc_idle_TSS (i);
+  }
+
+  /* Load modules from GRUB */
+  if (!pmb->mods_count)
+    panic ("No modules available");
+  for (i = 0; i < pmb->mods_count; i++) {
+    tss[i] = load_module (pmb->mods_addr + i, i);
+    lookup_TSS (tss[i])->priority = MIN_PRIO;
+  }
+
   /* Remove identity mapping of first 4MB */
   *((uint32 *)get_pdbr()) = 0;
   flush_tlb_all ();
-
-  /* Create CPU and IDLE TSSes */
-  for (i = 0; i < num_cpus; i++) {
-    idleTSS_selector[i] = alloc_idle_TSS (i);
-    cpuTSS_selector[i] = alloc_CPU_TSS (&cpuTSS[i]);
-  }
-
-  /* Setup per-CPU area for bootstrap CPU */
-  /* NB: this uses a GDT entry and must occur after modules are loaded
-   * due to code that expects terminal_server to have id=0x30 */
-  percpu_per_cpu_init ();
 
   /* Load the per-CPU TSS for the bootstrap CPU */
   hw_ltr (cpuTSS_selector[0]);
@@ -670,6 +658,7 @@ init (multiboot * pmb)
   { extern void vcpu_init (void); vcpu_init (); }
 #endif
 
+  /* Start the schedulers */
   smp_enable_scheduling ();
 
 #ifdef ENABLE_GDBSTUB
