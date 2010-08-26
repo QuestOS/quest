@@ -195,7 +195,7 @@ bitmap_find_first_set (uint32 *table, uint32 limit)
 }
 
 /* ************************************************** */
-#ifdef MPQ
+#if QUEST_SCHED==mpq
 
 /* global queue (for unbound tasks) */
 
@@ -249,6 +249,11 @@ mpq_schedule (void)
     DLOG ("binding task 0x%x to cpu %d", next, tssp->cpu);
   } else {
     next = percpu_read (mpq_idle_task);
+  }
+  if (next == 0) {
+    /* workaround: mpq_idle_task was not initialized yet */
+    next = idleTSS_selector[LAPIC_get_physical_ID ()];
+    percpu_write (mpq_idle_task, next);
   }
   if (str () == next)
     return;
