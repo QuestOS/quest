@@ -285,6 +285,7 @@ handle_interrupt (uint32 fs_gs, uint32 ds_es, uint32 ulInt, uint32 ulCode)
   _printf ("EFL=%.8X EIP=%.8X\n", eflags, eip);
   _printf ("CR0=%.8X CR2=%.8X\nCR3=%.8X TR=%.4X\n", cr0, cr2, cr3, tr);
   _printf (" CS=%.4X  DS=%.4X  FS=%.4X\n", cs, ds, fs);
+  _printf ("CURRENT=0x%X\n", percpu_read (current_task));
   stacktrace_frame (esp, ebp);
 
 #ifndef ENABLE_GDBSTUB
@@ -1069,6 +1070,9 @@ __exit (int status)
   }
   BITMAP_SET (mm_table, (uint32) phys_addr >> 12);    /* Free up page for page directory */
   unmap_virtual_page (virt_addr);
+
+  /* Destroyed current page directory, so everything that happens
+   * until the next task switch must work within the current TLB. */
 
   /* --??-- Need to release TSS used by exiting process. Here, we need a way
      to index GDT based on current PID returned from original fork call.

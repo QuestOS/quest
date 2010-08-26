@@ -22,7 +22,7 @@
 _sw_jmp_task:
         /* check if source is NULL */
         testl %esi, %esi
-        jz 2f
+        jz srcNULL
 
         /* save EIP */
         call 1f
@@ -43,22 +43,32 @@ _sw_jmp_task:
         movl %esp, %ebp
         movl %ebp, 56(%esi)
 
+        jmp restore
+
+        /* force CR3 load if source is NULL */
+srcNULL:
+        movl 28(%edi), %eax
+        jmp stoCR3
+
         /* -------------------- */
-2:
+        /* restore destination TSS */
+restore:
         /* restore CR3 if necessary */
         movl 28(%edi), %eax
 
         /* skip if kernel thread */
         movl $pgd, %edx
         cmpl %eax, %edx
-        je 3f
+        je skipCR3
 
         /* skip if already loaded */
         movl %cr3, %edx
         cmpl %eax, %edx
-        je 3f
-        movl %eax, %cr3
-3:
+        je skipCR3
+
+stoCR3: movl %eax, %cr3
+skipCR3:
+
         /* restore stack */
         movl 56(%edi), %ebp
         movl %ebp, %esp
