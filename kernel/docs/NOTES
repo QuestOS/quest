@@ -1,3 +1,22 @@
+Thursday 2010-08-26 md
+
+  I noticed that __exit destroys the current page directory.  That
+  means we are reliant on the TLB cache until the next CR3 load.  But
+  my optimization from yesterday means that a kernel thread switch
+  will not load CR3.  So calling __exit and switching to an idle task,
+  for example, would try to continue using the destroyed page
+  directory.
+
+Wednesday 2010-08-25 md
+
+  Optimize software task switch so it does not load CR3 when switching
+  into a kernel thread, or if CR3 already has the desired value.
+
+Tuesday 2010-08-24 md
+
+  Implemented software task switching but still re-using the TSS data
+  structure for software task information.
+
 Thursday 2010-08-19 md
 
   Worked out a bit of theory on second-level VCPU scheduling.
