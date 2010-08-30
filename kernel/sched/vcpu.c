@@ -225,7 +225,7 @@ vcpu_acnt_after_switch (vcpu *vcpu)
 }
 
 extern void
-vcpu_schedule (void)
+vcpu_rr_schedule (void)
 {
   task_id next = 0;
   vcpu
@@ -272,7 +272,7 @@ vcpu_schedule (void)
 }
 
 extern void
-vcpu_wakeup (task_id task)
+vcpu_rr_wakeup (task_id task)
 {
   DLOG ("vcpu_wakeup (0x%x), cpu=%d", task, LAPIC_get_physical_ID ());
   quest_tss *tssp = lookup_TSS (task);

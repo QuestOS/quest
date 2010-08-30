@@ -19,4 +19,5 @@ OPT = 0
 #   sprr    Static Priority Round Robin
 #   mpq     Multiple Processor Queues
 #   vcpu    Virtual CPU
+#   vcpu_rr Virtual CPU Round-Robin
 CFG += -DQUEST_SCHED=sprr
