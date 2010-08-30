@@ -45,22 +45,23 @@
 #define percpu_read(var) percpu_op_src ("mov", var, "m" (var))
 #define percpu_read64(var)                      \
   ({                                            \
-    u64 _percpu_lo, _percpu_hi;                 \
+    u32 _percpu_lo, _percpu_hi;                 \
+    u64 _percpu_ret;                            \
     asm ("movl "__percpu_arg (2)", %0\n"        \
          "movl "__percpu_arg (3)", %1"          \
          : "=r" (_percpu_lo), "=r" (_percpu_hi) \
-         : "m" (var), "m" (((u8 *) &var)[4]));  \
-    _percpu_lo |= (_percpu_hi << 32);           \
-    typeof(var) _percpu_ret = _percpu_lo;       \
+         : "m" (var), "m" (((u32 *) &var)[1])); \
+    _percpu_ret = (((u64) _percpu_hi) << 32);   \
+    _percpu_ret |= (u64) _percpu_lo;            \
     _percpu_ret;                                \
   })
 #define percpu_write(var, val) percpu_op_dest ("mov", var, val)
 #define percpu_write64(var, val) do {           \
     asm ("movl %2, "__percpu_arg (0)"\n"        \
          "movl %3, "__percpu_arg (1)            \
-         : "+m" (var), "+m" (((u8 *) &var)[4])  \
+         : "+m" (var), "+m" (((u32 *) &var)[1]) \
          : "re" ((u32) val),                    \
-           "re" ((u32) (((u64) val) << 32)));   \
+           "re" ((u32) (val >> 32)));           \
   } while (0)
 
 /* Initialization for each CPU */
