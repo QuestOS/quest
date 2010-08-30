@@ -43,7 +43,25 @@
 
 /* Access macros for per-CPU variables */
 #define percpu_read(var) percpu_op_src ("mov", var, "m" (var))
+#define percpu_read64(var)                      \
+  ({                                            \
+    u64 _percpu_lo, _percpu_hi;                 \
+    asm ("movl "__percpu_arg (2)", %0\n"        \
+         "movl "__percpu_arg (3)", %1"          \
+         : "=r" (_percpu_lo), "=r" (_percpu_hi) \
+         : "m" (var), "m" (((u8 *) &var)[4]));  \
+    _percpu_lo |= (_percpu_hi << 32);           \
+    typeof(var) _percpu_ret = _percpu_lo;       \
+    _percpu_ret;                                \
+  })
 #define percpu_write(var, val) percpu_op_dest ("mov", var, val)
+#define percpu_write64(var, val) do {           \
+    asm ("movl %2, "__percpu_arg (0)"\n"        \
+         "movl %3, "__percpu_arg (1)            \
+         : "+m" (var), "+m" (((u8 *) &var)[4])  \
+         : "re" ((u32) val),                    \
+           "re" ((u32) (((u64) val) << 32)));   \
+  } while (0)
 
 /* Initialization for each CPU */
 extern void percpu_per_cpu_init (void);
@@ -73,10 +91,6 @@ extern u8 *percpu_virt[];
       asm (op "l %1, "__percpu_arg (0)                  \
            : "+m" (var) : "ri" (val));                  \
       break;                                            \
-    case 8:                                             \
-      asm (op "q %1, "__percpu_arg (0)                  \
-           : "+m" (var) : "re" (val));                  \
-      break;                                            \
     default: panic ("percpu_op_dest: bad size");        \
     }                                                   \
   } while (0)
@@ -95,10 +109,6 @@ extern u8 *percpu_virt[];
       break;                                    \
     case 4:                                     \
       asm (op "l "__percpu_arg (1)", %0"        \
-           : "=r" (_percpu_ret) : constraint);  \
-      break;                                    \
-    case 8:                                     \
-      asm (op "q "__percpu_arg (1)", %0"        \
            : "=r" (_percpu_ret) : constraint);  \
       break;                                    \
     default: panic ("percpu_op_src: bad size"); \
