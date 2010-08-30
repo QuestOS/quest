@@ -25,6 +25,7 @@
 #include "smp/apic.h"
 #include "smp/spinlock.h"
 #include "util/debug.h"
+#include "mem/pow2.h"
 
 //#define DEBUG_VCPU
 
@@ -34,8 +35,16 @@
 #define DLOG(fmt,...) ;
 #endif
 
-#define NUM_VCPUS 8
+static u32 tsc_freq_msec, tsc_lapic_factor;
+
+#define NUM_VCPUS 4
 static vcpu vcpus[NUM_VCPUS] ALIGNED (VCPU_ALIGNMENT);
+static struct { u64 C, T; } init_params[NUM_VCPUS] = {
+  { 1, 6 },
+  { 1, 7 },
+  { 1, 8 },
+  { 1, 9 },
+};
 
 vcpu *
 vcpu_lookup (int i)
@@ -294,6 +303,172 @@ vcpu_rr_wakeup (task_id task)
   vcpu_queue_append (percpu_pointer (vcpu->cpu, vcpu_queue), vcpu);
 }
 
+/* ************************************************** */
+
+DEF_PER_CPU (u64, pcpu_tprev);
+INIT_PER_CPU (pcpu_tprev) {
+  percpu_write64 (pcpu_tprev, 0LL);
+}
+
+static void
+add_replenishment (vcpu *v, u64 tprev, u64 b)
+{
+  u64 t = tprev + v->T;
+  replenishment **r, *rnew;
+  pow2_alloc (sizeof (replenishment), (u8 **) &rnew);
+  if (!rnew)
+    panic ("add_replenishment: out of memory");
+  rnew->t = t;
+  rnew->b = b;
+  rnew->next = NULL;
+  for (r = &v->R; *r != NULL; r = &(*r)->next);
+  *r = rnew;
+}
+
+static void
+update_replenishments (vcpu *q, u64 tcur)
+{
+  replenishment **r, *temp;
+  for (; q != NULL; q = q->next) {
+    for (r = &q->R; *r != NULL; r = &(*r)->next) {
+    do_r:
+      if ((*r)->t <= tcur) {
+        DLOG ("update_replenishments: vcpu=%p replenishing 0x%llX budget",
+              q, (*r)->b);
+        q->b += (*r)->b;
+        temp = *r;
+        *r = (*r)->next;
+        pow2_free ((u8 *) temp);
+        if (*r) goto do_r; else break;
+      }
+    }
+  }
+}
+
+/* runnable budget threshold */
+#define MIN_B 50
+
+extern void
+vcpu_schedule (void)
+{
+  task_id next = 0;
+  vcpu
+    *queue = percpu_read (vcpu_queue),
+    *cur   = percpu_read (vcpu_current),
+    *vcpu  = NULL,
+    **ptr,
+    **vstar = NULL;
+  u64 tprev = percpu_read64 (pcpu_tprev);
+  u64 tcur, tdelta, Tstar = 0;
+
+  RDTSC (tcur);
+
+  tdelta = tcur - tprev;
+
+  DLOG ("tcur=0x%llX tprev=0x%llX tdelta=0x%llX", tcur, tprev, tdelta);
+
+  if (cur) {
+    u64 u;
+
+    /* handle end-of-timeslice accounting */
+    vcpu_acnt_before_switch (cur);
+
+    /* subtract from budget of current */
+    if (cur->b < tdelta)
+      u = cur->b;
+    else
+      u = tdelta;
+
+    cur->b -= u;
+    DLOG ("budget: vcpu=%p used=0x%llX replenish@=0x%llX", cur, u,
+          tprev + cur->T);
+
+    /* schedule replenishment of used budget */
+    add_replenishment (cur, tprev, u);
+  }
+
+  if (queue) {
+    /* update replenishments */
+    update_replenishments (queue, tcur);
+
+    /* pick highest priority vcpu with available budget */
+    for (ptr = &queue; *ptr != NULL; ptr = &(*ptr)->next) {
+      if ((*ptr)->b > MIN_B && (Tstar == 0 || (*ptr)->T < Tstar)) {
+        Tstar = (*ptr)->T;
+        vstar = ptr;
+      }
+    }
+
+    if (vstar) {
+      vcpu = *vstar;
+      /* internally schedule */
+      vcpu_internal_schedule (vcpu);
+      /* keep vcpu on queue if it has other runnable tasks */
+      if (vcpu->runqueue == 0)
+        /* otherwise, remove it */
+        *vstar = (*vstar)->next;
+      next = vcpu->tr;
+      percpu_write (vcpu_current, vcpu);
+      percpu_write (vcpu_queue, queue);
+      DLOG ("scheduling vcpu=%p with budget=0x%llX", vcpu, vcpu->b);
+    }
+
+    /* find time of next important event */
+    if (vcpu)
+      tdelta = vcpu->b;
+    else
+      tdelta = 0;
+    for (ptr = &queue; *ptr != NULL; ptr = &(*ptr)->next) {
+      if ((*ptr)->T <= Tstar) {
+        replenishment *r;
+        for (r = (*ptr)->R; r != NULL; r = r->next) {
+          if (tdelta == 0 || r->t - tcur < tdelta) {
+            tdelta = r->t - tcur;
+          }
+        }
+      }
+    }
+
+    /* set timer */
+    if (tdelta > 0) {
+      u32 count = div_u64_u32_u32 (tdelta, tsc_lapic_factor);
+      DLOG ("start_timer: count=0x%x", count);
+      LAPIC_start_timer (count);
+    }
+  }
+
+  if (vcpu)
+    /* handle beginning-of-timeslice accounting */
+    vcpu_acnt_after_switch (vcpu);
+  if (next == 0) {
+    /* no task selected, go idle */
+    next = percpu_read (vcpu_idle_task);
+    percpu_write (vcpu_current, NULL);
+  }
+  if (next == 0) {
+    /* workaround: vcpu_idle_task was not initialized yet */
+    next = idleTSS_selector[LAPIC_get_physical_ID ()];
+    percpu_write (vcpu_idle_task, next);
+  }
+
+  /* current time becomes previous time */
+  percpu_write64 (pcpu_tprev, tcur);
+
+  /* switch to new task or continue running same task */
+  if (str () == next)
+    return;
+  else
+    switch_to (next);
+}
+
+extern void
+vcpu_wakeup (task_id task)
+{
+  vcpu_rr_wakeup (task);
+}
+
+/* ************************************************** */
+
 extern void
 vcpu_init (void)
 {
@@ -303,6 +478,12 @@ vcpu_init (void)
   int cpu_i=0, vcpu_i;
   vcpu *vcpu;
 
+  tsc_freq_msec = div_u64_u32_u32 (tsc_freq, 1000);
+  tsc_lapic_factor = div_u64_u32_u32 (tsc_freq, cpu_bus_freq);
+  DLOG ("tsc_freq_msec=0x%x tsc_lapic_factor=0x%x",
+        tsc_freq_msec,
+        tsc_lapic_factor);
+
   /* distribute VCPUs across PCPUs */
   for (vcpu_i=0; vcpu_i<NUM_VCPUS; vcpu_i++) {
     vcpu = vcpu_lookup (vcpu_i);
@@ -310,6 +491,8 @@ vcpu_init (void)
     if (cpu_i >= mp_num_cpus)
       cpu_i = 0;
     vcpu->quantum = div_u64_u32_u32 (tsc_freq, QUANTUM_HZ);
+    vcpu->C = vcpu->b = init_params[vcpu_i].C * tsc_freq_msec;
+    vcpu->T = init_params[vcpu_i].T * tsc_freq_msec;
   }
 }
 

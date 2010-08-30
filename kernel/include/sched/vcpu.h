@@ -22,6 +22,12 @@
 #include "util/cassert.h"
 
 #define VCPU_ALIGNMENT LOCK_ALIGNMENT
+
+typedef struct _replenishment {
+  struct _replenishment *next;
+  u64 t, b;
+} replenishment;
+
 /* Virtual CPU */
 typedef struct _vcpu
 {
@@ -34,6 +40,10 @@ typedef struct _vcpu
       u16 runqueue;             /* per-VCPU runqueue */
       u32 quantum;              /* internal VCPU scheduling quantum */
       u64 next_schedule;        /* when to trigger internal schedule */
+
+      u64 C, T, b;              /* scheduling parameters */
+      replenishment *R;         /* replenishment list */
+
       u64 prev_tsc;
       u64 timestamps_counted;
       u64 prev_pmc[2];
