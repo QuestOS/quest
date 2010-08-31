@@ -180,7 +180,7 @@ duplicate_TSS (uint32 ebp,
 }
 
 char *exception_messages[] = {
-  "Division By Zero",
+  "Division Error",
   "Debug",
   "Non Maskable Interrupt",
   "Breakpoint",
