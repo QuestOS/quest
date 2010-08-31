@@ -46,6 +46,8 @@ static struct { u64 C, T; } init_params[NUM_VCPUS] = {
   { 1, 9 },
 };
 
+uint lowest_priority_vcpu = NUM_VCPUS - 1;
+
 vcpu *
 vcpu_lookup (int i)
 {
@@ -185,11 +187,25 @@ INIT_PER_CPU (vcpu_idle_task) {
   percpu_write (vcpu_idle_task, 0);
 }
 
+extern void
+vcpu_dump_stats (void)
+{
+  int i;
+  logger_printf ("vcpu_dump_stats\n");
+  for (i=0; i<NUM_VCPUS; i++) {
+    vcpu *vcpu = &vcpus[i];
+    logger_printf ("vcpu=%d pcpu=%d tsc=0x%llX pmc[0]=0x%llX pmc[1]=0x%llX\n",
+                   i, vcpu->cpu,
+                   vcpu->timestamps_counted,
+                   vcpu->pmc_total[0],
+                   vcpu->pmc_total[1]);
+  }
+}
+
 /* end of timeslice */
 static void
 vcpu_acnt_before_switch (vcpu *vcpu)
 {
-  static int tick = 0;
   u64 now;
   int i;
 
@@ -202,18 +218,6 @@ vcpu_acnt_before_switch (vcpu *vcpu)
     u64 value = perfmon_pmc_read (i);
     if (vcpu->prev_pmc[i])
       vcpu->pmc_total[i] += value - vcpu->prev_pmc[i];
-  }
-
-  if (tick++ > 1021) {
-    for (i=0; i<NUM_VCPUS; i++) {
-      vcpu = &vcpus[i];
-      logger_printf ("vcpu=%p (%d) tsc=0x%llX pmc[0]=0x%llX pmc[1]=0x%llX\n",
-                     vcpu, vcpu->cpu,
-                     vcpu->timestamps_counted,
-                     vcpu->pmc_total[0],
-                     vcpu->pmc_total[1]);
-      tick = 0;
-    }
   }
 }
 
@@ -289,6 +293,7 @@ vcpu_rr_wakeup (task_id task)
 
   if (tssp->cpu == 0xFF) {
     tssp->cpu = next_vcpu_binding;
+    logger_printf ("vcpu: task 0x%x now bound to vcpu=%d\n", task, tssp->cpu);
     next_vcpu_binding++;
     if (next_vcpu_binding >= NUM_VCPUS)
       next_vcpu_binding = 0;
@@ -357,7 +362,7 @@ vcpu_schedule (void)
     *cur   = percpu_read (vcpu_current),
     *vcpu  = NULL,
     **ptr,
-    **vstar = NULL;
+    **vnext = NULL;
   u64 tprev = percpu_read64 (pcpu_tprev);
   u64 tcur, tdelta, Tstar = 0;
 
@@ -395,18 +400,18 @@ vcpu_schedule (void)
     for (ptr = &queue; *ptr != NULL; ptr = &(*ptr)->next) {
       if ((*ptr)->b > MIN_B && (Tstar == 0 || (*ptr)->T < Tstar)) {
         Tstar = (*ptr)->T;
-        vstar = ptr;
+        vnext = ptr;
       }
     }
 
-    if (vstar) {
-      vcpu = *vstar;
+    if (vnext) {
+      vcpu = *vnext;
       /* internally schedule */
       vcpu_internal_schedule (vcpu);
       /* keep vcpu on queue if it has other runnable tasks */
       if (vcpu->runqueue == 0)
         /* otherwise, remove it */
-        *vstar = (*vstar)->next;
+        *vnext = (*vnext)->next;
       next = vcpu->tr;
       percpu_write (vcpu_current, vcpu);
       percpu_write (vcpu_queue, queue);
@@ -493,6 +498,8 @@ vcpu_init (void)
     vcpu->quantum = div_u64_u32_u32 (tsc_freq, QUANTUM_HZ);
     vcpu->C = vcpu->b = init_params[vcpu_i].C * tsc_freq_msec;
     vcpu->T = init_params[vcpu_i].T * tsc_freq_msec;
+    logger_printf ("vcpu %d: pcpu=%d C=0x%llX T=0x%llX\n",
+                   vcpu_i, vcpu->cpu, vcpu->C, vcpu->T);
   }
 }
 

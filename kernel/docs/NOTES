@@ -1,3 +1,11 @@
+Monday 2010-08-30 md
+
+  Finished tweaking main VCPU algorithm and implemented it using the
+  current VCPU architecture.  In the meantime, I noticed that my
+  per-CPU macros don't work with 64-bit data, because they use 64-bit
+  operations that are not allowed on IA-32.  I have to use
+  special-cased macros that do two 32-bit movs instead.
+
 Thursday 2010-08-26 md
 
   I noticed that __exit destroys the current page directory.  That

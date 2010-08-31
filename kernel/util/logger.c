@@ -72,7 +72,12 @@ extern void
 logger_init (void)
 {
 #ifndef NO_LOGGER
-  start_kernel_thread ((u32) logger_thread, (u32) &logger_stack[1023]);
+  task_id id =
+    start_kernel_thread ((u32) logger_thread, (u32) &logger_stack[1023]);
+#if QUEST_SCHED==vcpu
+  extern uint lowest_priority_vcpu;
+  lookup_TSS (id)->cpu = lowest_priority_vcpu;
+#endif
 #endif
 }
 

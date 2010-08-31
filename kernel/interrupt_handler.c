@@ -986,6 +986,12 @@ _timer (void)
     /* check sleeping processes */
     process_sleepqueue ();
 
+#if 1
+    extern void vcpu_dump_stats (void);
+    if ((tick & 0x1FF) == 0)
+      vcpu_dump_stats ();
+#endif
+
     unlock_kernel ();
 
 #ifdef GDBSTUB_TCP
