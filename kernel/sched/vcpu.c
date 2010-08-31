@@ -364,7 +364,7 @@ vcpu_schedule (void)
     **ptr,
     **vnext = NULL;
   u64 tprev = percpu_read64 (pcpu_tprev);
-  u64 tcur, tdelta, Tstar = 0;
+  u64 tcur, tdelta, Tnext = 0;
 
   RDTSC (tcur);
 
@@ -398,8 +398,8 @@ vcpu_schedule (void)
 
     /* pick highest priority vcpu with available budget */
     for (ptr = &queue; *ptr != NULL; ptr = &(*ptr)->next) {
-      if ((*ptr)->b > MIN_B && (Tstar == 0 || (*ptr)->T < Tstar)) {
-        Tstar = (*ptr)->T;
+      if ((*ptr)->b > MIN_B && (Tnext == 0 || (*ptr)->T < Tnext)) {
+        Tnext = (*ptr)->T;
         vnext = ptr;
       }
     }
@@ -424,7 +424,7 @@ vcpu_schedule (void)
     else
       tdelta = 0;
     for (ptr = &queue; *ptr != NULL; ptr = &(*ptr)->next) {
-      if ((*ptr)->T <= Tstar) {
+      if ((*ptr)->T <= Tnext) {
         replenishment *r;
         for (r = (*ptr)->R; r != NULL; r = r->next) {
           if (tdelta == 0 || r->t - tcur < tdelta) {
