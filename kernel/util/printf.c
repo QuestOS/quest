@@ -19,6 +19,9 @@
 #include "kernel.h"
 #include "acpi.h"                /* Use ACPICA's va_* macros */
 #include "util/screen.h"
+#include "lwip/ip.h"
+#include "lwip/netif.h"
+#include "lwip/udp.h"
 #include "util/debug.h"
 
 static uint32 base10_u32_divisors[10] = {
@@ -246,6 +249,87 @@ com1_printf (const char *fmt, ...)
   va_end (args);
 }
 
+/* Feature to send logging output over UDP to a server */
+//#define UDP_LOGGING
+
+#define UDP_LOGGING_PORT 4444
+#define UDP_LOGGING_NET_IF "en0"
+#define UDP_LOGGING_BUF_SIZE 256
+
+#ifdef UDP_LOGGING
+static struct netif *logging_if = NULL;
+static struct udp_pcb *logging_pcb = NULL;
+static char logging_buf[UDP_LOGGING_BUF_SIZE];
+static int logging_idx = 0;
+static void
+udp_logging_putc (char c)
+{
+  if (logging_idx < UDP_LOGGING_BUF_SIZE)
+    logging_buf[logging_idx++] = c;
+}
+
+static int
+send (uint8 *buf, uint32 len)
+{
+  struct pbuf *p;
+  struct ip_addr server_ip;
+
+  /* assume gateway has logging server */
+  server_ip.addr = logging_if->gw.addr;
+  if (server_ip.addr == 0) return -1;
+
+  p = pbuf_alloc (PBUF_TRANSPORT, len, PBUF_RAM);
+
+  if (!p) return -1;
+
+  if (pbuf_take (p, buf, len) != ERR_OK) {
+    pbuf_free (p);
+    return -1;
+  }
+
+  if (udp_sendto (logging_pcb, p, &server_ip, UDP_LOGGING_PORT) != ERR_OK) {
+    pbuf_free (p);
+    return -1;
+  }
+
+  pbuf_free (p);
+
+  return len;
+}
+
+void
+logger_printf (const char *fmt, ...)
+{
+
+  if (!mp_enabled) {
+    va_list args;
+    va_start (args, fmt);
+    fun_vprintf (com1_putc, fmt, args);
+    va_end (args);
+  } else {
+    if (!logging_if)
+      logging_if = netif_find (UDP_LOGGING_NET_IF);
+    if (!logging_pcb) {
+      logging_pcb = udp_new ();
+      if (!logging_pcb)
+        panic ("logging_pcb == NULL");
+      if (udp_bind (logging_pcb, IP_ADDR_ANY, 0) != ERR_OK)
+        panic ("udp_bind of logging pcb failed");
+      char *msg = "INITIALIZED UDP LOGGING\n";
+      send ((u8 *) msg, strlen (msg));
+    }
+    logging_idx = 0;
+    memset (logging_buf, 0, UDP_LOGGING_BUF_SIZE);
+    va_list args;
+    va_start (args, fmt);
+    fun_vprintf (udp_logging_putc, fmt, args);
+    va_end (args);
+    send ((u8 *) logging_buf, logging_idx);
+  }
+}
+
+#else
+
 void
 logger_printf (const char *fmt, ...)
 {
@@ -254,6 +338,7 @@ logger_printf (const char *fmt, ...)
   fun_vprintf (logger_putc, fmt, args);
   va_end (args);
 }
+#endif
 
 static void
 _putc (char c)
