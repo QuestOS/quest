@@ -21,7 +21,7 @@
 #include "kernel.h"
 #include "util/cassert.h"
 
-#define VCPU_ALIGNMENT LOCK_ALIGNMENT
+#define VCPU_ALIGNMENT (LOCK_ALIGNMENT<<1)
 
 typedef struct _replenishment {
   struct _replenishment *next;
@@ -50,6 +50,10 @@ typedef struct _vcpu
       u64 pmc_total[2];
       u64 local_miss_count;     /* incl. pre-fetches */
       u64 global_miss_count;    /* 0x09, 0x03 UNC_L3_MISS.ANY (Neh.) */
+      u64 sched_overflow;
+      u64 sched_overhead;
+      u64 prev_delta;
+      u32 prev_count;
     };
     u8 raw[VCPU_ALIGNMENT];     /* pad to VCPU_ALIGNMENT */
   };

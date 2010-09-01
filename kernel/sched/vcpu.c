@@ -21,10 +21,12 @@
 #include "sched/sched.h"
 #include "arch/i386-percpu.h"
 #include "util/perfmon.h"
+#include "util/cpuid.h"
 #include "smp/smp.h"
 #include "smp/apic.h"
 #include "smp/spinlock.h"
 #include "util/debug.h"
+#include "util/printf.h"
 #include "mem/pow2.h"
 
 //#define DEBUG_VCPU
@@ -187,21 +189,6 @@ INIT_PER_CPU (vcpu_idle_task) {
   percpu_write (vcpu_idle_task, 0);
 }
 
-extern void
-vcpu_dump_stats (void)
-{
-  int i;
-  logger_printf ("vcpu_dump_stats\n");
-  for (i=0; i<NUM_VCPUS; i++) {
-    vcpu *vcpu = &vcpus[i];
-    logger_printf ("vcpu=%d pcpu=%d tsc=0x%llX pmc[0]=0x%llX pmc[1]=0x%llX\n",
-                   i, vcpu->cpu,
-                   vcpu->timestamps_counted,
-                   vcpu->pmc_total[0],
-                   vcpu->pmc_total[1]);
-  }
-}
-
 /* end of timeslice */
 static void
 vcpu_acnt_before_switch (vcpu *vcpu)
@@ -310,10 +297,41 @@ vcpu_rr_wakeup (task_id task)
 
 /* ************************************************** */
 
+#define FUDGE_FACTOR 0x40000LL
+
 DEF_PER_CPU (u64, pcpu_tprev);
 INIT_PER_CPU (pcpu_tprev) {
   percpu_write64 (pcpu_tprev, 0LL);
 }
+DEF_PER_CPU (s64, pcpu_overhead);
+INIT_PER_CPU (pcpu_overhead) {
+  percpu_write64 (pcpu_overhead, 0LL);
+}
+DEF_PER_CPU (u64, pcpu_overhead_fudge);
+INIT_PER_CPU (pcpu_overhead_fudge) {
+  percpu_write64 (pcpu_overhead_fudge, FUDGE_FACTOR);
+}
+
+extern void
+vcpu_dump_stats (void)
+{
+  int i;
+  s64 overhead = percpu_read64 (pcpu_overhead);
+  u64 overhead_fudge = percpu_read64 (pcpu_overhead_fudge);
+  logger_printf ("vcpu_dump_stats overhead=0x%llX fudge=0x%llX\n", overhead, overhead_fudge);
+  for (i=0; i<NUM_VCPUS; i++) {
+    vcpu *vcpu = &vcpus[i];
+    logger_printf ("vcpu=%d pcpu=%d tsc=0x%llX pmc[0]=0x%llX pmc[1]=0x%llX\n",
+                   i, vcpu->cpu,
+                   vcpu->timestamps_counted,
+                   vcpu->pmc_total[0],
+                   vcpu->pmc_total[1]);
+    logger_printf ("  b=0x%llX overhead=0x%llX delta=0x%llX count=0x%X\n",
+                   vcpu->b, vcpu->sched_overhead, vcpu->prev_delta,
+                   vcpu->prev_count);
+  }
+}
+
 
 static void
 add_replenishment (vcpu *v, u64 tprev, u64 b)
@@ -365,6 +383,9 @@ vcpu_schedule (void)
     **vnext = NULL;
   u64 tprev = percpu_read64 (pcpu_tprev);
   u64 tcur, tdelta, Tnext = 0;
+  s64 overhead = percpu_read64 (pcpu_overhead);
+  u64 overhead_fudge = percpu_read64 (pcpu_overhead_fudge);
+  bool timer_set = FALSE;
 
   RDTSC (tcur);
 
@@ -378,10 +399,16 @@ vcpu_schedule (void)
     /* handle end-of-timeslice accounting */
     vcpu_acnt_before_switch (cur);
 
+    //logger_printf ("tdelta=0x%llX cur->b=0x%llX\n", tdelta, cur->b);
     /* subtract from budget of current */
-    if (cur->b < tdelta)
+    if (cur->b < tdelta) {
       u = cur->b;
-    else
+      cur->sched_overhead = tdelta - cur->b;
+      overhead = cur->sched_overhead;
+      //if (overhead > MIN_B) overhead_fudge += (overhead>>3);
+      percpu_write64 (pcpu_overhead, overhead);
+      percpu_write64 (pcpu_overhead_fudge, overhead_fudge);
+    } else
       u = tdelta;
 
     cur->b -= u;
@@ -436,11 +463,28 @@ vcpu_schedule (void)
 
     /* set timer */
     if (tdelta > 0) {
+      u64 o = tdelta;
+#if 1
+      if (overhead_fudge > tsc_lapic_factor) {
+        if (tdelta <= overhead_fudge - tsc_lapic_factor)
+          tdelta = tsc_lapic_factor;
+        else
+          tdelta -= overhead_fudge;
+      }
+#endif
+      vcpu->prev_delta = tdelta;
       u32 count = div_u64_u32_u32 (tdelta, tsc_lapic_factor);
+      vcpu->prev_count = count;
+      //if (cur) logger_printf (" (%llX, %llX) %llX / %X = %X\n", o, overhead_fudge, tdelta, tsc_lapic_factor, count);
       DLOG ("start_timer: count=0x%x", count);
       LAPIC_start_timer (count);
+      timer_set = TRUE;
+      RDTSC (timer_started);
     }
   }
+
+  if (!timer_set)
+    LAPIC_start_timer (cpu_bus_freq / QUANTUM_HZ);
 
   if (vcpu)
     /* handle beginning-of-timeslice accounting */
@@ -485,7 +529,7 @@ vcpu_init (void)
 
   tsc_freq_msec = div_u64_u32_u32 (tsc_freq, 1000);
   tsc_lapic_factor = div_u64_u32_u32 (tsc_freq, cpu_bus_freq);
-  DLOG ("tsc_freq_msec=0x%x tsc_lapic_factor=0x%x",
+  logger_printf ("vcpu: tsc_freq_msec=0x%x tsc_lapic_factor=0x%x\n",
         tsc_freq_msec,
         tsc_lapic_factor);
 
@@ -498,8 +542,8 @@ vcpu_init (void)
     vcpu->quantum = div_u64_u32_u32 (tsc_freq, QUANTUM_HZ);
     vcpu->C = vcpu->b = init_params[vcpu_i].C * tsc_freq_msec;
     vcpu->T = init_params[vcpu_i].T * tsc_freq_msec;
-    logger_printf ("vcpu %d: pcpu=%d C=0x%llX T=0x%llX\n",
-                   vcpu_i, vcpu->cpu, vcpu->C, vcpu->T);
+    logger_printf ("vcpu: vcpu=%d pcpu=%d C=0x%llX T=0x%llX\n",
+          vcpu_i, vcpu->cpu, vcpu->C, vcpu->T);
   }
 }
 
