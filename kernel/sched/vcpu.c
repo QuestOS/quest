@@ -443,6 +443,8 @@ vcpu_schedule (void)
       percpu_write (vcpu_current, vcpu);
       percpu_write (vcpu_queue, queue);
       DLOG ("scheduling vcpu=%p with budget=0x%llX", vcpu, vcpu->b);
+    } else {
+      percpu_write (vcpu_current, NULL);
     }
 
     /* find time of next important event */
