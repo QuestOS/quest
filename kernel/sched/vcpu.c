@@ -481,7 +481,6 @@ vcpu_schedule (void)
       DLOG ("start_timer: count=0x%x", count);
       LAPIC_start_timer (count);
       timer_set = TRUE;
-      RDTSC (timer_started);
     }
   }
 
