@@ -276,7 +276,7 @@ vcpu_rr_wakeup (task_id task)
 {
   DLOG ("vcpu_wakeup (0x%x), cpu=%d", task, LAPIC_get_physical_ID ());
   quest_tss *tssp = lookup_TSS (task);
-  static int next_vcpu_binding = 0;
+  static int next_vcpu_binding = 1;
 
   if (tssp->cpu == 0xFF) {
     tssp->cpu = next_vcpu_binding;
