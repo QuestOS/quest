@@ -523,7 +523,13 @@ vcpu_wakeup (task_id task)
 extern void
 vcpu_init (void)
 {
-  DLOG ("init num_vcpus=%d num_cpus=%d", NUM_VCPUS, mp_num_cpus);
+  uint ecx;
+  cpuid (1, 0, NULL, NULL, &ecx, NULL);
+
+  logger_printf ("vcpu: init num_vcpus=%d num_cpus=%d tsc_deadline=%s\n",
+                 NUM_VCPUS, mp_num_cpus,
+                 (ecx & (1 << 24)) ? "yes" : "no");
+
   memset (vcpus, 0, sizeof(vcpus));
 
   int cpu_i=0, vcpu_i;
