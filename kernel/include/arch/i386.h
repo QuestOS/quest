@@ -393,11 +393,13 @@ wrmsr (uint32 ecx, uint64 val)
 static inline u32
 div_u64_u32_u32 (u64 a, u32 b)
 {
-  uint32 c, a_hi, a_lo;
+  uint32 c, a_hi, a_lo, r;
 
   a_hi = (u32) (a >> 32);
   a_lo = (u32) (a & 0xFFFFFFFF);
-  asm volatile ("div %1":"=a" (c):"r" (b), "a" (a_lo), "d" (a_hi));
+  asm volatile ("div %2"
+                :"=a" (c), "=d" (r)
+                :"r" (b), "a" (a_lo), "d" (a_hi));
 
   return c;
 }
