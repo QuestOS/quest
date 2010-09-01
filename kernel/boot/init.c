@@ -282,6 +282,9 @@ load_module (multiboot_module * pmm, int mod_num)
 
   u16 pid = alloc_TSS (plPageDirectory, pEntry, mod_num);
   com1_printf ("module %d loaded: task_id=0x%x\n", mod_num, pid);
+#if QUEST_SCHED==vcpu
+  lookup_TSS (pid)->cpu = 0;
+#endif
   return pid;
 }
 

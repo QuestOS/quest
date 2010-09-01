@@ -1,3 +1,27 @@
+Wednesday 2010-09-01 md
+
+  Introduced UDP logging to help avoid overhead.  It seems to drop
+  lines a bit, though.  Since the overhead seems to hold consistently
+  at about 120us, I tried introducing a constant "fudge" factor of
+  0x40000 cycles.  This seems to do a pretty good job of avoiding
+  massive budget overruns while not messing up the local APIC timer.
+  Putting the logger and lwip threads on the fourth VCPU has some
+  interesting results which can be observed in the output: for example
+  if you set the ratio to C=1 over T=50 then the logging thread output
+  actually slows considerably.
+
+Tuesday 2010-08-31 md
+
+  Measuring scheduler overhead by recording how much larger tdelta is
+  than cur->b.  In English, how much time elapsed between the previous
+  invocation of the scheduler and the current time, compared to the
+  budget of the VCPU that was supposed to be running then.  I am
+  finding a pretty consistent pattern of ~120us difference.  When I
+  attempt to account for the overhead by subtracting it from the
+  computed tdelta, I manage to reduce it to dozens of nanoseconds,
+  but, I also bottom out the local APIC timer resolution (setting it
+  to a value of 1).
+
 Monday 2010-08-30 md
 
   Finished tweaking main VCPU algorithm and implemented it using the

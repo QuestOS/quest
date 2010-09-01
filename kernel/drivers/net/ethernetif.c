@@ -590,6 +590,11 @@ net_init(void)
 
   net_tmr_pid = start_kernel_thread ((uint) net_tmr_thread,
                                      (uint) &net_tmr_stack[1023]);
+#if QUEST_SCHED==vcpu
+  extern uint lowest_priority_vcpu;
+  lookup_TSS (net_tmr_pid)->cpu = lowest_priority_vcpu;
+#endif
+
 #ifdef GDBSTUB_TCP
   {
     struct tcp_pcb* debug_pcb = tcp_new ();
