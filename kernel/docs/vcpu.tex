@@ -1,6 +1,6 @@
 % -*- Mode: LaTeX; TeX-PDF-mode: t -*-
 \documentclass{article}
-\usepackage{amsmath,proof,amsthm}
+\usepackage{amsmath,proof,amsthm,listings}
 \newcommand\paren[1]{\left( {#1} \right)}
 \newcommand\set[1]{\left\{ {#1} \right\}}
 \newcommand\len[1]{\left| {#1} \right|}
@@ -18,6 +18,7 @@
 \newtheorem{prop}{Property}
 % \numberwithin{equation}{subsection}
 % \renewcommand{\theequation}{\thesubsection\arabic{equation}}
+\lstset{language=C}
 
 \begin{document}
 
@@ -299,4 +300,55 @@ Transition~\ref{vcpu:w2} indicates idempotency of task {\tt wakeup}.
   (0,0)$.  Using property~(\ref{msched:trans}) and $P\sched P'$, we
   arrive at $P\msched (0,0)$.
 \end{proof}
+
+\newpage
+\section{Sporadic Server}
+\subsection{Algorithm}
+
+%\begin{lstlisting}[gobble=2,float,caption={\tt schedule},label={lst:schedule}]
+%\end{lstlisting}
+
+\begin{description}
+\item[INPUT] ~
+  \begin{itemize}
+  \item Current VCPU $V$
+  \item Set of runnable VCPUs $\bar V$
+  \item Current time $t_{cur}$
+  \item Previous time $t_{prev}$
+  \end{itemize}
+\item[OUTPUT] ~
+  \begin{itemize}
+  \item Next VCPU $V'$
+  \item Remaining set of runnable VCPUs $\bar V'$
+  \item Computed timer interval $\Delta t'$
+  \end{itemize}
+\end{description}
+
+\begin{enumerate}
+\item Let $\Delta t=t_{cur}-t_{prev}$.
+\item Deduct $\Delta t$ from current VCPU budget $V_b$.
+\item Post replenishment event on VCPU $V$ for $\Delta t$ budget at time $t_{prev}+V_T$.
+\item Apply replenishments: For each VCPU $v\in\bar V$
+  \begin{enumerate}
+  \item For each replenishment $(t,b)\in v_R$
+    \begin{enumerate}
+    \item If $t\leq t_{cur}$ then add $b$ to $v_b$.
+    \end{enumerate}
+  \end{enumerate}
+\item Select $V_{next}\in\bar V$ with the highest priority and non-zero budget.
+\item If there is no satisfactory $V_{next}$ then enter idle mode and go to step~\ref{sched:repltimer}.
+\item Internally schedule $V_{next}$.
+\item If $V_{next}$ has empty runqueue, let $\bar V'=\bar V\setminus\set{V_{next}}$, else let $\bar V'=\bar V$.
+\item Initially let $\Delta t'$ be equal to the budget of $V_{next}$.
+\item \label{sched:repltimer} For each VCPU $v\in\bar V$ with higher priority than $V_{next}$
+  \begin{enumerate}
+  \item For each replenishment $(t,b)\in v_R$
+    \begin{enumerate}
+    \item If $t < \Delta t'$ then $\Delta t':= t - t_{cur}$
+    \end{enumerate}
+  \end{enumerate}
+\item Set timer to go off after $\Delta t'$ has elapsed.
+\item Set $t_{prev}:=t_{cur}$ for next time.
+\end{enumerate}
+
 \end{document}
