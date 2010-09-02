@@ -12,6 +12,8 @@ type VCPU = (VCPUID, Integer, Integer, [Replenishment])
 -- (time, budget)
 type Replenishment = (Integer, Integer)
 
+cmpId (id1, _, _, _) (id2, _, _, _) = id1 `compare` id2
+eqId v1 v2 = cmpId v1 v2 == EQ
 cmpPrio (_, _, vT1, _) (_, _, vT2, _) = vT1 `compare` vT2
 vcpuId (id, _, _, _) = id
 vcpuT (_, _, t, _) = t
@@ -58,6 +60,12 @@ makePCPU specs = (Nothing, zipWith (\ i (c, t) -> (i, c, t, [])) [0..] specs, 0,
 
 run :: PCPU -> [VCPUID]
 run pcpu = concatMap (\ (cur, _, _, _) -> maybeToList cur) $ iterate schedule pcpu
+
+usage :: Int -> PCPU -> [(Maybe VCPUID, Float)]
+usage n pcpu = 
+  map ((vcpuId . head) &&& ((/ fromIntegral n) . fromIntegral . length))
+      . groupBy eqId . sortBy cmpId
+      . take n $ iterate schedule pcpu
 
 test1 = makePCPU [(1, 5), (1, 6), (1, 7), (1, 8)]
 test2 = makePCPU [(1, 5), (1, 6), (1, 7), (1, 25)]
