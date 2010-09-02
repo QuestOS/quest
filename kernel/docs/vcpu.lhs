@@ -17,29 +17,41 @@ vcpuId (id, _, _, _) = id
 vcpuT (_, _, t, _) = t
 
 schedule :: PCPU -> PCPU
-schedule (curId, runnable, tcur, tprev) = (curId', runnable', tcur + tdelta', tcur)
+schedule (curId, runnable, tcur, tprev) = (nextId, runnable', tcur + tdelta', tcur)
   where
     tdelta = tcur - tprev
-    runnable' = flip map runnable $ \ (vid, vb, vT, vR) ->
-                  let (vR', time) = foldr (\ (t, b) (repls, time) ->
-                                             if t <= tcur 
-                                             then (repls, time + b)
-                                             else ((t, b):repls, time))
-                                          ([], 0)
-                                          (if Just vid == curId
-                                           then (tprev + vT, used):vR
-                                           else vR)
-                      vb' = max 0 (vb - tdelta)
-                      used = vb - vb'
-                  in
-                    (vid, time + if Just vid == curId then vb' else vb, vT, vR')
-    (curId', nextT) = case filter (\ (_, b, _, _) -> b > 0) runnable' of
+
+    updateRunnable (vid, vb, vT, vR)
+      -- working on current VCPU
+      | Just vid == curId = (vid, time + curvb', vT, (tprev + vT, used):vR')
+      -- working on non-running VCPU
+      | otherwise         = (vid, time + vb, vT, vR')
+      where
+        -- accumulate and remove pending replenishments  
+        checkReplenishment (t, b) (repls, time)
+          | t <= tcur = (repls, time + b)
+          | otherwise = ((t, b):repls, time)
+        (vR', time) = foldr checkReplenishment ([], 0) vR
+        -- budget variables for use if vid is current VCPU
+        curvb' = max 0 (vb - tdelta)
+        used = vb - curvb'
+
+    runnable' = map updateRunnable runnable
+
+    -- pick highest priority VCPU with non-zero budget  
+    (nextId, nextT) = case filter (\ (_, b, _, _) -> b > 0) runnable' of
                         [] -> (Nothing, 0)
                         vs -> ((Just . vcpuId) &&& vcpuT) (minimumBy cmpPrio vs)
-    events = flip concatMap runnable' $ \ (vid, vb, vT, vR) ->
-                if Just vid == curId' then [vb] else [] ++
-                if vT <= nextT then map (subtract tcur . fst) vR else []
-    tdelta' = if null events then 1 else minimum events
+
+    -- compute time deltas for higher priority VCPU replenishments,
+    -- and also its budget if it is the next VCPU to run
+    vcpuDeltas (vid, vb, vT, vR) =
+      if Just vid == nextId then [vb] else [] ++
+      if vT <= nextT then map (subtract tcur . fst) vR else []
+
+    deltas = concatMap vcpuDeltas runnable'
+    -- new tdelta is the smallest delta
+    tdelta' = if null deltas then 1 else minimum deltas
 
 makePCPU :: [(Integer, Integer)] -> PCPU
 makePCPU specs = (Nothing, zipWith (\ i (c, t) -> (i, c, t, [])) [0..] specs, 0, 0)
@@ -48,5 +60,10 @@ run :: PCPU -> [VCPUID]
 run pcpu = concatMap (\ (cur, _, _, _) -> maybeToList cur) $ iterate schedule pcpu
 
 test1 = makePCPU [(1, 5), (1, 6), (1, 7), (1, 8)]
+test2 = makePCPU [(1, 5), (1, 6), (1, 7), (1, 25)]
+test3 = makePCPU [(1, 4), (1, 4), (1, 4), (1, 4)]
+test4 = makePCPU [(1, 3), (1, 4), (1, 5)]
+test5 = makePCPU [(1, 3), (1, 4), (2, 5)]
+test6 = makePCPU [(1, 2), (1, 3), (1, 4)]
 
 \end{code}
