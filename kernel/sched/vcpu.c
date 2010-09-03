@@ -535,7 +535,11 @@ vcpu_init (void)
   vcpu *vcpu;
 
   tsc_freq_msec = div_u64_u32_u32 (tsc_freq, 1000);
-  tsc_lapic_factor = div_u64_u32_u32 (tsc_freq, cpu_bus_freq);
+  if (tsc_freq <= cpu_bus_freq)
+    /* workaround for bochs where this might hold true */
+    tsc_lapic_factor = 1;
+  else
+    tsc_lapic_factor = div_u64_u32_u32 (tsc_freq, cpu_bus_freq);
   logger_printf ("vcpu: tsc_freq_msec=0x%x tsc_lapic_factor=0x%x\n",
         tsc_freq_msec,
         tsc_lapic_factor);
