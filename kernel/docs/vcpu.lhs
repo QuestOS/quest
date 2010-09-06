@@ -18,6 +18,8 @@ cmpPrio (_, _, vT1, _) (_, _, vT2, _) = vT1 `compare` vT2
 vcpuId (id, _, _, _) = id
 vcpuT (_, _, t, _) = t
 
+nextMul vT tcur = tcur + vT - tcur `mod` vT
+
 schedule :: PCPU -> PCPU
 schedule (curId, runnable, tcur, tprev) = (nextId, runnable', tcur + tdelta', tcur)
   where
@@ -25,7 +27,7 @@ schedule (curId, runnable, tcur, tprev) = (nextId, runnable', tcur + tdelta', tc
 
     updateRunnable (vid, vb, vT, vR)
       -- working on current VCPU
-      | Just vid == curId = (vid, time + curvb', vT, (tprev + vT, used):vR')
+      | Just vid == curId = (vid, time + curvb', vT, (rt, used):vR')
       -- working on non-running VCPU
       | otherwise         = (vid, time + vb, vT, vR')
       where
@@ -37,6 +39,9 @@ schedule (curId, runnable, tcur, tprev) = (nextId, runnable', tcur + tdelta', tc
         -- budget variables for use if vid is current VCPU
         curvb' = max 0 (vb - tdelta)
         used = vb - curvb'
+        -- compute replenishment time
+        rt = tprev + vT
+        -- rt = nextMul vT tcur
 
     runnable' = map updateRunnable runnable
 
