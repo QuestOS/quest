@@ -214,7 +214,7 @@ Transition~\ref{vcpu:w2} indicates idempotency of task {\tt wakeup}.
   The size of a PCPU is double the number of VCPUs in the queue, plus
   the active VPCU if any.
   \begin{equation}
-    \label{eq:metric}
+    \label{eq:metricV}
     \metric{(V,\bar V)}=2\sum_{v\in\bar V}{\metric{v}}+\len V
   \end{equation}
   The metric on a PCPU is the sum of the metrics on each queued VCPU,
