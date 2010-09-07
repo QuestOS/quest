@@ -227,7 +227,7 @@ pl2303_probe (USB_DEVICE_INFO *dev, USB_CFG_DESC *cfg, USB_IF_DESC *ifd)
 
   DLOG ("PL2303 Serial Converter configured");
 
-  //test();
+  test();
 
   return TRUE;
 }

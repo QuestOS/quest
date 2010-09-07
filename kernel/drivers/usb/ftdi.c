@@ -146,18 +146,55 @@ ftdi_modem_status (USB_DEVICE_INFO * dev, uint16_t port)
 }
 
 static int
-ftdi_disable_flow_ctl (USB_DEVICE_INFO * dev, uint16_t port)
+ftdi_set_flow_ctl (USB_DEVICE_INFO * dev, uint16_t port, uint8_t ctrl)
 {
   USB_DEV_REQ req;
 
   req.bmRequestType = 0x40;
   req.bRequest = USB_FTDI_SET_FLOW_CTRL;
   req.wValue = 0;
+  req.wIndex = (ctrl << 8) + port;
+  req.wLength = 0;
+
+  return usb_control_transfer (dev, (addr_t) & req,
+      sizeof (USB_DEV_REQ), 0, 0);
+}
+
+/* Set the timeout interval. The default is 16 ms */
+static int
+ftdi_set_latency (USB_DEVICE_INFO * dev, uint16_t port, uint8_t latency)
+{
+  USB_DEV_REQ req;
+
+  req.bmRequestType = 0x40;
+  req.bRequest = USB_FTDI_SET_LATENCY_TIMER;
+  req.wValue = latency; /* Latency in milliseconds */
   req.wIndex = port;
   req.wLength = 0;
 
   return usb_control_transfer (dev, (addr_t) & req,
       sizeof (USB_DEV_REQ), 0, 0);
+}
+
+static uint8_t
+ftdi_get_latency (USB_DEVICE_INFO * dev, uint16_t port)
+{
+  USB_DEV_REQ req;
+  uint8_t latency = 0;
+
+  req.bmRequestType = 0xC0;
+  req.bRequest = USB_FTDI_GET_LATENCY_TIMER;
+  req.wValue = 0;
+  req.wIndex = port;
+  req.wLength = 1;
+
+  if (usb_control_transfer (dev, (addr_t) & req,
+      sizeof (USB_DEV_REQ), (addr_t) & latency, 1)) {
+    DLOG ("Getting latency timer failed!");
+    return 0;
+  }
+
+  return latency;
 }
 
 static bool
@@ -166,6 +203,7 @@ ftdi_init (USB_DEVICE_INFO *dev, USB_CFG_DESC *cfg, USB_IF_DESC *ifd)
   uint8_t tmp[50];
   int i = 0;
   uint16_t mod_stat = 0;
+  uint8_t latency = 0;
   USB_EPT_DESC *ftdiept;
 
   ftdi_dev = *(dev);
@@ -218,10 +256,23 @@ ftdi_init (USB_DEVICE_INFO *dev, USB_CFG_DESC *cfg, USB_IF_DESC *ifd)
     return FALSE;
   }
 
-  /* Disable flow control */
-  DLOG ("Disable flow control ...");
-  if (ftdi_disable_flow_ctl (dev, 0)) {
-    DLOG ("Diable flow control failed!");
+  /* Set timeout interval */
+  DLOG ("Setting latency timer ...");
+  if (ftdi_set_latency (dev, 0, 16)) {
+    DLOG ("Setting latency timer failed!");
+    return FALSE;
+  }
+
+  /* Get timeout interval */
+  DLOG ("Getting latency timer ...");
+  if ((latency = ftdi_get_latency (dev, 0))) {
+    DLOG ("Current timeout interval is: %d", latency);
+  }
+
+  /* Set flow control */
+  DLOG ("Setting flow control ...");
+  if (ftdi_set_flow_ctl (dev, 0, USB_FTDI_NO_FLOW_CTRL)) {
+    DLOG ("Setting flow control failed!");
     return FALSE;
   }
 #if 1
@@ -242,6 +293,8 @@ ftdi_test (void)
 {
   DLOG ("FTDI Tests");
   char c = 0;
+
+  usb_ftdi_putc ('!');
 
   while (c != 0xD) {
     c = usb_ftdi_getc ();
@@ -271,7 +324,7 @@ ftdi_probe (USB_DEVICE_INFO *dev, USB_CFG_DESC *cfg, USB_IF_DESC *ifd)
   }
 
   DLOG ("FTDI Serial Converter configured");
-  ftdi_test();
+  //ftdi_test();
 
   return TRUE;
 }
