@@ -32,6 +32,15 @@
 #define USB_FTDI_SET_LATENCY_TIMER      0x09
 #define USB_FTDI_GET_LATENCY_TIMER      0x0A
 
+#define USB_FTDI_NO_FLOW_CTRL           0x00
+#define USB_FTDI_RTS_CTS                (0x01 << 8)
+#define USB_FTDI_DTR_DSR                (0x02 << 8)
+
+#define USB_FTDI_DTR_HIGH               (1 | (0x01 << 8))
+#define USB_FTDI_DTR_LOW                (0 | (0x01 << 8))
+#define USB_FTDI_RTS_HIGH               (2 | (0x02 << 8))
+#define USB_FTDI_RTS_LOW                (0 | (0x02 << 8))
+
 extern bool usb_ftdi_driver_init (void);
 extern void usb_ftdi_putc (char);
 extern char usb_ftdi_getc (void);
