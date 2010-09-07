@@ -47,10 +47,12 @@
   ({                                            \
     u32 _percpu_lo, _percpu_hi;                 \
     u64 _percpu_ret;                            \
-    asm ("movl "__percpu_arg (2)", %0\n"        \
-         "movl "__percpu_arg (3)", %1"          \
-         : "=r" (_percpu_lo), "=r" (_percpu_hi) \
-         : "m" (var), "m" (((u32 *) &var)[1])); \
+    asm ("movl "__percpu_arg (1)", %0"          \
+         : "=r" (_percpu_lo)                    \
+         : "m" (var));                          \
+    asm ("movl "__percpu_arg (1)", %0"          \
+         : "=r" (_percpu_hi)                    \
+         : "m" (((u32 *) &var)[1]));            \
     _percpu_ret = (((u64) _percpu_hi) << 32);   \
     _percpu_ret |= (u64) _percpu_lo;            \
     _percpu_ret;                                \
