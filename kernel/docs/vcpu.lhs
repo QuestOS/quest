@@ -94,11 +94,13 @@ makePCPU specs = (Nothing, zipWith (\ i (c, t) -> (i, c, t, [], 0)) [0..]
 run :: PCPU -> [VCPUID]
 run pcpu = concatMap (\ (cur, _, _, _) -> maybeToList cur) $ iterate schedule pcpu
 
+ranFor (_, _, tcur, tprev) = fromIntegral $ tcur - tprev
+
 usage :: Int -> PCPU -> [(Maybe VCPUID, Float)]
 usage n pcpu = 
   map ((pcpuCur . head) &&& ((/ fromIntegral n) . fromIntegral . length))
       . groupBy eqId . sortBy cmpId
-      . take n . tail $ iterate schedule pcpu
+      . take n . concatMap (\ p -> replicate (ranFor p) p) $ iterate schedule pcpu
 
 utilization :: PCPU -> (Double, Double)
 utilization (_, runnable, _, _) =
@@ -114,5 +116,7 @@ test4 = makePCPU [(1, 3), (1, 4), (1, 5)]
 test5 = makePCPU [(1, 3), (1, 4), (2, 5)]
 test6 = makePCPU [(1, 2), (1, 3), (1, 4)]
 test7 = makePCPU [(1, 5), (1, 5), (1, 5), (1, 5)]
+test8 = makePCPU [(1, 4), (2, 5), (3, 10)]
+test9 = makePCPU [(10, 200), (20, 50), (49, 200)]
 
 \end{code}
