@@ -190,9 +190,9 @@ INIT_PER_CPU (vcpu_idle_task) {
   percpu_write (vcpu_idle_task, 0);
 }
 
-/* end of timeslice */
+/* task accounting */
 static void
-vcpu_acnt_before_switch (vcpu *vcpu)
+vcpu_acnt_end_timeslice (vcpu *vcpu)
 {
   u64 now;
   int i;
@@ -209,9 +209,8 @@ vcpu_acnt_before_switch (vcpu *vcpu)
   }
 }
 
-/* beginning of timeslice */
 static void
-vcpu_acnt_after_switch (vcpu *vcpu)
+vcpu_acnt_begin_timeslice (vcpu *vcpu)
 {
   u64 now;
   int i;
@@ -236,7 +235,7 @@ vcpu_rr_schedule (void)
 
   if (cur)
     /* handle end-of-timeslice accounting */
-    vcpu_acnt_before_switch (cur);
+    vcpu_acnt_end_timeslice (cur);
   if (queue) {
     /* get next vcpu from queue */
     vcpu = vcpu_queue_remove_head (&queue);
@@ -253,7 +252,7 @@ vcpu_rr_schedule (void)
   }
   if (vcpu)
     /* handle beginning-of-timeslice accounting */
-    vcpu_acnt_after_switch (vcpu);
+    vcpu_acnt_begin_timeslice (vcpu);
   if (next == 0) {
     /* no task selected, go idle */
     next = percpu_read (vcpu_idle_task);
@@ -344,7 +343,7 @@ idle_time_end ()
   percpu_write64 (pcpu_idle_time, idle_time);
 }
 
-static u32
+static inline u32
 compute_percentage (u64 overall, u64 usage)
 {
   u64 res = div64_64 (usage * 100, overall);
@@ -466,7 +465,7 @@ vcpu_schedule (void)
     Tprev = cur->T;
 
     /* handle end-of-timeslice accounting */
-    vcpu_acnt_before_switch (cur);
+    vcpu_acnt_end_timeslice (cur);
 
     //logger_printf ("tdelta=0x%llX cur->b=0x%llX\n", tdelta, cur->b);
     /* subtract from budget of current */
@@ -560,7 +559,7 @@ vcpu_schedule (void)
 
   if (vcpu)
     /* handle beginning-of-timeslice accounting */
-    vcpu_acnt_after_switch (vcpu);
+    vcpu_acnt_begin_timeslice (vcpu);
   else
     idle_time_begin ();
   if (next == 0) {
