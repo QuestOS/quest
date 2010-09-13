@@ -20,6 +20,7 @@
 #include "sched/vcpu.h"
 #include "sched/sched.h"
 #include "arch/i386-percpu.h"
+#include "arch/i386-div64.h"
 #include "util/perfmon.h"
 #include "util/cpuid.h"
 #include "smp/smp.h"
@@ -311,16 +312,61 @@ DEF_PER_CPU (u64, pcpu_overhead_fudge);
 INIT_PER_CPU (pcpu_overhead_fudge) {
   percpu_write64 (pcpu_overhead_fudge, FUDGE_FACTOR);
 }
+DEF_PER_CPU (u64, pcpu_idle_time);
+INIT_PER_CPU (pcpu_idle_time) {
+  percpu_write64 (pcpu_idle_time, 0LL);
+}
+DEF_PER_CPU (u64, pcpu_idle_prev_tsc);
+INIT_PER_CPU (pcpu_idle_prev_tsc) {
+  percpu_write64 (pcpu_idle_prev_tsc, 0LL);
+}
 
+static void
+idle_time_begin ()
+{
+  u64 now;
+
+  RDTSC (now);
+  percpu_write64 (pcpu_idle_prev_tsc, now);
+}
+
+static void
+idle_time_end ()
+{
+  u64 idle_time = percpu_read64 (pcpu_idle_time);
+  u64 idle_prev_tsc = percpu_read64 (pcpu_idle_prev_tsc);
+  u64 now;
+
+  RDTSC (now);
+
+  if (idle_prev_tsc)
+    idle_time += now - idle_prev_tsc;
+  percpu_write64 (pcpu_idle_time, idle_time);
+}
+
+static u32
+compute_percentage (u64 overall, u64 usage)
+{
+  u64 res = div64_64 (usage * 100, overall);
+  return (u32) res;
+}
+
+//#define DUMP_STATS_VERBOSE
 extern void
 vcpu_dump_stats (void)
 {
   int i;
   s64 overhead = percpu_read64 (pcpu_overhead);
   u64 overhead_fudge = percpu_read64 (pcpu_overhead_fudge);
+  u64 idle_time = percpu_read64 (pcpu_idle_time);
+  u64 sum = idle_time;
   logger_printf ("vcpu_dump_stats overhead=0x%llX fudge=0x%llX\n", overhead, overhead_fudge);
+#ifdef DUMP_STATS_VERBOSE
+  logger_printf ("idle tsc=0x%llX\n", idle_time);
+#endif
   for (i=0; i<NUM_VCPUS; i++) {
     vcpu *vcpu = &vcpus[i];
+#ifdef DUMP_STATS_VERBOSE
     logger_printf ("vcpu=%d pcpu=%d tsc=0x%llX pmc[0]=0x%llX pmc[1]=0x%llX\n",
                    i, vcpu->cpu,
                    vcpu->timestamps_counted,
@@ -329,7 +375,16 @@ vcpu_dump_stats (void)
     logger_printf ("  b=0x%llX overhead=0x%llX delta=0x%llX count=0x%X\n",
                    vcpu->b, vcpu->sched_overhead, vcpu->prev_delta,
                    vcpu->prev_count);
+#endif
+    sum += vcpu->timestamps_counted;
   }
+  logger_printf ("summary: idle=%d%%", compute_percentage (sum, idle_time));
+  for (i=0; i<NUM_VCPUS; i++) {
+    vcpu *vcpu = &vcpus[i];
+    logger_printf (" vcpu%d=%d%%", i,
+                   compute_percentage (sum, vcpu->timestamps_counted));
+  }
+  logger_printf ("\n");
 }
 
 
@@ -431,7 +486,7 @@ vcpu_schedule (void)
 
     /* schedule replenishment of used budget */
     add_replenishment (cur, u);
-  }
+  } else idle_time_end ();
 
   if (queue) {
     /* update replenishments */
@@ -506,6 +561,8 @@ vcpu_schedule (void)
   if (vcpu)
     /* handle beginning-of-timeslice accounting */
     vcpu_acnt_after_switch (vcpu);
+  else
+    idle_time_begin ();
   if (next == 0) {
     /* no task selected, go idle */
     next = percpu_read (vcpu_idle_task);
