@@ -334,9 +334,9 @@ vcpu_dump_stats (void)
 
 
 static void
-add_replenishment (vcpu *v, u64 tprev, u64 b)
+add_replenishment (vcpu *v, u64 b)
 {
-  u64 t = tprev + v->T;
+  u64 t = v->a + v->T;
   replenishment **r, *rnew;
   pow2_alloc (sizeof (replenishment), (u8 **) &rnew);
   if (!rnew)
@@ -358,13 +358,25 @@ update_replenishments (vcpu *q, u64 tcur)
       if ((*r)->t <= tcur) {
         DLOG ("update_replenishments: vcpu=%p replenishing 0x%llX budget",
               q, (*r)->b);
-        q->b += (*r)->b;
+        q->a = tcur;            /* set activation time */
+        q->b += (*r)->b;        /* increase budget */
         temp = *r;
         *r = (*r)->next;
         pow2_free ((u8 *) temp);
         if (*r) goto do_r; else break;
       }
     }
+  }
+}
+
+static void
+check_activations (u64 tcur, u64 Tprev, u64 Tnext)
+{
+  /* FIXME: make per-cpu */
+  int i;
+  for (i=0; i<NUM_VCPUS; i++) {
+    if (vcpus[i].b > 0 && Tnext <= vcpus[i].T && vcpus[i].T < Tprev)
+      vcpus[i].a = tcur;
   }
 }
 
@@ -382,7 +394,7 @@ vcpu_schedule (void)
     **ptr,
     **vnext = NULL;
   u64 tprev = percpu_read64 (pcpu_tprev);
-  u64 tcur, tdelta, Tnext = 0;
+  u64 tcur, tdelta, Tprev = 0, Tnext = 0;
   s64 overhead = percpu_read64 (pcpu_overhead);
   u64 overhead_fudge = percpu_read64 (pcpu_overhead_fudge);
   bool timer_set = FALSE;
@@ -395,6 +407,8 @@ vcpu_schedule (void)
 
   if (cur) {
     u64 u;
+
+    Tprev = cur->T;
 
     /* handle end-of-timeslice accounting */
     vcpu_acnt_before_switch (cur);
@@ -416,7 +430,7 @@ vcpu_schedule (void)
           tprev + cur->T);
 
     /* schedule replenishment of used budget */
-    add_replenishment (cur, tprev, u);
+    add_replenishment (cur, u);
   }
 
   if (queue) {
@@ -483,6 +497,8 @@ vcpu_schedule (void)
       timer_set = TRUE;
     }
   }
+
+  check_activations (tcur, Tprev, Tnext);
 
   if (!timer_set)
     LAPIC_start_timer (cpu_bus_freq / QUANTUM_HZ);
