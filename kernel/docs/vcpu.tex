@@ -1,6 +1,7 @@
 % -*- Mode: LaTeX; TeX-PDF-mode: t -*-
 \documentclass{article}
-\usepackage{amsmath,proof,amsthm,listings}
+\usepackage{amsmath,proof,amsthm,listings,algorithm}
+\usepackage[noend]{algorithmic}
 \newcommand\paren[1]{\left( {#1} \right)}
 \newcommand\set[1]{\left\{ {#1} \right\}}
 \newcommand\len[1]{\left| {#1} \right|}
@@ -328,35 +329,37 @@ time $V_a$.  Assume $\text{IDLE}_T=\infty$.
   \end{itemize}
 \end{description}
 
-\begin{enumerate}
-\item Let $\Delta t=t_{cur}-t_{prev}$ and let $T_{prev}=V_T$.
-\item Deduct $\Delta t$ from current VCPU budget $V_b$.
-\item Post replenishment event on VCPU $V$ for $\Delta t$ budget at time $V_a+V_T$.
-\item Apply replenishments: For each VCPU $v\in\bar V$
-  \begin{enumerate}
-  \item For each replenishment $(t,b)\in v_R$
-    \begin{enumerate}
-    \item If $t\leq t_{cur}$ then add $b$ to $v_b$ and set $v_a:=t_{cur}$.
-    \end{enumerate}
-  \end{enumerate}
-\item Select $V_{next}\in\bar V$ with the highest priority and non-zero budget.  Let $T_{next}$ be its period.
-\item If there is no satisfactory $V_{next}$ then enter idle mode and go to step~\ref{sched:repltimer}.
-\item Internally schedule $V_{next}$.
-\item If $V_{next}$ has empty runqueue, let $\bar V'=\bar V\setminus\set{V_{next}}$, else let $\bar V'=\bar V$.
-\item Initially let $\Delta t'$ be equal to the budget of $V_{next}$.
-\item \label{sched:repltimer} For each VCPU $v\in\bar V$ with higher priority than $V_{next}$
-  \begin{enumerate}
-  \item For each replenishment $(t,b)\in v_R$
-    \begin{enumerate}
-    \item If $t < \Delta t'$ then set $\Delta t':= t - t_{cur}$
-    \end{enumerate}
-  \end{enumerate}
-\item For every VCPU $v$ on this PCPU:
-  \begin{enumerate}
-  \item If $v_b>0$ and $T_{next}\leq v_T < T_{prev}$ then set $v_a:=t_{cur}$.
-  \end{enumerate}
-\item Set timer to go off after $\Delta t'$ has elapsed.
-\item Set $t_{prev}:=t_{cur}$ for next time.
-\end{enumerate}
-
+\begin{algorithm}
+  \begin{algorithmic}[1]
+    \STATE Let $\Delta t=t_{cur}-t_{prev}$ and let $T_{prev}=V_T$.
+    \STATE Deduct $\Delta t$ from current VCPU budget $V_b$.
+    \STATE Post replenishment event on VCPU $V$ for $\Delta t$ budget at
+    time $V_a+V_T$.
+    \FOR[{Apply replenishments}]{each VCPU $v\in\bar V$}
+    \FOR{each replenishment $(t,b)\in v_R$}
+    \IF{$t\leq t_{cur}$}\STATE add $b$ to $v_b$ and set $v_a:=t_{cur}$.
+    \ENDIF
+    \ENDFOR
+    \ENDFOR
+    \STATE Select $V_{next}\in\bar V$ with the highest priority and
+    non-zero budget.  Let $T_{next}$ be its period.
+    \IF{there is no satisfactory $V_{next}$} \STATE enter idle mode
+    and go to step~\ref{sched:repltimer}.\ENDIF
+    \STATE Internally schedule $V_{next}$.
+    \IF{$V_{next}$ has empty runqueue}\STATE let $\bar V'=\bar
+    V\setminus\set{V_{next}}$\ELSE\STATE let $\bar V'=\bar V$.\ENDIF
+    \STATE Initially let $\Delta t'$ be equal to the budget of
+    $V_{next}$.
+    \FOR{\label{sched:repltimer}each VCPU $v\in\bar V$ with higher priority than $V_{next}$}
+    \FOR{each replenishment $(t,b)\in v_R$}
+    \IF{$t < \Delta t'$}\STATE set $\Delta t':= t - t_{cur}$\ENDIF
+    \ENDFOR
+    \ENDFOR
+    \FOR[Check for activations]{every VCPU $v$ on this PCPU}
+    \IF{$v_b>0$ and $T_{next}\leq v_T < T_{prev}$}\STATE set $v_a:=t_{cur}$.\ENDIF
+    \ENDFOR
+    \STATE Set timer to go off after $\Delta t'$ has elapsed.
+    \STATE Set $t_{prev}:=t_{cur}$ for next time.
+  \end{algorithmic}
+\end{algorithm}
 \end{document}
