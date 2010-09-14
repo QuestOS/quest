@@ -26,6 +26,7 @@
 #include "mem/physical.h"
 #include "mem/virtual.h"
 #include "kernel.h"
+#include "sched/vcpu.h"
 
 #define EEPROM_MICROWIRE
 //#define DEBUG_E1000
@@ -357,23 +358,42 @@ mdi_write (uint8 phy_reg, uint16 val)
 }
 #endif
 
+static uint32 e1000_bh_stack[1024] ALIGNED (0x1000);
+static task_id e1000_bh_id = 0;
+static void
+e1000_bh_thread (void)
+{
+  for (;;) {
+    /* ICR is cleared upon read; this implicitly acknowledges the
+     * interrupt. */
+    uint32 icr = ICR;
+    DLOG ("IRQ: ICR=%p CTRL=%p CTRLE=%p STA=%p", icr, CTRL, CTRLEXT, STATUS);
+    DLOG ("PHY_CTL=0x%.04X", mdi_read (0));
+    DLOG ("PHY_STA=0x%.04X", mdi_read (1));
+    DLOG ("PHY_GCON=0x%.04X", mdi_read (9));
+    DLOG ("PHY_GSTA=0x%.04X", mdi_read (10));
+    DLOG ("TPT=%p", TPT);
+
+    if (icr & ICR_RXT)            /* RX */
+      e1000_rx_poll ();
+    if (icr & ICR_TXQE)           /* TX queue empty */
+      handle_tx (icr);
+
+    schedule ();
+  }
+}
+
+extern DEF_PER_CPU (vcpu *, vcpu_current);
 static uint32
 e1000_irq_handler (uint8 vec)
 {
-  /* ICR is cleared upon read; this implicitly acknowledges the
-   * interrupt. */
-  uint32 icr = ICR;
-  DLOG ("IRQ: ICR=%p CTRL=%p CTRLE=%p STA=%p", icr, CTRL, CTRLEXT, STATUS);
-  DLOG ("PHY_CTL=0x%.04X", mdi_read (0));
-  DLOG ("PHY_STA=0x%.04X", mdi_read (1));
-  DLOG ("PHY_GCON=0x%.04X", mdi_read (9));
-  DLOG ("PHY_GSTA=0x%.04X", mdi_read (10));
-  DLOG ("TPT=%p", TPT);
-
-  if (icr & ICR_RXT)            /* RX */
-    e1000_rx_poll ();
-  if (icr & ICR_TXQE)           /* TX queue empty */
-    handle_tx (icr);
+  if (e1000_bh_id) {
+    vcpu *cur = percpu_read (vcpu_current);
+    extern u32 tsc_freq_msec;
+    wakeup (e1000_bh_id);
+    if (cur == NULL || cur->T > 20 * tsc_freq_msec)
+      LAPIC_start_timer (1);
+  }
 
   return 0;
 }
@@ -849,6 +869,10 @@ e1000_init (void)
     DLOG ("registration failed");
     goto abort_virt;
   }
+
+  e1000_bh_id = start_kernel_thread ((u32) e1000_bh_thread,
+                                     (u32) &e1000_bh_stack[1023]);
+  lookup_TSS (e1000_bh_id)->cpu = 4;
 
   return TRUE;
 
