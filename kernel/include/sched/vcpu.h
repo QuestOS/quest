@@ -23,6 +23,10 @@
 
 #define VCPU_ALIGNMENT (LOCK_ALIGNMENT<<1)
 
+typedef enum {
+  MAIN_VCPU = 0, IO_VCPU
+} vcpu_type;
+
 typedef struct _replenishment {
   struct _replenishment *next;
   u64 t, b;
@@ -34,6 +38,7 @@ typedef struct _vcpu
   union {
     struct {
       spinlock lock;
+      vcpu_type type;
       struct _vcpu *next;       /* next vcpu in a queue */
       u16 cpu;                  /* cpu affinity for vcpu */
       u16 tr;                   /* task register */

@@ -41,16 +41,17 @@
 
 static u32 tsc_freq_msec, tsc_lapic_factor;
 
-#define NUM_VCPUS 4
+#define NUM_VCPUS 5
 static vcpu vcpus[NUM_VCPUS] ALIGNED (VCPU_ALIGNMENT);
-static struct { u64 C, T; } init_params[NUM_VCPUS] = {
-  { 1, 6 },
-  { 1, 7 },
-  { 1, 8 },
-  { 1, 9 },
+static struct { vcpu_type type; u32 C, T; } init_params[NUM_VCPUS] = {
+  { MAIN_VCPU, 1, 3 },
+  { MAIN_VCPU, 1, 5 },
+  { MAIN_VCPU, 2, 10 },
+  { MAIN_VCPU, 1, 50 },
+  { IO_VCPU, 1, 20 },
 };
 
-uint lowest_priority_vcpu = NUM_VCPUS - 1;
+uint lowest_priority_vcpu = NUM_VCPUS - 2;
 
 vcpu *
 vcpu_lookup (int i)
@@ -280,11 +281,13 @@ vcpu_rr_wakeup (task_id task)
   static int next_vcpu_binding = 1;
 
   if (tssp->cpu == 0xFF) {
-    tssp->cpu = next_vcpu_binding;
+    do {
+      tssp->cpu = next_vcpu_binding;
+      next_vcpu_binding++;
+      if (next_vcpu_binding >= NUM_VCPUS)
+        next_vcpu_binding = 0;
+    } while  (vcpu_lookup (tssp->cpu)->type != MAIN_VCPU);
     logger_printf ("vcpu: task 0x%x now bound to vcpu=%d\n", task, tssp->cpu);
-    next_vcpu_binding++;
-    if (next_vcpu_binding >= NUM_VCPUS)
-      next_vcpu_binding = 0;
   }
 
   vcpu *vcpu = vcpu_lookup (tssp->cpu);
@@ -432,7 +435,8 @@ check_activations (u64 tcur, u64 Tprev, u64 Tnext)
   /* FIXME: make per-cpu */
   int i;
   for (i=0; i<NUM_VCPUS; i++) {
-    if (vcpus[i].b > 0 && Tnext <= vcpus[i].T && vcpus[i].T < Tprev)
+    if (vcpus[i].type == MAIN_VCPU &&
+        vcpus[i].b > 0 && Tnext <= vcpus[i].T && vcpus[i].T < Tprev)
       vcpus[i].a = tcur;
   }
 }
@@ -626,6 +630,7 @@ vcpu_init (void)
   for (vcpu_i=0; vcpu_i<NUM_VCPUS; vcpu_i++) {
     u32 C = init_params[vcpu_i].C;
     u32 T = init_params[vcpu_i].T;
+    vcpu_type type = init_params[vcpu_i].type;
     vcpu = vcpu_lookup (vcpu_i);
     vcpu->cpu = cpu_i++;
     if (cpu_i >= mp_num_cpus)
@@ -633,7 +638,9 @@ vcpu_init (void)
     vcpu->quantum = div_u64_u32_u32 (tsc_freq, QUANTUM_HZ);
     vcpu->C = vcpu->b = C * tsc_freq_msec;
     vcpu->T = T * tsc_freq_msec;
-    logger_printf ("vcpu: vcpu=%d pcpu=%d C=0x%llX T=0x%llX U=%d%%\n",
+    vcpu->type = type;
+    logger_printf ("vcpu: %svcpu=%d pcpu=%d C=0x%llX T=0x%llX U=%d%%\n",
+                   type == IO_VCPU ? "IO " : "",
                    vcpu_i, vcpu->cpu, vcpu->C, vcpu->T, (C * 100) / T);
   }
 }
