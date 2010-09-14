@@ -31,6 +31,7 @@
 #include "mem/pow2.h"
 
 //#define DEBUG_VCPU
+//#define DUMP_STATS_VERBOSE
 
 #ifdef DEBUG_VCPU
 #define DLOG(fmt,...) DLOG_PREFIX("vcpu",fmt,##__VA_ARGS__)
@@ -350,27 +351,30 @@ compute_percentage (u64 overall, u64 usage)
   return (u32) res;
 }
 
-//#define DUMP_STATS_VERBOSE
 extern void
 vcpu_dump_stats (void)
 {
   int i;
+#ifdef DUMP_STATS_VERBOSE
+  vcpu *cur = percpu_read (vcpu_current);
+#endif
   s64 overhead = percpu_read64 (pcpu_overhead);
   u64 overhead_fudge = percpu_read64 (pcpu_overhead_fudge);
   u64 idle_time = percpu_read64 (pcpu_idle_time);
   u64 sum = idle_time;
   logger_printf ("vcpu_dump_stats overhead=0x%llX fudge=0x%llX\n", overhead, overhead_fudge);
 #ifdef DUMP_STATS_VERBOSE
-  logger_printf ("idle tsc=0x%llX\n", idle_time);
+  logger_printf ("idle tsc=0x%llX%s\n", idle_time, (cur==NULL ? " (*)" : ""));
 #endif
   for (i=0; i<NUM_VCPUS; i++) {
     vcpu *vcpu = &vcpus[i];
 #ifdef DUMP_STATS_VERBOSE
-    logger_printf ("vcpu=%d pcpu=%d tsc=0x%llX pmc[0]=0x%llX pmc[1]=0x%llX\n",
+    logger_printf ("vcpu=%d pcpu=%d tsc=0x%llX pmc[0]=0x%llX pmc[1]=0x%llX%s\n",
                    i, vcpu->cpu,
                    vcpu->timestamps_counted,
                    vcpu->pmc_total[0],
-                   vcpu->pmc_total[1]);
+                   vcpu->pmc_total[1],
+                   (vcpu == cur ? " (*)" : ""));
     logger_printf ("  b=0x%llX overhead=0x%llX delta=0x%llX count=0x%X\n",
                    vcpu->b, vcpu->sched_overhead, vcpu->prev_delta,
                    vcpu->prev_count);
@@ -385,7 +389,6 @@ vcpu_dump_stats (void)
   }
   logger_printf ("\n");
 }
-
 
 static void
 add_replenishment (vcpu *v, u64 b)
