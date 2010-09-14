@@ -41,7 +41,7 @@ typedef struct _vcpu
       u32 quantum;              /* internal VCPU scheduling quantum */
       u64 next_schedule;        /* when to trigger internal schedule */
 
-      u64 C, T, b;              /* scheduling parameters */
+      u64 C, T, b, a;           /* scheduling parameters */
       replenishment *R;         /* replenishment list */
 
       u64 prev_tsc;
