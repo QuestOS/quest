@@ -521,7 +521,7 @@ vcpu_schedule (void)
     else
       tdelta = 0;
     for (ptr = &queue; *ptr != NULL; ptr = &(*ptr)->next) {
-      if ((*ptr)->T <= Tnext) {
+      if (Tnext == 0 || (*ptr)->T <= Tnext) {
         replenishment *r;
         for (r = (*ptr)->R; r != NULL; r = r->next) {
           if (tdelta == 0 || r->t - tcur < tdelta) {
@@ -542,9 +542,11 @@ vcpu_schedule (void)
           tdelta -= overhead_fudge;
       }
 #endif
-      vcpu->prev_delta = tdelta;
       u32 count = div_u64_u32_u32 (tdelta, tsc_lapic_factor);
-      vcpu->prev_count = count;
+      if (vcpu) {
+        vcpu->prev_delta = tdelta;
+        vcpu->prev_count = count;
+      }
       //if (cur) logger_printf (" (%llX, %llX) %llX / %X = %X\n", o, overhead_fudge, tdelta, tsc_lapic_factor, count);
       DLOG ("start_timer: count=0x%x", count);
       LAPIC_start_timer (count);
@@ -618,15 +620,17 @@ vcpu_init (void)
 
   /* distribute VCPUs across PCPUs */
   for (vcpu_i=0; vcpu_i<NUM_VCPUS; vcpu_i++) {
+    u32 C = init_params[vcpu_i].C;
+    u32 T = init_params[vcpu_i].T;
     vcpu = vcpu_lookup (vcpu_i);
     vcpu->cpu = cpu_i++;
     if (cpu_i >= mp_num_cpus)
       cpu_i = 0;
     vcpu->quantum = div_u64_u32_u32 (tsc_freq, QUANTUM_HZ);
-    vcpu->C = vcpu->b = init_params[vcpu_i].C * tsc_freq_msec;
-    vcpu->T = init_params[vcpu_i].T * tsc_freq_msec;
-    logger_printf ("vcpu: vcpu=%d pcpu=%d C=0x%llX T=0x%llX\n",
-          vcpu_i, vcpu->cpu, vcpu->C, vcpu->T);
+    vcpu->C = vcpu->b = C * tsc_freq_msec;
+    vcpu->T = T * tsc_freq_msec;
+    logger_printf ("vcpu: vcpu=%d pcpu=%d C=0x%llX T=0x%llX U=%d%%\n",
+                   vcpu_i, vcpu->cpu, vcpu->C, vcpu->T, (C * 100) / T);
   }
 }
 
