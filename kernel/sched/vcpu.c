@@ -539,12 +539,13 @@ vcpu_schedule (void)
       u64 o = tdelta;
 #if 1
       if (overhead_fudge > tsc_lapic_factor) {
-        if (tdelta <= overhead_fudge - tsc_lapic_factor)
+        if (tdelta <= overhead_fudge + tsc_lapic_factor)
           tdelta = tsc_lapic_factor;
         else
           tdelta -= overhead_fudge;
       }
 #endif
+      /* consider upper-bounding tdelta by QUANTUM ms? */
       u32 count = div_u64_u32_u32 (tdelta, tsc_lapic_factor);
       if (vcpu) {
         vcpu->prev_delta = tdelta;
