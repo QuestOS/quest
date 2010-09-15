@@ -379,7 +379,7 @@ e1000_bh_thread (void)
     if (icr & ICR_TXQE)           /* TX queue empty */
       handle_tx (icr);
 
-    schedule ();
+    iovcpu_job_completion ();
   }
 }
 
@@ -388,11 +388,8 @@ static uint32
 e1000_irq_handler (uint8 vec)
 {
   if (e1000_bh_id) {
-    vcpu *cur = percpu_read (vcpu_current);
     extern u32 tsc_freq_msec;
-    wakeup (e1000_bh_id);
-    if (cur == NULL || cur->T > 20 * tsc_freq_msec)
-      LAPIC_start_timer (1);
+    iovcpu_job_wakeup (e1000_bh_id, 20 * tsc_freq_msec);
   }
 
   return 0;

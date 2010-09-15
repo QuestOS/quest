@@ -39,7 +39,7 @@
 #define DLOG(fmt,...) ;
 #endif
 
-static u32 tsc_freq_msec, tsc_lapic_factor;
+u32 tsc_freq_msec, tsc_lapic_factor;
 
 #define NUM_VCPUS 5
 static vcpu vcpus[NUM_VCPUS] ALIGNED (VCPU_ALIGNMENT);
@@ -350,8 +350,12 @@ idle_time_end ()
 static inline u32
 compute_percentage (u64 overall, u64 usage)
 {
-  u64 res = div64_64 (usage * 100, overall);
-  return (u32) res;
+  u64 res = div64_64 (usage * 1000, overall);
+  u16 whole, frac;
+
+  whole = ((u16) res) / 10;
+  frac = ((u16) res) - whole * 10;
+  return (((u32) whole) << 16) | (u32) frac;
 }
 
 extern void
@@ -372,23 +376,26 @@ vcpu_dump_stats (void)
   for (i=0; i<NUM_VCPUS; i++) {
     vcpu *vcpu = &vcpus[i];
 #ifdef DUMP_STATS_VERBOSE
-    logger_printf ("vcpu=%d pcpu=%d tsc=0x%llX pmc[0]=0x%llX pmc[1]=0x%llX%s\n",
-                   i, vcpu->cpu,
-                   vcpu->timestamps_counted,
-                   vcpu->pmc_total[0],
-                   vcpu->pmc_total[1],
-                   (vcpu == cur ? " (*)" : ""));
-    logger_printf ("  b=0x%llX overhead=0x%llX delta=0x%llX count=0x%X\n",
-                   vcpu->b, vcpu->sched_overhead, vcpu->prev_delta,
-                   vcpu->prev_count);
+    if (vcpu->type == IO_VCPU) {
+      logger_printf ("vcpu=%d pcpu=%d tsc=0x%llX pmc[0]=0x%llX pmc[1]=0x%llX%s\n",
+                     i, vcpu->cpu,
+                     vcpu->timestamps_counted,
+                     vcpu->pmc_total[0],
+                     vcpu->pmc_total[1],
+                     (vcpu == cur ? " (*)" : ""));
+      logger_printf ("  b=0x%llX overhead=0x%llX delta=0x%llX count=0x%X\n",
+                     vcpu->b, vcpu->sched_overhead, vcpu->prev_delta,
+                     vcpu->prev_count);
+    }
 #endif
     sum += vcpu->timestamps_counted;
   }
-  logger_printf ("summary: idle=%d%%", compute_percentage (sum, idle_time));
+  u32 res = compute_percentage (sum, idle_time);
+  logger_printf ("summary: idle=%d.%d%%", res >> 16, res & 0xFF);
   for (i=0; i<NUM_VCPUS; i++) {
     vcpu *vcpu = &vcpus[i];
-    logger_printf (" vcpu%d=%d%%", i,
-                   compute_percentage (sum, vcpu->timestamps_counted));
+    res = compute_percentage (sum, vcpu->timestamps_counted);
+    logger_printf (" vcpu%d=%d.%d%%", i, res >> 16, res & 0xFF);
   }
   logger_printf ("\n");
 }
@@ -490,8 +497,15 @@ vcpu_schedule (void)
     DLOG ("budget: vcpu=%p used=0x%llX replenish@=0x%llX", cur, u,
           tprev + cur->T);
 
-    /* schedule replenishment of used budget */
-    add_replenishment (cur, u);
+    if (cur->type == IO_VCPU) {
+      if (cur->state == IO_VCPU_JOB_COMPLETE || cur->b < MIN_B) {
+        cur->a += (u64) div_u64_u32_u32 (u * cur->Uden, cur->Unum);
+        cur->b = 0;
+      }
+    } else {
+      /* schedule replenishment of used budget */
+      add_replenishment (cur, u);
+    }
   } else idle_time_end ();
 
   if (queue) {
@@ -599,6 +613,45 @@ vcpu_wakeup (task_id task)
   vcpu_rr_wakeup (task);
 }
 
+extern void
+iovcpu_job_wakeup (task_id job, u64 T)
+{
+  quest_tss *tssp = lookup_TSS (job);
+  vcpu *v, *cur = percpu_read (vcpu_current);
+  u64 now;
+
+  wakeup (job);
+  v = vcpu_lookup (tssp->cpu);
+  if (v->type != IO_VCPU)
+    return;
+  RDTSC (now);
+  v->state = IO_VCPU_RUNNING;
+  v->T = T;
+  if (v->R == NULL)
+    add_replenishment (v, div_u64_u32_u32 (T * v->Unum, v->Uden));
+  else
+    v->R->b = div_u64_u32_u32 (T * v->Unum, v->Uden);
+  if (v->a + v->T < now)
+    v->a = now - v->T;
+  if (v->b > MIN_B && (cur == NULL || cur->T > T))
+    LAPIC_start_timer (1);
+}
+
+extern void
+iovcpu_job_completion (void)
+{
+  vcpu *cur = percpu_read (vcpu_current);
+
+  if (cur->type != IO_VCPU) {
+    schedule ();
+    return;
+  }
+
+  cur->state = IO_VCPU_JOB_COMPLETE;
+
+  schedule ();
+}
+
 /* ************************************************** */
 
 extern void
@@ -642,6 +695,10 @@ vcpu_init (void)
     logger_printf ("vcpu: %svcpu=%d pcpu=%d C=0x%llX T=0x%llX U=%d%%\n",
                    type == IO_VCPU ? "IO " : "",
                    vcpu_i, vcpu->cpu, vcpu->C, vcpu->T, (C * 100) / T);
+    if (type == IO_VCPU) {
+      vcpu->Unum = C;
+      vcpu->Uden = T;
+    }
   }
 }
 

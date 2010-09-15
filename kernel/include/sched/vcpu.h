@@ -27,6 +27,11 @@ typedef enum {
   MAIN_VCPU = 0, IO_VCPU
 } vcpu_type;
 
+enum {
+  IO_VCPU_RUNNING=0,
+  IO_VCPU_JOB_COMPLETE=1
+};
+
 typedef struct _replenishment {
   struct _replenishment *next;
   u64 t, b;
@@ -40,6 +45,7 @@ typedef struct _vcpu
       spinlock lock;
       vcpu_type type;
       struct _vcpu *next;       /* next vcpu in a queue */
+      u16 state;
       u16 cpu;                  /* cpu affinity for vcpu */
       u16 tr;                   /* task register */
       u16 runqueue;             /* per-VCPU runqueue */
@@ -47,6 +53,7 @@ typedef struct _vcpu
       u64 next_schedule;        /* when to trigger internal schedule */
 
       u64 C, T, b, a;           /* scheduling parameters */
+      u32 Unum, Uden;           /* utilization (IO-VCPU) fraction */
       replenishment *R;         /* replenishment list */
 
       u64 prev_tsc;
@@ -64,6 +71,10 @@ typedef struct _vcpu
   };
 } vcpu;
 CASSERT (sizeof (vcpu) == VCPU_ALIGNMENT, vcpu);
+
+extern void iovcpu_job_wakeup (task_id job, u64 T);
+extern void iovcpu_job_completion (void);
+
 
 #endif
 

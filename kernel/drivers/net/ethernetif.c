@@ -70,7 +70,7 @@
 #include "util/debug.h"
 #include "util/printf.h"
 
-#define DEBUG_NETIF
+//#define DEBUG_NETIF
 
 #ifdef DEBUG_NETIF
 #define DLOG(fmt,...) DLOG_PREFIX("netif",fmt,##__VA_ARGS__)
