@@ -379,6 +379,12 @@ e1000_bh_thread (void)
     if (icr & ICR_TXQE)           /* TX queue empty */
       handle_tx (icr);
 
+    unlock_kernel ();
+    sti ();
+    tsc_delay_usec (3000);
+    cli ();
+    lock_kernel ();
+
     iovcpu_job_completion ();
   }
 }
