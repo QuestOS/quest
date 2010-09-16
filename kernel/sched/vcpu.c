@@ -416,23 +416,30 @@ add_replenishment (vcpu *v, u64 b)
 }
 
 static void
-update_replenishments (vcpu *q, u64 tcur)
+update_replenishments_vcpu (vcpu *v, u64 tcur)
 {
   replenishment **r, *temp;
-  for (; q != NULL; q = q->next) {
-    for (r = &q->R; *r != NULL; r = &(*r)->next) {
-    do_r:
-      if ((*r)->t <= tcur) {
-        DLOG ("update_replenishments: vcpu=%p replenishing 0x%llX budget",
-              q, (*r)->b);
-        q->a = tcur;            /* set activation time */
-        q->b += (*r)->b;        /* increase budget */
-        temp = *r;
-        *r = (*r)->next;
-        pow2_free ((u8 *) temp);
-        if (*r) goto do_r; else break;
-      }
+  for (r = &v->R; *r != NULL; r = &(*r)->next) {
+  do_r:
+    if ((*r)->t <= tcur) {
+      DLOG ("update_replenishments: vcpu=%p replenishing 0x%llX budget",
+            v, (*r)->b);
+      if (v->type != IO_VCPU)
+        v->a = tcur;          /* set activation time */
+      v->b += (*r)->b;        /* increase budget */
+      temp = *r;
+      *r = (*r)->next;
+      pow2_free ((u8 *) temp);
+      if (*r) goto do_r; else break;
     }
+  }
+}
+
+static void
+update_replenishments (vcpu *q, u64 tcur)
+{
+  for (; q != NULL; q = q->next) {
+    update_replenishments_vcpu (q, tcur);
   }
 }
 
