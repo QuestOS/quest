@@ -40,6 +40,7 @@
 #endif
 
 u32 tsc_freq_msec, tsc_lapic_factor;
+u64 vcpu_init_time;
 
 #define NUM_VCPUS 5
 static vcpu vcpus[NUM_VCPUS] ALIGNED (VCPU_ALIGNMENT);
@@ -390,11 +391,13 @@ vcpu_dump_stats (void)
 #endif
     sum += vcpu->timestamps_counted;
   }
-  u32 res = compute_percentage (sum, idle_time);
+  u64 now; RDTSC (now);
+  now -= vcpu_init_time;
+  u32 res = compute_percentage (now, idle_time);
   logger_printf ("summary: idle=%d.%d%%", res >> 16, res & 0xFF);
   for (i=0; i<NUM_VCPUS; i++) {
     vcpu *vcpu = &vcpus[i];
-    res = compute_percentage (sum, vcpu->timestamps_counted);
+    res = compute_percentage (now, vcpu->timestamps_counted);
     logger_printf (" vcpu%d=%d.%d%%", i, res >> 16, res & 0xFF);
   }
   logger_printf ("\n");
@@ -690,6 +693,7 @@ vcpu_init (void)
   int cpu_i=0, vcpu_i;
   vcpu *vcpu;
 
+  RDTSC (vcpu_init_time);
   tsc_freq_msec = div_u64_u32_u32 (tsc_freq, 1000);
   if (tsc_freq <= cpu_bus_freq)
     /* workaround for bochs where this might hold true */
