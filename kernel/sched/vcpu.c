@@ -48,7 +48,7 @@ static struct { vcpu_type type; u32 C, T; } init_params[NUM_VCPUS] = {
   { MAIN_VCPU, 1, 5 },
   { MAIN_VCPU, 2, 10 },
   { MAIN_VCPU, 1, 50 },
-  { IO_VCPU, 1, 20 },
+  { IO_VCPU, 1, 50 },
 };
 
 uint lowest_priority_vcpu = NUM_VCPUS - 2;
@@ -505,9 +505,15 @@ vcpu_schedule (void)
           tprev + cur->T);
 
     if (cur->type == IO_VCPU) {
-      if (cur->state == IO_VCPU_JOB_COMPLETE || cur->b < MIN_B) {
-        cur->a += (u64) div_u64_u32_u32 (tsc_freq_msec * cur->Uden, cur->Unum);
+      if (cur->state == IO_VCPU_JOB_COMPLETE || cur->b <= MIN_B) {
+        cur->a += (u64) div_u64_u32_u32 (tsc_freq_msec * cur->Uden, cur->Unum) >> 1;
         cur->b = 0;
+        if (cur->state != IO_VCPU_JOB_COMPLETE) {
+          add_replenishment (cur, div_u64_u32_u32 (cur->T * cur->Unum, cur->Uden));
+        } else {
+          cur->state = IO_VCPU_JOB_INCOMPLETE;
+          add_replenishment (cur, div_u64_u32_u32 (cur->T * cur->Unum, cur->Uden));
+        }
       }
     } else {
       /* schedule replenishment of used budget */
@@ -632,20 +638,22 @@ iovcpu_job_wakeup (task_id job, u64 T)
   if (v->type != IO_VCPU)
     return;
   RDTSC (now);
-  v->state = IO_VCPU_RUNNING;
+
   v->T = T;
-  if (v->a + v->T < now)
+  if ((v->state == IO_VCPU_JOB_INCOMPLETE) && ((v->a + v->T) < now))
     v->a = now - v->T;
+
   u64 Cmax = div_u64_u32_u32 (T * v->Unum, v->Uden);
-  if (v->b < Cmax) {
-    Cmax -= v->b;
-    if (v->R == NULL) {
-      add_replenishment (v, Cmax - v->b);
-    } else {
-      v->R->b = Cmax;
-    }
-    update_replenishments_vcpu (v, now);
+
+  if (v->R == NULL) {
+    if (v->state != IO_VCPU_BUDGETED)
+      add_replenishment (v, Cmax);
+  } else {
+    v->R->b = Cmax;
   }
+  v->state = IO_VCPU_BUDGETED;
+  update_replenishments_vcpu (v, now);
+
   if (v->b > MIN_B && (cur == NULL || cur->T > T))
     LAPIC_start_timer (1);
 }

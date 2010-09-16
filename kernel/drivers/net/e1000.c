@@ -389,7 +389,7 @@ e1000_irq_handler (uint8 vec)
 {
   if (e1000_bh_id) {
     extern u32 tsc_freq_msec;
-    iovcpu_job_wakeup (e1000_bh_id, 20 * tsc_freq_msec);
+    iovcpu_job_wakeup (e1000_bh_id, 50 * tsc_freq_msec);
   }
 
   return 0;

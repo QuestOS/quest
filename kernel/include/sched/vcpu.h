@@ -28,8 +28,9 @@ typedef enum {
 } vcpu_type;
 
 enum {
-  IO_VCPU_RUNNING=0,
-  IO_VCPU_JOB_COMPLETE=1
+  IO_VCPU_JOB_INCOMPLETE=0,
+  IO_VCPU_JOB_COMPLETE=1,
+  IO_VCPU_BUDGETED=2
 };
 
 typedef struct _replenishment {
