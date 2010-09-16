@@ -634,12 +634,18 @@ iovcpu_job_wakeup (task_id job, u64 T)
   RDTSC (now);
   v->state = IO_VCPU_RUNNING;
   v->T = T;
-  if (v->R == NULL)
-    add_replenishment (v, div_u64_u32_u32 (T * v->Unum, v->Uden));
-  else
-    v->R->b = div_u64_u32_u32 (T * v->Unum, v->Uden);
   if (v->a + v->T < now)
     v->a = now - v->T;
+  u64 Cmax = div_u64_u32_u32 (T * v->Unum, v->Uden);
+  if (v->b < Cmax) {
+    Cmax -= v->b;
+    if (v->R == NULL) {
+      add_replenishment (v, Cmax - v->b);
+    } else {
+      v->R->b = Cmax;
+    }
+    update_replenishments_vcpu (v, now);
+  }
   if (v->b > MIN_B && (cur == NULL || cur->T > T))
     LAPIC_start_timer (1);
 }
