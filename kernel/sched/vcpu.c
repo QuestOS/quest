@@ -506,7 +506,7 @@ vcpu_schedule (void)
 
     if (cur->type == IO_VCPU) {
       if (cur->state == IO_VCPU_JOB_COMPLETE || cur->b < MIN_B) {
-        cur->a += (u64) div_u64_u32_u32 (u * cur->Uden, cur->Unum);
+        cur->a += (u64) div_u64_u32_u32 (tsc_freq_msec * cur->Uden, cur->Unum);
         cur->b = 0;
       }
     } else {
