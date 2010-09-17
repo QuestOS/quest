@@ -54,6 +54,7 @@ typedef struct _vcpu
       u64 next_schedule;        /* when to trigger internal schedule */
 
       u64 C, T, b, a;           /* scheduling parameters */
+      u64 usage;
       u32 Unum, Uden;           /* utilization (IO-VCPU) fraction */
       replenishment *R;         /* replenishment list */
 
@@ -65,6 +66,7 @@ typedef struct _vcpu
       u64 global_miss_count;    /* 0x09, 0x03 UNC_L3_MISS.ANY (Neh.) */
       u64 sched_overflow;
       u64 sched_overhead;
+      u64 prev_usage;
       u64 prev_delta;
       u32 prev_count;
     };
