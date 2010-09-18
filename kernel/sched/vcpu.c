@@ -510,8 +510,10 @@ vcpu_schedule (void)
     if (cur->type == IO_VCPU) {
       cur->usage += tdelta;
       if (cur->state == IO_VCPU_JOB_COMPLETE || cur->b <= MIN_B) {
-        cur->a += (u64) div_u64_u32_u32 (tsc_freq_msec * cur->Uden, cur->Unum);
-        add_replenishment (cur, div_u64_u32_u32 (cur->T * cur->Unum, cur->Uden));
+        if (cur->R == NULL) {
+          cur->a += (u64) div_u64_u32_u32 (tsc_freq_msec * cur->Uden, cur->Unum);
+          add_replenishment (cur, div_u64_u32_u32 (cur->T * cur->Unum, cur->Uden));
+        }
         cur->prev_usage = cur->usage;
         cur->usage = 0;
         if (cur->state != IO_VCPU_JOB_COMPLETE)
