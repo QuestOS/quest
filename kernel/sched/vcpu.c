@@ -405,7 +405,7 @@ vcpu_dump_stats (void)
 static void
 add_replenishment (vcpu *v, u64 b)
 {
-  u64 t = v->a + v->T;
+  u64 t = v->main.a + v->T;
   replenishment **r, *rnew;
   pow2_alloc (sizeof (replenishment), (u8 **) &rnew);
   if (!rnew)
@@ -413,7 +413,7 @@ add_replenishment (vcpu *v, u64 b)
   rnew->t = t;
   rnew->b = b;
   rnew->next = NULL;
-  for (r = &v->R; *r != NULL; r = &(*r)->next);
+  for (r = &v->main.R; *r != NULL; r = &(*r)->next);
   *r = rnew;
 }
 
@@ -507,7 +507,7 @@ vcpu_schedule (void)
     for (ptr = &queue; *ptr != NULL; ptr = &(*ptr)->next) {
       if (Tnext == 0 || (*ptr)->T <= Tnext) {
         replenishment *r;
-        for (r = (*ptr)->R; r != NULL; r = r->next) {
+        for (r = (*ptr)->main.R; r != NULL; r = r->next) {
           if (tdelta == 0 || r->t - tcur < tdelta) {
             tdelta = r->t - tcur;
           }
@@ -588,18 +588,18 @@ iovcpu_job_wakeup (task_id job, u64 T)
   RDTSC (now);
 
   v->T = T;
-  if (v->state == IO_VCPU_JOB_INCOMPLETE && v->e < now)
-    v->e = now;
+  if (v->state == IO_VCPU_JOB_INCOMPLETE && v->io.e < now)
+    v->io.e = now;
 
-  u64 Cmax = div_u64_u32_u32 (T * v->Unum, v->Uden);
+  u64 Cmax = div_u64_u32_u32 (T * v->io.Unum, v->io.Uden);
 
-  if (v->r.t == 0) {
+  if (v->io.r.t == 0) {
     if (v->state != IO_VCPU_BUDGETED) {
-      v->r.t = v->e;
-      v->r.b = Cmax;
+      v->io.r.t = v->io.e;
+      v->io.r.b = Cmax;
     }
   } else {
-    v->r.b = Cmax;
+    v->io.r.b = Cmax;
   }
   v->state = IO_VCPU_BUDGETED;
   if (v->hooks->update_replenishments)
@@ -632,10 +632,10 @@ static void
 main_vcpu_update_replenishments (vcpu *v, u64 tcur)
 {
   replenishment **r, *temp;
-  for (r = &v->R; *r != NULL; r = &(*r)->next) {
+  for (r = &v->main.R; *r != NULL; r = &(*r)->next) {
   do_r:
     if ((*r)->t <= tcur) {
-      v->a = tcur;              /* set activation time */
+      v->main.a = tcur;              /* set activation time */
       v->b += (*r)->b;          /* increase budget */
       temp = *r;
       *r = (*r)->next;
@@ -670,7 +670,7 @@ static void
 main_vcpu_level_change (vcpu *v, u64 tcur, u64 Tprev, u64 Tnext)
 {
   if (v->b > 0 && Tnext <= v->T && v->T < Tprev)
-    v->a = tcur;
+    v->main.a = tcur;
 }
 
 static vcpu_hooks main_vcpu_hooks = {
@@ -684,9 +684,9 @@ static vcpu_hooks main_vcpu_hooks = {
 static void
 io_vcpu_update_replenishments (vcpu *v, u64 tcur)
 {
-  if (v->r.t != 0 && v->r.t <= tcur) {
-    v->b += v->r.b;
-    v->r.t = 0;
+  if (v->io.r.t != 0 && v->io.r.t <= tcur) {
+    v->b += v->io.r.b;
+    v->io.r.t = 0;
   }
 }
 
@@ -709,10 +709,10 @@ io_vcpu_end_timeslice (vcpu *cur, u64 tdelta)
 
   cur->usage += tdelta;
   if (cur->state == IO_VCPU_JOB_COMPLETE || cur->b <= MIN_B) {
-    if (cur->r.t == 0) {
-      cur->e += (u64) div_u64_u32_u32 (cur->usage * cur->Uden, cur->Unum);
-      cur->r.t = cur->e;
-      cur->r.b = div_u64_u32_u32 (cur->T * cur->Unum, cur->Uden);
+    if (cur->io.r.t == 0) {
+      cur->io.e += (u64) div_u64_u32_u32 (cur->usage * cur->io.Uden, cur->io.Unum);
+      cur->io.r.t = cur->io.e;
+      cur->io.r.b = div_u64_u32_u32 (cur->T * cur->io.Unum, cur->io.Uden);
     }
     cur->prev_usage = cur->usage;
     cur->usage = 0;
@@ -776,8 +776,8 @@ vcpu_init (void)
                    type == IO_VCPU ? "IO " : "",
                    vcpu_i, vcpu->cpu, vcpu->C, vcpu->T, (C * 100) / T);
     if (type == IO_VCPU) {
-      vcpu->Unum = C;
-      vcpu->Uden = T;
+      vcpu->io.Unum = C;
+      vcpu->io.Uden = T;
     }
   }
 }

@@ -69,13 +69,13 @@ typedef struct _vcpu
         struct {
           u64 a;                /* activation time */
           replenishment *R;     /* replenishment list */
-        };
+        } main;
         /* IO_VCPU */
         struct {
           u64 e;                /* eligibility time */
           replenishment r;      /* replenishment */
           u32 Unum, Uden;       /* utilization fraction */
-        };
+        } io;
       };
 
       u64 prev_tsc;
