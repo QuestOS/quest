@@ -324,7 +324,7 @@ INIT_PER_CPU (pcpu_sched_time) {
 }
 
 static void
-idle_time_begin ()
+idle_time_acnt_begin ()
 {
   u64 now;
 
@@ -333,7 +333,7 @@ idle_time_begin ()
 }
 
 static void
-idle_time_end ()
+idle_time_acnt_end ()
 {
   u64 idle_time = percpu_read64 (pcpu_idle_time);
   u64 idle_prev_tsc = percpu_read64 (pcpu_idle_prev_tsc);
@@ -418,30 +418,11 @@ add_replenishment (vcpu *v, u64 b)
 }
 
 static void
-update_replenishments_vcpu (vcpu *v, u64 tcur)
-{
-  replenishment **r, *temp;
-  for (r = &v->R; *r != NULL; r = &(*r)->next) {
-  do_r:
-    if ((*r)->t <= tcur) {
-      DLOG ("update_replenishments: vcpu=%p replenishing 0x%llX budget",
-            v, (*r)->b);
-      if (v->type != IO_VCPU)
-        v->a = tcur;          /* set activation time */
-      v->b += (*r)->b;        /* increase budget */
-      temp = *r;
-      *r = (*r)->next;
-      pow2_free ((u8 *) temp);
-      if (*r) goto do_r; else break;
-    }
-  }
-}
-
-static void
 update_replenishments (vcpu *q, u64 tcur)
 {
   for (; q != NULL; q = q->next) {
-    update_replenishments_vcpu (q, tcur);
+    if (q->hooks->update_replenishments)
+      q->hooks->update_replenishments (q, tcur);
   }
 }
 
@@ -451,9 +432,8 @@ check_activations (u64 tcur, u64 Tprev, u64 Tnext)
   /* FIXME: make per-cpu */
   int i;
   for (i=0; i<NUM_VCPUS; i++) {
-    if (vcpus[i].type == MAIN_VCPU &&
-        vcpus[i].b > 0 && Tnext <= vcpus[i].T && vcpus[i].T < Tprev)
-      vcpus[i].a = tcur;
+    if (vcpus[i].hooks->level_change)
+      vcpus[i].hooks->level_change (&vcpus[i], tcur, Tprev, Tnext);
   }
 }
 
@@ -472,7 +452,6 @@ vcpu_schedule (void)
     **vnext = NULL;
   u64 tprev = percpu_read64 (pcpu_tprev);
   u64 tcur, tdelta, Tprev = 0, Tnext = 0;
-  s64 overhead = percpu_read64 (pcpu_overhead);
   bool timer_set = FALSE;
 
   RDTSC (tcur);
@@ -482,46 +461,15 @@ vcpu_schedule (void)
   DLOG ("tcur=0x%llX tprev=0x%llX tdelta=0x%llX", tcur, tprev, tdelta);
 
   if (cur) {
-    u64 u;
-
     Tprev = cur->T;
 
     /* handle end-of-timeslice accounting */
     vcpu_acnt_end_timeslice (cur);
 
-    //logger_printf ("tdelta=0x%llX cur->b=0x%llX\n", tdelta, cur->b);
-    /* subtract from budget of current */
-    if (cur->b < tdelta) {
-      u = cur->b;
-      cur->sched_overhead = tdelta - cur->b;
-      overhead = cur->sched_overhead;
-      percpu_write64 (pcpu_overhead, overhead);
-    } else
-      u = tdelta;
-
-    cur->b -= u;
-    DLOG ("budget: vcpu=%p used=0x%llX replenish@=0x%llX", cur, u,
-          tprev + cur->T);
-
-    if (cur->type == IO_VCPU) {
-      cur->usage += tdelta;
-      if (cur->state == IO_VCPU_JOB_COMPLETE || cur->b <= MIN_B) {
-        if (cur->R == NULL) {
-          cur->a += (u64) div_u64_u32_u32 (tsc_freq_msec * cur->Uden, cur->Unum);
-          add_replenishment (cur, div_u64_u32_u32 (cur->T * cur->Unum, cur->Uden));
-        }
-        cur->prev_usage = cur->usage;
-        cur->usage = 0;
-        if (cur->state != IO_VCPU_JOB_COMPLETE)
-          cur->b = 0;
-        if (cur->state == IO_VCPU_JOB_COMPLETE)
-          cur->state = IO_VCPU_JOB_INCOMPLETE;
-      }
-    } else {
-      /* schedule replenishment of used budget */
-      add_replenishment (cur, u);
-    }
-  } else idle_time_end ();
+    /* invoke VCPU-specific end of timeslice budgeting */
+    if (cur->hooks->end_timeslice)
+      cur->hooks->end_timeslice (cur, tdelta);
+  } else idle_time_acnt_end ();
 
   if (queue) {
     /* update replenishments */
@@ -569,16 +517,15 @@ vcpu_schedule (void)
 
     /* set timer */
     if (tdelta > 0) {
-      u64 o = tdelta;
-      /* consider upper-bounding tdelta by QUANTUM ms? */
       u32 count = (u32) div64_64 (tdelta * ((u64) cpu_bus_freq), tsc_freq);
       if (count == 0)
         count = 1;
+      if (count > cpu_bus_freq / QUANTUM_HZ)
+        count = cpu_bus_freq / QUANTUM_HZ;
       if (vcpu) {
         vcpu->prev_delta = tdelta;
         vcpu->prev_count = count;
       }
-      DLOG ("start_timer: count=0x%x", count);
       LAPIC_start_timer (count);
       timer_set = TRUE;
     }
@@ -593,7 +540,7 @@ vcpu_schedule (void)
     /* handle beginning-of-timeslice accounting */
     vcpu_acnt_begin_timeslice (vcpu);
   else
-    idle_time_begin ();
+    idle_time_acnt_begin ();
   if (next == 0) {
     /* no task selected, go idle */
     next = percpu_read (vcpu_idle_task);
@@ -625,6 +572,8 @@ vcpu_wakeup (task_id task)
   vcpu_rr_wakeup (task);
 }
 
+/* ************************************************** */
+
 extern void
 iovcpu_job_wakeup (task_id job, u64 T)
 {
@@ -651,7 +600,8 @@ iovcpu_job_wakeup (task_id job, u64 T)
     v->R->b = Cmax;
   }
   v->state = IO_VCPU_BUDGETED;
-  update_replenishments_vcpu (v, now);
+  if (v->hooks->update_replenishments)
+    v->hooks->update_replenishments (v, now);
 
   if (v->b > MIN_B && (cur == NULL || cur->T > T))
     LAPIC_start_timer (1);
@@ -673,6 +623,122 @@ iovcpu_job_completion (void)
 }
 
 /* ************************************************** */
+
+/* MAIN_VCPU */
+
+static void
+main_vcpu_update_replenishments (vcpu *v, u64 tcur)
+{
+  replenishment **r, *temp;
+  for (r = &v->R; *r != NULL; r = &(*r)->next) {
+  do_r:
+    if ((*r)->t <= tcur) {
+      v->a = tcur;              /* set activation time */
+      v->b += (*r)->b;          /* increase budget */
+      temp = *r;
+      *r = (*r)->next;
+      pow2_free ((u8 *) temp);
+      if (*r) goto do_r; else break;
+    }
+  }
+}
+
+static void
+main_vcpu_end_timeslice (vcpu *cur, u64 tdelta)
+{
+  u64 u;
+  s64 overhead = percpu_read64 (pcpu_overhead);
+
+  /* subtract from budget of current */
+  if (cur->b < tdelta) {
+    u = cur->b;
+    cur->sched_overhead = tdelta - cur->b;
+    overhead = cur->sched_overhead;
+    percpu_write64 (pcpu_overhead, overhead);
+  } else
+    u = tdelta;
+
+  cur->b -= u;
+
+  /* schedule replenishment of used budget */
+  add_replenishment (cur, u);
+}
+
+static void
+main_vcpu_level_change (vcpu *v, u64 tcur, u64 Tprev, u64 Tnext)
+{
+  if (v->b > 0 && Tnext <= v->T && v->T < Tprev)
+    v->a = tcur;
+}
+
+static vcpu_hooks main_vcpu_hooks = {
+  .update_replenishments = main_vcpu_update_replenishments,
+  .end_timeslice = main_vcpu_end_timeslice,
+  .level_change = main_vcpu_level_change
+};
+
+/* IO_VCPU */
+
+static void
+io_vcpu_update_replenishments (vcpu *v, u64 tcur)
+{
+  replenishment **r, *temp;
+  for (r = &v->R; *r != NULL; r = &(*r)->next) {
+  do_r:
+    if ((*r)->t <= tcur) {
+      v->b += (*r)->b;          /* increase budget */
+      temp = *r;
+      *r = (*r)->next;
+      pow2_free ((u8 *) temp);
+      if (*r) goto do_r; else break;
+    }
+  }
+}
+
+static void
+io_vcpu_end_timeslice (vcpu *cur, u64 tdelta)
+{
+  u64 u;
+  s64 overhead = percpu_read64 (pcpu_overhead);
+
+  /* subtract from budget of current */
+  if (cur->b < tdelta) {
+    u = cur->b;
+    cur->sched_overhead = tdelta - cur->b;
+    overhead = cur->sched_overhead;
+    percpu_write64 (pcpu_overhead, overhead);
+  } else
+    u = tdelta;
+
+  cur->b -= u;
+
+  cur->usage += tdelta;
+  if (cur->state == IO_VCPU_JOB_COMPLETE || cur->b <= MIN_B) {
+    if (cur->R == NULL) {
+      cur->a += (u64) div_u64_u32_u32 (tsc_freq_msec * cur->Uden, cur->Unum);
+      add_replenishment (cur, div_u64_u32_u32 (cur->T * cur->Unum, cur->Uden));
+    }
+    cur->prev_usage = cur->usage;
+    cur->usage = 0;
+    if (cur->state != IO_VCPU_JOB_COMPLETE)
+      cur->b = 0;
+    if (cur->state == IO_VCPU_JOB_COMPLETE)
+      cur->state = IO_VCPU_JOB_INCOMPLETE;
+  }
+}
+
+static vcpu_hooks io_vcpu_hooks = {
+  .update_replenishments = io_vcpu_update_replenishments,
+  .end_timeslice = io_vcpu_end_timeslice,
+  .level_change = NULL
+};
+
+/* ************************************************** */
+
+static vcpu_hooks *vcpu_hooks_table[] = {
+  [MAIN_VCPU] = &main_vcpu_hooks,
+  [IO_VCPU] = &io_vcpu_hooks
+};
 
 extern void
 vcpu_init (void)
@@ -706,6 +772,7 @@ vcpu_init (void)
     vcpu->C = vcpu->b = C * tsc_freq_msec;
     vcpu->T = T * tsc_freq_msec;
     vcpu->type = type;
+    vcpu->hooks = vcpu_hooks_table[type];
     logger_printf ("vcpu: %svcpu=%d pcpu=%d C=0x%llX T=0x%llX U=%d%%\n",
                    type == IO_VCPU ? "IO " : "",
                    vcpu_i, vcpu->cpu, vcpu->C, vcpu->T, (C * 100) / T);

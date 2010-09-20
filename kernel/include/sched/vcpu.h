@@ -38,6 +38,13 @@ typedef struct _replenishment {
   u64 t, b;
 } replenishment;
 
+struct _vcpu;
+typedef struct {
+  void (*update_replenishments) (struct _vcpu *, u64 tcur);
+  void (*end_timeslice) (struct _vcpu *, u64 delta);
+  void (*level_change) (struct _vcpu *, u64 tcur, u64 Tprev, u64 Tnext);
+} vcpu_hooks;
+
 /* Virtual CPU */
 typedef struct _vcpu
 {
@@ -45,6 +52,7 @@ typedef struct _vcpu
     struct {
       spinlock lock;
       vcpu_type type;
+      vcpu_hooks *hooks;
       struct _vcpu *next;       /* next vcpu in a queue */
       u16 state;
       u16 cpu;                  /* cpu affinity for vcpu */
