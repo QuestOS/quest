@@ -584,6 +584,8 @@ vcpu_schedule (void)
 #endif
       /* consider upper-bounding tdelta by QUANTUM ms? */
       u32 count = div_u64_u32_u32 (tdelta, tsc_lapic_factor);
+      if (count == 0)
+        count = 1;
       if (vcpu) {
         vcpu->prev_delta = tdelta;
         vcpu->prev_count = count;
