@@ -302,8 +302,6 @@ vcpu_rr_wakeup (task_id task)
 
 /* ************************************************** */
 
-#define FUDGE_FACTOR 0x40000LL
-
 DEF_PER_CPU (u64, pcpu_tprev);
 INIT_PER_CPU (pcpu_tprev) {
   percpu_write64 (pcpu_tprev, 0LL);
@@ -311,10 +309,6 @@ INIT_PER_CPU (pcpu_tprev) {
 DEF_PER_CPU (s64, pcpu_overhead);
 INIT_PER_CPU (pcpu_overhead) {
   percpu_write64 (pcpu_overhead, 0LL);
-}
-DEF_PER_CPU (u64, pcpu_overhead_fudge);
-INIT_PER_CPU (pcpu_overhead_fudge) {
-  percpu_write64 (pcpu_overhead_fudge, FUDGE_FACTOR);
 }
 DEF_PER_CPU (u64, pcpu_idle_time);
 INIT_PER_CPU (pcpu_idle_time) {
@@ -371,7 +365,6 @@ vcpu_dump_stats (void)
   vcpu *cur = percpu_read (vcpu_current);
 #endif
   s64 overhead = percpu_read64 (pcpu_overhead);
-  //u64 overhead_fudge = percpu_read64 (pcpu_overhead_fudge);
   u64 idle_time = percpu_read64 (pcpu_idle_time);
   u64 sum = idle_time;
   u32 stime = percpu_read (pcpu_sched_time);
@@ -480,7 +473,6 @@ vcpu_schedule (void)
   u64 tprev = percpu_read64 (pcpu_tprev);
   u64 tcur, tdelta, Tprev = 0, Tnext = 0;
   s64 overhead = percpu_read64 (pcpu_overhead);
-  u64 overhead_fudge = percpu_read64 (pcpu_overhead_fudge);
   bool timer_set = FALSE;
 
   RDTSC (tcur);
@@ -503,9 +495,7 @@ vcpu_schedule (void)
       u = cur->b;
       cur->sched_overhead = tdelta - cur->b;
       overhead = cur->sched_overhead;
-      //if (overhead > MIN_B) overhead_fudge += (overhead>>3);
       percpu_write64 (pcpu_overhead, overhead);
-      percpu_write64 (pcpu_overhead_fudge, overhead_fudge);
     } else
       u = tdelta;
 
