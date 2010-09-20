@@ -383,9 +383,9 @@ vcpu_dump_stats (void)
                      vcpu->pmc_total[0],
                      vcpu->pmc_total[1],
                      (vcpu == cur ? " (*)" : ""));
-      logger_printf ("  b=0x%llX overhead=0x%llX delta=0x%llX count=0x%X\n",
+      logger_printf ("  b=0x%llX overhead=0x%llX delta=0x%llX usage=0x%X\n",
                      vcpu->b, vcpu->sched_overhead, vcpu->prev_delta,
-                     vcpu->prev_count);
+                     vcpu->prev_usage);
     }
 #endif
     sum += vcpu->timestamps_counted;
@@ -588,16 +588,18 @@ iovcpu_job_wakeup (task_id job, u64 T)
   RDTSC (now);
 
   v->T = T;
-  if ((v->state == IO_VCPU_JOB_INCOMPLETE) && ((v->a + v->T) < now))
-    v->a = now - v->T;
+  if (v->state == IO_VCPU_JOB_INCOMPLETE && v->e < now)
+    v->e = now;
 
   u64 Cmax = div_u64_u32_u32 (T * v->Unum, v->Uden);
 
-  if (v->R == NULL) {
-    if (v->state != IO_VCPU_BUDGETED)
-      add_replenishment (v, Cmax);
+  if (v->r.t == 0) {
+    if (v->state != IO_VCPU_BUDGETED) {
+      v->r.t = v->e;
+      v->r.b = Cmax;
+    }
   } else {
-    v->R->b = Cmax;
+    v->r.b = Cmax;
   }
   v->state = IO_VCPU_BUDGETED;
   if (v->hooks->update_replenishments)
@@ -682,16 +684,9 @@ static vcpu_hooks main_vcpu_hooks = {
 static void
 io_vcpu_update_replenishments (vcpu *v, u64 tcur)
 {
-  replenishment **r, *temp;
-  for (r = &v->R; *r != NULL; r = &(*r)->next) {
-  do_r:
-    if ((*r)->t <= tcur) {
-      v->b += (*r)->b;          /* increase budget */
-      temp = *r;
-      *r = (*r)->next;
-      pow2_free ((u8 *) temp);
-      if (*r) goto do_r; else break;
-    }
+  if (v->r.t != 0 && v->r.t <= tcur) {
+    v->b += v->r.b;
+    v->r.t = 0;
   }
 }
 
@@ -714,9 +709,10 @@ io_vcpu_end_timeslice (vcpu *cur, u64 tdelta)
 
   cur->usage += tdelta;
   if (cur->state == IO_VCPU_JOB_COMPLETE || cur->b <= MIN_B) {
-    if (cur->R == NULL) {
-      cur->a += (u64) div_u64_u32_u32 (tsc_freq_msec * cur->Uden, cur->Unum);
-      add_replenishment (cur, div_u64_u32_u32 (cur->T * cur->Unum, cur->Uden));
+    if (cur->r.t == 0) {
+      cur->e += (u64) div_u64_u32_u32 (cur->usage * cur->Uden, cur->Unum);
+      cur->r.t = cur->e;
+      cur->r.b = div_u64_u32_u32 (cur->T * cur->Unum, cur->Uden);
     }
     cur->prev_usage = cur->usage;
     cur->usage = 0;

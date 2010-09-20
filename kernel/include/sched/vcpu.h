@@ -67,14 +67,14 @@ typedef struct _vcpu
       union {
         /* MAIN_VCPU */
         struct {
-          u64 a;
-          replenishment *R;         /* replenishment list */
+          u64 a;                /* activation time */
+          replenishment *R;     /* replenishment list */
         };
         /* IO_VCPU */
         struct {
-          u64 e;
-          replenishment *R;         /* replenishment list */
-          u32 Unum, Uden;           /* utilization (IO-VCPU) fraction */
+          u64 e;                /* eligibility time */
+          replenishment r;      /* replenishment */
+          u32 Unum, Uden;       /* utilization fraction */
         };
       };
 
