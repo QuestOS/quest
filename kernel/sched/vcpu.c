@@ -743,12 +743,15 @@ static vcpu_hooks *vcpu_hooks_table[] = {
 extern void
 vcpu_init (void)
 {
-  uint ecx;
-  cpuid (1, 0, NULL, NULL, &ecx, NULL);
+  uint eax, ecx;
 
-  logger_printf ("vcpu: init num_vcpus=%d num_cpus=%d tsc_deadline=%s\n",
+  cpuid (1, 0, NULL, NULL, &ecx, NULL);
+  cpuid (6, 0, &eax, NULL, NULL, NULL);
+
+  logger_printf ("vcpu: init num_vcpus=%d num_cpus=%d TSC_deadline=%s ARAT=%s\n",
                  NUM_VCPUS, mp_num_cpus,
-                 (ecx & (1 << 24)) ? "yes" : "no");
+                 (ecx & (1 << 24)) ? "yes" : "no",
+                 (eax & (1 << 2))  ? "yes" : "no");
 
   memset (vcpus, 0, sizeof(vcpus));
 
