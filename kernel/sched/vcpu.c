@@ -39,7 +39,7 @@
 #define DLOG(fmt,...) ;
 #endif
 
-u32 tsc_freq_msec, tsc_lapic_factor;
+u32 tsc_freq_msec;
 u64 vcpu_init_time;
 
 #define NUM_VCPUS 5
@@ -574,23 +574,14 @@ vcpu_schedule (void)
     /* set timer */
     if (tdelta > 0) {
       u64 o = tdelta;
-#if 1
-      if (overhead_fudge > tsc_lapic_factor) {
-        if (tdelta <= overhead_fudge + tsc_lapic_factor)
-          tdelta = tsc_lapic_factor;
-        else
-          tdelta -= overhead_fudge;
-      }
-#endif
       /* consider upper-bounding tdelta by QUANTUM ms? */
-      u32 count = div_u64_u32_u32 (tdelta, tsc_lapic_factor);
+      u32 count = (u32) div64_64 (tdelta * ((u64) cpu_bus_freq), tsc_freq);
       if (count == 0)
         count = 1;
       if (vcpu) {
         vcpu->prev_delta = tdelta;
         vcpu->prev_count = count;
       }
-      //if (cur) logger_printf (" (%llX, %llX) %llX / %X = %X\n", o, overhead_fudge, tdelta, tsc_lapic_factor, count);
       DLOG ("start_timer: count=0x%x", count);
       LAPIC_start_timer (count);
       timer_set = TRUE;
@@ -700,14 +691,7 @@ vcpu_init (void)
 
   RDTSC (vcpu_init_time);
   tsc_freq_msec = div_u64_u32_u32 (tsc_freq, 1000);
-  if (tsc_freq <= cpu_bus_freq)
-    /* workaround for bochs where this might hold true */
-    tsc_lapic_factor = 1;
-  else
-    tsc_lapic_factor = div_u64_u32_u32 (tsc_freq, cpu_bus_freq);
-  logger_printf ("vcpu: tsc_freq_msec=0x%x tsc_lapic_factor=0x%x\n",
-        tsc_freq_msec,
-        tsc_lapic_factor);
+  logger_printf ("vcpu: tsc_freq_msec=0x%X\n", tsc_freq_msec);
 
   /* distribute VCPUs across PCPUs */
   for (vcpu_i=0; vcpu_i<NUM_VCPUS; vcpu_i++) {
