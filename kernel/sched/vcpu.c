@@ -324,6 +324,10 @@ DEF_PER_CPU (u64, pcpu_idle_prev_tsc);
 INIT_PER_CPU (pcpu_idle_prev_tsc) {
   percpu_write64 (pcpu_idle_prev_tsc, 0LL);
 }
+DEF_PER_CPU (u32, pcpu_sched_time);
+INIT_PER_CPU (pcpu_sched_time) {
+  percpu_write (pcpu_sched_time, 0);
+}
 
 static void
 idle_time_begin ()
@@ -367,10 +371,12 @@ vcpu_dump_stats (void)
   vcpu *cur = percpu_read (vcpu_current);
 #endif
   s64 overhead = percpu_read64 (pcpu_overhead);
-  u64 overhead_fudge = percpu_read64 (pcpu_overhead_fudge);
+  //u64 overhead_fudge = percpu_read64 (pcpu_overhead_fudge);
   u64 idle_time = percpu_read64 (pcpu_idle_time);
   u64 sum = idle_time;
-  logger_printf ("vcpu_dump_stats overhead=0x%llX fudge=0x%llX\n", overhead, overhead_fudge);
+  u32 stime = percpu_read (pcpu_sched_time);
+
+  logger_printf ("vcpu_dump_stats overhead=0x%llX sched=0x%X\n", overhead, stime);
 #ifdef DUMP_STATS_VERBOSE
   logger_printf ("idle tsc=0x%llX%s\n", idle_time, (cur==NULL ? " (*)" : ""));
 #endif
@@ -611,6 +617,10 @@ vcpu_schedule (void)
 
   /* current time becomes previous time */
   percpu_write64 (pcpu_tprev, tcur);
+
+  /* measure schedule running time */
+  u64 now; RDTSC (now);
+  percpu_write (pcpu_sched_time, (u32) (now - tcur));
 
   /* switch to new task or continue running same task */
   if (str () == next)
