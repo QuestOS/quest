@@ -21,7 +21,7 @@
 #include "kernel.h"
 #include "util/cassert.h"
 
-#define VCPU_ALIGNMENT (LOCK_ALIGNMENT<<1)
+#define VCPU_ALIGNMENT (LOCK_ALIGNMENT<<2)
 
 typedef enum {
   MAIN_VCPU = 0, IO_VCPU
@@ -34,9 +34,18 @@ enum {
 };
 
 typedef struct _replenishment {
-  struct _replenishment *next;
   u64 t, b;
+  struct _replenishment *next;
 } replenishment;
+
+#define MAX_REPL 16
+typedef struct {
+  replenishment array[MAX_REPL];
+  replenishment *head;
+  u32 size;
+} repl_queue;
+void repl_queue_pop (repl_queue *Q);
+void repl_queue_add (repl_queue *Q, u64 b, u64 t);
 
 struct _vcpu;
 typedef struct {
@@ -44,6 +53,7 @@ typedef struct {
   u64  (*next_event) (struct _vcpu *);
   void (*end_timeslice) (struct _vcpu *, u64 delta);
   void (*level_change) (struct _vcpu *, u64 tcur, u64 Tprev, u64 Tnext);
+  void (*unblock) (struct _vcpu *);
 } vcpu_hooks;
 
 /* Virtual CPU */
@@ -71,6 +81,7 @@ typedef struct _vcpu
         struct {
           u64 a;                /* activation time */
           replenishment *R;     /* replenishment list */
+          repl_queue Q;
         } main;
         /* IO_VCPU */
         struct {

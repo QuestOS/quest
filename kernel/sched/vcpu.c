@@ -31,7 +31,9 @@
 #include "mem/pow2.h"
 
 //#define DEBUG_VCPU
-//#define DUMP_STATS_VERBOSE
+#define DUMP_STATS_VERBOSE
+#define STANOVICH
+#define CHECK_INVARIANTS
 
 #ifdef DEBUG_VCPU
 #define DLOG(fmt,...) DLOG_PREFIX("vcpu",fmt,##__VA_ARGS__)
@@ -299,6 +301,8 @@ vcpu_rr_wakeup (task_id task)
   /* put vcpu on pcpu queue (1st level) */
   vcpu_queue_append (percpu_pointer (vcpu->cpu, vcpu_queue), vcpu);
 
+  if (!vcpu->runnable && !vcpu->running && vcpu->hooks->unblock)
+    vcpu->hooks->unblock (vcpu);
   vcpu->runnable = TRUE;
 }
 
@@ -399,7 +403,7 @@ vcpu_dump_stats (void)
   for (i=0; i<NUM_VCPUS; i++) {
     vcpu *vcpu = &vcpus[i];
     res = compute_percentage (now, vcpu->timestamps_counted);
-    logger_printf (" vcpu%d=%d.%d%%", i, res >> 16, res & 0xFF);
+    logger_printf (" v%d=%d.%d%% %d", i, res >> 16, res & 0xFF, vcpu->main.Q.size);
   }
   logger_printf ("\n");
 }
@@ -439,10 +443,51 @@ check_activations (u64 tcur, u64 Tprev, u64 Tnext)
   }
 }
 
-/* runnable budget threshold */
-#define MIN_B 50
+/* ************************************************** */
 
-#define CHECK_INVARIANTS
+void
+repl_queue_pop (repl_queue *Q)
+{
+  if (Q->head) {
+    replenishment *r = Q->head->next;
+    Q->head->t = Q->head->b = 0;
+    Q->head->next = NULL;
+    Q->head = r;
+    Q->size--;
+  }
+}
+
+void
+repl_queue_add (repl_queue *Q, u64 b, u64 t)
+{
+  if (Q->size < MAX_REPL) {
+    replenishment *r = NULL, **rq;
+    int i;
+    for (i=0; i<MAX_REPL; i++) {
+      if (Q->array[i].t == 0) {
+        r = &Q->array[i];
+        break;
+      }
+    }
+    if (!r) panic ("Q->size < MAX_REPL but no free entry");
+    rq = &Q->head;
+    /* find insertion point */
+    while (*rq && (*rq)->t < t)
+      rq = &(*rq)->next;
+    /* insert */
+    r->next = *rq;
+    *rq = r;
+    r->t = t;
+    r->b = b;
+    Q->size++;
+  }
+}
+
+/* ************************************************** */
+
+/* runnable budget threshold */
+#define MIN_B 0
+
 static void
 check_run_invariants (void)
 {
@@ -466,6 +511,20 @@ check_run_invariants (void)
       for (q = queue; q; q = q->next) {
         if (q == v) panic ("vcpu not runnable is on queue");
       }
+    }
+    if (v->type == MAIN_VCPU) {
+#ifdef STANOVICH
+      if (v->main.Q.size >= MAX_REPL-1)
+        logger_printf ("vcpu %d has %d repls\n", i, v->main.Q.size);
+      u64 sum = 0;
+      replenishment *r;
+      for (r = v->main.Q.head; r != NULL; r = r->next)
+        sum += r->b;
+      if (sum != v->C) {
+        com1_printf ("v->C=0x%llX sum=0x%llX\n", v->C, sum);
+        panic ("vcpu replenishments out of whack");
+      }
+#endif
     }
   }
 }
@@ -666,14 +725,26 @@ iovcpu_job_completion (void)
 
 /* MAIN_VCPU */
 
+static inline s64
+capacity (vcpu *v)
+{
+  u64 now; RDTSC (now);
+  if (v->main.Q.head == NULL || v->main.Q.head->t > now)
+    return 0;
+  return (s64) v->main.Q.head->b - (s64) v->usage;
+}
+
+static void repl_merge (vcpu *);
+
 static void
 main_vcpu_update_replenishments (vcpu *v, u64 tcur)
 {
+#ifndef STANOVICH
   replenishment **r, *temp;
   for (r = &v->main.R; *r != NULL; r = &(*r)->next) {
   do_r:
     if ((*r)->t <= tcur) {
-      v->main.a = tcur;              /* set activation time */
+      v->main.a = tcur;         /* set activation time */
       v->b += (*r)->b;          /* increase budget */
       temp = *r;
       *r = (*r)->next;
@@ -681,11 +752,18 @@ main_vcpu_update_replenishments (vcpu *v, u64 tcur)
       if (*r) goto do_r; else break;
     }
   }
+#else
+  repl_merge (v);
+  s64 cap = capacity (v);
+  v->b = (cap > 0 ? cap : 0);
+  if (v->b == 0) v->usage = 0;
+#endif
 }
 
 static u64
 main_vcpu_next_event (vcpu *v)
 {
+#ifndef STANOVICH
   replenishment *r;
   u64 t = 0;
   for (r = v->main.R; r != NULL; r = r->next) {
@@ -694,6 +772,76 @@ main_vcpu_next_event (vcpu *v)
     }
   }
   return t;
+#else
+  replenishment *r;
+  u64 now; RDTSC (now);
+  for (r = v->main.Q.head; r != NULL; r = r->next) {
+    if (now < r->t)
+      return r->t;
+  }
+  return 0;
+#endif
+}
+
+static void
+repl_merge (vcpu *v)
+{
+  /* possibly merge */
+  while (v->main.Q.size > 1) {
+    u64 b = v->main.Q.head->b;
+    /* observation 3 */
+    if (v->main.Q.head->t + b >= v->main.Q.head->next->t) {
+      repl_queue_pop (&v->main.Q);
+      v->main.Q.head->b += b;
+    } else
+      break;
+  }
+}
+
+static void
+budget_check (vcpu *v)
+{
+  if (capacity (v) <= 0) {
+    while (v->main.Q.head->b <= v->usage) {
+      /* exhaust and reschedule the replenishment */
+      v->usage -= v->main.Q.head->b;
+      u64 b = v->main.Q.head->b, t = v->main.Q.head->t;
+      repl_queue_pop (&v->main.Q);
+      t += v->T;
+      repl_queue_add (&v->main.Q, b, t);
+    }
+    if (v->usage > 0) {
+      /* v->usage is the overrun amount */
+      v->main.Q.head->t += v->usage;
+      repl_merge (v);
+    }
+#if 0
+    if (capacity (v) == 0) {
+      /* S.Q.head.time > Now */
+      /* if not blocked then S.replenishment.enqueue (S.Q.head.time) */
+    }
+#endif
+    v->usage = 0;
+  }
+}
+
+static void
+split_check (vcpu *v)
+{
+  u64 now; RDTSC (now);
+  if (v->usage > 0 && v->main.Q.head->t <= now) {
+    u64 remnant = v->main.Q.head->b - v->usage;
+    if (v->main.Q.size == MAX_REPL) {
+      /* merge with next replenishment */
+      repl_queue_pop (&v->main.Q);
+      v->main.Q.head->b += remnant;
+    } else {
+      /* leave remnant as reduced replenishment */
+      v->main.Q.head->b = remnant;
+    }
+    repl_queue_add (&v->main.Q, v->usage, v->main.Q.head->t + v->T);
+    /* invariant: sum of replenishments remains the same */
+  }
 }
 
 /* invariant: sum of budget and pending replenishments must be equal
@@ -701,7 +849,8 @@ main_vcpu_next_event (vcpu *v)
 static void
 main_vcpu_end_timeslice (vcpu *cur, u64 tdelta)
 {
-  u64 u;
+#ifndef STANOVICH
+  u64 u = tdelta, adjust = 0;
   s64 overhead = percpu_read64 (pcpu_overhead);
 
   /* subtract from budget of current */
@@ -709,28 +858,92 @@ main_vcpu_end_timeslice (vcpu *cur, u64 tdelta)
     u = cur->b;
     cur->sched_overhead = tdelta - cur->b;
     overhead = cur->sched_overhead;
+    adjust = overhead;
     percpu_write64 (pcpu_overhead, overhead);
-  } else
-    u = tdelta;
+  }
 
+  cur->usage += tdelta;
   cur->b -= u;
+  if (cur->b <= MIN_B)
+    cur->usage = 0;
 
   /* schedule replenishment of used budget */
   add_replenishment (cur, u);
+#else
+  /* timeslice ends for one of 3 reasons: budget depletion,
+   * preemption, or blocking */
+
+  if (cur->b < tdelta) {
+    cur->sched_overhead = tdelta - cur->b;
+    percpu_write64 (pcpu_overhead, cur->sched_overhead);
+  }
+
+  cur->usage += tdelta;
+  budget_check (cur);
+  s64 cap = capacity (cur);
+  if (cap > 0) {
+    /* was preempted or blocked */
+    split_check (cur);
+    cur->b = cap;
+  } else {
+    /* budget was depleted */
+    cur->b = 0;
+    cur->prev_usage = cur->usage;
+    cur->usage = 0;
+  }
+#endif
 }
 
 static void
 main_vcpu_level_change (vcpu *v, u64 tcur, u64 Tprev, u64 Tnext)
 {
+#ifndef STANOVICH
   if (v->b > 0 && Tnext <= v->T && v->T < Tprev)
     v->main.a = tcur;
+#endif
+}
+
+static void
+unblock_check (vcpu *v)
+{
+  if (capacity (v) > 0) {
+    u64 now;
+    RDTSC (now);
+    v->main.Q.head->t = now;
+    /* merge replenishments using observation 3 */
+    while (v->main.Q.size > 1) {
+      u64 b = v->main.Q.head->b;
+      if (v->main.Q.head->next->t <= now + b - v->usage) {
+        repl_queue_pop (&v->main.Q);
+        v->main.Q.head->b += b;
+      } else
+        break;
+    }
+  } else {
+    /* S.replenishment.enqueue (S.Q.head.time) */
+  }
+}
+
+static void
+main_vcpu_unblock (vcpu *v)
+{
+#ifdef STANOVICH
+  unblock_check (v);
+#else
+  if (capacity (v) > 0) {
+    u64 now;
+    RDTSC (now);
+    v->main.a = now;
+  }
+#endif
 }
 
 static vcpu_hooks main_vcpu_hooks = {
   .update_replenishments = main_vcpu_update_replenishments,
   .next_event = main_vcpu_next_event,
   .end_timeslice = main_vcpu_end_timeslice,
-  .level_change = main_vcpu_level_change
+  .level_change = main_vcpu_level_change,
+  .unblock = main_vcpu_unblock
 };
 
 /* IO_VCPU */
@@ -753,7 +966,7 @@ io_vcpu_next_event (vcpu *v)
 static void
 io_vcpu_end_timeslice (vcpu *cur, u64 tdelta)
 {
-  u64 u;
+  u64 u = tdelta;
   s64 overhead = percpu_read64 (pcpu_overhead);
 
   /* subtract from budget of current */
@@ -762,8 +975,7 @@ io_vcpu_end_timeslice (vcpu *cur, u64 tdelta)
     cur->sched_overhead = tdelta - cur->b;
     overhead = cur->sched_overhead;
     percpu_write64 (pcpu_overhead, overhead);
-  } else
-    u = tdelta;
+  }
 
   cur->b -= u;
 
@@ -788,7 +1000,8 @@ static vcpu_hooks io_vcpu_hooks = {
   .update_replenishments = io_vcpu_update_replenishments,
   .next_event = io_vcpu_next_event,
   .end_timeslice = io_vcpu_end_timeslice,
-  .level_change = NULL
+  .level_change = NULL,
+  .unblock = NULL
 };
 
 /* ************************************************** */
@@ -830,8 +1043,13 @@ vcpu_init (void)
     if (cpu_i >= mp_num_cpus)
       cpu_i = 0;
     vcpu->quantum = div_u64_u32_u32 (tsc_freq, QUANTUM_HZ);
-    vcpu->C = vcpu->b = C * tsc_freq_msec;
+    vcpu->C = C * tsc_freq_msec;
     vcpu->T = T * tsc_freq_msec;
+#ifndef STANOVICH
+    vcpu->b = vcpu->C;
+#else
+    repl_queue_add (&vcpu->main.Q, vcpu->C, vcpu_init_time);
+#endif
     vcpu->type = type;
     vcpu->hooks = vcpu_hooks_table[type];
     logger_printf ("vcpu: %svcpu=%d pcpu=%d C=0x%llX T=0x%llX U=%d%%\n",
