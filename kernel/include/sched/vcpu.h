@@ -41,6 +41,7 @@ typedef struct _replenishment {
 struct _vcpu;
 typedef struct {
   void (*update_replenishments) (struct _vcpu *, u64 tcur);
+  u64  (*next_event) (struct _vcpu *);
   void (*end_timeslice) (struct _vcpu *, u64 delta);
   void (*level_change) (struct _vcpu *, u64 tcur, u64 Tprev, u64 Tnext);
 } vcpu_hooks;

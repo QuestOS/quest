@@ -506,12 +506,11 @@ vcpu_schedule (void)
       tdelta = 0;
     for (ptr = &queue; *ptr != NULL; ptr = &(*ptr)->next) {
       if (Tnext == 0 || (*ptr)->T <= Tnext) {
-        replenishment *r;
-        for (r = (*ptr)->main.R; r != NULL; r = r->next) {
-          if (tdelta == 0 || r->t - tcur < tdelta) {
-            tdelta = r->t - tcur;
-          }
-        }
+        u64 event = 0;
+        if ((*ptr)->hooks->next_event)
+          event = (*ptr)->hooks->next_event (*ptr);
+        if (event != 0 && (tdelta == 0 || event - tcur < tdelta))
+          tdelta = event - tcur;
       }
     }
 
@@ -645,6 +644,21 @@ main_vcpu_update_replenishments (vcpu *v, u64 tcur)
   }
 }
 
+static u64
+main_vcpu_next_event (vcpu *v)
+{
+  replenishment *r;
+  u64 t = 0;
+  for (r = v->main.R; r != NULL; r = r->next) {
+    if (t == 0 || r->t < t) {
+      t = r->t;
+    }
+  }
+  return t;
+}
+
+/* invariant: sum of budget and pending replenishments must be equal
+ * to C */
 static void
 main_vcpu_end_timeslice (vcpu *cur, u64 tdelta)
 {
@@ -675,6 +689,7 @@ main_vcpu_level_change (vcpu *v, u64 tcur, u64 Tprev, u64 Tnext)
 
 static vcpu_hooks main_vcpu_hooks = {
   .update_replenishments = main_vcpu_update_replenishments,
+  .next_event = main_vcpu_next_event,
   .end_timeslice = main_vcpu_end_timeslice,
   .level_change = main_vcpu_level_change
 };
@@ -688,6 +703,12 @@ io_vcpu_update_replenishments (vcpu *v, u64 tcur)
     v->b += v->io.r.b;
     v->io.r.t = 0;
   }
+}
+
+static u64
+io_vcpu_next_event (vcpu *v)
+{
+  return v->io.r.t;
 }
 
 static void
@@ -726,6 +747,7 @@ io_vcpu_end_timeslice (vcpu *cur, u64 tdelta)
 
 static vcpu_hooks io_vcpu_hooks = {
   .update_replenishments = io_vcpu_update_replenishments,
+  .next_event = io_vcpu_next_event,
   .end_timeslice = io_vcpu_end_timeslice,
   .level_change = NULL
 };
