@@ -712,8 +712,9 @@ io_vcpu_end_timeslice (vcpu *cur, u64 tdelta)
     if (cur->io.r.t == 0) {
       cur->io.e += (u64) div_u64_u32_u32 (cur->usage * cur->io.Uden, cur->io.Unum);
       cur->io.r.t = cur->io.e;
-      cur->io.r.b = div_u64_u32_u32 (cur->T * cur->io.Unum, cur->io.Uden);
-    }
+      cur->io.r.b = div_u64_u32_u32 (cur->T * cur->io.Unum, cur->io.Uden) - cur->b;
+    } else
+      cur->io.r.b -= cur->b;
     cur->prev_usage = cur->usage;
     cur->usage = 0;
     if (cur->state != IO_VCPU_JOB_COMPLETE)
