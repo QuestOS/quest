@@ -298,6 +298,8 @@ vcpu_rr_wakeup (task_id task)
 
   /* put vcpu on pcpu queue (1st level) */
   vcpu_queue_append (percpu_pointer (vcpu->cpu, vcpu_queue), vcpu);
+
+  vcpu->runnable = TRUE;
 }
 
 /* ************************************************** */
@@ -440,6 +442,34 @@ check_activations (u64 tcur, u64 Tprev, u64 Tnext)
 /* runnable budget threshold */
 #define MIN_B 50
 
+#define CHECK_INVARIANTS
+static void
+check_run_invariants (void)
+{
+  vcpu
+    *queue = percpu_read (vcpu_queue),
+    *cur   = percpu_read (vcpu_current),
+    *v, *q;
+  int i;
+  if (cur && !cur->running) panic ("current is not running");
+  for (i=0; i<NUM_VCPUS; i++) {
+    v = &vcpus[i];
+    if (v->running && v != cur)
+      panic ("vcpu running is not current");
+    if (v->runnable) {
+      for (q = queue; q; q = q->next) {
+        if (q == v) goto ok;
+      }
+      panic ("vcpu runnable is not on queue");
+    ok:;
+    } else {
+      for (q = queue; q; q = q->next) {
+        if (q == v) panic ("vcpu not runnable is on queue");
+      }
+    }
+  }
+}
+
 extern void
 vcpu_schedule (void)
 {
@@ -453,6 +483,10 @@ vcpu_schedule (void)
   u64 tprev = percpu_read64 (pcpu_tprev);
   u64 tcur, tdelta, Tprev = 0, Tnext = 0;
   bool timer_set = FALSE;
+
+#ifdef CHECK_INVARIANTS
+  check_run_invariants ();
+#endif
 
   RDTSC (tcur);
 
@@ -488,9 +522,11 @@ vcpu_schedule (void)
       /* internally schedule */
       vcpu_internal_schedule (vcpu);
       /* keep vcpu on queue if it has other runnable tasks */
-      if (vcpu->runqueue == 0)
+      if (vcpu->runqueue == 0) {
         /* otherwise, remove it */
         *vnext = (*vnext)->next;
+        vcpu->runnable = FALSE;
+      }
       next = vcpu->tr;
       percpu_write (vcpu_current, vcpu);
       percpu_write (vcpu_queue, queue);
@@ -557,6 +593,9 @@ vcpu_schedule (void)
   /* measure schedule running time */
   u64 now; RDTSC (now);
   percpu_write (pcpu_sched_time, (u32) (now - tcur));
+
+  if (cur) cur->running = FALSE;
+  if (vcpu) vcpu->running = TRUE;
 
   /* switch to new task or continue running same task */
   if (str () == next)

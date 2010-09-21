@@ -55,6 +55,7 @@ typedef struct _vcpu
       vcpu_type type;
       vcpu_hooks *hooks;
       struct _vcpu *next;       /* next vcpu in a queue */
+      bool runnable, running;
       u16 state;
       u16 cpu;                  /* cpu affinity for vcpu */
       u16 tr;                   /* task register */
