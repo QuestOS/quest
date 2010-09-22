@@ -363,6 +363,14 @@ compute_percentage (u64 overall, u64 usage)
   return (((u32) whole) << 16) | (u32) frac;
 }
 
+static int
+repl_list_size (replenishment *r)
+{
+  int n = 0;
+  for (; r != NULL; r = r->next) n++;
+  return n;
+}
+
 extern void
 vcpu_dump_stats (void)
 {
@@ -403,7 +411,14 @@ vcpu_dump_stats (void)
   for (i=0; i<NUM_VCPUS; i++) {
     vcpu *vcpu = &vcpus[i];
     res = compute_percentage (now, vcpu->timestamps_counted);
-    logger_printf (" v%d=%d.%d%% %d", i, res >> 16, res & 0xFF, vcpu->main.Q.size);
+    logger_printf (" v%d=%d.%d%% %d", i, res >> 16, res & 0xFF,
+                   vcpu->type != MAIN_VCPU ? 0 :
+#ifdef STANOVICH
+                   vcpu->main.Q.size
+#else
+                   repl_list_size (vcpu->main.R)
+#endif
+                   );
   }
   logger_printf ("\n");
 }
@@ -756,7 +771,6 @@ main_vcpu_update_replenishments (vcpu *v, u64 tcur)
   repl_merge (v);
   s64 cap = capacity (v);
   v->b = (cap > 0 ? cap : 0);
-  if (v->b == 0) v->usage = 0;
 #endif
 }
 
@@ -813,7 +827,14 @@ budget_check (vcpu *v)
     if (v->usage > 0) {
       /* v->usage is the overrun amount */
       v->main.Q.head->t += v->usage;
-      repl_merge (v);
+      /* possibly merge */
+      if (v->main.Q.size > 1) {
+        u64 b = v->main.Q.head->b;
+        if (v->main.Q.head->t + b >= v->main.Q.head->next->t) {
+          repl_queue_pop (&v->main.Q);
+          v->main.Q.head->b += b;
+        }
+      }
     }
 #if 0
     if (capacity (v) == 0) {
@@ -821,7 +842,6 @@ budget_check (vcpu *v)
       /* if not blocked then S.replenishment.enqueue (S.Q.head.time) */
     }
 #endif
-    v->usage = 0;
   }
 }
 
@@ -883,13 +903,14 @@ main_vcpu_end_timeslice (vcpu *cur, u64 tdelta)
   s64 cap = capacity (cur);
   if (cap > 0) {
     /* was preempted or blocked */
-    split_check (cur);
+    if (!cur->runnable)
+      /* blocked */
+      split_check (cur);
     cur->b = cap;
   } else {
     /* budget was depleted */
     cur->b = 0;
     cur->prev_usage = cur->usage;
-    cur->usage = 0;
   }
 #endif
 }
@@ -1045,19 +1066,23 @@ vcpu_init (void)
     vcpu->quantum = div_u64_u32_u32 (tsc_freq, QUANTUM_HZ);
     vcpu->C = C * tsc_freq_msec;
     vcpu->T = T * tsc_freq_msec;
-#ifndef STANOVICH
-    vcpu->b = vcpu->C;
-#else
-    repl_queue_add (&vcpu->main.Q, vcpu->C, vcpu_init_time);
-#endif
     vcpu->type = type;
+    if (vcpu->type == MAIN_VCPU) {
+#ifndef STANOVICH
+      vcpu->b = vcpu->C;
+#else
+      repl_queue_add (&vcpu->main.Q, vcpu->C, vcpu_init_time);
+#endif
+    } else if (vcpu->type == IO_VCPU) {
+      vcpu->io.Unum = C;
+      vcpu->io.Uden = T;
+      vcpu->b = vcpu->C;
+    }
     vcpu->hooks = vcpu_hooks_table[type];
     logger_printf ("vcpu: %svcpu=%d pcpu=%d C=0x%llX T=0x%llX U=%d%%\n",
                    type == IO_VCPU ? "IO " : "",
                    vcpu_i, vcpu->cpu, vcpu->C, vcpu->T, (C * 100) / T);
     if (type == IO_VCPU) {
-      vcpu->io.Unum = C;
-      vcpu->io.Uden = T;
     }
   }
 }
