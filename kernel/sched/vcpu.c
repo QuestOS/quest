@@ -44,17 +44,30 @@
 u32 tsc_freq_msec;
 u64 vcpu_init_time;
 
-#define NUM_VCPUS 5
-static vcpu vcpus[NUM_VCPUS] ALIGNED (VCPU_ALIGNMENT);
-static struct { vcpu_type type; u32 C, T; } init_params[NUM_VCPUS] = {
+struct vcpu_params { vcpu_type type; u32 C, T; };
+static struct vcpu_params init_params[] = {
   { MAIN_VCPU, 1, 3 },
   { MAIN_VCPU, 1, 5 },
   { MAIN_VCPU, 2, 10 },
   { MAIN_VCPU, 1, 50 },
   { IO_VCPU, 1, 50 },
 };
+#define NUM_VCPUS (sizeof (init_params) / sizeof (struct vcpu_params))
+static vcpu vcpus[NUM_VCPUS] ALIGNED (VCPU_ALIGNMENT);
 
-uint lowest_priority_vcpu = NUM_VCPUS - 2;
+extern uint
+lowest_priority_vcpu (void)
+{
+  uint i, n, T=0;
+  for (i=0; i<NUM_VCPUS; i++) {
+    if (init_params[i].type == MAIN_VCPU &&
+        ( T == 0 || init_params[i].T < T )) {
+      T = init_params[i].T;
+      n = i;
+    }
+  }
+  return n;
+}
 
 vcpu *
 vcpu_lookup (int i)
@@ -1014,6 +1027,17 @@ iovcpu_job_completion (void)
   cur->state = IO_VCPU_JOB_COMPLETE;
 
   schedule ();
+}
+
+extern uint
+select_iovcpu (u32 flags)
+{
+  uint i;
+  for (i=0; i<NUM_VCPUS; i++) {
+    if (init_params[i].type == IO_VCPU)
+      return i;
+  }
+  return lowest_priority_vcpu ();
 }
 
 static vcpu_hooks io_vcpu_hooks = {

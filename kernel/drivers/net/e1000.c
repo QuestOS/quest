@@ -875,7 +875,7 @@ e1000_init (void)
 
   e1000_bh_id = start_kernel_thread ((u32) e1000_bh_thread,
                                      (u32) &e1000_bh_stack[1023]);
-  lookup_TSS (e1000_bh_id)->cpu = 4;
+  lookup_TSS (e1000_bh_id)->cpu = select_iovcpu (0);
 
   return TRUE;
 
