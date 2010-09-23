@@ -453,17 +453,6 @@ update_replenishments (vcpu *q, u64 tcur)
   }
 }
 
-static void
-check_activations (u64 tcur, u64 Tprev, u64 Tnext)
-{
-  /* FIXME: make per-cpu */
-  int i;
-  for (i=0; i<NUM_VCPUS; i++) {
-    if (vcpus[i].hooks->level_change)
-      vcpus[i].hooks->level_change (&vcpus[i], tcur, Tprev, Tnext);
-  }
-}
-
 /* ************************************************** */
 
 void
@@ -643,8 +632,6 @@ vcpu_schedule (void)
       timer_set = TRUE;
     }
   }
-
-  check_activations (tcur, Tprev, Tnext);
 
   if (!timer_set)
     LAPIC_start_timer (cpu_bus_freq / QUANTUM_HZ);
@@ -850,7 +837,6 @@ static vcpu_hooks main_vcpu_hooks = {
   .update_replenishments = main_vcpu_update_replenishments,
   .next_event = main_vcpu_next_event,
   .end_timeslice = main_vcpu_end_timeslice,
-  .level_change = NULL,
   .unblock = main_vcpu_unblock
 };
 
@@ -966,7 +952,6 @@ static vcpu_hooks io_vcpu_hooks = {
   .update_replenishments = io_vcpu_update_replenishments,
   .next_event = io_vcpu_next_event,
   .end_timeslice = io_vcpu_end_timeslice,
-  .level_change = NULL,
   .unblock = io_vcpu_unblock
 };
 
