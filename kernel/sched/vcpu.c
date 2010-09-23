@@ -410,12 +410,15 @@ vcpu_dump_stats (void)
   u64 now; RDTSC (now);
   now -= vcpu_init_time;
   u32 res = compute_percentage (now, idle_time);
-  logger_printf ("summary: idle=%d.%d%%", res >> 16, res & 0xFF);
+  logger_printf ("summary: idle=%0d.%d%%", res >> 16, res & 0xFF);
   for (i=0; i<NUM_VCPUS; i++) {
     vcpu *vcpu = &vcpus[i];
     res = compute_percentage (now, vcpu->timestamps_counted);
-    logger_printf (" v%d=%d.%d%% %d", i, res >> 16, res & 0xFF,
+    logger_printf (" V%d=%02d.%d%% %d", i, res >> 16, res & 0xFF,
                    vcpu->type != MAIN_VCPU ? 0 : vcpu->main.Q.size);
+    if ((i % 4) == 3) {
+      logger_printf ("\n                   ");
+    }
   }
   logger_printf ("\n");
 }
