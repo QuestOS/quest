@@ -375,14 +375,6 @@ compute_percentage (u64 overall, u64 usage)
   return (((u32) whole) << 16) | (u32) frac;
 }
 
-static int
-repl_list_size (replenishment *r)
-{
-  int n = 0;
-  for (; r != NULL; r = r->next) n++;
-  return n;
-}
-
 extern void
 vcpu_dump_stats (void)
 {
@@ -427,30 +419,6 @@ vcpu_dump_stats (void)
                    vcpu->type != MAIN_VCPU ? 0 : vcpu->main.Q.size);
   }
   logger_printf ("\n");
-}
-
-static void
-add_replenishment (vcpu *v, u64 b)
-{
-  u64 t = v->main.a + v->T;
-  replenishment **r, *rnew;
-  pow2_alloc (sizeof (replenishment), (u8 **) &rnew);
-  if (!rnew)
-    panic ("add_replenishment: out of memory");
-  rnew->t = t;
-  rnew->b = b;
-  rnew->next = NULL;
-  for (r = &v->main.R; *r != NULL; r = &(*r)->next);
-  *r = rnew;
-}
-
-static void
-update_replenishments (vcpu *q, u64 tcur)
-{
-  for (; q != NULL; q = q->next) {
-    if (q->hooks->update_replenishments)
-      q->hooks->update_replenishments (q, tcur);
-  }
 }
 
 /* ************************************************** */
@@ -573,14 +541,16 @@ vcpu_schedule (void)
   } else idle_time_acnt_end ();
 
   if (queue) {
-    /* update replenishments */
-    update_replenishments (queue, tcur);
-
     /* pick highest priority vcpu with available budget */
     for (ptr = &queue; *ptr != NULL; ptr = &(*ptr)->next) {
-      if ((*ptr)->b > MIN_B && (Tnext == 0 || (*ptr)->T < Tnext)) {
-        Tnext = (*ptr)->T;
-        vnext = ptr;
+      if (Tnext == 0 || (*ptr)->T < Tnext) {
+        /* update replenishments to refresh budget */
+        if ((*ptr)->hooks->update_replenishments)
+          (*ptr)->hooks->update_replenishments (*ptr, tcur);
+        if ((*ptr)->b > 0) {
+          Tnext = (*ptr)->T;
+          vnext = ptr;
+        }
       }
     }
 
