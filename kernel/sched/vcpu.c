@@ -59,8 +59,7 @@ lowest_priority_vcpu (void)
 {
   uint i, n, T=0;
   for (i=0; i<NUM_VCPUS; i++) {
-    if (init_params[i].type == MAIN_VCPU &&
-        ( T == 0 || init_params[i].T < T )) {
+    if (init_params[i].type == MAIN_VCPU && init_params[i].T >= T) {
       T = init_params[i].T;
       n = i;
     }
@@ -747,8 +746,6 @@ split_check (vcpu *v)
   }
 }
 
-/* invariant: sum of budget and pending replenishments must be equal
- * to C */
 static void
 main_vcpu_end_timeslice (vcpu *cur, u64 tdelta)
 {
