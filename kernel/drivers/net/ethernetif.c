@@ -591,8 +591,8 @@ net_init(void)
   net_tmr_pid = start_kernel_thread ((uint) net_tmr_thread,
                                      (uint) &net_tmr_stack[1023]);
 #if QUEST_SCHED==vcpu
-  uint lowest_priority_vcpu (void);
-  lookup_TSS (net_tmr_pid)->cpu = lowest_priority_vcpu ();
+  uint select_iovcpu (u32);
+  lookup_TSS (net_tmr_pid)->cpu = select_iovcpu (0);
 #endif
 
 #ifdef GDBSTUB_TCP
