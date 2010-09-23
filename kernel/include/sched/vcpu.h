@@ -27,18 +27,12 @@ typedef enum {
   MAIN_VCPU = 0, IO_VCPU
 } vcpu_type;
 
-enum {
-  IO_VCPU_JOB_INCOMPLETE=0,
-  IO_VCPU_JOB_COMPLETE=1,
-  IO_VCPU_BUDGETED=2
-};
-
 typedef struct _replenishment {
   u64 t, b;
   struct _replenishment *next;
 } replenishment;
 
-#define MAX_REPL 16
+#define MAX_REPL 8
 typedef struct {
   replenishment array[MAX_REPL];
   replenishment *head;
@@ -66,7 +60,6 @@ typedef struct _vcpu
       vcpu_hooks *hooks;
       struct _vcpu *next;       /* next vcpu in a queue */
       bool runnable, running;
-      u16 state;
       u16 cpu;                  /* cpu affinity for vcpu */
       u16 tr;                   /* task register */
       u16 runqueue;             /* per-VCPU runqueue */
@@ -88,6 +81,7 @@ typedef struct _vcpu
           u64 e;                /* eligibility time */
           replenishment r;      /* replenishment */
           u32 Unum, Uden;       /* utilization fraction */
+          bool budgeted;
         } io;
       };
 

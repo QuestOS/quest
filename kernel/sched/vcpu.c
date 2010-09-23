@@ -962,7 +962,7 @@ io_vcpu_end_timeslice (vcpu *cur, u64 tdelta)
   cur->b -= u;
 
   cur->usage += tdelta;
-  if (cur->state == IO_VCPU_JOB_COMPLETE || cur->b <= MIN_B) {
+  if (!cur->runnable || cur->b <= MIN_B) {
     cur->io.e += (u64) div_u64_u32_u32 (cur->usage * cur->io.Uden, cur->io.Unum);
     if (cur->io.r.t == 0) {
       cur->io.r.t = cur->io.e;
@@ -972,60 +972,56 @@ io_vcpu_end_timeslice (vcpu *cur, u64 tdelta)
     }
     cur->prev_usage = cur->usage;
     cur->usage = 0;
-    if (cur->state != IO_VCPU_JOB_COMPLETE)
+    if (cur->runnable)
       cur->b = 0;
-    if (cur->state == IO_VCPU_JOB_COMPLETE)
-      cur->state = IO_VCPU_JOB_INCOMPLETE;
+    else
+      cur->io.budgeted = FALSE;
   }
 }
 
 extern void
-iovcpu_job_wakeup (task_id job, u64 T)
+io_vcpu_unblock (vcpu *v)
 {
-  quest_tss *tssp = lookup_TSS (job);
-  vcpu *v, *cur = percpu_read (vcpu_current);
+  vcpu *cur = percpu_read (vcpu_current);
   u64 now;
 
-  wakeup (job);
-  v = vcpu_lookup (tssp->cpu);
-  if (v->type != IO_VCPU)
-    return;
   RDTSC (now);
 
-  v->T = T;
-  if (v->state == IO_VCPU_JOB_INCOMPLETE && v->io.e < now)
+  if (!v->io.budgeted && v->io.e < now)
     v->io.e = now;
 
-  u64 Cmax = div_u64_u32_u32 (T * v->io.Unum, v->io.Uden);
+  u64 Cmax = div_u64_u32_u32 (v->T * v->io.Unum, v->io.Uden);
 
   if (v->io.r.t == 0) {
-    if (v->state != IO_VCPU_BUDGETED) {
+    if (!v->io.budgeted) {
       v->io.r.t = v->io.e;
       v->io.r.b = Cmax;
     }
   } else {
     v->io.r.b = Cmax;
   }
-  v->state = IO_VCPU_BUDGETED;
+  v->io.budgeted = TRUE;
   if (v->hooks->update_replenishments)
     v->hooks->update_replenishments (v, now);
 
-  if (v->b > MIN_B && (cur == NULL || cur->T > T))
+  if (v->b > MIN_B && (cur == NULL || cur->T > v->T))
     LAPIC_start_timer (1);
+}
+
+extern void
+iovcpu_job_wakeup (task_id job, u64 T)
+{
+  quest_tss *tssp = lookup_TSS (job);
+  vcpu *v = vcpu_lookup (tssp->cpu);
+  if (v->type != IO_VCPU)
+    return;
+  v->T = T;
+  wakeup (job);
 }
 
 extern void
 iovcpu_job_completion (void)
 {
-  vcpu *cur = percpu_read (vcpu_current);
-
-  if (cur->type != IO_VCPU) {
-    schedule ();
-    return;
-  }
-
-  cur->state = IO_VCPU_JOB_COMPLETE;
-
   schedule ();
 }
 
@@ -1045,7 +1041,7 @@ static vcpu_hooks io_vcpu_hooks = {
   .next_event = io_vcpu_next_event,
   .end_timeslice = io_vcpu_end_timeslice,
   .level_change = NULL,
-  .unblock = NULL
+  .unblock = io_vcpu_unblock
 };
 
 /* ************************************************** */
