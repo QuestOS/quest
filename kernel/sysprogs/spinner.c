@@ -23,10 +23,14 @@ void
 child (int idx)
 {
   unsigned long i = 0;
-
+  char ch;
+  if (idx <= 9)
+    ch = idx + '0';
+  else
+    ch = (idx - 10) + 'A';
   for (;;) {
     if (!(i & 0xFFFFF)) {
-      putchar (idx + '0');
+      putchar (ch);
     }
     i++;
   }
