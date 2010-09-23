@@ -2,6 +2,7 @@
 \documentclass{article}
 \usepackage{amsmath,proof,amsthm,listings,algorithm}
 \usepackage[noend]{algorithmic}
+\renewcommand\algorithmiccomment[1]{ {\tt /*} #1 {\tt */}}
 \newcommand\paren[1]{\left( {#1} \right)}
 \newcommand\set[1]{\left\{ {#1} \right\}}
 \newcommand\len[1]{\left| {#1} \right|}
@@ -309,20 +310,20 @@ Transition~\ref{vcpu:w2} indicates idempotency of task {\tt wakeup}.
 %\end{lstlisting}
 
 A VCPU $V$, for the purposes of this algorithm, consists of budget
-$V_b$, period $V_T$, replenishments $V_R$, and most recent activation
-time $V_a$.  Assume $\text{IDLE}_T=\infty$.  IO-VCPUs have eligibility
-time $V_e$, utilization $V_U$, and a notion of status being one of:
-incomplete, complete, or budgeted.
+$V_b$, period $V_T$, replenishments $V_R$, current usage $V_u$, and
+most recent activation time $V_a$.  Assume $\text{IDLE}_T=\infty$.
+IO-VCPUs have eligibility time $V_e$, utilization $V_U$, a single
+replenishment $V_r$, and boolean status of ``budgeted''.  $C_{max}$ is
+defined as $V_T\cdot V_U$ for a given IO-VCPU.  A replenishment $r$ is
+a pair consisting of a time $r_t$ and some amount of budget $r_b$.
 
-Algorithm~\ref{alg:vcpuschedule} is the scheduler, invoked
-periodically or to switch to the next runnable VCPU.
-Algorithm~\ref{alg:iovcpuwakeup} is meant to be used when waking IO
-tasks (such as bottom halves) that are doing work on behalf of another
-VCPU.  Algorithm~\ref{alg:iovcpucomplete} is invoked by an IO task
-when it is finished with the job.
+The scheduler relies on four VCPU-specific functions: {\tt
+  end-of-timeslice}, {\tt update-budget}, {\tt next-event}, and {\tt
+  unblock}.  The first three are used by algorithm~\ref{alg:schedule}.
+The wakeup routine invokes {\tt unblock}.
 
 \begin{algorithm}
-  \caption{\tt schedule}\label{alg:vcpuschedule}
+  \caption{\tt schedule}\label{alg:schedule}
   \begin{algorithmic}[1]
     \REQUIRE $V$ is current VCPU.
     \REQUIRE $\bar V$ is set of runnable VCPUs.
@@ -330,44 +331,30 @@ when it is finished with the job.
     \REQUIRE $t_{prev}$ is previous time of scheduling.
 
     \STATE Let $\Delta t=t_{cur}-t_{prev}$ and let $T_{prev}=V_T$.
-    \STATE Deduct $\Delta t$ from current VCPU budget $V_b$.
-    \IF{$V$ is IO-VCPU}
-    \IF{$V$ completed job \OR exhausted budget}
-    \IF{$V_R=\emptyset$}
-    \STATE Set $V_e:=V_e+u/V_U$ where $u$ is the amount of budget consumed.
-    \STATE Post replenishment event on VCPU $V$ for $V_T\cdot V_U$ budget at time $V_e$.
-    \ENDIF
-    \IF{$V$ completed job}\STATE Set $V$ to status ``incomplete''.\ENDIF
-    \ENDIF
-    \ELSE
-    \STATE Post replenishment event on VCPU $V$ for $\Delta t$ budget at time $V_a+V_T$.
+    \STATE Invoke {\tt end-of-timeslice} on $V$ with $\Delta t$.
 
+    \STATE Find $V_{next}\in\bar V$ with the highest priority and
+    non-zero budget.  Invoke {\tt update-budget} on each VCPU you 
+    consider before checking its budget.
+
+    \IF{there is no satisfactory $V_{next}$}
+    \STATE Enter idle mode and go to step~\ref{sched:repltimer}.
     \ENDIF
-    \FOR[{Apply replenishments}]{each VCPU $v\in\bar V$}
-    \FOR{each replenishment $(t,b)\in v_R$}
-    \IF{$t\leq t_{cur}$}
-    \STATE add $b$ to $v_b$
-    \IF{$v$ is \NOT IO-VCPU}\STATE set $v_a:=t_{cur}$.\ENDIF
-    \ENDIF
-    \ENDFOR
-    \ENDFOR
-    \STATE Select $V_{next}\in\bar V$ with the highest priority and
-    non-zero budget.
+
     \STATE Let $T_{next}$ be the period of $V_{next}$.
-    \IF{there is no satisfactory $V_{next}$} \STATE enter idle mode
-    and go to step~\ref{sched:repltimer}.\ENDIF
+
     \STATE Internally schedule $V_{next}$.
-    \IF{$V_{next}$ has empty runqueue}\STATE let $\bar V'=\bar
-    V\setminus\set{V_{next}}$\ELSE\STATE let $\bar V'=\bar V$.\ENDIF
-    \STATE Initially let $\Delta t'$ be equal to the budget of
-    $V_{next}$.
+    \IF{$V_{next}$ has empty runqueue}
+    \STATE Let $\bar V'=\bar V\setminus\set{V_{next}}$
+    \STATE $V_{next}$ is no longer runnable.
+    \ELSE
+    \STATE Let $\bar V'=\bar V$.
+    \ENDIF
+
+    \STATE Initially let $\Delta t'$ be equal to the budget of $V_{next}$.
     \FOR{\label{sched:repltimer}each VCPU $v\in\bar V$ with higher priority than $V_{next}$}
-    \FOR{each replenishment $(t,b)\in v_R$}
-    \IF{$t < \Delta t'$}\STATE set $\Delta t':= t - t_{cur}$\ENDIF
-    \ENDFOR
-    \ENDFOR
-    \FOR[Check for activations]{every non-IO VCPU $v$ on this PCPU}
-    \IF{$v_b>0$ \AND $T_{next}\leq v_T < T_{prev}$}\STATE set $v_a:=t_{cur}$.\ENDIF
+    \STATE Let $t_e$ be the result of {\tt next-event} on $v$.
+    \IF{$t_e$ is valid \AND $t_e-t_{cur}<\Delta t'$}\STATE Set $\Delta t':=t_e-t_{cur}$.\ENDIF
     \ENDFOR
     \STATE Set timer to go off after $\Delta t'$ has elapsed.
     \STATE Set $t_{prev}:=t_{cur}$ for next time.
@@ -377,29 +364,62 @@ when it is finished with the job.
 \end{algorithm}
 
 \begin{algorithm}
-  \caption{\tt IO-VCPU-wakeup}\label{alg:iovcpuwakeup}
+  \caption{\tt MAIN-VCPU-end-of-timeslice}\label{alg:vcpu_eot}    
   \begin{algorithmic}[1]
-    \REQUIRE Handle of IO task $\tau$ to be woken.
-    \REQUIRE Main VCPU $M$ associated with IO task.
+    \REQUIRE VCPU $V$
+    \REQUIRE Time interval consumed $\Delta t$
+    \STATE Set $V_u:=V_u+\Delta t$.
+    \STATE Invoke {\tt budget-check} on $V$.
+    \IF[Blocked or preempted]{$capacity(V)>0$}
+    \IF[Blocked]{$V$ is \NOT runnable}
+    \STATE Invoke {\tt split-check} on $V$.
+    \ENDIF
+    \STATE Set $V_b:=capacity(V)$.
+    \ELSE
+    \STATE Set $V_b:=0$.
+    \ENDIF
+  \end{algorithmic}
+\end{algorithm}
+
+\begin{algorithm}
+  \caption{\tt MAIN-VCPU-update-budget}\label{alg:vcpu_upbudg}
+  \begin{algorithmic}[1]
+    \REQUIRE VCPU $V$
+    \REQUIRE Current time $t_{cur}$
+    \STATE Set $V_b:=max\{capacity(V), 0\}$.
+  \end{algorithmic}
+\end{algorithm}
+
+\begin{algorithm}
+  \caption{\tt MAIN-VCPU-next-event}\label{alg:vcpu_nextevent}
+  \begin{algorithmic}[1]
+    \REQUIRE VCPU $V$
+    \REQUIRE Current time $t_{cur}$
+    \RETURN $\min\{r_t \mid r\in V_R\wedge t_{cur}<r_t\}$ \OR ``No event.''
+  \end{algorithmic}
+\end{algorithm}
+
+\begin{algorithm}
+  \caption{\tt IO-VCPU-unblock}\label{alg:iovcpu_unblock}
+  \begin{algorithmic}[1]
+    \REQUIRE IO VCPU $V$ associated with IO task.
+    \REQUIRE Main VCPU $M$ waiting for result of IO task.
     \REQUIRE $t_{cur}$ is current time.
-    \STATE Invoke {\tt wakeup} on $\tau$
-    \STATE Let $V$ be the IO-VCPU $V_{\tau}$ of task $\tau$.
     \IF{$M_T<V_T$ \OR $V$ is \NOT running}
     \STATE Set $V_T:=M_T$.
     \ENDIF
     \IF{$V$ is \NOT running \AND $V_e<t_{cur}$}
     \STATE Set $V_e:=t_{cur}$.\COMMENT{IO-VCPU has been quiescent}
     \ENDIF
-    \STATE Let $C_{max}$ be $V_T\cdot V_U$.
     \IF{$V_R=\emptyset$}
-    \IF{$V$ has not been budgeted}
+    \IF{$V$ is \NOT ``budgeted''}
     \STATE Post replenishment on $V$ for $C_{max}$ budget at time $V_e$.
     \ENDIF
     \ELSE
     \STATE There is $V_R=\{r\}$, set $r_b:=C_{max}$.
     \ENDIF
-    \STATE $V$ now has status ``budgeted''.
-    \STATE Apply any pending replenishments on $V$.
+    \STATE Set $V$ as ``budgeted.''
+    \STATE Invoke algorithm~\ref{alg:iovcpu_upbudg} {\tt update-budget} on $V$.
     \REQUIRE $CUR$ is currently running VCPU.
     \IF{$V_b>0$ \AND ($CUR$ is idle \OR $CUR_T>V_T$)}
     \STATE Preempt and invoke scheduler.
@@ -408,10 +428,54 @@ when it is finished with the job.
 \end{algorithm}
 
 \begin{algorithm}
-  \caption{\tt IO-VCPU-job-complete}\label{alg:iovcpucomplete}
+  \caption{\tt IO-VCPU-end-of-timeslice}\label{alg:iovcpu_eot}
   \begin{algorithmic}[1]
-    \STATE Set IO-VCPU to status ``complete''.
-    \STATE Invoke scheduler.
+    \REQUIRE VCPU $V$
+    \REQUIRE Time interval consumed $\Delta t$
+    \STATE Set $V_b:=\max\{0,V_b-\Delta t\}$.
+    \STATE Set $V_u:=V_u+\Delta t$.
+    \IF[Blocked or budget exhausted]{$V$ is \NOT runnable \OR $V_b=0$}
+    \STATE Set $V_e:=V_e+V_u/V_U$.
+    \IF{$V_r$ is unused}
+    \STATE Set $V_r:=r$ where $r_t=V_e$ and $r_b=C_{max}$.
+    \ELSE
+    \STATE Set $V_{r_t}:=V_e$.
+    \ENDIF
+    \STATE Set $V_u:=0$.
+    \IF{$V$ is runnable}
+    \STATE Set $V_b:=0$.
+    \ELSE
+    \STATE Set $V$ as \NOT ``budgeted.''
+    \ENDIF
+    \ENDIF
+    \ENSURE $0\leq V_b\leq C_{max}$
   \end{algorithmic}
 \end{algorithm}
+
+\begin{algorithm}
+  \caption{\tt IO-VCPU-update-budget}\label{alg:iovcpu_upbudg}
+  \begin{algorithmic}[1]
+    \REQUIRE VCPU $V$
+    \REQUIRE Current time $t_{cur}$
+    \IF{$V_r$ is valid \AND $V_{r_t}\leq t_{cur}$}
+    \STATE Set $V_b:=V_{r_b}$.
+    \STATE Invalidate $V_r$.
+    \ENDIF
+    \ENSURE $0\leq V_b\leq C_{max}$
+  \end{algorithmic}
+\end{algorithm}
+
+\begin{algorithm}
+  \caption{\tt IO-VCPU-next-event}\label{alg:iovcpu_nextevent}
+  \begin{algorithmic}[1]
+    \REQUIRE VCPU $V$
+    \REQUIRE Current time $t_{cur}$
+    \IF{$V_r$ is valid \AND $t_{cur}<V_{r_t}$}
+    \RETURN $V_{r_t}$.
+    \ELSE
+    \RETURN No event.
+    \ENDIF
+  \end{algorithmic}
+\end{algorithm}
+
 \end{document}
