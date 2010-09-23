@@ -31,8 +31,8 @@
 #include "mem/pow2.h"
 
 //#define DEBUG_VCPU
-#define DUMP_STATS_VERBOSE
-#define CHECK_INVARIANTS
+//#define DUMP_STATS_VERBOSE
+//#define CHECK_INVARIANTS
 
 #ifdef DEBUG_VCPU
 #define DLOG(fmt,...) DLOG_PREFIX("vcpu",fmt,##__VA_ARGS__)
@@ -57,7 +57,7 @@ static vcpu vcpus[NUM_VCPUS] ALIGNED (VCPU_ALIGNMENT);
 extern uint
 lowest_priority_vcpu (void)
 {
-  uint i, n, T=0;
+  uint i, n=0, T=0;
   for (i=0; i<NUM_VCPUS; i++) {
     if (init_params[i].type == MAIN_VCPU && init_params[i].T >= T) {
       T = init_params[i].T;
@@ -410,14 +410,14 @@ vcpu_dump_stats (void)
   u64 now; RDTSC (now);
   now -= vcpu_init_time;
   u32 res = compute_percentage (now, idle_time);
-  logger_printf ("summary: idle=%0d.%d%%", res >> 16, res & 0xFF);
+  logger_printf (" idle=%02d.%d\n", res >> 16, res & 0xFF);
   for (i=0; i<NUM_VCPUS; i++) {
     vcpu *vcpu = &vcpus[i];
     res = compute_percentage (now, vcpu->timestamps_counted);
-    logger_printf (" V%d=%02d.%d%% %d", i, res >> 16, res & 0xFF,
+    logger_printf (" V%02d=%02d.%d %d", i, res >> 16, res & 0xFF,
                    vcpu->type != MAIN_VCPU ? 0 : vcpu->main.Q.size);
     if ((i % 4) == 3) {
-      logger_printf ("\n                   ");
+      logger_printf ("\n");
     }
   }
   logger_printf ("\n");
@@ -465,9 +465,7 @@ repl_queue_add (repl_queue *Q, u64 b, u64 t)
 
 /* ************************************************** */
 
-/* runnable budget threshold */
-#define MIN_B 0
-
+#ifdef CHECK_INVARIANTS
 static void
 check_run_invariants (void)
 {
@@ -506,6 +504,7 @@ check_run_invariants (void)
     }
   }
 }
+#endif
 
 extern void
 vcpu_schedule (void)
@@ -844,7 +843,7 @@ io_vcpu_end_timeslice (vcpu *cur, u64 tdelta)
   cur->b -= u;
 
   cur->usage += tdelta;
-  if (!cur->runnable || cur->b <= MIN_B) {
+  if (!cur->runnable || cur->b <= 0) {
     cur->io.e += (u64) div_u64_u32_u32 (cur->usage * cur->io.Uden, cur->io.Unum);
     if (cur->io.r.t == 0) {
       cur->io.r.t = cur->io.e;
@@ -886,7 +885,7 @@ io_vcpu_unblock (vcpu *v)
   if (v->hooks->update_replenishments)
     v->hooks->update_replenishments (v, now);
 
-  if (v->b > MIN_B && (cur == NULL || cur->T > v->T))
+  if (v->b > 0 && (cur == NULL || cur->T > v->T))
     LAPIC_start_timer (1);
 }
 
