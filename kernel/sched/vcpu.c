@@ -685,11 +685,13 @@ repl_merge (vcpu *v)
 {
   /* possibly merge */
   while (v->main.Q.size > 1) {
+    u64 t = v->main.Q.head->t;
     u64 b = v->main.Q.head->b;
     /* observation 3 */
-    if (v->main.Q.head->t + b >= v->main.Q.head->next->t) {
+    if (t + b >= v->main.Q.head->next->t) {
       repl_queue_pop (&v->main.Q);
       v->main.Q.head->b += b;
+      v->main.Q.head->t = t;
     } else
       break;
   }
@@ -712,10 +714,12 @@ budget_check (vcpu *v)
       v->main.Q.head->t += v->usage;
       /* possibly merge */
       if (v->main.Q.size > 1) {
+        u64 t = v->main.Q.head->t;
         u64 b = v->main.Q.head->b;
-        if (v->main.Q.head->t + b >= v->main.Q.head->next->t) {
+        if (t + b >= v->main.Q.head->next->t) {
           repl_queue_pop (&v->main.Q);
           v->main.Q.head->b += b;
+          v->main.Q.head->t = t;
         }
       }
     }
@@ -788,6 +792,7 @@ unblock_check (vcpu *v)
       if (v->main.Q.head->next->t <= now + b - v->usage) {
         repl_queue_pop (&v->main.Q);
         v->main.Q.head->b += b;
+        v->main.Q.head->t = now;
       } else
         break;
     }
