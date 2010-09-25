@@ -765,12 +765,13 @@ main_vcpu_end_timeslice (vcpu *cur, u64 tdelta)
 
   cur->usage += tdelta;
   budget_check (cur);
+  if (!cur->runnable)
+    /* blocked */
+    split_check (cur);
+
   s64 cap = capacity (cur);
   if (cap > 0) {
     /* was preempted or blocked */
-    if (!cur->runnable)
-      /* blocked */
-      split_check (cur);
     cur->b = cap;
   } else {
     /* budget was depleted */
