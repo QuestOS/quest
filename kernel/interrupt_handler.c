@@ -832,18 +832,22 @@ _switch_to (uint32 pid)
 int
 _open (char *pathname, int flags)
 {
-
-  return (vfs_dir (pathname));
-
+  lock_kernel ();
+  logger_printf ("_open (\"%s\", 0x%x)\n", pathname, flags);
+  int res = vfs_dir (pathname);
+  unlock_kernel ();
+  return res;
 }
 
 /* Syscall: read --??-- proess-global file handle */
 int
 _read (char *pathname, void *buf, int count)
 {
-
-  return (vfs_read (buf, count));
-
+  lock_kernel ();
+  logger_printf ("_read (\"%s\", %p, 0x%x)\n", pathname, buf, count);
+  int res = vfs_read (buf, count);
+  unlock_kernel ();
+  return res;
 }
 
 /* Syscall: uname */
