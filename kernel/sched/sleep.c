@@ -16,6 +16,7 @@
  */
 
 #include "arch/i386.h"
+#include "arch/i386-div64.h"
 #include "kernel.h"
 #include "smp/smp.h"
 #include "smp/apic.h"
@@ -38,17 +39,12 @@ extern uint64 tsc_freq;         /* timestamp counter frequency */
 static inline uint64
 compute_finish (uint32 usec)
 {
-  uint64 f;
-  uint32 ticks, f_hi, f_lo;
+  uint64 ticks;
   uint64 start;
-  uint32 divisor = 1000000;
 
   RDTSC (start);
 
-  f = tsc_freq * usec;
-  f_hi = (uint32) (f >> 32);
-  f_lo = (uint32) (f & 0xFFFFFFFF);
-  asm volatile ("div %1":"=a" (ticks):"r" (divisor), "a" (f_lo), "d" (f_hi));
+  ticks = div64_64 (tsc_freq * (u64) usec, 1000000LL);
 
   return start + ticks;
 }
@@ -61,9 +57,12 @@ sched_usleep (uint32 usec)
     task_id sel;
     quest_tss *tssp;
     uint64 finish = compute_finish (usec);
-
+#ifdef DEBUG_SCHED_SLEEP
+    u64 now; RDTSC (now);
+#endif
     sel = str ();
-    DLOG ("task 0x%x sleeping for %d usec", sel, usec);
+    DLOG ("task 0x%x sleeping for %d usec (0x%llX -> 0x%llX)",
+          sel, usec, now, finish);
     tssp = lookup_TSS (sel);
     tssp->time = finish;
     queue_append (&sleepqueue, sel);
@@ -104,12 +103,13 @@ process_sleepqueue (void)
 
   q = &sleepqueue;
   tssp = lookup_TSS (sleepqueue);
+  DLOG ("process_sleepqueue 0x%llX", now);
   for (;;) {
     /* examine finish time of task */
     next = tssp->next;
 
     if (tssp->time <= now) {
-      DLOG ("waking task 0x%x", *q);
+      DLOG ("waking task 0x%x (0x%llX <= 0x%llX)", *q, tssp->time, now);
       /* time to wake-up */
       wakeup (*q);
       /* remove from sleepqueue */
