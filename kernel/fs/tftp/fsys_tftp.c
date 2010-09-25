@@ -123,19 +123,27 @@ send (uint8 *buf, uint32 len)
 
   /* assume gateway has TFTP server */
   server_ip.addr = server_if->gw.addr;
-  if (server_ip.addr == 0) return -1;
+  if (server_ip.addr == 0) {
+    DLOG ("no server_ip");
+    return -1;
+  }
 
   p = pbuf_alloc (PBUF_TRANSPORT, len, PBUF_RAM);
 
-  if (!p) return -1;
+  if (!p) {
+    DLOG ("pbuf_alloc");
+    return -1;
+  }
 
   if (pbuf_take (p, buf, len) != ERR_OK) {
     pbuf_free (p);
+    DLOG ("pbuf_take");
     return -1;
   }
 
   if (udp_sendto (pcb, p, &server_ip, server_port) != ERR_OK) {
     pbuf_free (p);
+    DLOG ("udp_sendto");
     return -1;
   }
 
@@ -228,8 +236,10 @@ eztftp_dir (char *pathname)
   /* format and send a read request */
   len = format_rrq (buf, TFTP_BLOCK_SIZE+4, pathname);
   server_port = TFTP_PORT;
-  if (send (buf, len) < 0)
+  if (send (buf, len) < 0) {
+    DLOG ("failed to send request: %d %s", *((u16 *) buf), buf+2);
     return -1;
+  }
 
   /* fetch file loop */
   rem = TFTP_BLOCK_SIZE+4; len=0; ins=buf;
