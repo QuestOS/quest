@@ -372,23 +372,44 @@ splash_screen (void)
               free);
 }
 
-/* Syscall: putchar */
-void
-handle_syscall0 (int eax, int ebx)
+/* Syscalls */
+static u32
+syscall_putchar (u32 eax, u32 ebx)
 {
   static bool first = TRUE;
 
-  if (eax) {                    /* eax should be 0 for syscall0 */
-    print ("Invalid syscall number!\n");
-    return;
-  }
-
-  lock_kernel ();
-
   if (first) { splash_screen (); first = FALSE; }
   user_putchar (ebx, 7);
+  return 0;
+}
 
+static u32
+syscall_usleep (u32 eax, u32 ebx)
+{
+  sched_usleep (ebx);
+  return ebx;
+}
+
+struct syscall {
+  u32 (*func) (u32, u32);
+};
+struct syscall syscall_table[] = {
+  { .func = syscall_putchar },
+  { .func = syscall_usleep },
+};
+#define NUM_SYSCALLS (sizeof (syscall_table) / sizeof (struct syscall))
+
+u32
+handle_syscall0 (u32 eax, u32 ebx)
+{
+  u32 res;
+  lock_kernel ();
+  if (eax < NUM_SYSCALLS)
+    res = syscall_table[eax].func (eax, ebx);
+  else
+    res = 0;
   unlock_kernel ();
+  return res;
 }
 
 

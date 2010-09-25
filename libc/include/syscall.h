@@ -49,6 +49,14 @@ putchar (int c)
 
 }
 
+static inline void
+usleep (unsigned usec)
+{
+
+  asm volatile ("int $0x30\n"::"a" (1L), "b" (usec):CLOBBERS2);
+
+}
+
 static inline int
 fork (void)
 {
