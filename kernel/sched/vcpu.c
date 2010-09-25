@@ -664,7 +664,6 @@ static void repl_merge (vcpu *);
 static void
 main_vcpu_update_replenishments (vcpu *v, u64 tcur)
 {
-  repl_merge (v);
   s64 cap = capacity (v);
   v->b = (cap > 0 ? cap : 0);
 }
@@ -745,6 +744,7 @@ split_check (vcpu *v)
     }
     repl_queue_add (&v->main.Q, v->usage, v->main.Q.head->t + v->T);
     /* invariant: sum of replenishments remains the same */
+    v->usage = 0;
   }
 }
 
