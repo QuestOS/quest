@@ -658,7 +658,7 @@ _exec (char *filename, char *argv[], uint32 *curr_stack)
 #endif
   /* Read into virtual address corresponding to plPageDirectory[1021] */
   orig_filesize = filesize;
-  filesize = vfs_read ((void *) pe, orig_filesize);
+  filesize = vfs_read (filename, (void *) pe, orig_filesize);
   if (filesize != orig_filesize) {
     printf ("expected filesize=%d got filesize=%d\n", orig_filesize, filesize);
     panic ("File size mismatch on read");
@@ -845,7 +845,7 @@ _read (char *pathname, void *buf, int count)
 {
   lock_kernel ();
   logger_printf ("_read (\"%s\", %p, 0x%x)\n", pathname, buf, count);
-  int res = vfs_read (buf, count);
+  int res = vfs_read (pathname, buf, count);
   unlock_kernel ();
   return res;
 }

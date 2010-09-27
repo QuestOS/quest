@@ -409,7 +409,7 @@ sb_read_raw (char *pathname)
 
   filesize = vfs_dir (pathname);        /* --??-- Need error checking */
 
-  vfs_read (filebuffer, filesize);
+  vfs_read (pathname, filebuffer, filesize);
 
   return (SB_OK);
 }

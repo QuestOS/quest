@@ -93,7 +93,7 @@ int eztftp_read (char *buf, int len);
 
 void vfs_set_root (int type, ata_info * drive_info);
 int vfs_dir (char *);
-int vfs_read (char *, int);
+int vfs_read (char *, char *, int);
 
 #define SECTOR_SIZE            0x200
 

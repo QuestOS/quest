@@ -21,36 +21,75 @@
 
 static int vfs_root_type = VFS_FSYS_NONE;
 
+typedef struct { char *name; int type; } vfs_table_t;
+static vfs_table_t vfs_table[] = {
+  { "hd",   VFS_FSYS_EZEXT2 },
+  { "cd",   VFS_FSYS_EZISO },
+  { "tftp", VFS_FSYS_EZTFTP },
+  { "usb",  VFS_FSYS_EZUSB },
+};
+#define NUM_VFS (sizeof (vfs_table) / sizeof (vfs_table_t))
+
 void
 vfs_set_root (int type, ata_info * drive_info)
 {
   vfs_root_type = type;
 }
 
+static int
+parse_pathname (char *pathname, char **filepart)
+{
+  if (pathname[0] == '(') {
+    int i;
+    for (i=0; i<NUM_VFS; i++) {
+      char *name = vfs_table[i].name;
+      char *vfs = pathname + 1;
+      for (; *vfs && *vfs != ')' && *name; vfs++, name++) {
+        if (*vfs != *name)
+          break;
+      }
+      if (*name == '\0' && *vfs == ')') {
+        *filepart = vfs + 1;
+        return vfs_table[i].type;
+      }
+    }
+    return -1;
+  } else {
+    *filepart = pathname;
+    return vfs_root_type;
+  }
+}
+
 /* returns file length on success, -1 on failure */
 int
 vfs_dir (char *pathname)
 {
-  switch (vfs_root_type) {
+  char *filepart;
+  int type = parse_pathname (pathname, &filepart);
+  if (type == -1) return -1;
+  switch (type) {
   case VFS_FSYS_EZEXT2:
-    return ext2fs_dir (pathname);
+    return ext2fs_dir (filepart);
   case VFS_FSYS_EZISO:
-    return eziso_dir (pathname);
+    return eziso_dir (filepart);
   case VFS_FSYS_EZUSB:
-    return vfat_dir (pathname);
+    return vfat_dir (filepart);
   case VFS_FSYS_EZTFTP:
-    return eztftp_dir (pathname);
+    return eztftp_dir (filepart);
   default:
-    print ("Unknown vfs_root_type");
-    return 0;
+    print ("Unknown vfs_type");
+    return -1;
   }
 }
 
 /* returns number of bytes read */
 int
-vfs_read (char *buf, int len)
+vfs_read (char *pathname, char *buf, int len)
 {
-  switch (vfs_root_type) {
+  char *filepart;
+  int type = parse_pathname (pathname, &filepart);
+  if (type == -1) return -1;
+  switch (type) {
   case VFS_FSYS_EZEXT2:
     return ext2fs_read (buf, len);
   case VFS_FSYS_EZISO:
@@ -60,8 +99,8 @@ vfs_read (char *buf, int len)
   case VFS_FSYS_EZTFTP:
     return eztftp_read (buf, len);
   default:
-    print ("Unknown vfs_root_type");
-    return 0;
+    print ("Unknown vfs_type");
+    return -1;
   }
 }
 
