@@ -23,6 +23,9 @@
 #include "util/circular.h"
 #include "util/printf.h"
 
+/* Enable kernel debugging hotkeys */
+//#define DEBUG_KEYS
+
 /* Circular buffer storing incoming keyboard events. */
 static circular keyb_buffer;
 static key_event buffer_space[KEYBOARD_BUFFER_SIZE];
@@ -46,6 +49,25 @@ clean_entry (int i)
   cur_event.keys[i].pressed  = 0;
   cur_event.keys[i].latest   = 0;
 }
+
+#ifdef DEBUG_KEYS
+static inline void
+check_debug_keys (void)
+{
+  int i;
+  for (i=0; i<KEY_EVENT_MAX; i++) {
+    if (cur_event.keys[i].present && cur_event.keys[i].pressed) {
+      if (cur_event.keys[i].scancode == 0x16) {
+        /* pressed 'U' */
+        void debug_dump_bulk_qhs (void);
+        lock_kernel ();
+        debug_dump_bulk_qhs ();
+        unlock_kernel ();
+      }
+    }
+  }
+}
+#endif
 
 static inline void
 check_control_alt_del (void)
@@ -181,6 +203,10 @@ kbd_irq_handler (uint8 vec)
   }
 
   check_control_alt_del ();
+
+#ifdef DEBUG_KEYS
+  check_debug_keys ();
+#endif
 
   return 0;
 }
