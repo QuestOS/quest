@@ -42,6 +42,13 @@
 #include "util/printf.h"
 #include "types.h"
 
+//#define DEBUG_VFAT
+#ifdef DEBUG_VFAT
+#define DLOG(fmt,...) DLOG_PREFIX("vfat",fmt,##__VA_ARGS__)
+#else
+#define DLOG(fmt,...) ;
+#endif
+
 #define UMSC_DEVICE_INDEX 0
 #define VFAT_FIRST_PARTITION 63
 
@@ -51,15 +58,21 @@ devread_vfat (int sector, int byte_offset, int byte_len, char *buf)
   uint8 s[512];
   int len = byte_len;
   sector+=VFAT_FIRST_PARTITION; /* offset into the first partition */
-  com1_printf ("fsys_vfat: devread_vfat (%d, %d, %d, %p)\n",
-               sector, byte_offset, byte_len, buf);
+  DLOG ("fsys_vfat: devread_vfat (%d, %d, %d, %p)",
+        sector, byte_offset, byte_len, buf);
   while (len > 0) {
     if (umsc_read_sector (UMSC_DEVICE_INDEX, sector, s, sizeof (s)) != sizeof (s))
       return 0;
-    memcpy (buf, &s[byte_offset], len > sizeof (s) ? sizeof (s) : len);
-    len -= sizeof (s);
-    buf += sizeof (s);
+    int seclen;
+    if (len > sizeof (s) - byte_offset)
+      seclen = sizeof (s) - byte_offset;
+    else
+      seclen = len;
+    memcpy (buf, &s[byte_offset], seclen);
+    len -= seclen;
+    buf += seclen;
     sector++;
+    byte_offset = 0;
   }
   return byte_len;
 }
@@ -246,6 +259,7 @@ log2 (unsigned long word)
   return word;
 }
 
+static bool mounted = FALSE;
 int
 vfat_mount (void)
 {
@@ -368,6 +382,7 @@ vfat_mount (void)
     return 0;
 
   FAT_SUPER->cached_fat = - 2 * FAT_CACHE_SIZE;
+  mounted = TRUE;
   return 1;
 }
 
@@ -466,6 +481,8 @@ vfat_read (char *buf, int len)
 int
 vfat_dir (char *dirname)
 {
+  if (!mounted) vfat_mount ();
+  DLOG ("vfat_dir (\"%s\")", dirname);
   char *rest, ch, dir_buf[FAT_DIRENTRY_LENGTH];
   char *filename = (char *) NAME_BUF;
   int attrib = FAT_ATTRIB_DIR;
