@@ -24,11 +24,18 @@
 #include <kernel.h>
 
 #define DEBUG_UHCI
+//#define DEBUG_UHCI_VERBOSE
 
 #ifdef DEBUG_UHCI
 #define DLOG(fmt,...) DLOG_PREFIX("UHCI",fmt,##__VA_ARGS__)
 #else
 #define DLOG(fmt,...) ;
+#endif
+
+#ifdef DEBUG_UHCI_VERBOSE
+#define DLOGV(fmt,...) DLOG_PREFIX("UHCI",fmt,##__VA_ARGS__)
+#else
+#define DLOGV(fmt,...) ;
 #endif
 
 static int bus;                 /* set by PCI probing in uhci_init */
@@ -287,30 +294,55 @@ debug_dump_sched (UHCI_TD * tx_tds)
           tx_tds->ls, tx_tds->c_err, tx_tds->spd);
     DLOG ("  pid=0x%.02X addr=%d ep=%d tog=%d max_len=%d",
           tx_tds->pid, tx_tds->addr, tx_tds->endp, tx_tds->toggle, tx_tds->max_len);
+#if 0
     if (tx_tds->buf_vptr) {
       uint32 *p = (uint32 *)tx_tds->buf_vptr;
       DLOG ("    %.08X %.08X %.08X %.08X",
             p[0], p[1], p[2], p[3]);
     }
+#endif
     if (tx_tds->link_ptr & TERMINATE) break;
+    if (tx_tds->link_ptr == 0) break;
     tx_tds = TD_P2V (UHCI_TD *, tx_tds->link_ptr & LINK_MASK);
   }
 }
 
+/* Hack that works around problem where HC does not update the
+ * QH->qe_ptr with the current active TD.  For some reason it leaves
+ * behind an inactive TD, which causes the HC to halt processing at
+ * that point.  This function manually updates the QH with a physical
+ * pointer to the next active TD. */
 static void
+fixup_tds (u32 *p_tdp)
+{
+  while (!(*p_tdp & TERMINATE)) {
+    UHCI_TD *t = TD_P2V (UHCI_TD *, (*p_tdp) & LINK_MASK);
+    if (t->status == 0)
+      *p_tdp = t->link_ptr & (~DEPTH_FIRST);
+    else
+      break;
+    p_tdp = &t->link_ptr;
+  }
+}
+
+extern void
 debug_dump_bulk_qhs (void)
 {
   UHCI_QH *q = blk_qh;
   uint32 link_ptr;
+
+  DLOG ("cmd=0x%.04X sts=0x%.04X frame=%d",
+        GET_USBCMD (usb_base), GET_USBSTS (usb_base), GET_FRNUM (usb_base));
 
   for (;;) {
     link_ptr = q->qe_ptr;
     if (link_ptr & TERMINATE) {
       DLOG ("QH %p has no TDs", q);
     } else {
-      DLOG ("QH %p has:");
+      DLOG ("QH %p has TD %p:", q, q->qe_ptr);
       debug_dump_sched (TD_P2V (UHCI_TD *, q->qe_ptr & LINK_MASK));
     }
+    fixup_tds (&q->qe_ptr);
     link_ptr = q->qh_ptr;
     if (link_ptr & TERMINATE)
       break;
@@ -319,7 +351,7 @@ debug_dump_bulk_qhs (void)
 }
 
 static int
-check_tds (UHCI_TD * tx_tds, uint32 *act_len)
+check_tds (UHCI_QH *tx_qh, UHCI_TD *tx_tds, uint32 *act_len)
 {
   int status_count = 1;
   int status = 0;
@@ -329,8 +361,11 @@ check_tds (UHCI_TD * tx_tds, uint32 *act_len)
     UHCI_TD *tds = tx_tds;
     status_count = 0;
 
+    fixup_tds (&tx_qh->qe_ptr);
+
     /* wait for IRQ if interrupts enabled */
     if (mp_enabled) {
+      DLOGV ("wait %d", status_count);
       queue_append (&uhci_waitq, str ());
       schedule ();
     }
@@ -906,6 +941,8 @@ uhci_bulk_transfer(
   int max_packet_len = ((packet_len - 1) >= USB_MAX_LEN) ? USB_MAX_LEN : packet_len - 1;
   int i = 0, num_data_packets = 0, data_left = 0, return_status = 0, tog_idx;
 
+  DLOGV ("bulk: %d %d %d %c", address, endpoint, data_len,
+         direction == DIR_IN ? 'I' : 'O');
   num_data_packets = (data_len + max_packet_len) / (max_packet_len + 1);
   data_left = data_len;
 
@@ -961,10 +998,18 @@ uhci_bulk_transfer(
   /* Initiate our bulk transactions */
   act_qh = link_td_to_free_qh (blk_qh, tx_tds);
 
-  if (act_qh == NULL) return -1;
+  if (act_qh == NULL) {
+    DLOG ("act_qh == NULL");
+    return -1;
+  }
 
   /* Check the status of all the packets in the transaction */
-  return_status = check_tds(tx_tds, act_len);
+  return_status = check_tds(act_qh, tx_tds, act_len);
+  if (return_status != 0) {
+    DLOG ("bulk: return_status != 0");
+  } else {
+    DLOGV ("complete: %d len %d", return_status, *act_len);
+  }
 
   /* unlink any remaining active TDs if short packet was detected */
   if (*act_len != data_len)
@@ -1080,7 +1125,7 @@ uhci_control_transfer (
     (((uint32_t) get_phys_addr ((void *) tx_tds)) & LINK_MASK) + 0x0;
 
   /* Check the status of all the packets in the transaction */
-  return_status = check_tds (tx_tds, &act_len);
+  return_status = check_tds (ctl_qh, tx_tds, &act_len);
 
   free_tds (tx_tds, num_data_packets + 2);
 
@@ -1296,7 +1341,7 @@ uhci_irq_handler (uint8 vec)
   }
 
   if(status & 0x01) {
-    //DLOG("USB Interrupt detected!");
+    DLOGV ("IRQ");
     /*
      * This is possibly an IOC or short packet.
      * We need to visit the whole schedule for now
