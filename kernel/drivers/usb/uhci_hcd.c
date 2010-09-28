@@ -328,21 +328,27 @@ fixup_tds (u32 *p_tdp)
 
 static u64 uhci_bytes = 0, uhci_timestamps = 0;
 
-extern void
-debug_dump_bulk_qhs (void)
+extern u32
+uhci_sample_bps (void)
 {
-  UHCI_QH *q = blk_qh;
-  uint32 link_ptr;
   extern u64 tsc_freq_msec;
   u64 uhci_msec = div64_64 (uhci_timestamps, tsc_freq_msec);
   u32 bytes_sec = 0;
   if (uhci_msec)
     bytes_sec = (u32) div64_64 (uhci_bytes * 1000, uhci_msec);
-  DLOG ("cmd=0x%.04X sts=0x%.04X frame=%d",
-        GET_USBCMD (usb_base), GET_USBSTS (usb_base), GET_FRNUM (usb_base));
-  DLOG ("bytes=0x%llX timestamps=0x%llX bytes/sec=%d",
-        uhci_bytes, uhci_timestamps, bytes_sec);
+  uhci_bytes = 0;
+  uhci_timestamps = 0;
+  return bytes_sec;
+}
 
+extern void
+debug_dump_bulk_qhs (void)
+{
+  UHCI_QH *q = blk_qh;
+  uint32 link_ptr;
+  DLOG ("cmd=0x%.04X sts=0x%.04X frame=%d bps=%d",
+        GET_USBCMD (usb_base), GET_USBSTS (usb_base), GET_FRNUM (usb_base),
+        uhci_sample_bps ());
   for (;;) {
     link_ptr = q->qe_ptr;
     if (link_ptr & TERMINATE) {
