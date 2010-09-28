@@ -390,7 +390,10 @@ vcpu_dump_stats (void)
 #ifdef DUMP_STATS_VERBOSE
   logger_printf ("idle tsc=0x%llX%s\n", idle_time, (cur==NULL ? " (*)" : ""));
 #endif
+
   percpu_write64 (pcpu_idle_time, 0LL);
+  percpu_write (pcpu_sched_time, 0);
+
   for (i=0; i<NUM_VCPUS; i++) {
     vcpu *vcpu = &vcpus[i];
 #ifdef DUMP_STATS_VERBOSE
@@ -631,7 +634,8 @@ vcpu_schedule (void)
 
   /* measure schedule running time */
   u64 now; RDTSC (now);
-  percpu_write (pcpu_sched_time, (u32) (now - tcur));
+  u32 sched_time = percpu_read (pcpu_sched_time);
+  percpu_write (pcpu_sched_time, sched_time + (u32) (now - tcur));
 
   if (cur) cur->running = FALSE;
   if (vcpu) vcpu->running = TRUE;
