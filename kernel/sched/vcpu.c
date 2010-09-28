@@ -896,10 +896,10 @@ io_vcpu_end_timeslice (vcpu *cur, u64 tdelta)
 
   cur->usage += tdelta;
   if (!cur->runnable || cur->b <= 0) {
-    cur->io.e += (u64) div_u64_u32_u32 (cur->usage * cur->io.Uden, cur->io.Unum);
+    cur->io.e += div64_64 (cur->usage * cur->io.Uden, cur->io.Unum);
     if (cur->io.r.t == 0) {
       cur->io.r.t = cur->io.e;
-      cur->io.r.b = div_u64_u32_u32 (cur->T * cur->io.Unum, cur->io.Uden);
+      cur->io.r.b = div64_64 (cur->T * cur->io.Unum, cur->io.Uden);
     } else {
       cur->io.r.t = cur->io.e;
     }
