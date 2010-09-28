@@ -946,6 +946,16 @@ iovcpu_job_wakeup (task_id job, u64 T)
 }
 
 extern void
+iovcpu_job_wakeup_for_me (task_id job)
+{
+  vcpu *cur = percpu_read (vcpu_current);
+  if (cur)
+    iovcpu_job_wakeup (job, cur->T);
+  else
+    wakeup (job);
+}
+
+extern void
 iovcpu_job_completion (void)
 {
   schedule ();

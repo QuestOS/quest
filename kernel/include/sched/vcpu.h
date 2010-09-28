@@ -102,6 +102,7 @@ typedef struct _vcpu
 CASSERT (sizeof (vcpu) == VCPU_ALIGNMENT, vcpu);
 
 extern void iovcpu_job_wakeup (task_id job, u64 T);
+extern void iovcpu_job_wakeup_for_me (task_id job);
 extern void iovcpu_job_completion (void);
 
 extern uint lowest_priority_vcpu (void);
