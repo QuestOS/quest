@@ -21,6 +21,7 @@
 #include <util/printf.h>
 #include <mem/virtual.h>
 #include <mem/pow2.h>
+#include <arch/i386-div64.h>
 #include <kernel.h>
 
 #define DEBUG_UHCI
@@ -315,7 +316,7 @@ debug_dump_sched (UHCI_TD * tx_tds)
 static void
 fixup_tds (u32 *p_tdp)
 {
-  while (!(*p_tdp & TERMINATE)) {
+  while (!(*p_tdp & TERMINATE) && *p_tdp) {
     UHCI_TD *t = TD_P2V (UHCI_TD *, (*p_tdp) & LINK_MASK);
     if (t->status == 0)
       *p_tdp = t->link_ptr & (~DEPTH_FIRST);
@@ -325,14 +326,22 @@ fixup_tds (u32 *p_tdp)
   }
 }
 
+static u64 uhci_bytes = 0, uhci_timestamps = 0;
+
 extern void
 debug_dump_bulk_qhs (void)
 {
   UHCI_QH *q = blk_qh;
   uint32 link_ptr;
-
+  extern u64 tsc_freq_msec;
+  u64 uhci_msec = div64_64 (uhci_timestamps, tsc_freq_msec);
+  u32 bytes_sec = 0;
+  if (uhci_msec)
+    bytes_sec = (u32) div64_64 (uhci_bytes * 1000, uhci_msec);
   DLOG ("cmd=0x%.04X sts=0x%.04X frame=%d",
         GET_USBCMD (usb_base), GET_USBSTS (usb_base), GET_FRNUM (usb_base));
+  DLOG ("bytes=0x%llX timestamps=0x%llX bytes/sec=%d",
+        uhci_bytes, uhci_timestamps, bytes_sec);
 
   for (;;) {
     link_ptr = q->qe_ptr;
@@ -1003,12 +1012,23 @@ uhci_bulk_transfer(
     return -1;
   }
 
+  u64 start, finish;
+
+  RDTSC (start);
+
   /* Check the status of all the packets in the transaction */
   return_status = check_tds(act_qh, tx_tds, act_len);
   if (return_status != 0) {
     DLOG ("bulk: return_status != 0");
   } else {
     DLOGV ("complete: %d len %d", return_status, *act_len);
+  }
+
+  RDTSC (finish);
+
+  if (return_status == 0) {
+    uhci_bytes += *act_len;
+    uhci_timestamps += finish - start;
   }
 
   /* unlink any remaining active TDs if short packet was detected */
