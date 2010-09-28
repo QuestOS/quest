@@ -650,7 +650,46 @@ vcpu_schedule (void)
 extern void
 vcpu_wakeup (task_id task)
 {
-  vcpu_rr_wakeup (task);
+  DLOG ("vcpu_wakeup (0x%x), cpu=%d", task, LAPIC_get_physical_ID ());
+  quest_tss *tssp = lookup_TSS (task);
+  static int next_vcpu_binding = 1;
+
+  /* assign vcpu if not already set */
+  if (tssp->cpu == 0xFF) {
+    do {
+      tssp->cpu = next_vcpu_binding;
+      next_vcpu_binding++;
+      if (next_vcpu_binding >= NUM_VCPUS)
+        next_vcpu_binding = 0;
+    } while  (vcpu_lookup (tssp->cpu)->type != MAIN_VCPU);
+    com1_printf ("vcpu: task 0x%x now bound to vcpu=%d\n", task, tssp->cpu);
+  }
+
+  vcpu *v = vcpu_lookup (tssp->cpu);
+
+  /* put task on vcpu runqueue (2nd level) */
+  vcpu_runqueue_append (v, task);
+
+  /* put vcpu on pcpu queue (1st level) */
+  vcpu_queue_append (percpu_pointer (v->cpu, vcpu_queue), v);
+
+  if (!v->runnable && !v->running && v->hooks->unblock)
+    v->hooks->unblock (v);
+
+  v->runnable = TRUE;
+
+  /* check if preemption necessary */
+  u64 now;
+  vcpu *cur = percpu_read (vcpu_current);
+
+  RDTSC (now);
+
+  if (v->hooks->update_replenishments)
+    v->hooks->update_replenishments (v, now);
+
+  if (v->b > 0 && (cur == NULL || cur->T > v->T))
+    /* preempt */
+    LAPIC_start_timer (1);
 }
 
 /* ************************************************** */
@@ -876,9 +915,7 @@ io_vcpu_end_timeslice (vcpu *cur, u64 tdelta)
 extern void
 io_vcpu_unblock (vcpu *v)
 {
-  vcpu *cur = percpu_read (vcpu_current);
   u64 now;
-
   RDTSC (now);
 
   if (!v->io.budgeted && v->io.e < now)
@@ -895,11 +932,6 @@ io_vcpu_unblock (vcpu *v)
     v->io.r.b = Cmax;
   }
   v->io.budgeted = TRUE;
-  if (v->hooks->update_replenishments)
-    v->hooks->update_replenishments (v, now);
-
-  if (v->b > 0 && (cur == NULL || cur->T > v->T))
-    LAPIC_start_timer (1);
 }
 
 extern void
