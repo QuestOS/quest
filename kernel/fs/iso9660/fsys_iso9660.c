@@ -380,6 +380,8 @@ static iso9660_mounted_info eziso_mount_info;
 uint8 test1_buf[2958];
 #endif
 
+static bool mounted = FALSE;
+
 int
 eziso_mount (uint32 bus, uint32 drive)
 {
@@ -407,9 +409,10 @@ eziso_mount (uint32 bus, uint32 drive)
     com1_printf ("OPEN FAILED\n");
 #endif
 
-  if (v == 0)
+  if (v == 0) {
+    mounted = TRUE;
     return 1;
-  else
+  } else
     return 0;
 }
 
@@ -417,6 +420,16 @@ static iso9660_handle eziso_handle;
 int
 eziso_dir (char *pathname)
 {
+  if (!mounted) {
+    int i;
+    for (i=0; i<4; i++) {
+      if (pata_drives[i].ata_type == ATA_TYPE_PATAPI) {
+        if (eziso_mount (pata_drives[i].ata_bus,
+                         pata_drives[i].ata_drive))
+          break;
+      }
+    }
+  }
   if (iso9660_open (&eziso_mount_info, pathname, &eziso_handle) == 0)
     return eziso_handle.length;
   else
