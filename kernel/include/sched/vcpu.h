@@ -74,7 +74,6 @@ typedef struct _vcpu
         /* MAIN_VCPU */
         struct {
           u64 a;                /* activation time */
-          replenishment *R;     /* replenishment list */
           repl_queue Q;
         } main;
         /* IO_VCPU */
