@@ -19,7 +19,10 @@
 
 #define NUM_THREADS 4
 #define USB
+#define USB_FILE "(usb)/test"
 #define CDROM
+#define CDROM_FILE "(cd)/gpxe.krn"
+//#define CDROM_FILE "(cd)/boot/quest"
 
 char buf[65536];
 void *memset( void *p, int ch, size_t cb );
@@ -27,7 +30,7 @@ void *memset( void *p, int ch, size_t cb );
 void
 child (int idx)
 {
-  unsigned long i = 0;
+  unsigned long i = 0, j;
   char ch;
   if (idx <= 9)
     ch = idx + '0';
@@ -38,15 +41,21 @@ child (int idx)
       memset (buf, ch, sizeof (buf));
       if (idx == 0) {
 #ifdef USB
-        open ("(usb)/test", 0);
-        read ("(usb)/test", buf, sizeof (buf));
+        open (USB_FILE, 0);
+        read (USB_FILE, buf, sizeof (buf));
+        for (j=0; j<sizeof (buf)-1; j++)
+          if (buf[j] != 'a')
+            printf ("buf[%d] == 'a'\n", j, buf[j]);
 #endif
         putchar (buf[0]);
       } else if (idx == 1) {
 #ifdef CDROM
-        open ("(cd)/gpxe.krn", 0);
-        read ("(cd)/gpxe.krn", buf, sizeof (buf));
-        printf ("%x", buf[0] & 0xFF);
+        unsigned long sum = 0;
+        open (CDROM_FILE, 0);
+        read (CDROM_FILE, buf, sizeof (buf));
+        printf ("%x", buf[0x21] & 0xFF);
+        for (j=0; j<sizeof (buf); j++)
+          sum += (unsigned char) buf[j];
 #else
         putchar (buf[0]);
 #endif
