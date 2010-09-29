@@ -413,7 +413,7 @@ ata_init (void)
       atapi_thread_id =
         start_kernel_thread ((u32) atapi_thread,
                              (u32) &atapi_stack[1023]);
-      lookup_TSS (atapi_thread_id)->cpu = select_iovcpu (0);
+      set_iovcpu (atapi_thread_id, IOVCPU_CLASS_ATA | IOVCPU_CLASS_CDROM);
       break;
     }
   }

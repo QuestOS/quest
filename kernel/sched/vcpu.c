@@ -43,7 +43,7 @@
 u32 tsc_freq_msec;
 u64 vcpu_init_time;
 
-struct vcpu_params { vcpu_type type; u32 C, T; };
+struct vcpu_params { vcpu_type type; u32 C, T; iovcpu_class class; };
 static struct vcpu_params init_params[] = {
   { MAIN_VCPU, 1, 3 },
   { MAIN_VCPU, 1, 5 },
@@ -73,6 +73,12 @@ vcpu_lookup (int i)
   if (0 <= i && i < NUM_VCPUS)
     return &vcpus[i];
   return NULL;
+}
+
+int
+vcpu_index (vcpu *v)
+{
+  return (((uint) v) - ((uint) &vcpus)) / sizeof (vcpu);
 }
 
 void
@@ -965,14 +971,40 @@ iovcpu_job_completion (void)
 }
 
 extern uint
-select_iovcpu (u32 flags)
+count_set_bits (u32 v)
 {
-  uint i;
-  for (i=0; i<NUM_VCPUS; i++) {
-    if (init_params[i].type == IO_VCPU)
-      return i;
+  /* Wegner's method */
+  u32 c;
+  for (c = 0; v; c++) {
+    v &= v - 1;              /* clear the least significant bit set */
   }
-  return lowest_priority_vcpu ();
+  return c;
+}
+
+extern uint
+select_iovcpu (iovcpu_class class)
+{
+  uint i, idx = lowest_priority_vcpu (), matches = 0;
+  for (i=0; i<NUM_VCPUS; i++) {
+    struct vcpu_params *p = &init_params[i];
+    if (p->type == IO_VCPU) {
+      u32 m = count_set_bits (p->class & class);
+      if (m >= matches) {
+        idx = i;
+        matches = m;
+      }
+    }
+  }
+  return idx;
+}
+
+extern void
+set_iovcpu (task_id task, iovcpu_class class)
+{
+  uint i = select_iovcpu (class);
+  logger_printf ("iovcpu: task 0x%x requested class 0x%x and got IO-VCPU %d\n",
+                 task, class, i);
+  lookup_TSS (task)->cpu = i;
 }
 
 static vcpu_hooks io_vcpu_hooks = {

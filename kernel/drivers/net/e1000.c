@@ -379,11 +379,13 @@ e1000_bh_thread (void)
     if (icr & ICR_TXQE)           /* TX queue empty */
       handle_tx (icr);
 
+#if 0
     unlock_kernel ();
     sti ();
     tsc_delay_usec (3000);
     cli ();
     lock_kernel ();
+#endif
 
     iovcpu_job_completion ();
   }
@@ -875,7 +877,7 @@ e1000_init (void)
 
   e1000_bh_id = start_kernel_thread ((u32) e1000_bh_thread,
                                      (u32) &e1000_bh_stack[1023]);
-  lookup_TSS (e1000_bh_id)->cpu = select_iovcpu (0);
+  set_iovcpu (e1000_bh_id, IOVCPU_CLASS_NET);
 
   return TRUE;
 

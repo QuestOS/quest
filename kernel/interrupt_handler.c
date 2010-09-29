@@ -833,7 +833,7 @@ int
 _open (char *pathname, int flags)
 {
   lock_kernel ();
-  logger_printf ("_open (\"%s\", 0x%x)\n", pathname, flags);
+  //logger_printf ("_open (\"%s\", 0x%x)\n", pathname, flags);
   int res = vfs_dir (pathname);
   unlock_kernel ();
   return res;
@@ -844,7 +844,7 @@ int
 _read (char *pathname, void *buf, int count)
 {
   lock_kernel ();
-  logger_printf ("_read (\"%s\", %p, 0x%x)\n", pathname, buf, count);
+  //logger_printf ("_read (\"%s\", %p, 0x%x)\n", pathname, buf, count);
   int res = vfs_read (pathname, buf, count);
   unlock_kernel ();
   return res;

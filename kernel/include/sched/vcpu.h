@@ -27,6 +27,15 @@ typedef enum {
   MAIN_VCPU = 0, IO_VCPU
 } vcpu_type;
 
+typedef enum {
+  IOVCPU_CLASS_ALL = 0,
+  IOVCPU_CLASS_ATA = (1<<0),
+  IOVCPU_CLASS_NET = (1<<1),
+  IOVCPU_CLASS_USB = (1<<2),
+  IOVCPU_CLASS_DISK = (1<<3),
+  IOVCPU_CLASS_CDROM = (1<<4),
+} iovcpu_class;
+
 typedef struct _replenishment {
   u64 t, b;
   struct _replenishment *next;
@@ -82,6 +91,7 @@ typedef struct _vcpu
           replenishment r;      /* replenishment */
           u32 Unum, Uden;       /* utilization fraction */
           bool budgeted;
+          iovcpu_class class;
         } io;
       };
 
@@ -107,7 +117,8 @@ extern void iovcpu_job_wakeup_for_me (task_id job);
 extern void iovcpu_job_completion (void);
 
 extern uint lowest_priority_vcpu (void);
-extern uint select_iovcpu (u32);
+extern uint select_iovcpu (iovcpu_class);
+extern void set_iovcpu (task_id, iovcpu_class);
 
 #endif
 

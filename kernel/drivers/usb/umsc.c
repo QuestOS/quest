@@ -185,7 +185,7 @@ umsc_read_sector (uint dev_index, u32 lba, u8 *sector, uint len)
   if (dev_index >= num_umsc_devs) return 0;
   if (len < umsc_devs[dev_index].sector_size) return 0;
 
-  if (!umsc_thread_id) {
+  if (!mp_enabled || !umsc_thread_id) {
     return _umsc_read_sector (dev_index, lba, sector, len);
   }
 
@@ -326,7 +326,7 @@ umsc_probe (USB_DEVICE_INFO *info, USB_CFG_DESC *cfgd, USB_IF_DESC *ifd)
 
   umsc_thread_id =
     start_kernel_thread ((u32) umsc_thread, (u32) &umsc_stack[1023]);
-  lookup_TSS (umsc_thread_id)->cpu = select_iovcpu (0);
+  set_iovcpu (umsc_thread_id, IOVCPU_CLASS_USB | IOVCPU_CLASS_DISK);
 
   return TRUE;
 }
