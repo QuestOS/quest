@@ -117,8 +117,7 @@ vcpu_remove_from_runqueue (vcpu *vcpu, task_id task)
 void
 vcpu_internal_schedule (vcpu *vcpu)
 {
-  u64 now;
-  RDTSC (now);
+  u64 now = vcpu->virtual_tsc;
 
   if (vcpu->next_schedule == 0 || vcpu->next_schedule <= now)
     goto sched;
@@ -215,8 +214,10 @@ vcpu_acnt_end_timeslice (vcpu *vcpu)
 
   RDTSC (now);
 
-  if (vcpu->prev_tsc)
+  if (vcpu->prev_tsc) {
     vcpu->timestamps_counted += now - vcpu->prev_tsc;
+    vcpu->virtual_tsc += now - vcpu->prev_tsc;
+  }
 
   for (i=0; i<2; i++) {
     u64 value = perfmon_pmc_read (i);

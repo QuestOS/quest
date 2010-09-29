@@ -64,6 +64,8 @@ typedef struct _vcpu
       u16 runqueue;             /* per-VCPU runqueue */
       u32 quantum;              /* internal VCPU scheduling quantum */
       u64 next_schedule;        /* when to trigger internal schedule */
+      u64 prev_tsc;             /* when started running */
+      u64 virtual_tsc;          /* virtual timestamp counter */
 
       u64 C, T, b, usage;       /* common scheduling parameters */
 
@@ -84,7 +86,7 @@ typedef struct _vcpu
         } io;
       };
 
-      u64 prev_tsc;
+      /* statistics tracking */
       u64 timestamps_counted;
       u64 prev_pmc[2];
       u64 pmc_total[2];
