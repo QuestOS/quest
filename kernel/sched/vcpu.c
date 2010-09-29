@@ -393,9 +393,12 @@ vcpu_dump_stats (void)
   u64 sum = idle_time;
   u32 stime = percpu_read (pcpu_sched_time);
   extern u32 uhci_sample_bps (void);
+  extern u32 atapi_sample_bps (void);
   u32 uhci_bps = uhci_sample_bps ();
-
-  logger_printf ("vcpu_dump_stats overhead=0x%llX sched=0x%X uhci_bps=%d\n", overhead, stime, uhci_bps);
+  u32 atapi_bps = atapi_sample_bps ();
+  logger_printf ("vcpu_dump_stats overhead=0x%llX"
+                 " sched=0x%X uhci_bps=%d atapi_bps=%d\n",
+                 overhead, stime, uhci_bps, atapi_bps);
 #ifdef DUMP_STATS_VERBOSE
   logger_printf ("idle tsc=0x%llX%s\n", idle_time, (cur==NULL ? " (*)" : ""));
 #endif
