@@ -17,12 +17,20 @@
 
 #include "drivers/ata/ata.h"
 #include "arch/i386.h"
+#include "arch/i386-div64.h"
 #include "util/printf.h"
 #include "smp/smp.h"
 #include "smp/apic.h"
+#include "sched/vcpu.h"
 #include "kernel.h"
 
 //#define DEBUG_ATA
+#ifdef DEBUG_ATA
+#define DLOG(fmt,...) DLOG_PREFIX("ata",fmt,##__VA_ARGS__)
+#else
+#define DLOG(fmt,...) ;
+#endif
+
 
 /**************************************************************************
  *  IDENTIFY command                                                      *
@@ -92,10 +100,8 @@ static uint16 ata_waitqueue = 0;
 static void
 ata_grab (void)
 {
-#ifdef DEBUG_ATA
-  com1_printf ("ata_grab() ata_current_task=%x ata_waitqueue=%x tr=%x\n",
-               ata_current_task, ata_waitqueue, str ());
-#endif
+  DLOG ("ata_grab() ata_current_task=%x ata_waitqueue=%x tr=%x",
+        ata_current_task, ata_waitqueue, str ());
   while (ata_current_task) {
     queue_append (&ata_waitqueue, str ());
     schedule ();
@@ -106,10 +112,8 @@ ata_grab (void)
 static void
 ata_release (void)
 {
-#ifdef DEBUG_ATA
-  com1_printf ("ata_release() ata_current_task=%x ata_waitqueue=%x tr=%x\n",
-               ata_current_task, ata_waitqueue, str ());
-#endif
+  DLOG ("ata_release() ata_current_task=%x ata_waitqueue=%x tr=%x",
+        ata_current_task, ata_waitqueue, str ());
   wakeup_queue (&ata_waitqueue);
   ata_waitqueue = 0;
   ata_current_task = 0;
@@ -153,7 +157,7 @@ ata_identify (uint32 bus, uint32 drive)
 
   status = inb (ATA_COMMAND (bus));
   if (status == 0) {
-    com1_printf ("ATA bus %X drive %X does not exist\n", bus, drive);
+    logger_printf ("ATA bus %X drive %X does not exist\n", bus, drive);
     return ATA_TYPE_NONE;
   }
 
@@ -173,7 +177,7 @@ ata_identify (uint32 bus, uint32 drive)
     asm volatile ("pause");
 
   if (status & 0x1) {
-    com1_printf ("ATA bus %X drive %X caused error.\n", bus, drive);
+    logger_printf ("ATA bus %X drive %X caused error.\n", bus, drive);
     goto guess_identity;
   }
 
@@ -184,7 +188,7 @@ ata_identify (uint32 bus, uint32 drive)
   {
     int i, j;
 
-    com1_printf ("IDENTIFY (bus: %X drive: %X) command output:\n", bus, drive);
+    DLOG ("IDENTIFY (bus: %X drive: %X) command output:", bus, drive);
     /* dump to com1 */
     for (i = 0; i < 32; i++) {
       for (j = 0; j < 8; j++) {
@@ -196,9 +200,9 @@ ata_identify (uint32 bus, uint32 drive)
 #endif
 
   if (buffer[83] & (1 << 10))
-    com1_printf ("LBA48 mode supported.\n");
-  com1_printf ("LBA48 addressable sectors: %.4X %.4X %.4X %.4X\n",
-               buffer[100], buffer[101], buffer[102], buffer[103]);
+    logger_printf ("LBA48 mode supported.\n");
+  logger_printf ("LBA48 addressable sectors: %.4X %.4X %.4X %.4X\n",
+                 buffer[100], buffer[101], buffer[102], buffer[103]);
   return ATA_TYPE_PATA;
 
 guess_identity:{
@@ -210,15 +214,15 @@ guess_identity:{
     com1_printf ("ata_detect: %.2X %.2X\n", b1, b2);
 
     if (b1 == 0x14 && b2 == 0xEB) {
-      com1_printf ("P-ATAPI detected\n");
+      logger_printf ("P-ATAPI detected\n");
       return ATA_TYPE_PATAPI;
     }
     if (b1 == 0x69 && b2 == 0x96) {
-      com1_printf ("S-ATAPI detected\n");
+      logger_printf ("S-ATAPI detected\n");
       return ATA_TYPE_SATAPI;
     }
     if (b1 == 0x3C && b2 == 0xC3) {
-      com1_printf ("SATA detected\n");
+      logger_printf ("SATA detected\n");
       return ATA_TYPE_SATA;
     }
     return ATA_TYPE_NONE;
@@ -258,7 +262,7 @@ ata_drive_read_sector (uint32 bus, uint32 drive, uint32 lba, uint8 * buffer)
   insw (ATA_DATA (bus), buffer, 256);
 
   ret = 512;
-  
+
  cleanup:
   ata_release ();
   return ret;
@@ -311,10 +315,8 @@ static uint32
 ata_irq_handler (uint8 vec)
 {
   lock_kernel ();
-#ifdef DEBUG_ATA
-  com1_printf ("ata_irq_handler(%x) ata_current_task=%x\n", vec,
-               ata_current_task);
-#endif
+  DLOG ("ata_irq_handler(%x) ata_current_task=%x", vec,
+        ata_current_task);
   if (vec == ATA_VECTOR_PRIMARY)
     ata_primary_irq_count++;
   else
@@ -368,6 +370,10 @@ ata_poll_for_irq (uint32 bus)
   tsc_delay_usec (50000);      /* wait 50 milliseconds */
 }
 
+static u32 atapi_stack[1024] ALIGNED (0x1000);
+static void atapi_thread (void);
+static task_id atapi_thread_id = 0;
+
 /* Initialize and identify the ATA drives in the system. */
 void
 ata_init (void)
@@ -402,6 +408,16 @@ ata_init (void)
   pata_drives[i].ata_bus = bus;
   pata_drives[i].ata_drive = drive;
 
+  for (i=0; i<4; i++) {
+    if (pata_drives[i].ata_type == ATA_TYPE_PATAPI) {
+      atapi_thread_id =
+        start_kernel_thread ((u32) atapi_thread,
+                             (u32) &atapi_stack[1023]);
+      lookup_TSS (atapi_thread_id)->cpu = select_iovcpu (0);
+      break;
+    }
+  }
+
   if (mp_ISA_PC) {
     set_vector_handler ((ATA_IRQ_PRIMARY - 8) + PIC2_BASE_IRQ,
                         ata_irq_handler);
@@ -419,24 +435,24 @@ ata_init (void)
 
 /* ************************************************** */
 /* ATAPI */
-
+#define DEBUG_ATA
 /* ATAPI is essentially SCSI commands over ATA. */
 
 /* Use the ATAPI protocol to read a single sector from the given
  * bus/drive into the buffer. */
 int
-atapi_drive_read_sector (uint32 bus, uint32 drive, uint32 lba, uint8 * buffer)
+_atapi_drive_read_sector (uint32 bus, uint32 drive, uint32 lba, uint8 * buffer)
 {
   /* 0xA8 is READ SECTORS command byte. */
   uint8 read_cmd[12] = { 0xA8, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0 };
   uint8 status;
   int size, fake_size;
+
   ata_grab ();
 
-#ifdef DEBUG_ATA
-  com1_printf ("atapi_drive_read_sector(%X,%X,%X,%p)\n", bus, drive, lba,
-               buffer);
-#endif
+  DLOG ("atapi_drive_read_sector(%X,%X,%X,%p)", bus, drive, lba,
+        buffer);
+
   outb (drive & (1 << 4), ATA_DRIVE_SELECT (bus));      /* select drive (only slavebit needed) */
   ATA_SELECT_DELAY (bus);
   outb (0x0, ATA_FEATURES (bus));       /* PIO mode */
@@ -479,13 +495,11 @@ atapi_drive_read_sector (uint32 bus, uint32 drive, uint32 lba, uint8 * buffer)
     (((int) inb (ATA_ADDRESS3 (bus))) << 8) |
     (int) (inb (ATA_ADDRESS2 (bus)));
 
-#ifdef DEBUG_ATA
-  com1_printf ("atapi_drive_read_sector(%X,%X,%X,%p): size = %X\n", 
-               bus, drive, lba, buffer, size);
-#endif
+  DLOG ("atapi_drive_read_sector(%X,%X,%X,%p): actual size = %X",
+        bus, drive, lba, buffer, size);
 
   /* Workaround possible size-reporting bug in hardware */
-  if (size > ATAPI_SECTOR_SIZE) 
+  if (size > ATAPI_SECTOR_SIZE)
     size = ATAPI_SECTOR_SIZE;
 
   /* Read data */
@@ -503,10 +517,8 @@ atapi_drive_read_sector (uint32 bus, uint32 drive, uint32 lba, uint8 * buffer)
     (((int) inb (ATA_ADDRESS3 (bus))) << 8) |
     (int) (inb (ATA_ADDRESS2 (bus)));
 
-#ifdef DEBUG_ATA
-  com1_printf ("atapi_drive_read_sector(%X,%X,%X,%p): size = %X\n", 
-               bus, drive, lba, buffer, fake_size);
-#endif
+  DLOG ("atapi_drive_read_sector(%X,%X,%X,%p): fake size = %X",
+        bus, drive, lba, buffer, fake_size);
 
   /* At this point we already have read all our data, but the hardware
    * may still report the same size value as before.  It is up to us
@@ -518,7 +530,7 @@ atapi_drive_read_sector (uint32 bus, uint32 drive, uint32 lba, uint8 * buffer)
    * issue. */
 
   /* Wait for BSY and DRQ to clear */
-  while ((status = inb (ATA_COMMAND (bus))) & 0x88) 
+  while ((status = inb (ATA_COMMAND (bus))) & 0x88)
     asm volatile ("pause");
 
  cleanup:
@@ -526,13 +538,77 @@ atapi_drive_read_sector (uint32 bus, uint32 drive, uint32 lba, uint8 * buffer)
   return size;
 }
 
-/* 
+/* hack to get "IPC" between threads */
+static u32 curbus, curdrive, curlba;
+static int cursize;
+static u8 curbuf[ATAPI_SECTOR_SIZE] ALIGNED (ATAPI_SECTOR_SIZE);
+static task_id atapi_current_task = 0, atapi_waitqueue = 0;
+static u64 atapi_bytes = 0, atapi_timestamps = 0;
+
+static void
+atapi_thread (void)
+{
+  logger_printf ("atapi_thread: hello from 0x%x\n", str ());
+  for (;;) {
+    if (atapi_current_task) {
+      u64 start, finish;
+      RDTSC (start);
+      cursize = _atapi_drive_read_sector (curbus, curdrive, curlba, curbuf);
+      RDTSC (finish);
+      atapi_bytes += cursize;
+      atapi_timestamps += finish - start;
+      wakeup (atapi_current_task);
+      atapi_current_task = 0;
+    }
+    iovcpu_job_completion ();
+  }
+}
+
+int
+atapi_drive_read_sector (uint32 bus, uint32 drive, uint32 lba, uint8 * buffer)
+{
+  int size;
+
+  if (!mp_enabled || !atapi_thread_id) {
+    return _atapi_drive_read_sector (bus, drive, lba, buffer);
+  }
+
+  while (atapi_current_task) {
+    queue_append (&atapi_waitqueue, str ());
+    schedule ();
+  }
+  atapi_current_task = str ();
+
+  curbus = bus; curdrive = drive; curlba = lba;
+  iovcpu_job_wakeup_for_me (atapi_thread_id);
+  schedule ();
+  size = cursize;
+  memcpy (buffer, curbuf, ATAPI_SECTOR_SIZE);
+
+  wakeup_queue (&atapi_waitqueue);
+  return size;
+}
+
+extern u32
+atapi_sample_bps (void)
+{
+  extern u64 tsc_freq_msec;
+  u64 atapi_msec = div64_64 (atapi_timestamps, tsc_freq_msec);
+  u32 bytes_sec = 0;
+  if (atapi_msec)
+    bytes_sec = (u32) div64_64 (atapi_bytes * 1000, atapi_msec);
+  atapi_bytes = 0;
+  atapi_timestamps = 0;
+  return bytes_sec;
+}
+
+/*
  * Local Variables:
  * indent-tabs-mode: nil
  * mode: C
  * c-file-style: "gnu"
  * c-basic-offset: 2
- * End: 
+ * End:
  */
 
 /* vi: set et sw=2 sts=2: */
