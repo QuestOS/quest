@@ -31,7 +31,7 @@
 #define NR_MODS 10              /* Establish support for modules loaded by
                                    grub at boot time */
 
-#define QUANTUM_HZ 100
+#define QUANTUM_HZ 1000
 
 #endif
 
