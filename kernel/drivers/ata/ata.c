@@ -309,8 +309,9 @@ ata_drive_write_sector (uint32 bus, uint32 drive, uint32 lba, uint8 * buffer)
 
 /* Count number of times IRQs are triggered. */
 uint32 ata_primary_irq_count = 0, ata_secondary_irq_count = 0;
-u64 irq_turnaround = 0, irq_response = 0, irq_start = 0;
-
+uint32 ata_irq_count = 0;
+u64 irq_turnaround = 0, irq_response = 0, irq_start = 0, irq_resp_max = 0;
+u64 irq_resp_min = ~0LL;
 
 /* IRQ handler for both drive controllers. */
 static uint32
@@ -324,10 +325,18 @@ ata_irq_handler (uint8 vec)
   else
     ata_secondary_irq_count++;
 
+  if (irq_start != 0)
+    ata_irq_count++;
+
   u64 finish;
   RDTSC (finish);
-  if (irq_start != 0)
+  if (irq_start != 0) {
     irq_response += finish - irq_start;
+    if (irq_resp_max < finish - irq_start)
+      irq_resp_max = finish - irq_start;
+    if (irq_resp_min > finish - irq_start)
+      irq_resp_min = finish - irq_start;
+  }
 
   /* Unblock the task waiting for the IRQ. */
   if (ata_current_task)
@@ -377,10 +386,6 @@ ata_poll_for_irq (uint32 bus)
   tsc_delay_usec (50000);      /* wait 50 milliseconds */
 }
 
-static u32 atapi_stack[1024] ALIGNED (0x1000);
-static void atapi_thread (void);
-static task_id atapi_thread_id = 0;
-
 /* Initialize and identify the ATA drives in the system. */
 void
 ata_init (void)
@@ -415,16 +420,6 @@ ata_init (void)
   pata_drives[i].ata_bus = bus;
   pata_drives[i].ata_drive = drive;
 
-  for (i=0; i<4; i++) {
-    if (pata_drives[i].ata_type == ATA_TYPE_PATAPI) {
-      atapi_thread_id =
-        start_kernel_thread ((u32) atapi_thread,
-                             (u32) &atapi_stack[1023]);
-      set_iovcpu (atapi_thread_id, IOVCPU_CLASS_ATA | IOVCPU_CLASS_CDROM);
-      break;
-    }
-  }
-
   if (mp_ISA_PC) {
     set_vector_handler ((ATA_IRQ_PRIMARY - 8) + PIC2_BASE_IRQ,
                         ata_irq_handler);
@@ -440,15 +435,37 @@ ata_init (void)
   }
 }
 
+u64 atapi_cycles=0, atapi_count=0, atapi_max=0, atapi_min=~0LL;
+#define ATAPI_MEASURE_START                                     \
+  u64 _atapi_start, _atapi_finish;                              \
+  RDTSC (_atapi_start);
+#define ATAPI_MEASURE_FINISH                                    \
+  RDTSC (_atapi_finish);                                        \
+  atapi_cycles += _atapi_finish - _atapi_start;                 \
+  atapi_count++;                                                \
+  if (_atapi_finish - _atapi_start > atapi_max) {               \
+    atapi_max = _atapi_finish - _atapi_start;                   \
+  }                                                             \
+  if (_atapi_finish - _atapi_start < atapi_min) {               \
+    atapi_min = _atapi_finish - _atapi_start;                   \
+  }
+
+
 /* ************************************************** */
 /* ATAPI */
-#define DEBUG_ATA
+
 /* ATAPI is essentially SCSI commands over ATA. */
+
+static u64 atapi_bytes = 0, atapi_timestamps = 0;
+
+/* Indicate which IRQs to measure response time */
+#define FIRST
+#define SECOND
 
 /* Use the ATAPI protocol to read a single sector from the given
  * bus/drive into the buffer. */
 int
-_atapi_drive_read_sector (uint32 bus, uint32 drive, uint32 lba, uint8 * buffer)
+_atapi_drive_read_sector (uint32 bus, uint32 drive, uint32 lba, uint8 *buffer)
 {
   /* 0xA8 is READ SECTORS command byte. */
   uint8 read_cmd[12] = { 0xA8, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0 };
@@ -487,13 +504,27 @@ _atapi_drive_read_sector (uint32 bus, uint32 drive, uint32 lba, uint8 * buffer)
   /* Send ATAPI/SCSI command */
   outsw (ATA_DATA (bus), (uint16 *) read_cmd, 6);
 
+  /* Switch to IO-VCPU */
+  task_id cpu = lookup_TSS (str ())->cpu;
+  set_iovcpu (str (), IOVCPU_CLASS_ATA | IOVCPU_CLASS_CDROM);
+  extern vcpu *vcpu_lookup (int);
+  vcpu_lookup (lookup_TSS (str ())->cpu)->T = vcpu_lookup (cpu)->T;
+
   /* Wait for IRQ. */
   if (sched_enabled) {
+#ifdef FIRST
+    ATAPI_MEASURE_START;
     u64 finish;
     RDTSC (irq_start);
+#else
+    irq_start = 0;
+#endif
     schedule ();
+#ifdef FIRST
     RDTSC (finish);
     irq_turnaround += finish - irq_start;
+    ATAPI_MEASURE_FINISH;
+#endif
   } else
     ata_poll_for_irq (bus);
 
@@ -516,14 +547,25 @@ _atapi_drive_read_sector (uint32 bus, uint32 drive, uint32 lba, uint8 * buffer)
   /* Read data */
   insw (ATA_DATA (bus), buffer, size / 2);
 
+  /* Return to Main VCPU */
+  lookup_TSS (str ())->cpu = cpu;
+
   /* Wait for IRQ indicating next transfer ready.  It will be a
    * zero-byte transfer but we must still wait for the IRQ.*/
   if (sched_enabled) {
+#ifdef SECOND
+    ATAPI_MEASURE_START;
     u64 finish;
     RDTSC (irq_start);
+#else
+    irq_start = 0;
+#endif
     schedule ();
+#ifdef SECOND
     RDTSC (finish);
     irq_turnaround += finish - irq_start;
+    ATAPI_MEASURE_FINISH;
+#endif
   } else
     ata_poll_for_irq (bus);
 
@@ -553,41 +595,10 @@ _atapi_drive_read_sector (uint32 bus, uint32 drive, uint32 lba, uint8 * buffer)
   return size;
 }
 
-/* hack to get "IPC" between threads */
-static u32 curbus, curdrive, curlba;
-static int cursize;
-static u8 curbuf[ATAPI_SECTOR_SIZE] ALIGNED (ATAPI_SECTOR_SIZE);
-static task_id atapi_current_task = 0, atapi_waitqueue = 0;
-static u64 atapi_bytes = 0, atapi_timestamps = 0;
+/* instrumentation variables */
 u64 atapi_sector_read_time = 0, atapi_sector_cpu_time = 0;
-
-static void
-atapi_thread (void)
-{
-  logger_printf ("atapi_thread: hello from 0x%x\n", str ());
-  for (;;) {
-    if (atapi_current_task) {
-      u64 start, finish, vstart, vfinish;
-      RDTSC (start);
-      vstart = vcpu_current_vtsc ();
-      cursize = _atapi_drive_read_sector (curbus, curdrive, curlba, curbuf);
-      RDTSC (finish);
-      vfinish = vcpu_current_vtsc ();
-      atapi_bytes += cursize;
-      atapi_sector_read_time += finish - start;
-      atapi_sector_cpu_time += vfinish - vstart;
-      atapi_timestamps += finish - start;
-      wakeup (atapi_current_task);
-      atapi_current_task = 0;
-    }
-    iovcpu_job_completion ();
-  }
-}
-
-u64 atapi_total_roundtrip = 0;
 u64 atapi_req_interval = 0;
 static u64 prev_req = 0;
-
 u32 atapi_req_count = 0;
 u64 atapi_req_diff;
 
@@ -595,38 +606,36 @@ int
 atapi_drive_read_sector (uint32 bus, uint32 drive, uint32 lba, uint8 * buffer)
 {
   int size;
-
-  if (!mp_enabled || !atapi_thread_id) {
-    return _atapi_drive_read_sector (bus, drive, lba, buffer);
-  }
-
-  while (atapi_current_task) {
-    queue_append (&atapi_waitqueue, str ());
-    schedule ();
-  }
-  atapi_current_task = str ();
-
   u64 start, finish;
-  RDTSC (start);
+  u64 vstart, vfinish;
 
-  if (prev_req) {
+  /* begin instrumentation */
+  RDTSC (start);
+  vstart = vcpu_current_vtsc ();
+
+  /* interval between sector requests */
+  if (prev_req)
     atapi_req_interval = start - prev_req;
-  }
   prev_req = start;
 
-  curbus = bus; curdrive = drive; curlba = lba;
-  iovcpu_job_wakeup_for_me (atapi_thread_id);
-  schedule ();
-  size = cursize;
-  memcpy (buffer, curbuf, ATAPI_SECTOR_SIZE);
+  /* invoke actual function */
+  size = _atapi_drive_read_sector (bus, drive, lba, buffer);
 
+  /* conclude instrumentation */
   RDTSC (finish);
-  atapi_total_roundtrip += finish - start;
+  vfinish = vcpu_current_vtsc ();
 
-  atapi_req_count++;
+  /* record size and timing info */
+  atapi_bytes += size;
+  atapi_timestamps += finish - start;
+  atapi_sector_read_time += finish - start;
+  atapi_sector_cpu_time += vfinish - vstart;
+
+  /* req_diff measures the time between the end of one request and the
+   * beginning of the next request */
   atapi_req_diff += atapi_req_interval - (finish - start);
+  atapi_req_count++;
 
-  wakeup_queue (&atapi_waitqueue);
   return size;
 }
 
