@@ -408,22 +408,35 @@ vcpu_dump_stats (void)
                  overhead, stime, uhci_bps, atapi_bps);
 
 #ifdef DUMP_STATS_VERBOSE
-  extern u64 irq_response, irq_turnaround;
+  extern u64 irq_response, irq_turnaround, irq_resp_max, irq_resp_min;
   extern u64 atapi_sector_read_time, atapi_sector_cpu_time;
-  extern u64 atapi_total_roundtrip, atapi_req_diff;
-  extern u32 atapi_req_count, ata_primary_irq_count;
-  logger_printf ("  irq response=0x%llX avgturnaround=0x%llX\n"
-                 "  readtime=0x%llX readvcpu=0x%llX roundtrip=0x%llX avgreqdiff=0x%llX\n",
-                 div64_64 (irq_response, (u64) ata_primary_irq_count),
-                 div64_64 (irq_turnaround, (u64) ata_primary_irq_count),
-                 div64_64 (atapi_sector_read_time, (u64) atapi_req_count),
-                 div64_64 (atapi_sector_cpu_time, (u64) atapi_req_count),
-                 div64_64 (atapi_total_roundtrip, (u64) atapi_req_count),
-                 div64_64 (atapi_req_diff, (u64) atapi_req_count));
+  extern u64 atapi_req_diff;
+  extern u32 atapi_req_count, ata_irq_count;
+  if (ata_irq_count && atapi_req_count)
+    logger_printf ("  irq response=0x%llX respmax=0x%llX respmin=0x%llX"
+                   " avgturnaround=0x%llX\n"
+                   "  readtime=0x%llX readvcpu=0x%llX"
+                   " avgreqdiff=0x%llX\n",
+                   div64_64 (irq_response, (u64) ata_irq_count),
+                   irq_resp_max,
+                   irq_resp_min,
+                   div64_64 (irq_turnaround, (u64) ata_irq_count),
+                   div64_64 (atapi_sector_read_time, (u64) atapi_req_count),
+                   div64_64 (atapi_sector_cpu_time, (u64) atapi_req_count),
+                   div64_64 (atapi_req_diff, (u64) atapi_req_count));
+
+  extern u64 atapi_count, atapi_cycles, atapi_max, atapi_min;
+  if (atapi_count)
+    logger_printf ("  atapi avg=0x%llX max=0x%llX min=0x%llX\n",
+                   div64_64 (atapi_cycles, atapi_count),
+                   atapi_max, atapi_min);
+  atapi_count = atapi_max = atapi_cycles = 0;
+  atapi_min = ~0LL;
+
   /* 5-sec window */
-  ata_primary_irq_count = 0;
-  irq_turnaround = irq_response = 0;
-  atapi_total_roundtrip = 0;
+  ata_irq_count = 0;
+  irq_resp_max = irq_turnaround = irq_response = 0;
+  irq_resp_min = ~0LL;
   atapi_req_count = 0;
   atapi_req_diff = 0;
   atapi_sector_read_time = atapi_sector_cpu_time = 0;
@@ -963,6 +976,7 @@ io_vcpu_unblock (vcpu *v)
   RDTSC (now);
 
   if (!v->io.budgeted && v->io.e < now)
+    /* eligibility time is in the past, push it up to now */
     v->io.e = now;
 
   u64 Cmax = div64_64 (v->T * v->io.Unum, v->io.Uden);
