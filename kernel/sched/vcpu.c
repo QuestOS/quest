@@ -936,18 +936,22 @@ io_vcpu_end_timeslice (vcpu *cur, u64 tdelta)
 
   cur->usage += tdelta;
   if (!cur->runnable || cur->b <= 0) {
+    /* if blocked or exhausted, advance eligibility time */
     cur->io.e += div64_64 (cur->usage * cur->io.Uden, cur->io.Unum);
+    /* schedule next replenishment */
     if (cur->io.r.t == 0) {
       cur->io.r.t = cur->io.e;
       cur->io.r.b = div64_64 (cur->T * cur->io.Unum, cur->io.Uden);
     } else {
+      /* or update existing replenishment with new eligibility time */
       cur->io.r.t = cur->io.e;
     }
     cur->prev_usage = cur->usage;
     cur->usage = 0;
-    if (cur->runnable)
-      cur->b = 0;
-    else
+    /* we weren't blocked, so budget must be exhausted */
+    cur->b = 0;
+    if (!cur->runnable)
+      /* we were blocked, reset budgeted state */
       cur->io.budgeted = FALSE;
   }
 }
@@ -961,7 +965,7 @@ io_vcpu_unblock (vcpu *v)
   if (!v->io.budgeted && v->io.e < now)
     v->io.e = now;
 
-  u64 Cmax = div_u64_u32_u32 (v->T * v->io.Unum, v->io.Uden);
+  u64 Cmax = div64_64 (v->T * v->io.Unum, v->io.Uden);
 
   if (v->io.r.t == 0) {
     if (!v->io.budgeted) {
