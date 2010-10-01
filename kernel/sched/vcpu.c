@@ -997,9 +997,8 @@ iovcpu_job_wakeup (task_id job, u64 T)
 {
   quest_tss *tssp = lookup_TSS (job);
   vcpu *v = vcpu_lookup (tssp->cpu);
-  if (v->type != IO_VCPU)
-    return;
-  v->T = T;
+  if (v->type == IO_VCPU)
+    v->T = T;
   wakeup (job);
 }
 
