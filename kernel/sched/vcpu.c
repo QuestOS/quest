@@ -406,7 +406,28 @@ vcpu_dump_stats (void)
   logger_printf ("vcpu_dump_stats overhead=0x%llX"
                  " sched=0x%X uhci_bps=%d atapi_bps=%d\n",
                  overhead, stime, uhci_bps, atapi_bps);
+
 #ifdef DUMP_STATS_VERBOSE
+  extern u64 irq_response, irq_turnaround;
+  extern u64 atapi_sector_read_time, atapi_sector_cpu_time;
+  extern u64 atapi_total_roundtrip, atapi_req_diff;
+  extern u32 atapi_req_count, ata_primary_irq_count;
+  logger_printf ("  irq response=0x%llX avgturnaround=0x%llX\n"
+                 "  readtime=0x%llX readvcpu=0x%llX roundtrip=0x%llX avgreqdiff=0x%llX\n",
+                 div64_64 (irq_response, (u64) ata_primary_irq_count),
+                 div64_64 (irq_turnaround, (u64) ata_primary_irq_count),
+                 div64_64 (atapi_sector_read_time, (u64) atapi_req_count),
+                 div64_64 (atapi_sector_cpu_time, (u64) atapi_req_count),
+                 div64_64 (atapi_total_roundtrip, (u64) atapi_req_count),
+                 div64_64 (atapi_req_diff, (u64) atapi_req_count));
+  /* 5-sec window */
+  ata_primary_irq_count = 0;
+  irq_turnaround = irq_response = 0;
+  atapi_total_roundtrip = 0;
+  atapi_req_count = 0;
+  atapi_req_diff = 0;
+  atapi_sector_read_time = atapi_sector_cpu_time = 0;
+
   logger_printf ("idle tsc=0x%llX%s\n", idle_time, (cur==NULL ? " (*)" : ""));
 #endif
 

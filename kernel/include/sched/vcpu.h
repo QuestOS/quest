@@ -21,7 +21,7 @@
 #include "kernel.h"
 #include "util/cassert.h"
 
-#define VCPU_ALIGNMENT (LOCK_ALIGNMENT<<2)
+#define VCPU_ALIGNMENT (LOCK_ALIGNMENT<<3)
 
 typedef enum {
   MAIN_VCPU = 0, IO_VCPU
@@ -41,7 +41,7 @@ typedef struct _replenishment {
   struct _replenishment *next;
 } replenishment;
 
-#define MAX_REPL 8
+#define MAX_REPL 32
 typedef struct {
   replenishment array[MAX_REPL];
   replenishment *head;
@@ -111,6 +111,8 @@ typedef struct _vcpu
   };
 } vcpu;
 CASSERT (sizeof (vcpu) == VCPU_ALIGNMENT, vcpu);
+
+extern u64 vcpu_current_vtsc (void);
 
 extern void iovcpu_job_wakeup (task_id job, u64 T);
 extern void iovcpu_job_wakeup_for_me (task_id job);

@@ -308,7 +308,9 @@ ata_drive_write_sector (uint32 bus, uint32 drive, uint32 lba, uint8 * buffer)
 }
 
 /* Count number of times IRQs are triggered. */
-static uint32 ata_primary_irq_count = 0, ata_secondary_irq_count = 0;
+uint32 ata_primary_irq_count = 0, ata_secondary_irq_count = 0;
+u64 irq_turnaround = 0, irq_response = 0, irq_start = 0;
+
 
 /* IRQ handler for both drive controllers. */
 static uint32
@@ -321,6 +323,11 @@ ata_irq_handler (uint8 vec)
     ata_primary_irq_count++;
   else
     ata_secondary_irq_count++;
+
+  u64 finish;
+  RDTSC (finish);
+  if (irq_start != 0)
+    irq_response += finish - irq_start;
 
   /* Unblock the task waiting for the IRQ. */
   if (ata_current_task)
@@ -481,9 +488,13 @@ _atapi_drive_read_sector (uint32 bus, uint32 drive, uint32 lba, uint8 * buffer)
   outsw (ATA_DATA (bus), (uint16 *) read_cmd, 6);
 
   /* Wait for IRQ. */
-  if (sched_enabled)
+  if (sched_enabled) {
+    u64 finish;
+    RDTSC (irq_start);
     schedule ();
-  else
+    RDTSC (finish);
+    irq_turnaround += finish - irq_start;
+  } else
     ata_poll_for_irq (bus);
 
   /* Wait for DRQ to set */
@@ -507,9 +518,13 @@ _atapi_drive_read_sector (uint32 bus, uint32 drive, uint32 lba, uint8 * buffer)
 
   /* Wait for IRQ indicating next transfer ready.  It will be a
    * zero-byte transfer but we must still wait for the IRQ.*/
-  if (sched_enabled)
+  if (sched_enabled) {
+    u64 finish;
+    RDTSC (irq_start);
     schedule ();
-  else
+    RDTSC (finish);
+    irq_turnaround += finish - irq_start;
+  } else
     ata_poll_for_irq (bus);
 
   /* Read size of "fake" transfer (may be 0) */
@@ -544,6 +559,7 @@ static int cursize;
 static u8 curbuf[ATAPI_SECTOR_SIZE] ALIGNED (ATAPI_SECTOR_SIZE);
 static task_id atapi_current_task = 0, atapi_waitqueue = 0;
 static u64 atapi_bytes = 0, atapi_timestamps = 0;
+u64 atapi_sector_read_time = 0, atapi_sector_cpu_time = 0;
 
 static void
 atapi_thread (void)
@@ -551,11 +567,15 @@ atapi_thread (void)
   logger_printf ("atapi_thread: hello from 0x%x\n", str ());
   for (;;) {
     if (atapi_current_task) {
-      u64 start, finish;
+      u64 start, finish, vstart, vfinish;
       RDTSC (start);
+      vstart = vcpu_current_vtsc ();
       cursize = _atapi_drive_read_sector (curbus, curdrive, curlba, curbuf);
       RDTSC (finish);
+      vfinish = vcpu_current_vtsc ();
       atapi_bytes += cursize;
+      atapi_sector_read_time += finish - start;
+      atapi_sector_cpu_time += vfinish - vstart;
       atapi_timestamps += finish - start;
       wakeup (atapi_current_task);
       atapi_current_task = 0;
@@ -563,6 +583,13 @@ atapi_thread (void)
     iovcpu_job_completion ();
   }
 }
+
+u64 atapi_total_roundtrip = 0;
+u64 atapi_req_interval = 0;
+static u64 prev_req = 0;
+
+u32 atapi_req_count = 0;
+u64 atapi_req_diff;
 
 int
 atapi_drive_read_sector (uint32 bus, uint32 drive, uint32 lba, uint8 * buffer)
@@ -579,11 +606,25 @@ atapi_drive_read_sector (uint32 bus, uint32 drive, uint32 lba, uint8 * buffer)
   }
   atapi_current_task = str ();
 
+  u64 start, finish;
+  RDTSC (start);
+
+  if (prev_req) {
+    atapi_req_interval = start - prev_req;
+  }
+  prev_req = start;
+
   curbus = bus; curdrive = drive; curlba = lba;
   iovcpu_job_wakeup_for_me (atapi_thread_id);
   schedule ();
   size = cursize;
   memcpy (buffer, curbuf, ATAPI_SECTOR_SIZE);
+
+  RDTSC (finish);
+  atapi_total_roundtrip += finish - start;
+
+  atapi_req_count++;
+  atapi_req_diff += atapi_req_interval - (finish - start);
 
   wakeup_queue (&atapi_waitqueue);
   return size;
