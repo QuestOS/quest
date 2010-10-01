@@ -212,6 +212,13 @@ INIT_PER_CPU (vcpu_idle_task) {
 }
 
 /* task accounting */
+u64
+vcpu_current_vtsc (void)
+{
+  vcpu *v = percpu_read (vcpu_current);
+  return v->virtual_tsc;
+}
+
 static void
 vcpu_acnt_end_timeslice (vcpu *vcpu)
 {
