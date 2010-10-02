@@ -32,6 +32,7 @@
 
 //#define DEBUG_VCPU
 //#define DUMP_STATS_VERBOSE
+//#define DUMP_STATS_VERBOSE_2
 //#define CHECK_INVARIANTS
 
 #ifdef DEBUG_VCPU
@@ -380,11 +381,11 @@ idle_time_acnt_end ()
 static inline u32
 compute_percentage (u64 overall, u64 usage)
 {
-  u64 res = div64_64 (usage * 1000, overall);
+  u64 res = div64_64 (usage * 10000, overall);
   u16 whole, frac;
 
-  whole = ((u16) res) / 10;
-  frac = ((u16) res) - whole * 10;
+  whole = ((u16) res) / 100;
+  frac = ((u16) res) - whole * 100;
   return (((u32) whole) << 16) | (u32) frac;
 }
 
@@ -392,7 +393,7 @@ extern void
 vcpu_dump_stats (void)
 {
   int i;
-#ifdef DUMP_STATS_VERBOSE
+#ifdef DUMP_STATS_VERBOSE_2
   vcpu *cur = percpu_read (vcpu_current);
 #endif
   s64 overhead = percpu_read64 (pcpu_overhead);
@@ -403,9 +404,18 @@ vcpu_dump_stats (void)
   extern u32 atapi_sample_bps (void);
   u32 uhci_bps = uhci_sample_bps ();
   u32 atapi_bps = atapi_sample_bps ();
-  logger_printf ("vcpu_dump_stats overhead=0x%llX"
-                 " sched=0x%X uhci_bps=%d atapi_bps=%d\n",
-                 overhead, stime, uhci_bps, atapi_bps);
+  u64 now; RDTSC (now);
+
+  logger_printf ("vcpu_dump_stats t=0x%llX ms=0x%X\n", now, tsc_freq_msec);
+
+  now -= vcpu_init_time;
+  RDTSC (vcpu_init_time);
+
+  u32 sched = compute_percentage (now, stime);
+  logger_printf ("  overhead=0x%llX sched=%02d.%02d uhci_bps=%d atapi_bps=%d\n",
+                 overhead,
+                 sched >> 16, sched & 0xFF,
+                 uhci_bps, atapi_bps);
 
 #ifdef DUMP_STATS_VERBOSE
   extern u64 irq_response, irq_turnaround, irq_resp_max, irq_resp_min;
@@ -413,21 +423,19 @@ vcpu_dump_stats (void)
   extern u64 atapi_req_diff;
   extern u32 atapi_req_count, ata_irq_count;
   if (ata_irq_count && atapi_req_count)
-    logger_printf ("  irq response=0x%llX respmax=0x%llX respmin=0x%llX"
-                   " avgturnaround=0x%llX\n"
+    logger_printf ("  response=0x%llX responsemax=0x%llX responsemin=0x%llX\n"
                    "  readtime=0x%llX readvcpu=0x%llX"
                    " avgreqdiff=0x%llX\n",
                    div64_64 (irq_response, (u64) ata_irq_count),
                    irq_resp_max,
                    irq_resp_min,
-                   div64_64 (irq_turnaround, (u64) ata_irq_count),
                    div64_64 (atapi_sector_read_time, (u64) atapi_req_count),
                    div64_64 (atapi_sector_cpu_time, (u64) atapi_req_count),
                    div64_64 (atapi_req_diff, (u64) atapi_req_count));
 
   extern u64 atapi_count, atapi_cycles, atapi_max, atapi_min;
   if (atapi_count)
-    logger_printf ("  atapi avg=0x%llX max=0x%llX min=0x%llX\n",
+    logger_printf ("  atapiavg=0x%llX atapimax=0x%llX atapimin=0x%llX\n",
                    div64_64 (atapi_cycles, atapi_count),
                    atapi_max, atapi_min);
   atapi_count = atapi_max = atapi_cycles = 0;
@@ -441,7 +449,9 @@ vcpu_dump_stats (void)
   atapi_req_diff = 0;
   atapi_sector_read_time = atapi_sector_cpu_time = 0;
 
+#ifdef DUMP_STATS_VERBOSE_2
   logger_printf ("idle tsc=0x%llX%s\n", idle_time, (cur==NULL ? " (*)" : ""));
+#endif
 #endif
 
   percpu_write64 (pcpu_idle_time, 0LL);
@@ -449,7 +459,7 @@ vcpu_dump_stats (void)
 
   for (i=0; i<NUM_VCPUS; i++) {
     vcpu *vcpu = &vcpus[i];
-#ifdef DUMP_STATS_VERBOSE
+#if defined(DUMP_STATS_VERBOSE) && defined (DUMP_STATS_VERBOSE_2)
     if (vcpu->type == IO_VCPU) {
       logger_printf ("vcpu=%d pcpu=%d tsc=0x%llX pmc[0]=0x%llX pmc[1]=0x%llX%s\n",
                      i, vcpu->cpu,
@@ -464,22 +474,20 @@ vcpu_dump_stats (void)
 #endif
     sum += vcpu->timestamps_counted;
   }
-  u64 now; RDTSC (now);
-  now -= vcpu_init_time;
-  RDTSC (vcpu_init_time);
+
   u32 res = compute_percentage (now, idle_time);
-  logger_printf (" idle=%02d.%d\n", res >> 16, res & 0xFF);
+  logger_printf (" idle=%02d.%02d\n", res >> 16, res & 0xFF);
   for (i=0; i<NUM_VCPUS; i++) {
     vcpu *vcpu = &vcpus[i];
     res = compute_percentage (now, vcpu->timestamps_counted);
     vcpu->timestamps_counted = 0;
-    logger_printf (" V%02d=%02d.%d %d", i, res >> 16, res & 0xFF,
+    logger_printf (" V%02d=%02d.%02d %d", i, res >> 16, res & 0xFF,
                    vcpu->type != MAIN_VCPU ? 0 : vcpu->main.Q.size);
     if ((i % 4) == 3) {
       logger_printf ("\n");
     }
   }
-  logger_printf ("\n");
+  logger_printf ("\nend vcpu_dump_stats\n");
 }
 
 /* ************************************************** */
