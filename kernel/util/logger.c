@@ -57,7 +57,7 @@ logger_thread (void)
   for (;;) {
     char c = logger_getc ();
     if (c == 0)
-      asm volatile ("hlt");     /* idle */
+      asm volatile ("pause");
     else
       com1_putc (c);
     if (dropped) {
