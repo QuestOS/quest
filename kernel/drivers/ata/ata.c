@@ -471,6 +471,7 @@ _atapi_drive_read_sector (uint32 bus, uint32 drive, uint32 lba, uint8 *buffer)
   uint8 read_cmd[12] = { 0xA8, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0 };
   uint8 status;
   int size, fake_size;
+  task_id cpu = 0;
 
   ata_grab ();
 
@@ -504,14 +505,14 @@ _atapi_drive_read_sector (uint32 bus, uint32 drive, uint32 lba, uint8 *buffer)
   /* Send ATAPI/SCSI command */
   outsw (ATA_DATA (bus), (uint16 *) read_cmd, 6);
 
-  /* Switch to IO-VCPU */
-  task_id cpu = lookup_TSS (str ())->cpu;
-  set_iovcpu (str (), IOVCPU_CLASS_ATA | IOVCPU_CLASS_CDROM);
-  extern vcpu *vcpu_lookup (int);
-  vcpu_lookup (lookup_TSS (str ())->cpu)->T = vcpu_lookup (cpu)->T;
-
   /* Wait for IRQ. */
   if (sched_enabled) {
+    /* Switch to IO-VCPU */
+    cpu = lookup_TSS (str ())->cpu;
+    set_iovcpu (str (), IOVCPU_CLASS_ATA | IOVCPU_CLASS_CDROM);
+    extern vcpu *vcpu_lookup (int);
+    vcpu_lookup (lookup_TSS (str ())->cpu)->T = vcpu_lookup (cpu)->T;
+
 #ifdef FIRST
     ATAPI_MEASURE_START;
     u64 finish;
@@ -547,12 +548,12 @@ _atapi_drive_read_sector (uint32 bus, uint32 drive, uint32 lba, uint8 *buffer)
   /* Read data */
   insw (ATA_DATA (bus), buffer, size / 2);
 
-  /* Return to Main VCPU */
-  lookup_TSS (str ())->cpu = cpu;
-
   /* Wait for IRQ indicating next transfer ready.  It will be a
    * zero-byte transfer but we must still wait for the IRQ.*/
   if (sched_enabled) {
+    /* Return to Main VCPU */
+    lookup_TSS (str ())->cpu = cpu;
+
 #ifdef SECOND
     ATAPI_MEASURE_START;
     u64 finish;
@@ -606,35 +607,39 @@ int
 atapi_drive_read_sector (uint32 bus, uint32 drive, uint32 lba, uint8 * buffer)
 {
   int size;
-  u64 start, finish;
-  u64 vstart, vfinish;
+  u64 start = 0, finish;
+  u64 vstart = 0, vfinish;
 
   /* begin instrumentation */
-  RDTSC (start);
-  vstart = vcpu_current_vtsc ();
+  if (sched_enabled) {
+    RDTSC (start);
+    vstart = vcpu_current_vtsc ();
 
-  /* interval between sector requests */
-  if (prev_req)
-    atapi_req_interval = start - prev_req;
-  prev_req = start;
+    /* interval between sector requests */
+    if (prev_req)
+      atapi_req_interval = start - prev_req;
+    prev_req = start;
+  }
 
   /* invoke actual function */
   size = _atapi_drive_read_sector (bus, drive, lba, buffer);
 
-  /* conclude instrumentation */
-  RDTSC (finish);
-  vfinish = vcpu_current_vtsc ();
+  if (sched_enabled) {
+    /* conclude instrumentation */
+    RDTSC (finish);
+    vfinish = vcpu_current_vtsc ();
 
-  /* record size and timing info */
-  atapi_bytes += size;
-  atapi_timestamps += finish - start;
-  atapi_sector_read_time += finish - start;
-  atapi_sector_cpu_time += vfinish - vstart;
+    /* record size and timing info */
+    atapi_bytes += size;
+    atapi_timestamps += finish - start;
+    atapi_sector_read_time += finish - start;
+    atapi_sector_cpu_time += vfinish - vstart;
 
-  /* req_diff measures the time between the end of one request and the
-   * beginning of the next request */
-  atapi_req_diff += atapi_req_interval - (finish - start);
-  atapi_req_count++;
+    /* req_diff measures the time between the end of one request and the
+     * beginning of the next request */
+    atapi_req_diff += atapi_req_interval - (finish - start);
+    atapi_req_count++;
+  }
 
   return size;
 }
