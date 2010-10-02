@@ -69,6 +69,7 @@
 #include "drivers/net/ethernet.h"
 #include "util/debug.h"
 #include "util/printf.h"
+#include "util/circular.h"
 
 //#define DEBUG_NETIF
 
@@ -421,6 +422,127 @@ echo_init (void)
 
 /* ************************************************** */
 
+/* Demo HTTP server on port 80 */
+
+#define KHTTPD_CPU 2
+#define KHTTPD_BUF_LEN 8
+#define KHTTPD_STR_SIZ 256
+typedef struct {
+  struct tcp_pcb *pcb;
+  u32 len;
+  s8 str[KHTTPD_STR_SIZ];
+} khttpd_msg_t;
+khttpd_msg_t khttpd_circ_buf[KHTTPD_BUF_LEN];
+circular khttpd_circ;
+
+static void
+khttpd_close (struct tcp_pcb* pcb)
+{
+  tcp_close (pcb);
+}
+
+static err_t
+khttpd_sent (void* arg, struct tcp_pcb* pcb, u16_t len)
+{
+  DLOG ("khttpd_sent (%p, %p, %p)", arg, pcb, len);
+  tcp_close (pcb);
+  return ERR_OK;
+}
+
+static err_t
+khttpd_recv (void* arg, struct tcp_pcb* pcb, struct pbuf* p, err_t err)
+{
+  struct pbuf *q;
+  u16 plen;
+  err_t ret_err = ERR_OK;
+  khttpd_msg_t msg;
+
+  DLOG ("khttpd_recv (%p, %p, %p, %p)", arg, pcb, p, err);
+  if (p == NULL) {
+    if (p) pbuf_free (p);
+    khttpd_close (pcb);
+  } else if (err != ERR_OK) {
+    if (p) pbuf_free (p);
+  } else {
+    while (p != NULL) {
+      s8 *s = p->payload;
+      q = p;
+      plen = p->len;
+
+      do {
+        u16 curlen = plen > KHTTPD_STR_SIZ ? KHTTPD_STR_SIZ : plen;
+        memset (msg.str, 0, KHTTPD_STR_SIZ);
+        memcpy (msg.str, s, curlen);
+        msg.pcb = pcb;
+        msg.len = curlen;
+        circular_insert (&khttpd_circ, &msg);
+        plen -= curlen;
+        s += curlen;
+      } while (plen > 0);
+
+      p = p->next;
+      if (p)
+        pbuf_ref (p);
+      while (pbuf_free (q) == 0);
+      tcp_recved (pcb, plen);
+    }
+    ret_err = ERR_OK;
+  }
+  return ret_err;
+}
+
+static err_t
+khttpd_accept (void* arg, struct tcp_pcb* pcb, err_t err)
+{
+  DLOG ("khttpd_accept (%p, (%p, %d, %d), %p)",
+        arg, pcb, pcb->local_port, pcb->remote_port, err);
+  tcp_accepted (pcb);
+  tcp_recv (pcb, khttpd_recv);
+
+  return ERR_OK;
+}
+
+static task_id khttpd_id;
+static u32 khttpd_stack[1024] ALIGNED (0x1000);
+static void
+khttpd_thread (void)
+{
+  logger_printf ("khttpd_thread: hello from 0x%x\n", str ());
+  for (;;) {
+    khttpd_msg_t msg;
+    circular_remove (&khttpd_circ, &msg);
+    tcp_sent(msg.pcb, khttpd_sent);
+    //tcp_write (msg.pcb, msg.str, strlen ((const char *) msg.str), 1);
+#define send(s) tcp_write (msg.pcb, s, strlen ((const char *) s), 1)
+    send ("HTTP/1.0 200 OK\r\n"
+          "Server: Quest\r\n"
+          "Content-Type: text/html\r\n"
+          "\r\n"
+          "<html><head><title>The Quest OS</title></head>"
+          "<body><p>Hello World!</p></body></html>\r\n");
+#undef send
+  }
+}
+
+static void
+khttpd_init (void)
+{
+  circular_init (&khttpd_circ,
+                 (void *) khttpd_circ_buf,
+                 KHTTPD_BUF_LEN,
+                 KHTTPD_STR_SIZ);
+
+  khttpd_id =
+    start_kernel_thread ((u32) khttpd_thread, (u32) &khttpd_stack[1023]);
+  lookup_TSS (khttpd_id)->cpu = KHTTPD_CPU;
+  struct tcp_pcb* khttpd_pcb = tcp_new ();
+  tcp_bind (khttpd_pcb, IP_ADDR_ANY, 80);
+  khttpd_pcb = tcp_listen (khttpd_pcb);
+  tcp_accept (khttpd_pcb, khttpd_accept);
+}
+
+/* ************************************************** */
+
 /* gdbstub debugging over tcp */
 
 #ifdef GDBSTUB_TCP
@@ -459,7 +581,7 @@ debug_recv (void* arg, struct tcp_pcb* pcb, struct pbuf* p, err_t err)
   }
 
   /* read the pbufs into the ring buffer */
-  while (p != NULL && 
+  while (p != NULL &&
          p->payload != NULL &&
          debug_buf_cnt < GDBSTUB_BUFFER_SIZE) {
     q = p;
@@ -571,7 +693,7 @@ static uint32 net_tmr_stack[1024] ALIGNED (0x1000);
 
 #define NET_TMR_THREAD_WAIT_MSEC 50
 
-static void 
+static void
 net_tmr_thread (void)
 {
   DLOG ("net_tmr_thread id=0x%x", str ());
@@ -587,6 +709,7 @@ net_init(void)
 {
   lwip_init ();
   echo_init ();
+  khttpd_init ();
 
   net_tmr_pid = start_kernel_thread ((uint) net_tmr_thread,
                                      (uint) &net_tmr_stack[1023]);
@@ -738,13 +861,13 @@ net_tmr_process(void)
 #endif
 }
 
-/* 
+/*
  * Local Variables:
  * indent-tabs-mode: nil
  * mode: C
  * c-file-style: "gnu"
  * c-basic-offset: 2
- * End: 
+ * End:
  */
 
 /* vi: set et sw=2 sts=2: */
