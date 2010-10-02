@@ -396,8 +396,9 @@ static uint32
 e1000_irq_handler (uint8 vec)
 {
   if (e1000_bh_id) {
-    extern u32 tsc_freq_msec;
-    iovcpu_job_wakeup (e1000_bh_id, 50 * tsc_freq_msec);
+    extern vcpu *vcpu_lookup (int);
+    /* hack: use VCPU2's period */
+    iovcpu_job_wakeup (e1000_bh_id, vcpu_lookup (2)->T);
   }
 
   return 0;
