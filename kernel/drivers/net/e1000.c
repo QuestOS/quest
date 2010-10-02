@@ -246,6 +246,9 @@ e1000_transmit (uint8* buffer, sint len)
   return len;
 }
 
+u32 e1000_packet_count = 0;
+u64 e1000_packet_bytes = 0;
+
 extern void
 e1000_rx_poll (void)
 {
@@ -270,6 +273,8 @@ e1000_rx_poll (void)
       ptr = e1000->rbufs[entry];
       len = e1000->rdescs[entry].length;
       DLOG ("RX: full packet@%p len=%d", ptr, len);
+      e1000_packet_count++;
+      e1000_packet_bytes += len;
       if (e1000_ethdev.recv_func)
         e1000_ethdev.recv_func (&e1000_ethdev, ptr, len);
       else                      /* drop it */

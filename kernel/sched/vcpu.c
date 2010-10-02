@@ -422,6 +422,8 @@ vcpu_dump_stats (void)
   extern u64 atapi_sector_read_time, atapi_sector_cpu_time;
   extern u64 atapi_req_diff;
   extern u32 atapi_req_count, ata_irq_count;
+  extern u32 e1000_packet_count;
+  extern u64 e1000_packet_bytes;
   if (ata_irq_count && atapi_req_count)
     logger_printf ("  response=0x%llX responsemax=0x%llX responsemin=0x%llX\n"
                    "  readtime=0x%llX readvcpu=0x%llX"
@@ -440,6 +442,12 @@ vcpu_dump_stats (void)
                    atapi_max, atapi_min);
   atapi_count = atapi_max = atapi_cycles = 0;
   atapi_min = ~0LL;
+
+  logger_printf ("  e1000pps=0x%llX e1000bps=0x%llX\n",
+                 div64_64 ((u64) e1000_packet_count * tsc_freq, now),
+                 div64_64 (e1000_packet_bytes * tsc_freq, now));
+  e1000_packet_bytes = 0;
+  e1000_packet_count = 0;
 
   /* 5-sec window */
   ata_irq_count = 0;
