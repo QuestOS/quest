@@ -30,6 +30,8 @@
 #include "util/printf.h"
 #include "mem/pow2.h"
 
+#define UNITS_PER_SEC 1000
+
 //#define DEBUG_VCPU
 //#define DUMP_STATS_VERBOSE
 //#define DUMP_STATS_VERBOSE_2
@@ -44,7 +46,7 @@
 #define DLOG(fmt,...) ;
 #endif
 
-u32 tsc_freq_msec;
+u32 tsc_freq_msec, tsc_unit_freq;
 u64 vcpu_init_time;
 
 struct vcpu_params { vcpu_type type; u32 C, T; iovcpu_class class; };
@@ -1124,7 +1126,9 @@ vcpu_init (void)
 
   RDTSC (vcpu_init_time);
   tsc_freq_msec = div_u64_u32_u32 (tsc_freq, 1000);
-  logger_printf ("vcpu: tsc_freq_msec=0x%X\n", tsc_freq_msec);
+  tsc_unit_freq = div_u64_u32_u32 (tsc_freq, UNITS_PER_SEC);
+  logger_printf ("vcpu: tsc_freq_msec=0x%X unit_freq=0x%X\n",
+                 tsc_freq_msec, tsc_unit_freq);
 
   /* distribute VCPUs across PCPUs */
   for (vcpu_i=0; vcpu_i<NUM_VCPUS; vcpu_i++) {
@@ -1136,8 +1140,8 @@ vcpu_init (void)
     if (cpu_i >= mp_num_cpus)
       cpu_i = 0;
     vcpu->quantum = div_u64_u32_u32 (tsc_freq, QUANTUM_HZ);
-    vcpu->C = C * tsc_freq_msec;
-    vcpu->T = T * tsc_freq_msec;
+    vcpu->C = C * tsc_unit_freq;
+    vcpu->T = T * tsc_unit_freq;
     vcpu->type = type;
 #ifndef SPORADIC_IO
     if (vcpu->type == MAIN_VCPU) {
