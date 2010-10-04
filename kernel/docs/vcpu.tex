@@ -334,7 +334,7 @@ The wakeup routine invokes {\tt unblock}.
     \STATE Invoke {\tt end-of-timeslice} on $V$ with $\Delta t$.
 
     \STATE Find $V_{next}\in\bar V$ with the highest priority and
-    non-zero budget.  Invoke {\tt update-budget} on each VCPU you 
+    non-zero budget.  Invoke {\tt update-budget} on each VCPU you
     consider before checking its budget.
 
     \IF{there is no satisfactory $V_{next}$}
@@ -358,13 +358,30 @@ The wakeup routine invokes {\tt unblock}.
     \ENDFOR
     \STATE Set timer to go off after $\Delta t'$ has elapsed.
     \STATE Set $t_{prev}:=t_{cur}$ for next time.
+    \STATE $V$ is no longer running.  $V_{next}$, if valid, is now running.
     \STATE Switch to $V_{next}$ or idle.
     \ENSURE $\bar V'$ is now the set of runnable VCPUs.
   \end{algorithmic}
 \end{algorithm}
 
 \begin{algorithm}
-  \caption{\tt MAIN-VCPU-end-of-timeslice}\label{alg:vcpu_eot}    
+  \caption {\tt wakeup}\label{alg:wakeup}
+  \begin{algorithmic}[1]
+    \REQUIRE Task $\tau$.
+    \REQUIRE $CUR$ is currently running VCPU.
+    \REQUIRE $V$ is VCPU associated with task $\tau$.
+    \STATE Place $\tau$ on runqueue inside $V$.
+    \STATE Place $V$ on runqueue.
+    \STATE Invoke {\tt unblock} on $V$.
+    \STATE Invoke {\tt update-budget} on $V$.
+    \IF{$V_b>0$ \AND ($CUR$ is idle \OR $CUR_T>V_T$)}
+    \STATE Preempt and invoke scheduler.
+    \ENDIF
+  \end{algorithmic}
+\end{algorithm}
+
+\begin{algorithm}
+  \caption{\tt MAIN-VCPU-end-of-timeslice}\label{alg:vcpu_eot}
   \begin{algorithmic}[1]
     \REQUIRE VCPU $V$
     \REQUIRE Time interval consumed $\Delta t$
@@ -405,25 +422,20 @@ The wakeup routine invokes {\tt unblock}.
     \REQUIRE IO VCPU $V$ associated with IO task.
     \REQUIRE Main VCPU $M$ waiting for result of IO task.
     \REQUIRE $t_{cur}$ is current time.
-    \IF{$M_T<V_T$ \OR $V$ is \NOT running}
+    \IF{$M_T<V_T$ \OR \NOT ($V$ is running \OR $V$ is runnable)}
     \STATE Set $V_T:=M_T$.
     \ENDIF
     \IF{$V$ is \NOT running \AND $V_e<t_{cur}$}
     \STATE Set $V_e:=t_{cur}$.\COMMENT{IO-VCPU has been quiescent}
     \ENDIF
-    \IF{$V_R=\emptyset$}
+    \IF{$V_r$ is invalid}
     \IF{$V$ is \NOT ``budgeted''}
-    \STATE Post replenishment on $V$ for $C_{max}$ budget at time $V_e$.
+    \STATE Set $V_r$ to replenish for $C_{max}$ budget at time $V_e$.
     \ENDIF
     \ELSE
-    \STATE There is $V_R=\{r\}$, set $r_b:=C_{max}$.
+    \STATE Set $V_{r_b}:=C_{max}$.
     \ENDIF
     \STATE Set $V$ as ``budgeted.''
-    \STATE Invoke algorithm~\ref{alg:iovcpu_upbudg} {\tt update-budget} on $V$.
-    \REQUIRE $CUR$ is currently running VCPU.
-    \IF{$V_b>0$ \AND ($CUR$ is idle \OR $CUR_T>V_T$)}
-    \STATE Preempt and invoke scheduler.
-    \ENDIF
   \end{algorithmic}
 \end{algorithm}
 
@@ -442,13 +454,11 @@ The wakeup routine invokes {\tt unblock}.
     \STATE Set $V_{r_t}:=V_e$.
     \ENDIF
     \STATE Set $V_u:=0$.
-    \IF{$V$ is runnable}
     \STATE Set $V_b:=0$.
-    \ELSE
+    \IF[Blocked]{$V$ is \NOT runnable}
     \STATE Set $V$ as \NOT ``budgeted.''
     \ENDIF
     \ENDIF
-    \ENSURE $0\leq V_b\leq C_{max}$
   \end{algorithmic}
 \end{algorithm}
 
