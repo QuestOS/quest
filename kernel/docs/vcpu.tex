@@ -310,12 +310,13 @@ Transition~\ref{vcpu:w2} indicates idempotency of task {\tt wakeup}.
 %\end{lstlisting}
 
 A VCPU $V$, for the purposes of this algorithm, consists of budget
-$V_b$, period $V_T$, replenishments $V_R$, current usage $V_u$, and
-most recent activation time $V_a$.  Assume $\text{IDLE}_T=\infty$.
-IO-VCPUs have eligibility time $V_e$, utilization $V_U$, a single
-replenishment $V_r$, and boolean status of ``budgeted''.  $C_{max}$ is
-defined as $V_T\cdot V_U$ for a given IO-VCPU.  A replenishment $r$ is
-a pair consisting of a time $r_t$ and some amount of budget $r_b$.
+$V_b$, period $V_T$, queue of replenishments $V_R$, current usage
+$V_u$, and most recent activation time $V_a$.  Assume
+$\text{IDLE}_T=\infty$.  IO-VCPUs have eligibility time $V_e$,
+utilization $V_U$, a single replenishment $V_r$, and boolean status of
+``budgeted''.  $C_{max}$ is defined as $V_T\cdot V_U$ for a given
+IO-VCPU.  A replenishment $r$ is a pair consisting of a time $r_t$ and
+some amount of budget $r_b$.
 
 The scheduler relies on four VCPU-specific functions: {\tt
   end-of-timeslice}, {\tt update-budget}, {\tt next-event}, and {\tt
@@ -488,4 +489,93 @@ The wakeup routine invokes {\tt unblock}.
   \end{algorithmic}
 \end{algorithm}
 
+\begin{algorithm}
+  \caption{\tt budget-check}
+  \begin{algorithmic}[1]
+    \REQUIRE VCPU $V$.
+    \IF{$capacity(V) \leq 0$}
+    \WHILE[Exhaust and reschedule replenishments]{$head_b(V) \leq V_u$}
+    \STATE Set $V_u:=V_u-head_b(V)$.
+    \STATE Let $r=head(V)$.
+    \STATE $pop(V_R)$.
+    \STATE Set $r_t:=r_t+V_T$.
+    \STATE $add(V_R,r)$.
+    \ENDWHILE
+    \IF[$V_u$ is overrun]{$V_u>0$}
+    \STATE Set $head_t(V) := head_t(V) + V_u$.
+    \IF[Merge]{$head_t(V)+head_b(V) \geq second_t(V)$}
+    \STATE Let $b=head_b(V)$ and $t=head_t(V)$.
+    \STATE $pop(V_R)$.
+    \STATE Set $head_b(V):=head_b(V)+b$ and set $head_t(V):=t$.
+    \ENDIF
+    \ENDIF
+    \IF{$capacity(V)=0$}
+    \STATE Put $V$ in background mode.
+    \IF{$V$ is runnable}
+    \STATE $V$ will go into foreground mode at time $head_t(V)$.
+    \ENDIF
+    \ENDIF
+    \ENDIF
+  \end{algorithmic}
+\end{algorithm}
+
+\begin{algorithm}
+  \caption{\tt split-check}
+  \begin{algorithmic}[1]
+    \REQUIRE VCPU $V$.
+    \REQUIRE Current time $t_{cur}$.
+    \IF{$V_u>0$\AND$head_t(V)\leq t_{cur}$}
+    \STATE Let $remnant=head_b(V)-V_u$.
+    \ENSURE $capacity(V)=remnant$.
+    \IF[Push remnant into next replenishment]{$V_R$ is full}
+    \STATE $pop(V_R)$.
+    \STATE Set $head_b(V):=head_b(V)+remnant$.
+    \ELSE
+    \STATE Set $head_b(V):=remnant$.
+    \ENSURE $capacity(V)=capacity(V)-V_u$.
+    \ENDIF
+    \STATE $add(V_r, V_u, head_t(V)+V_T)$.
+    \STATE Set $V_u:=0$.
+    \ENSURE $capacity(V)=capacity(V)$.
+    \ENDIF
+  \end{algorithmic}
+\end{algorithm}
+
+\begin{algorithm}
+  \caption{\tt unblock-check}
+  \begin{algorithmic}[1]
+    \REQUIRE VCPU $V$.
+    \REQUIRE Current time $t_{cur}$.
+    \IF{$capacity(V) > 0$}
+    \STATE $V$ should be in foreground mode.
+    \STATE Set $head_t(V):=t_{cur}$.
+    \COMMENT{Advance earliest replenishment to now.}
+    \WHILE{$\left|V_R\right|>1$}
+    \STATE Let $b:=head_b(V)$.
+    \IF[Merge]{$second_t(V)\leq t_{cur}+b-V_u$}
+    \STATE $pop(V_R)$.
+    \STATE Set $head_b(V):=head_b(V)+b$ and set $head_t(V):=t_{cur}$.
+    \ELSE
+    \RETURN
+    \ENDIF
+    \ENDWHILE
+    \ELSE
+    \STATE $V$ will go into foreground mode at time $head_t(V)$.
+    \ENDIF
+  \end{algorithmic}
+\end{algorithm}
+
+\begin{figure}[hb]
+  \centering
+  \begin{flalign*}
+    head(V)&=\min_{r_t} \{r\in V_R\}\\
+    second(V)&=\min_{r_t} \{r\in V_R \mid r \neq head(V)\}\\
+    capacity(V)&=
+    \begin{cases}
+      0 & \text{if }head_t(V) > t_{cur} \\
+      head_b(V) - V_u & \text{otherwise}
+    \end{cases}
+  \end{flalign*}
+  \caption{Replenishments and Capacity}
+\end{figure}
 \end{document}
