@@ -35,6 +35,9 @@
 //#define DUMP_STATS_VERBOSE_2
 //#define CHECK_INVARIANTS
 
+/* Use sporadic servers for I/O VCPUs */
+//#define SPORADIC_IO
+
 #ifdef DEBUG_VCPU
 #define DLOG(fmt,...) DLOG_PREFIX("vcpu",fmt,##__VA_ARGS__)
 #else
@@ -46,11 +49,20 @@ u64 vcpu_init_time;
 
 struct vcpu_params { vcpu_type type; u32 C, T; iovcpu_class class; };
 static struct vcpu_params init_params[] = {
-  { MAIN_VCPU, 1, 3 },
-  { MAIN_VCPU, 1, 5 },
-  { MAIN_VCPU, 2, 10 },
-  { MAIN_VCPU, 1, 50 },
-  { IO_VCPU, 1, 50 },
+  { MAIN_VCPU, 100, 300 },
+  { MAIN_VCPU, 100, 400 },
+  { MAIN_VCPU, 100, 500 },
+  { MAIN_VCPU, 100, 700 },
+
+#ifdef SPORADIC_IO
+  { IO_VCPU, 10, 300, IOVCPU_CLASS_USB },
+  { IO_VCPU, 10, 400, IOVCPU_CLASS_ATA },
+  { IO_VCPU, 10, 500, IOVCPU_CLASS_NET },
+#else
+  { IO_VCPU, 1, 10, IOVCPU_CLASS_USB },
+  { IO_VCPU, 1, 10, IOVCPU_CLASS_ATA },
+  { IO_VCPU, 1, 10, IOVCPU_CLASS_NET },
+#endif
 };
 #define NUM_VCPUS (sizeof (init_params) / sizeof (struct vcpu_params))
 static vcpu vcpus[NUM_VCPUS] ALIGNED (VCPU_ALIGNMENT);
@@ -489,8 +501,13 @@ vcpu_dump_stats (void)
     vcpu *vcpu = &vcpus[i];
     res = compute_percentage (now, vcpu->timestamps_counted);
     vcpu->timestamps_counted = 0;
+#ifndef SPORADIC_IO
     logger_printf (" V%02d=%02d.%02d %d", i, res >> 16, res & 0xFF,
                    vcpu->type != MAIN_VCPU ? 0 : vcpu->main.Q.size);
+#else
+    logger_printf (" V%02d=%02d.%02d %d", i, res >> 16, res & 0xFF,
+                   vcpu->main.Q.size);
+#endif
     if ((i % 4) == 3) {
       logger_printf ("\n");
     }
@@ -730,7 +747,7 @@ vcpu_wakeup (task_id task)
       next_vcpu_binding++;
       if (next_vcpu_binding >= NUM_VCPUS)
         next_vcpu_binding = 0;
-    } while  (vcpu_lookup (tssp->cpu)->type != MAIN_VCPU);
+    } while (vcpu_lookup (tssp->cpu)->type != MAIN_VCPU);
     com1_printf ("vcpu: task 0x%x now bound to vcpu=%d\n", task, tssp->cpu);
   }
 
@@ -1066,8 +1083,10 @@ extern void
 set_iovcpu (task_id task, iovcpu_class class)
 {
   uint i = select_iovcpu (class);
+#if 0
   logger_printf ("iovcpu: task 0x%x requested class 0x%x and got IO-VCPU %d\n",
                  task, class, i);
+#endif
   lookup_TSS (task)->cpu = i;
 }
 
@@ -1120,6 +1139,7 @@ vcpu_init (void)
     vcpu->C = C * tsc_freq_msec;
     vcpu->T = T * tsc_freq_msec;
     vcpu->type = type;
+#ifndef SPORADIC_IO
     if (vcpu->type == MAIN_VCPU) {
       repl_queue_add (&vcpu->main.Q, vcpu->C, vcpu_init_time);
     } else if (vcpu->type == IO_VCPU) {
@@ -1128,11 +1148,14 @@ vcpu_init (void)
       vcpu->b = vcpu->C;
     }
     vcpu->hooks = vcpu_hooks_table[type];
+#else
+    repl_queue_add (&vcpu->main.Q, vcpu->C, vcpu_init_time);
+    vcpu->hooks = vcpu_hooks_table[MAIN_VCPU];
+#endif
+
     logger_printf ("vcpu: %svcpu=%d pcpu=%d C=0x%llX T=0x%llX U=%d%%\n",
                    type == IO_VCPU ? "IO " : "",
                    vcpu_i, vcpu->cpu, vcpu->C, vcpu->T, (C * 100) / T);
-    if (type == IO_VCPU) {
-    }
   }
 }
 
