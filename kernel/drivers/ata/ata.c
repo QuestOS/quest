@@ -647,8 +647,8 @@ atapi_drive_read_sector (uint32 bus, uint32 drive, uint32 lba, uint8 * buffer)
 extern u32
 atapi_sample_bps (void)
 {
-  extern u64 tsc_freq_msec;
-  u64 atapi_msec = div64_64 (atapi_timestamps, tsc_freq_msec);
+  extern u32 tsc_freq_msec;
+  u64 atapi_msec = div64_64 (atapi_timestamps, (u64) tsc_freq_msec);
   u32 bytes_sec = 0;
   if (atapi_msec)
     bytes_sec = (u32) div64_64 (atapi_bytes * 1000, atapi_msec);

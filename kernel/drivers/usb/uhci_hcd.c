@@ -331,8 +331,8 @@ static u64 uhci_bytes = 0, uhci_timestamps = 0;
 extern u32
 uhci_sample_bps (void)
 {
-  extern u64 tsc_freq_msec;
-  u64 uhci_msec = div64_64 (uhci_timestamps, tsc_freq_msec);
+  extern u32 tsc_freq_msec;
+  u64 uhci_msec = div64_64 (uhci_timestamps, (u64) tsc_freq_msec);
   u32 bytes_sec = 0;
   if (uhci_msec)
     bytes_sec = (u32) div64_64 (uhci_bytes * 1000, uhci_msec);
