@@ -365,6 +365,13 @@ The wakeup routine invokes {\tt unblock}.
   \end{algorithmic}
 \end{algorithm}
 
+Algorithm~\ref{alg:schedule} is the entry point into the scheduler
+architecture.  It performs the general work of informing the current
+VCPU about its usage, finding the next VCPU to run, and arranging the
+system timer to interrupt when the next important event occurs.  The
+VCPU-specific functionality is delegated to other functions which are
+invoked by this one.
+
 \begin{algorithm}
   \caption {\tt wakeup}\label{alg:wakeup}
   \begin{algorithmic}[1]
@@ -380,6 +387,12 @@ The wakeup routine invokes {\tt unblock}.
     \ENDIF
   \end{algorithmic}
 \end{algorithm}
+
+To cause a task and its associated VCPU to become runnable, you invoke
+algorithm~\ref{alg:wakeup}.  This takes care of putting the task and
+VCPU on their corresponding runqueue, and then invokes any
+VCPU-specific functionality.  Finally, it can preempt the running VCPU
+if the newly woken one is higher priority.
 
 \begin{algorithm}
   \caption{\tt MAIN-VCPU-end-of-timeslice}\label{alg:vcpu_eot}
@@ -562,6 +575,13 @@ The wakeup routine invokes {\tt unblock}.
     \ELSE
     \STATE $V$ will go into foreground mode at time $head_t(V)$.
     \ENDIF
+  \end{algorithmic}
+\end{algorithm}
+
+\begin{algorithm}
+  \caption{\tt MAIN-VCPU-init}
+  \begin{algorithmic}[1]
+    \STATE $add(V_R,V_C,t_{cur})$.
   \end{algorithmic}
 \end{algorithm}
 
