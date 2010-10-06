@@ -406,6 +406,7 @@ compute_percentage (u64 overall, u64 usage)
 extern void
 vcpu_dump_stats (void)
 {
+  static u32 dump_count = 0;
   int i;
 #ifdef DUMP_STATS_VERBOSE_2
   vcpu *cur = percpu_read (vcpu_current);
@@ -420,7 +421,8 @@ vcpu_dump_stats (void)
   u32 atapi_bps = atapi_sample_bps ();
   u64 now; RDTSC (now);
 
-  logger_printf ("vcpu_dump_stats t=0x%llX ms=0x%X\n", now, tsc_freq_msec);
+  logger_printf ("vcpu_dump_stats n=%d t=0x%llX ms=0x%X\n",
+                 dump_count++, now, tsc_freq_msec);
 
   now -= vcpu_init_time;
   RDTSC (vcpu_init_time);
