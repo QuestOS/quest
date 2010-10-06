@@ -996,7 +996,7 @@ io_vcpu_end_timeslice (vcpu *cur, u64 tdelta)
     }
     cur->prev_usage = cur->usage;
     cur->usage = 0;
-    /* we weren't blocked, so budget must be exhausted */
+
     cur->b = 0;
     if (!cur->runnable)
       /* we were blocked, reset budgeted state */
@@ -1032,8 +1032,10 @@ iovcpu_job_wakeup (task_id job, u64 T)
 {
   quest_tss *tssp = lookup_TSS (job);
   vcpu *v = vcpu_lookup (tssp->cpu);
-  if (v->type == IO_VCPU)
-    v->T = T;
+  if (v->type == IO_VCPU) {
+    if (T < v->T || !(v->running || v->runnable))
+      v->T = T;
+  }
   wakeup (job);
 }
 
