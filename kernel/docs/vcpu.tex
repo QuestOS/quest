@@ -305,11 +305,8 @@ Transition~\ref{vcpu:w2} indicates idempotency of task {\tt wakeup}.
 
 \newpage
 \section{VCPU}
-
-%\begin{lstlisting}[gobble=2,float,caption={\tt schedule},label={lst:schedule}]
-%\end{lstlisting}
-
-\paragraph{Notation} A Sporadic Server Main VCPU $V$, for the purposes
+\newcommand\algorithmsize\small
+\paragraph{Notation.} A Sporadic Server Main VCPU $V$, for the purposes
 of these algorithms, consists of budget $V_b$, initial capacity $V_C$,
 period $V_T$, queue of replenishments $V_R$ ordered by time, and
 current usage $V_u$.  I/O VCPUs have $V_b, V_u$ along with eligibility
@@ -323,9 +320,9 @@ The scheduler relies on four VCPU-specific functions: {\tt
   unblock}.  The first three are used by Algorithm~\ref{alg:schedule}.
 The wakeup routine invokes {\tt unblock}.
 
-\begin{algorithm*}
+\begin{algorithm}[!htb]
   \caption{\tt schedule}\label{alg:schedule}
-  \begin{algorithmic}[1]
+  \begin{algorithmic}[1]\algorithmsize
     \REQUIRE $V$ is current VCPU.
     \REQUIRE $\bar V$ is set of runnable VCPUs.
     \REQUIRE $t_{cur}$ is current time.
@@ -334,9 +331,9 @@ The wakeup routine invokes {\tt unblock}.
     \STATE Let $\Delta t=t_{cur}-t_{prev}$ and let $T_{prev}=V_T$.
     \STATE Invoke {\tt end-of-timeslice} on $V$ with $\Delta t$.
 
-    \STATE Find $V_{next}\in\bar V$ with the highest priority and
-    non-zero budget.  Invoke {\tt update-budget} on each VCPU you
-    consider before checking its budget.
+    \STATE Find $V_{next}\in\bar V$ with highest priority and
+    non-zero budget. Invoke {\tt update-budget} on each candidate VCPU
+    before checking its budget.
 
     \IF{there is no satisfactory $V_{next}$}
     \STATE Enter idle mode and go to step~\ref{sched:repltimer}.
@@ -344,7 +341,7 @@ The wakeup routine invokes {\tt unblock}.
 
     \STATE Let $T_{next}$ be the period of $V_{next}$.
 
-    \STATE Internally schedule $V_{next}$.
+    \STATE Select next thread for $V_{next}$.
     \IF{$V_{next}$ has empty runqueue}
     \STATE Let $\bar V'=\bar V\setminus\{V_{next}\}$
     \STATE $V_{next}$ is no longer runnable.
@@ -363,7 +360,7 @@ The wakeup routine invokes {\tt unblock}.
     \STATE Switch to $V_{next}$ or idle.
     \ENSURE $\bar V'$ is now the set of runnable VCPUs.
   \end{algorithmic}
-\end{algorithm*}
+\end{algorithm}
 
 Algorithm~\ref{alg:schedule} is the entry point into the scheduler
 architecture.  It performs the general work of informing the current
@@ -372,9 +369,9 @@ system timer to interrupt when the next important event occurs.  The
 VCPU-specific functionality is delegated into the hooks {\tt
   end-of-timeslice}, {\tt update-budget}, and {\tt next-event}.
 
-\begin{algorithm*}
+\begin{algorithm}[!htb]
   \caption {\tt wakeup}\label{alg:wakeup}
-  \begin{algorithmic}[1]
+  \begin{algorithmic}[1]\algorithmsize
     \REQUIRE Task $\tau$.
     \REQUIRE $CUR$ is currently running VCPU.
     \REQUIRE $V$ is VCPU associated with task $\tau$.
@@ -386,7 +383,7 @@ VCPU-specific functionality is delegated into the hooks {\tt
     \STATE Preempt and invoke scheduler.
     \ENDIF
   \end{algorithmic}
-\end{algorithm*}
+\end{algorithm}
 
 To cause a task and its associated VCPU to become runnable, use
 Algorithm~\ref{alg:wakeup}.  This takes care of putting the task and
@@ -395,9 +392,9 @@ VCPU-specific functionality in hooks {\tt unblock} and {\tt
   update-budget}.  Finally, it can preempt the running VCPU if the
 newly woken one is higher priority.
 
-\begin{algorithm*}
+\begin{algorithm}[!htb]
   \caption{\tt MAIN-VCPU-end-of-timeslice}\label{alg:vcpu_eot}
-  \begin{algorithmic}[1]
+  \begin{algorithmic}[1]\algorithmsize
     \REQUIRE VCPU $V$
     \REQUIRE Time interval consumed $\Delta t$
     \STATE Set $V_u:=V_u+\Delta t$.
@@ -411,55 +408,66 @@ newly woken one is higher priority.
     \STATE Set $V_b:=0$.
     \ENDIF
   \end{algorithmic}
-\end{algorithm*}
+\end{algorithm}
 
-\begin{algorithm}
+\begin{algorithm}[!htb]
   \caption{\tt MAIN-VCPU-update-budget}\label{alg:vcpu_upbudg}
-  \begin{algorithmic}[1]
+  \begin{algorithmic}[1]\algorithmsize
     \REQUIRE VCPU $V$
     \REQUIRE Current time $t_{cur}$
     \STATE Set $V_b:=max\{capacity(V), 0\}$.
   \end{algorithmic}
 \end{algorithm}
 
-\begin{algorithm}
+\begin{algorithm}[!htb]
   \caption{\tt MAIN-VCPU-next-event}\label{alg:vcpu_nextevent}
-  \begin{algorithmic}[1]
+  \begin{algorithmic}[1]\algorithmsize
     \REQUIRE VCPU $V$
     \REQUIRE Current time $t_{cur}$
     \RETURN $\min\{r_t \mid r\in V_R\wedge t_{cur}<r_t\}$ \OR ``No event.''
   \end{algorithmic}
 \end{algorithm}
 
-\begin{algorithm}
+\begin{algorithm}[!htb]
   \caption{\tt MAIN-VCPU-init}
-  \begin{algorithmic}[1]
+  \begin{algorithmic}[1]\algorithmsize
     \STATE $add(V_R,V_C,t_{cur})$.
   \end{algorithmic}
+  \label{alg:vcpu_init}
 \end{algorithm}
 
-The hooks for the Sporadic Server Main VCPU invoke the Stanovich (REF)
-algorithms according to the particular situation.  In
-Algorithm~\ref{alg:vcpu_eot} the VCPU has reached the end of a
-timeslice, so the usage counter is updated and {\tt budget-check} is
-invoked to update the replenishment queue.  If the VCPU has been
-blocked, then a partially used replenishment may need to be split into
-two pieces.  The $capacity(V)$ formula determines the amount of
-running time a VCPU can obtain at this moment, and in
-Algorithm~\ref{alg:vcpu_upbudg} this is integrated into the VCPU
-framework by writing that value into $V_b$.  For a non-running VCPU,
-the next possible time to run is determined by finding the next
-replenishment in the queue that has yet to occur, this is expressed in
-Algorithm~\ref{alg:vcpu_nextevent}.  When a Main VCPU unblocks, it
-invokes {\tt unblock-check} which updates the earliest replenishment
-time to the present and performs any merges that become possible.  A
-final note about Main VCPUs here is that: when they initialize, the
-initial replenishment needs to be added of budget $V_C$ at the current
-time.
+The Sporadic Server policy for Main VPUs is based on that described by
+Stanovich et al~\cite{stanovich10}. In Algorithm~\ref{alg:vcpu_eot}
+the VCPU has reached the end of a timeslice, so the usage counter is
+updated and {\tt budget-check} is invoked to update the replenishment
+queue.  If the VCPU has been blocked, then a partially used
+replenishment may need to be split into two pieces.  The $capacity(V)$
+formula determines the amount of running time a VCPU can obtain at the
+current moment.  This formula is defined as
+\begin{flalign*}
+  head(V)&=\min_{r_t} \{r\in V_R\}\\
+  second(V)&=\min_{r_t} \{r\in V_R \mid r \neq head(V)\}\\
+  capacity(V)&=
+  \begin{cases}
+    0 & \text{if }head_t(V) > t_{cur} \\
+    head_b(V) - V_u & \text{otherwise}
+  \end{cases}
+\end{flalign*}
+where $head(V)$ is the earliest replenishment, and $second(V)$ is the
+one that follows.  In Algorithm~\ref{alg:vcpu_upbudg} the capacity is
+integrated into the VCPU framework by writing the current value into
+$V_b$. For a non-running VCPU, the next possible time to run is
+determined by finding the next replenishment in the queue that has yet
+to occur, this is expressed in Algorithm~\ref{alg:vcpu_nextevent}.
+When a Main VCPU unblocks, it invokes {\tt unblock-check} which
+updates the earliest replenishment time to the present and performs
+any merges that become possible.  Note that when Main VCPUs are
+created the initial replenishment must be set to the current time for
+the amount $V_C$ (Algorithm~\ref{alg:vcpu_init}).
 
-\begin{algorithm*}
+\begin{algorithm}[!htb]
   \caption{\tt IO-VCPU-end-of-timeslice}\label{alg:iovcpu_eot}
-  \begin{algorithmic}[1]
+  \begin{algorithmic}[1]\algorithmsize
     \REQUIRE I/O VCPU $V$
     \REQUIRE Time interval consumed $\Delta t$
     \STATE Set $V_b:=\max\{0,V_b-\Delta t\}$.
@@ -478,11 +486,11 @@ time.
     \ENDIF
     \ENDIF
   \end{algorithmic}
-\end{algorithm*}
+\end{algorithm}
 
-\begin{algorithm}
+\begin{algorithm}[!htb]
   \caption{\tt IO-VCPU-update-budget}\label{alg:iovcpu_upbudg}
-  \begin{algorithmic}[1]
+  \begin{algorithmic}[1]\algorithmsize
     \REQUIRE I/O VCPU $V$
     \REQUIRE Current time $t_{cur}$
     \IF{$V_r$ is valid \AND $V_{r_t}\leq t_{cur}$}
@@ -493,9 +501,9 @@ time.
   \end{algorithmic}
 \end{algorithm}
 
-\begin{algorithm}
+\begin{algorithm}[!htb]
   \caption{\tt IO-VCPU-next-event}\label{alg:iovcpu_nextevent}
-  \begin{algorithmic}[1]
+  \begin{algorithmic}[1]\algorithmsize
     \REQUIRE I/O VCPU $V$
     \REQUIRE Current time $t_{cur}$
     \IF{$V_r$ is valid \AND $t_{cur}<V_{r_t}$}
@@ -506,9 +514,9 @@ time.
   \end{algorithmic}
 \end{algorithm}
 
-\begin{algorithm*}
+\begin{algorithm}[!htb]
   \caption{\tt IO-VCPU-unblock}\label{alg:iovcpu_unblock}
-  \begin{algorithmic}[1]
+  \begin{algorithmic}[1]\algorithmsize
     \REQUIRE I/O VCPU $V$ associated with I/O task.
     \REQUIRE Main VCPU $M$ waiting for result of I/O task.
     \REQUIRE $t_{cur}$ is current time.
@@ -527,7 +535,7 @@ time.
     \ENDIF
     \STATE Set $V$ as ``budgeted.''
   \end{algorithmic}
-\end{algorithm*}
+\end{algorithm}
 
 The I/O VCPU algorithm is known as Priority Inheritance
 Bandwidth-Preserving Server (PIBS).  It is expressed here as a set of
@@ -541,7 +549,7 @@ Algorithm~\ref{alg:iovcpu_upbudg} by checking the time.  Similarly,
 the only possible event for a non-running I/O VCPU comes from its
 single replenishment, in Algorithm~\ref{alg:iovcpu_nextevent}.
 
-When an I/O VCPU unblocks that means some Main VCPU requires some I/O
+When an I/O VCPU unblocks that means a Main VCPU requires some I/O
 task performed on its behalf.  Therefore, the I/O VCPU adjusts its
 priority according to the period of that Main VCPU.  This is performed
 with a simple comparison of priorities in
@@ -563,9 +571,9 @@ beyond $C_{max}$ in budget.  The ``budgeted'' state is only reset when
 the I/O VCPU blocks, therefore, the replenishment can only be posted
 in this way once per eligibility period.
 
-\begin{algorithm*}
+\begin{algorithm}[!htb]
   \caption{\tt budget-check}
-  \begin{algorithmic}[1]
+  \begin{algorithmic}[1]\algorithmsize
     \REQUIRE VCPU $V$.
     \IF{$capacity(V) \leq 0$}
     \WHILE[Exhaust and reschedule replenishments]{$head_b(V) \leq V_u$}
@@ -580,7 +588,8 @@ in this way once per eligibility period.
     \IF[Merge]{$head_t(V)+head_b(V) \geq second_t(V)$}
     \STATE Let $b=head_b(V)$ and $t=head_t(V)$.
     \STATE $pop(V_R)$.
-    \STATE Set $head_b(V):=head_b(V)+b$ and set $head_t(V):=t$.
+    \STATE Set $head_b(V):=head_b(V)+b$ 
+    \STATE Set $head_t(V):=t$.
     \ENDIF
     \ENDIF
     \IF{$capacity(V)=0$}
@@ -591,17 +600,18 @@ in this way once per eligibility period.
     \ENDIF
     \ENDIF
   \end{algorithmic}
-\end{algorithm*}
+  \label{alg:budget_check}
+\end{algorithm}
 
-\begin{algorithm*}
+\begin{algorithm}[!htb]
   \caption{\tt split-check}
-  \begin{algorithmic}[1]
+  \begin{algorithmic}[1]\algorithmsize
     \REQUIRE VCPU $V$.
     \REQUIRE Current time $t_{cur}$.
-    \IF{$V_u>0$\AND$head_t(V)\leq t_{cur}$}
+    \IF{$V_u>0$ \AND $head_t(V)\leq t_{cur}$}
     \STATE Let $remnant=head_b(V)-V_u$.
     \ENSURE $capacity(V)=remnant$.
-    \IF[Push remnant into next replenishment]{$V_R$ is full}
+    \IF[Push remnant into next]{$V_R$ is full}
     \STATE $pop(V_R)$.
     \STATE Set $head_b(V):=head_b(V)+remnant$.
     \ELSE
@@ -613,11 +623,12 @@ in this way once per eligibility period.
     \ENSURE $capacity(V)=capacity(V)$.
     \ENDIF
   \end{algorithmic}
-\end{algorithm*}
+  \label{alg:split_check}
+\end{algorithm}
 
-\begin{algorithm*}
+\begin{algorithm}[!htb]
   \caption{\tt unblock-check}
-  \begin{algorithmic}[1]
+  \begin{algorithmic}[1]\algorithmsize
     \REQUIRE VCPU $V$.
     \REQUIRE Current time $t_{cur}$.
     \IF{$capacity(V) > 0$}
@@ -637,19 +648,12 @@ in this way once per eligibility period.
     \STATE $V$ will go into foreground mode at time $head_t(V)$.
     \ENDIF
   \end{algorithmic}
-\end{algorithm*}
+  \label{alg:unblock_check}
+\end{algorithm}
 
-\begin{figure}[hb]
-  \centering
-  \begin{flalign*}
-    head(V)&=\min_{r_t} \{r\in V_R\}\\
-    second(V)&=\min_{r_t} \{r\in V_R \mid r \neq head(V)\}\\
-    capacity(V)&=
-    \begin{cases}
-      0 & \text{if }head_t(V) > t_{cur} \\
-      head_b(V) - V_u & \text{otherwise}
-    \end{cases}
-  \end{flalign*}
-  \caption{Replenishments and Capacity}
-\end{figure}
+Algorithms~\ref{alg:budget_check}, \ref{alg:split_check}, and
+\ref{alg:unblock_check} are based on Stanovich et
+al~\cite{stanovich10}.  These listings include fixes to minor errors
+we discovered in the original description.
+
 \end{document}
