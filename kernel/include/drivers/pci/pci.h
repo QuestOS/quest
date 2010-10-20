@@ -56,7 +56,11 @@ typedef struct {
   uint8 headerType;
   pci_bar bar[6];
   uint32 data[0x10];
+  uint index;
+  void *drvdata;
 } pci_device;
+
+#define PCI_ANY_ID (~0)
 
 /* ************************************************** */
 

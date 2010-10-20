@@ -164,6 +164,7 @@ probe (void)
           devices[num_devices].subclass = subclID;
           devices[num_devices].progIF = prgIFID;
           devices[num_devices].headerType = header;
+          devices[num_devices].index = num_devices;
 
           if ((header & 0x7F) == 0) {
             /* 6 BARs */
