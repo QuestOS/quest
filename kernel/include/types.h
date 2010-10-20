@@ -51,7 +51,7 @@ typedef signed long sint;
 
 typedef uint8 uint8_t, u8;
 typedef uint16 uint16_t, u16, __le16;
-typedef uint32 uint32_t, u32, __le32;
+typedef uint32 uint32_t, u32, __le32, __be32, dma_addr_t;
 typedef uint64 uint64_t, u64, __le64;
 
 typedef void *addr_t;
