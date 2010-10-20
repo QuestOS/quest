@@ -580,6 +580,9 @@ init (multiboot * pmb)
   /* Initialize e1000e card (depends on network) */
   { bool e1000e_init (void); e1000e_init (); }
 
+  /* Initialize bnx2 card (depends on network) */
+  { bool bnx2_init (void); bnx2_init (); }
+
   /* Initialize USB hub driver */
   { bool usb_hub_driver_init (void); usb_hub_driver_init (); }
 
