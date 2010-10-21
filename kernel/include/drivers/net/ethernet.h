@@ -47,6 +47,8 @@ typedef struct _ethernet_device {
   packet_poll_func_t poll_func;
   /* lwip network interface struct */
   struct netif netif;
+  /* driver-specific field */
+  void *drvdata;
 } ethernet_device;
 
 void net_init (void);
