@@ -1,0 +1,817 @@
+#include <stdio.h>
+#include <stdlib.h>
+
+typedef unsigned char u8;
+typedef unsigned long u32, __le32;
+
+struct cpu_reg {
+  u32 mode;
+  u32 mode_value_halt;
+  u32 mode_value_sstep;
+
+  u32 state;
+  u32 state_value_clear;
+
+  u32 gpr0;
+  u32 evmask;
+  u32 pc;
+  u32 inst;
+  u32 bp;
+
+  u32 spad_base;
+
+  u32 mips_view_base;
+};
+
+struct fw_info {
+  const u32 ver_major;
+  const u32 ver_minor;
+  const u32 ver_fix;
+
+  const u32 start_addr;
+
+  /* Text section. */
+  const u32 text_addr;
+  const u32 text_len;
+  const u32 text_index;
+  __le32 *text;
+  const u8 *gz_text;
+  const u32 gz_text_len;
+
+  /* Data section. */
+  const u32 data_addr;
+  const u32 data_len;
+  const u32 data_index;
+  const u32 *data;
+
+  /* SBSS section. */
+  const u32 sbss_addr;
+  const u32 sbss_len;
+  const u32 sbss_index;
+
+  /* BSS section. */
+  const u32 bss_addr;
+  const u32 bss_len;
+  const u32 bss_index;
+
+  /* Read-only section. */
+  const u32 rodata_addr;
+  const u32 rodata_len;
+  const u32 rodata_index;
+  const u32 *rodata;
+};
+
+#define BNX2_COM_CPU_MODE				0x00105000
+#define BNX2_COM_CPU_MODE_LOCAL_RST			 (1L<<0)
+#define BNX2_COM_CPU_MODE_STEP_ENA			 (1L<<1)
+#define BNX2_COM_CPU_MODE_PAGE_0_DATA_ENA		 (1L<<2)
+#define BNX2_COM_CPU_MODE_PAGE_0_INST_ENA		 (1L<<3)
+#define BNX2_COM_CPU_MODE_MSG_BIT1			 (1L<<6)
+#define BNX2_COM_CPU_MODE_INTERRUPT_ENA			 (1L<<7)
+#define BNX2_COM_CPU_MODE_SOFT_HALT			 (1L<<10)
+#define BNX2_COM_CPU_MODE_BAD_DATA_HALT_ENA		 (1L<<11)
+#define BNX2_COM_CPU_MODE_BAD_INST_HALT_ENA		 (1L<<12)
+#define BNX2_COM_CPU_MODE_FIO_ABORT_HALT_ENA		 (1L<<13)
+#define BNX2_COM_CPU_MODE_SPAD_UNDERFLOW_HALT_ENA	 (1L<<15)
+#define BNX2_COM_CPU_STATE				0x00105004
+#define BNX2_COM_CPU_STATE_BREAKPOINT			 (1L<<0)
+#define BNX2_COM_CPU_STATE_BAD_INST_HALTED		 (1L<<2)
+#define BNX2_COM_CPU_STATE_PAGE_0_DATA_HALTED		 (1L<<3)
+#define BNX2_COM_CPU_STATE_PAGE_0_INST_HALTED		 (1L<<4)
+#define BNX2_COM_CPU_STATE_BAD_DATA_ADDR_HALTED		 (1L<<5)
+#define BNX2_COM_CPU_STATE_BAD_PC_HALTED		 (1L<<6)
+#define BNX2_COM_CPU_STATE_ALIGN_HALTED			 (1L<<7)
+#define BNX2_COM_CPU_STATE_FIO_ABORT_HALTED		 (1L<<8)
+#define BNX2_COM_CPU_STATE_SOFT_HALTED			 (1L<<10)
+#define BNX2_COM_CPU_STATE_SPAD_UNDERFLOW		 (1L<<11)
+#define BNX2_COM_CPU_STATE_INTERRRUPT			 (1L<<12)
+#define BNX2_COM_CPU_STATE_DATA_ACCESS_STALL		 (1L<<14)
+#define BNX2_COM_CPU_STATE_INST_FETCH_STALL		 (1L<<15)
+#define BNX2_COM_CPU_STATE_BLOCKED_READ			 (1L<<31)
+
+#define BNX2_COM_CPU_EVENT_MASK				0x00105008
+#define BNX2_COM_CPU_EVENT_MASK_BREAKPOINT_MASK		 (1L<<0)
+#define BNX2_COM_CPU_EVENT_MASK_BAD_INST_HALTED_MASK	 (1L<<2)
+#define BNX2_COM_CPU_EVENT_MASK_PAGE_0_DATA_HALTED_MASK	 (1L<<3)
+#define BNX2_COM_CPU_EVENT_MASK_PAGE_0_INST_HALTED_MASK	 (1L<<4)
+#define BNX2_COM_CPU_EVENT_MASK_BAD_DATA_ADDR_HALTED_MASK	 (1L<<5)
+#define BNX2_COM_CPU_EVENT_MASK_BAD_PC_HALTED_MASK	 (1L<<6)
+#define BNX2_COM_CPU_EVENT_MASK_ALIGN_HALTED_MASK	 (1L<<7)
+#define BNX2_COM_CPU_EVENT_MASK_FIO_ABORT_MASK		 (1L<<8)
+#define BNX2_COM_CPU_EVENT_MASK_SOFT_HALTED_MASK	 (1L<<10)
+#define BNX2_COM_CPU_EVENT_MASK_SPAD_UNDERFLOW_MASK	 (1L<<11)
+#define BNX2_COM_CPU_EVENT_MASK_INTERRUPT_MASK		 (1L<<12)
+
+#define BNX2_COM_CPU_PROGRAM_COUNTER			0x0010501c
+#define BNX2_COM_CPU_INSTRUCTION			0x00105020
+#define BNX2_COM_CPU_DATA_ACCESS			0x00105024
+#define BNX2_COM_CPU_INTERRUPT_ENABLE			0x00105028
+#define BNX2_COM_CPU_INTERRUPT_VECTOR			0x0010502c
+#define BNX2_COM_CPU_INTERRUPT_SAVED_PC			0x00105030
+#define BNX2_COM_CPU_HW_BREAKPOINT			0x00105034
+#define BNX2_COM_CPU_HW_BREAKPOINT_DISABLE		 (1L<<0)
+#define BNX2_COM_CPU_HW_BREAKPOINT_ADDRESS		 (0x3fffffffL<<2)
+
+#define BNX2_COM_CPU_DEBUG_VECT_PEEK			0x00105038
+#define BNX2_COM_CPU_DEBUG_VECT_PEEK_1_VALUE		 (0x7ffL<<0)
+#define BNX2_COM_CPU_DEBUG_VECT_PEEK_1_PEEK_EN		 (1L<<11)
+#define BNX2_COM_CPU_DEBUG_VECT_PEEK_1_SEL		 (0xfL<<12)
+#define BNX2_COM_CPU_DEBUG_VECT_PEEK_2_VALUE		 (0x7ffL<<16)
+#define BNX2_COM_CPU_DEBUG_VECT_PEEK_2_PEEK_EN		 (1L<<27)
+#define BNX2_COM_CPU_DEBUG_VECT_PEEK_2_SEL		 (0xfL<<28)
+
+#define BNX2_COM_CPU_LAST_BRANCH_ADDR			0x00105048
+#define BNX2_COM_CPU_LAST_BRANCH_ADDR_TYPE		 (1L<<1)
+#define BNX2_COM_CPU_LAST_BRANCH_ADDR_TYPE_JUMP		 (0L<<1)
+#define BNX2_COM_CPU_LAST_BRANCH_ADDR_TYPE_BRANCH	 (1L<<1)
+#define BNX2_COM_CPU_LAST_BRANCH_ADDR_LBA		 (0x3fffffffL<<2)
+
+#define BNX2_COM_CPU_REG_FILE				0x00105200
+#define BNX2_COM_COMTQ_PFE_PFE_CTL			0x001052bc
+#define BNX2_COM_COMTQ_PFE_PFE_CTL_INC_USAGE_CNT	 (1L<<0)
+#define BNX2_COM_COMTQ_PFE_PFE_CTL_PFE_SIZE		 (0xfL<<4)
+#define BNX2_COM_COMTQ_PFE_PFE_CTL_PFE_SIZE_0		 (0L<<4)
+#define BNX2_COM_COMTQ_PFE_PFE_CTL_PFE_SIZE_1		 (1L<<4)
+#define BNX2_COM_COMTQ_PFE_PFE_CTL_PFE_SIZE_2		 (2L<<4)
+#define BNX2_COM_COMTQ_PFE_PFE_CTL_PFE_SIZE_3		 (3L<<4)
+#define BNX2_COM_COMTQ_PFE_PFE_CTL_PFE_SIZE_4		 (4L<<4)
+#define BNX2_COM_COMTQ_PFE_PFE_CTL_PFE_SIZE_5		 (5L<<4)
+#define BNX2_COM_COMTQ_PFE_PFE_CTL_PFE_SIZE_6		 (6L<<4)
+#define BNX2_COM_COMTQ_PFE_PFE_CTL_PFE_SIZE_7		 (7L<<4)
+#define BNX2_COM_COMTQ_PFE_PFE_CTL_PFE_SIZE_8		 (8L<<4)
+#define BNX2_COM_COMTQ_PFE_PFE_CTL_PFE_SIZE_9		 (9L<<4)
+#define BNX2_COM_COMTQ_PFE_PFE_CTL_PFE_SIZE_10		 (10L<<4)
+#define BNX2_COM_COMTQ_PFE_PFE_CTL_PFE_SIZE_11		 (11L<<4)
+#define BNX2_COM_COMTQ_PFE_PFE_CTL_PFE_SIZE_12		 (12L<<4)
+#define BNX2_COM_COMTQ_PFE_PFE_CTL_PFE_SIZE_13		 (13L<<4)
+#define BNX2_COM_COMTQ_PFE_PFE_CTL_PFE_SIZE_14		 (14L<<4)
+#define BNX2_COM_COMTQ_PFE_PFE_CTL_PFE_SIZE_15		 (15L<<4)
+#define BNX2_COM_COMTQ_PFE_PFE_CTL_PFE_COUNT		 (0xfL<<12)
+#define BNX2_COM_COMTQ_PFE_PFE_CTL_OFFSET		 (0x1ffL<<16)
+
+#define BNX2_COM_COMXQ					0x00105340
+#define BNX2_COM_COMXQ_FTQ_CMD				0x00105378
+#define BNX2_COM_COMXQ_FTQ_CMD_OFFSET			 (0x3ffL<<0)
+#define BNX2_COM_COMXQ_FTQ_CMD_WR_TOP			 (1L<<10)
+#define BNX2_COM_COMXQ_FTQ_CMD_WR_TOP_0			 (0L<<10)
+#define BNX2_COM_COMXQ_FTQ_CMD_WR_TOP_1			 (1L<<10)
+#define BNX2_COM_COMXQ_FTQ_CMD_SFT_RESET		 (1L<<25)
+#define BNX2_COM_COMXQ_FTQ_CMD_RD_DATA			 (1L<<26)
+#define BNX2_COM_COMXQ_FTQ_CMD_ADD_INTERVEN		 (1L<<27)
+#define BNX2_COM_COMXQ_FTQ_CMD_ADD_DATA			 (1L<<28)
+#define BNX2_COM_COMXQ_FTQ_CMD_INTERVENE_CLR		 (1L<<29)
+#define BNX2_COM_COMXQ_FTQ_CMD_POP			 (1L<<30)
+#define BNX2_COM_COMXQ_FTQ_CMD_BUSY			 (1L<<31)
+
+#define BNX2_COM_COMXQ_FTQ_CTL				0x0010537c
+#define BNX2_COM_COMXQ_FTQ_CTL_INTERVENE		 (1L<<0)
+#define BNX2_COM_COMXQ_FTQ_CTL_OVERFLOW			 (1L<<1)
+#define BNX2_COM_COMXQ_FTQ_CTL_FORCE_INTERVENE		 (1L<<2)
+#define BNX2_COM_COMXQ_FTQ_CTL_MAX_DEPTH		 (0x3ffL<<12)
+#define BNX2_COM_COMXQ_FTQ_CTL_CUR_DEPTH		 (0x3ffL<<22)
+
+#define BNX2_COM_COMTQ					0x00105380
+#define BNX2_COM_COMTQ_FTQ_CMD				0x001053b8
+#define BNX2_COM_COMTQ_FTQ_CMD_OFFSET			 (0x3ffL<<0)
+#define BNX2_COM_COMTQ_FTQ_CMD_WR_TOP			 (1L<<10)
+#define BNX2_COM_COMTQ_FTQ_CMD_WR_TOP_0			 (0L<<10)
+#define BNX2_COM_COMTQ_FTQ_CMD_WR_TOP_1			 (1L<<10)
+#define BNX2_COM_COMTQ_FTQ_CMD_SFT_RESET		 (1L<<25)
+#define BNX2_COM_COMTQ_FTQ_CMD_RD_DATA			 (1L<<26)
+#define BNX2_COM_COMTQ_FTQ_CMD_ADD_INTERVEN		 (1L<<27)
+#define BNX2_COM_COMTQ_FTQ_CMD_ADD_DATA			 (1L<<28)
+#define BNX2_COM_COMTQ_FTQ_CMD_INTERVENE_CLR		 (1L<<29)
+#define BNX2_COM_COMTQ_FTQ_CMD_POP			 (1L<<30)
+#define BNX2_COM_COMTQ_FTQ_CMD_BUSY			 (1L<<31)
+
+#define BNX2_COM_COMTQ_FTQ_CTL				0x001053bc
+#define BNX2_COM_COMTQ_FTQ_CTL_INTERVENE		 (1L<<0)
+#define BNX2_COM_COMTQ_FTQ_CTL_OVERFLOW			 (1L<<1)
+#define BNX2_COM_COMTQ_FTQ_CTL_FORCE_INTERVENE		 (1L<<2)
+#define BNX2_COM_COMTQ_FTQ_CTL_MAX_DEPTH		 (0x3ffL<<12)
+#define BNX2_COM_COMTQ_FTQ_CTL_CUR_DEPTH		 (0x3ffL<<22)
+
+#define BNX2_COM_COMQ					0x001053c0
+#define BNX2_COM_COMQ_FTQ_CMD				0x001053f8
+#define BNX2_COM_COMQ_FTQ_CMD_OFFSET			 (0x3ffL<<0)
+#define BNX2_COM_COMQ_FTQ_CMD_WR_TOP			 (1L<<10)
+#define BNX2_COM_COMQ_FTQ_CMD_WR_TOP_0			 (0L<<10)
+#define BNX2_COM_COMQ_FTQ_CMD_WR_TOP_1			 (1L<<10)
+#define BNX2_COM_COMQ_FTQ_CMD_SFT_RESET			 (1L<<25)
+#define BNX2_COM_COMQ_FTQ_CMD_RD_DATA			 (1L<<26)
+#define BNX2_COM_COMQ_FTQ_CMD_ADD_INTERVEN		 (1L<<27)
+#define BNX2_COM_COMQ_FTQ_CMD_ADD_DATA			 (1L<<28)
+#define BNX2_COM_COMQ_FTQ_CMD_INTERVENE_CLR		 (1L<<29)
+#define BNX2_COM_COMQ_FTQ_CMD_POP			 (1L<<30)
+#define BNX2_COM_COMQ_FTQ_CMD_BUSY			 (1L<<31)
+
+#define BNX2_COM_COMQ_FTQ_CTL				0x001053fc
+#define BNX2_COM_COMQ_FTQ_CTL_INTERVENE			 (1L<<0)
+#define BNX2_COM_COMQ_FTQ_CTL_OVERFLOW			 (1L<<1)
+#define BNX2_COM_COMQ_FTQ_CTL_FORCE_INTERVENE		 (1L<<2)
+#define BNX2_COM_COMQ_FTQ_CTL_MAX_DEPTH			 (0x3ffL<<12)
+#define BNX2_COM_COMQ_FTQ_CTL_CUR_DEPTH			 (0x3ffL<<22)
+
+#define BNX2_COM_SCRATCH				0x00120000
+
+#define BNX2_FW_RX_DROP_COUNT				 0x00120084
+#define BNX2_CP_CPU_MODE				0x00185000
+#define BNX2_CP_CPU_MODE_LOCAL_RST			 (1L<<0)
+#define BNX2_CP_CPU_MODE_STEP_ENA			 (1L<<1)
+#define BNX2_CP_CPU_MODE_PAGE_0_DATA_ENA		 (1L<<2)
+#define BNX2_CP_CPU_MODE_PAGE_0_INST_ENA		 (1L<<3)
+#define BNX2_CP_CPU_MODE_MSG_BIT1			 (1L<<6)
+#define BNX2_CP_CPU_MODE_INTERRUPT_ENA			 (1L<<7)
+#define BNX2_CP_CPU_MODE_SOFT_HALT			 (1L<<10)
+#define BNX2_CP_CPU_MODE_BAD_DATA_HALT_ENA		 (1L<<11)
+#define BNX2_CP_CPU_MODE_BAD_INST_HALT_ENA		 (1L<<12)
+#define BNX2_CP_CPU_MODE_FIO_ABORT_HALT_ENA		 (1L<<13)
+#define BNX2_CP_CPU_MODE_SPAD_UNDERFLOW_HALT_ENA	 (1L<<15)
+
+#define BNX2_CP_CPU_STATE				0x00185004
+#define BNX2_CP_CPU_STATE_BREAKPOINT			 (1L<<0)
+#define BNX2_CP_CPU_STATE_BAD_INST_HALTED		 (1L<<2)
+#define BNX2_CP_CPU_STATE_PAGE_0_DATA_HALTED		 (1L<<3)
+#define BNX2_CP_CPU_STATE_PAGE_0_INST_HALTED		 (1L<<4)
+#define BNX2_CP_CPU_STATE_BAD_DATA_ADDR_HALTED		 (1L<<5)
+#define BNX2_CP_CPU_STATE_BAD_PC_HALTED			 (1L<<6)
+#define BNX2_CP_CPU_STATE_ALIGN_HALTED			 (1L<<7)
+#define BNX2_CP_CPU_STATE_FIO_ABORT_HALTED		 (1L<<8)
+#define BNX2_CP_CPU_STATE_SOFT_HALTED			 (1L<<10)
+#define BNX2_CP_CPU_STATE_SPAD_UNDERFLOW		 (1L<<11)
+#define BNX2_CP_CPU_STATE_INTERRRUPT			 (1L<<12)
+#define BNX2_CP_CPU_STATE_DATA_ACCESS_STALL		 (1L<<14)
+#define BNX2_CP_CPU_STATE_INST_FETCH_STALL		 (1L<<15)
+#define BNX2_CP_CPU_STATE_BLOCKED_READ			 (1L<<31)
+
+#define BNX2_CP_CPU_EVENT_MASK				0x00185008
+#define BNX2_CP_CPU_EVENT_MASK_BREAKPOINT_MASK		 (1L<<0)
+#define BNX2_CP_CPU_EVENT_MASK_BAD_INST_HALTED_MASK	 (1L<<2)
+#define BNX2_CP_CPU_EVENT_MASK_PAGE_0_DATA_HALTED_MASK	 (1L<<3)
+#define BNX2_CP_CPU_EVENT_MASK_PAGE_0_INST_HALTED_MASK	 (1L<<4)
+#define BNX2_CP_CPU_EVENT_MASK_BAD_DATA_ADDR_HALTED_MASK	 (1L<<5)
+#define BNX2_CP_CPU_EVENT_MASK_BAD_PC_HALTED_MASK	 (1L<<6)
+#define BNX2_CP_CPU_EVENT_MASK_ALIGN_HALTED_MASK	 (1L<<7)
+#define BNX2_CP_CPU_EVENT_MASK_FIO_ABORT_MASK		 (1L<<8)
+#define BNX2_CP_CPU_EVENT_MASK_SOFT_HALTED_MASK		 (1L<<10)
+#define BNX2_CP_CPU_EVENT_MASK_SPAD_UNDERFLOW_MASK	 (1L<<11)
+#define BNX2_CP_CPU_EVENT_MASK_INTERRUPT_MASK		 (1L<<12)
+
+#define BNX2_CP_CPU_PROGRAM_COUNTER			0x0018501c
+#define BNX2_CP_CPU_INSTRUCTION				0x00185020
+#define BNX2_CP_CPU_DATA_ACCESS				0x00185024
+#define BNX2_CP_CPU_INTERRUPT_ENABLE			0x00185028
+#define BNX2_CP_CPU_INTERRUPT_VECTOR			0x0018502c
+#define BNX2_CP_CPU_INTERRUPT_SAVED_PC			0x00185030
+#define BNX2_CP_CPU_HW_BREAKPOINT			0x00185034
+#define BNX2_CP_CPU_HW_BREAKPOINT_DISABLE		 (1L<<0)
+#define BNX2_CP_CPU_HW_BREAKPOINT_ADDRESS		 (0x3fffffffL<<2)
+
+#define BNX2_CP_CPU_DEBUG_VECT_PEEK			0x00185038
+#define BNX2_CP_CPU_DEBUG_VECT_PEEK_1_VALUE		 (0x7ffL<<0)
+#define BNX2_CP_CPU_DEBUG_VECT_PEEK_1_PEEK_EN		 (1L<<11)
+#define BNX2_CP_CPU_DEBUG_VECT_PEEK_1_SEL		 (0xfL<<12)
+#define BNX2_CP_CPU_DEBUG_VECT_PEEK_2_VALUE		 (0x7ffL<<16)
+#define BNX2_CP_CPU_DEBUG_VECT_PEEK_2_PEEK_EN		 (1L<<27)
+#define BNX2_CP_CPU_DEBUG_VECT_PEEK_2_SEL		 (0xfL<<28)
+
+#define BNX2_CP_CPU_LAST_BRANCH_ADDR			0x00185048
+#define BNX2_CP_CPU_LAST_BRANCH_ADDR_TYPE		 (1L<<1)
+#define BNX2_CP_CPU_LAST_BRANCH_ADDR_TYPE_JUMP		 (0L<<1)
+#define BNX2_CP_CPU_LAST_BRANCH_ADDR_TYPE_BRANCH	 (1L<<1)
+#define BNX2_CP_CPU_LAST_BRANCH_ADDR_LBA		 (0x3fffffffL<<2)
+
+#define BNX2_CP_CPU_REG_FILE				0x00185200
+#define BNX2_CP_CPQ_PFE_PFE_CTL				0x001853bc
+#define BNX2_CP_CPQ_PFE_PFE_CTL_INC_USAGE_CNT		 (1L<<0)
+#define BNX2_CP_CPQ_PFE_PFE_CTL_PFE_SIZE		 (0xfL<<4)
+#define BNX2_CP_CPQ_PFE_PFE_CTL_PFE_SIZE_0		 (0L<<4)
+#define BNX2_CP_CPQ_PFE_PFE_CTL_PFE_SIZE_1		 (1L<<4)
+#define BNX2_CP_CPQ_PFE_PFE_CTL_PFE_SIZE_2		 (2L<<4)
+#define BNX2_CP_CPQ_PFE_PFE_CTL_PFE_SIZE_3		 (3L<<4)
+#define BNX2_CP_CPQ_PFE_PFE_CTL_PFE_SIZE_4		 (4L<<4)
+#define BNX2_CP_CPQ_PFE_PFE_CTL_PFE_SIZE_5		 (5L<<4)
+#define BNX2_CP_CPQ_PFE_PFE_CTL_PFE_SIZE_6		 (6L<<4)
+#define BNX2_CP_CPQ_PFE_PFE_CTL_PFE_SIZE_7		 (7L<<4)
+#define BNX2_CP_CPQ_PFE_PFE_CTL_PFE_SIZE_8		 (8L<<4)
+#define BNX2_CP_CPQ_PFE_PFE_CTL_PFE_SIZE_9		 (9L<<4)
+#define BNX2_CP_CPQ_PFE_PFE_CTL_PFE_SIZE_10		 (10L<<4)
+#define BNX2_CP_CPQ_PFE_PFE_CTL_PFE_SIZE_11		 (11L<<4)
+#define BNX2_CP_CPQ_PFE_PFE_CTL_PFE_SIZE_12		 (12L<<4)
+#define BNX2_CP_CPQ_PFE_PFE_CTL_PFE_SIZE_13		 (13L<<4)
+#define BNX2_CP_CPQ_PFE_PFE_CTL_PFE_SIZE_14		 (14L<<4)
+#define BNX2_CP_CPQ_PFE_PFE_CTL_PFE_SIZE_15		 (15L<<4)
+#define BNX2_CP_CPQ_PFE_PFE_CTL_PFE_COUNT		 (0xfL<<12)
+#define BNX2_CP_CPQ_PFE_PFE_CTL_OFFSET			 (0x1ffL<<16)
+
+#define BNX2_CP_CPQ					0x001853c0
+#define BNX2_CP_CPQ_FTQ_CMD				0x001853f8
+#define BNX2_CP_CPQ_FTQ_CMD_OFFSET			 (0x3ffL<<0)
+#define BNX2_CP_CPQ_FTQ_CMD_WR_TOP			 (1L<<10)
+#define BNX2_CP_CPQ_FTQ_CMD_WR_TOP_0			 (0L<<10)
+#define BNX2_CP_CPQ_FTQ_CMD_WR_TOP_1			 (1L<<10)
+#define BNX2_CP_CPQ_FTQ_CMD_SFT_RESET			 (1L<<25)
+#define BNX2_CP_CPQ_FTQ_CMD_RD_DATA			 (1L<<26)
+#define BNX2_CP_CPQ_FTQ_CMD_ADD_INTERVEN		 (1L<<27)
+#define BNX2_CP_CPQ_FTQ_CMD_ADD_DATA			 (1L<<28)
+#define BNX2_CP_CPQ_FTQ_CMD_INTERVENE_CLR		 (1L<<29)
+#define BNX2_CP_CPQ_FTQ_CMD_POP				 (1L<<30)
+#define BNX2_CP_CPQ_FTQ_CMD_BUSY			 (1L<<31)
+
+#define BNX2_CP_CPQ_FTQ_CTL				0x001853fc
+#define BNX2_CP_CPQ_FTQ_CTL_INTERVENE			 (1L<<0)
+#define BNX2_CP_CPQ_FTQ_CTL_OVERFLOW			 (1L<<1)
+#define BNX2_CP_CPQ_FTQ_CTL_FORCE_INTERVENE		 (1L<<2)
+#define BNX2_CP_CPQ_FTQ_CTL_MAX_DEPTH			 (0x3ffL<<12)
+#define BNX2_CP_CPQ_FTQ_CTL_CUR_DEPTH			 (0x3ffL<<22)
+
+#define BNX2_CP_SCRATCH					0x001a0000
+#define BNX2_RXP_CPU_MODE				0x000c5000
+#define BNX2_RXP_CPU_MODE_LOCAL_RST			 (1L<<0)
+#define BNX2_RXP_CPU_MODE_STEP_ENA			 (1L<<1)
+#define BNX2_RXP_CPU_MODE_PAGE_0_DATA_ENA		 (1L<<2)
+#define BNX2_RXP_CPU_MODE_PAGE_0_INST_ENA		 (1L<<3)
+#define BNX2_RXP_CPU_MODE_MSG_BIT1			 (1L<<6)
+#define BNX2_RXP_CPU_MODE_INTERRUPT_ENA			 (1L<<7)
+#define BNX2_RXP_CPU_MODE_SOFT_HALT			 (1L<<10)
+#define BNX2_RXP_CPU_MODE_BAD_DATA_HALT_ENA		 (1L<<11)
+#define BNX2_RXP_CPU_MODE_BAD_INST_HALT_ENA		 (1L<<12)
+#define BNX2_RXP_CPU_MODE_FIO_ABORT_HALT_ENA		 (1L<<13)
+#define BNX2_RXP_CPU_MODE_SPAD_UNDERFLOW_HALT_ENA	 (1L<<15)
+
+#define BNX2_RXP_CPU_STATE				0x000c5004
+#define BNX2_RXP_CPU_STATE_BREAKPOINT			 (1L<<0)
+#define BNX2_RXP_CPU_STATE_BAD_INST_HALTED		 (1L<<2)
+#define BNX2_RXP_CPU_STATE_PAGE_0_DATA_HALTED		 (1L<<3)
+#define BNX2_RXP_CPU_STATE_PAGE_0_INST_HALTED		 (1L<<4)
+#define BNX2_RXP_CPU_STATE_BAD_DATA_ADDR_HALTED		 (1L<<5)
+#define BNX2_RXP_CPU_STATE_BAD_PC_HALTED		 (1L<<6)
+#define BNX2_RXP_CPU_STATE_ALIGN_HALTED			 (1L<<7)
+#define BNX2_RXP_CPU_STATE_FIO_ABORT_HALTED		 (1L<<8)
+#define BNX2_RXP_CPU_STATE_SOFT_HALTED			 (1L<<10)
+#define BNX2_RXP_CPU_STATE_SPAD_UNDERFLOW		 (1L<<11)
+#define BNX2_RXP_CPU_STATE_INTERRRUPT			 (1L<<12)
+#define BNX2_RXP_CPU_STATE_DATA_ACCESS_STALL		 (1L<<14)
+#define BNX2_RXP_CPU_STATE_INST_FETCH_STALL		 (1L<<15)
+#define BNX2_RXP_CPU_STATE_BLOCKED_READ			 (1L<<31)
+
+#define BNX2_RXP_CPU_EVENT_MASK				0x000c5008
+#define BNX2_RXP_CPU_EVENT_MASK_BREAKPOINT_MASK		 (1L<<0)
+#define BNX2_RXP_CPU_EVENT_MASK_BAD_INST_HALTED_MASK	 (1L<<2)
+#define BNX2_RXP_CPU_EVENT_MASK_PAGE_0_DATA_HALTED_MASK	 (1L<<3)
+#define BNX2_RXP_CPU_EVENT_MASK_PAGE_0_INST_HALTED_MASK	 (1L<<4)
+#define BNX2_RXP_CPU_EVENT_MASK_BAD_DATA_ADDR_HALTED_MASK	 (1L<<5)
+#define BNX2_RXP_CPU_EVENT_MASK_BAD_PC_HALTED_MASK	 (1L<<6)
+#define BNX2_RXP_CPU_EVENT_MASK_ALIGN_HALTED_MASK	 (1L<<7)
+#define BNX2_RXP_CPU_EVENT_MASK_FIO_ABORT_MASK		 (1L<<8)
+#define BNX2_RXP_CPU_EVENT_MASK_SOFT_HALTED_MASK	 (1L<<10)
+#define BNX2_RXP_CPU_EVENT_MASK_SPAD_UNDERFLOW_MASK	 (1L<<11)
+#define BNX2_RXP_CPU_EVENT_MASK_INTERRUPT_MASK		 (1L<<12)
+
+#define BNX2_RXP_CPU_PROGRAM_COUNTER			0x000c501c
+#define BNX2_RXP_CPU_INSTRUCTION			0x000c5020
+#define BNX2_RXP_CPU_DATA_ACCESS			0x000c5024
+#define BNX2_RXP_CPU_INTERRUPT_ENABLE			0x000c5028
+#define BNX2_RXP_CPU_INTERRUPT_VECTOR			0x000c502c
+#define BNX2_RXP_CPU_INTERRUPT_SAVED_PC			0x000c5030
+#define BNX2_RXP_CPU_HW_BREAKPOINT			0x000c5034
+#define BNX2_RXP_CPU_HW_BREAKPOINT_DISABLE		 (1L<<0)
+#define BNX2_RXP_CPU_HW_BREAKPOINT_ADDRESS		 (0x3fffffffL<<2)
+
+#define BNX2_RXP_CPU_DEBUG_VECT_PEEK			0x000c5038
+#define BNX2_RXP_CPU_DEBUG_VECT_PEEK_1_VALUE		 (0x7ffL<<0)
+#define BNX2_RXP_CPU_DEBUG_VECT_PEEK_1_PEEK_EN		 (1L<<11)
+#define BNX2_RXP_CPU_DEBUG_VECT_PEEK_1_SEL		 (0xfL<<12)
+#define BNX2_RXP_CPU_DEBUG_VECT_PEEK_2_VALUE		 (0x7ffL<<16)
+#define BNX2_RXP_CPU_DEBUG_VECT_PEEK_2_PEEK_EN		 (1L<<27)
+#define BNX2_RXP_CPU_DEBUG_VECT_PEEK_2_SEL		 (0xfL<<28)
+
+#define BNX2_RXP_CPU_LAST_BRANCH_ADDR			0x000c5048
+#define BNX2_RXP_CPU_LAST_BRANCH_ADDR_TYPE		 (1L<<1)
+#define BNX2_RXP_CPU_LAST_BRANCH_ADDR_TYPE_JUMP		 (0L<<1)
+#define BNX2_RXP_CPU_LAST_BRANCH_ADDR_TYPE_BRANCH	 (1L<<1)
+#define BNX2_RXP_CPU_LAST_BRANCH_ADDR_LBA		 (0x3fffffffL<<2)
+
+#define BNX2_RXP_CPU_REG_FILE				0x000c5200
+#define BNX2_RXP_PFE_PFE_CTL				0x000c537c
+#define BNX2_RXP_PFE_PFE_CTL_INC_USAGE_CNT		 (1L<<0)
+#define BNX2_RXP_PFE_PFE_CTL_PFE_SIZE			 (0xfL<<4)
+#define BNX2_RXP_PFE_PFE_CTL_PFE_SIZE_0			 (0L<<4)
+#define BNX2_RXP_PFE_PFE_CTL_PFE_SIZE_1			 (1L<<4)
+#define BNX2_RXP_PFE_PFE_CTL_PFE_SIZE_2			 (2L<<4)
+#define BNX2_RXP_PFE_PFE_CTL_PFE_SIZE_3			 (3L<<4)
+#define BNX2_RXP_PFE_PFE_CTL_PFE_SIZE_4			 (4L<<4)
+#define BNX2_RXP_PFE_PFE_CTL_PFE_SIZE_5			 (5L<<4)
+#define BNX2_RXP_PFE_PFE_CTL_PFE_SIZE_6			 (6L<<4)
+#define BNX2_RXP_PFE_PFE_CTL_PFE_SIZE_7			 (7L<<4)
+#define BNX2_RXP_PFE_PFE_CTL_PFE_SIZE_8			 (8L<<4)
+#define BNX2_RXP_PFE_PFE_CTL_PFE_SIZE_9			 (9L<<4)
+#define BNX2_RXP_PFE_PFE_CTL_PFE_SIZE_10		 (10L<<4)
+#define BNX2_RXP_PFE_PFE_CTL_PFE_SIZE_11		 (11L<<4)
+#define BNX2_RXP_PFE_PFE_CTL_PFE_SIZE_12		 (12L<<4)
+#define BNX2_RXP_PFE_PFE_CTL_PFE_SIZE_13		 (13L<<4)
+#define BNX2_RXP_PFE_PFE_CTL_PFE_SIZE_14		 (14L<<4)
+#define BNX2_RXP_PFE_PFE_CTL_PFE_SIZE_15		 (15L<<4)
+#define BNX2_RXP_PFE_PFE_CTL_PFE_COUNT			 (0xfL<<12)
+#define BNX2_RXP_PFE_PFE_CTL_OFFSET			 (0x1ffL<<16)
+
+#define BNX2_RXP_RXPCQ					0x000c5380
+#define BNX2_RXP_CFTQ_CMD				0x000c53b8
+#define BNX2_RXP_CFTQ_CMD_OFFSET			 (0x3ffL<<0)
+#define BNX2_RXP_CFTQ_CMD_WR_TOP			 (1L<<10)
+#define BNX2_RXP_CFTQ_CMD_WR_TOP_0			 (0L<<10)
+#define BNX2_RXP_CFTQ_CMD_WR_TOP_1			 (1L<<10)
+#define BNX2_RXP_CFTQ_CMD_SFT_RESET			 (1L<<25)
+#define BNX2_RXP_CFTQ_CMD_RD_DATA			 (1L<<26)
+#define BNX2_RXP_CFTQ_CMD_ADD_INTERVEN			 (1L<<27)
+#define BNX2_RXP_CFTQ_CMD_ADD_DATA			 (1L<<28)
+#define BNX2_RXP_CFTQ_CMD_INTERVENE_CLR			 (1L<<29)
+#define BNX2_RXP_CFTQ_CMD_POP				 (1L<<30)
+#define BNX2_RXP_CFTQ_CMD_BUSY				 (1L<<31)
+
+#define BNX2_RXP_CFTQ_CTL				0x000c53bc
+#define BNX2_RXP_CFTQ_CTL_INTERVENE			 (1L<<0)
+#define BNX2_RXP_CFTQ_CTL_OVERFLOW			 (1L<<1)
+#define BNX2_RXP_CFTQ_CTL_FORCE_INTERVENE		 (1L<<2)
+#define BNX2_RXP_CFTQ_CTL_MAX_DEPTH			 (0x3ffL<<12)
+#define BNX2_RXP_CFTQ_CTL_CUR_DEPTH			 (0x3ffL<<22)
+
+#define BNX2_RXP_RXPQ					0x000c53c0
+#define BNX2_RXP_FTQ_CMD				0x000c53f8
+#define BNX2_RXP_FTQ_CMD_OFFSET				 (0x3ffL<<0)
+#define BNX2_RXP_FTQ_CMD_WR_TOP				 (1L<<10)
+#define BNX2_RXP_FTQ_CMD_WR_TOP_0			 (0L<<10)
+#define BNX2_RXP_FTQ_CMD_WR_TOP_1			 (1L<<10)
+#define BNX2_RXP_FTQ_CMD_SFT_RESET			 (1L<<25)
+#define BNX2_RXP_FTQ_CMD_RD_DATA			 (1L<<26)
+#define BNX2_RXP_FTQ_CMD_ADD_INTERVEN			 (1L<<27)
+#define BNX2_RXP_FTQ_CMD_ADD_DATA			 (1L<<28)
+#define BNX2_RXP_FTQ_CMD_INTERVENE_CLR			 (1L<<29)
+#define BNX2_RXP_FTQ_CMD_POP				 (1L<<30)
+#define BNX2_RXP_FTQ_CMD_BUSY				 (1L<<31)
+
+#define BNX2_RXP_FTQ_CTL				0x000c53fc
+#define BNX2_RXP_FTQ_CTL_INTERVENE			 (1L<<0)
+#define BNX2_RXP_FTQ_CTL_OVERFLOW			 (1L<<1)
+#define BNX2_RXP_FTQ_CTL_FORCE_INTERVENE		 (1L<<2)
+#define BNX2_RXP_FTQ_CTL_MAX_DEPTH			 (0x3ffL<<12)
+#define BNX2_RXP_FTQ_CTL_CUR_DEPTH			 (0x3ffL<<22)
+
+#define BNX2_RXP_SCRATCH				0x000e0000
+#define BNX2_RXP_SCRATCH_RXP_FLOOD			 0x000e0024
+#define BNX2_RXP_SCRATCH_RSS_TBL_SZ			 0x000e0038
+#define BNX2_RXP_SCRATCH_RSS_TBL			 0x000e003c
+#define BNX2_RXP_SCRATCH_RSS_TBL_MAX_ENTRIES		 128
+#define BNX2_TPAT_CPU_MODE				0x00085000
+#define BNX2_TPAT_CPU_MODE_LOCAL_RST			 (1L<<0)
+#define BNX2_TPAT_CPU_MODE_STEP_ENA			 (1L<<1)
+#define BNX2_TPAT_CPU_MODE_PAGE_0_DATA_ENA		 (1L<<2)
+#define BNX2_TPAT_CPU_MODE_PAGE_0_INST_ENA		 (1L<<3)
+#define BNX2_TPAT_CPU_MODE_MSG_BIT1			 (1L<<6)
+#define BNX2_TPAT_CPU_MODE_INTERRUPT_ENA		 (1L<<7)
+#define BNX2_TPAT_CPU_MODE_SOFT_HALT			 (1L<<10)
+#define BNX2_TPAT_CPU_MODE_BAD_DATA_HALT_ENA		 (1L<<11)
+#define BNX2_TPAT_CPU_MODE_BAD_INST_HALT_ENA		 (1L<<12)
+#define BNX2_TPAT_CPU_MODE_FIO_ABORT_HALT_ENA		 (1L<<13)
+#define BNX2_TPAT_CPU_MODE_SPAD_UNDERFLOW_HALT_ENA	 (1L<<15)
+
+#define BNX2_TPAT_CPU_STATE				0x00085004
+#define BNX2_TPAT_CPU_STATE_BREAKPOINT			 (1L<<0)
+#define BNX2_TPAT_CPU_STATE_BAD_INST_HALTED		 (1L<<2)
+#define BNX2_TPAT_CPU_STATE_PAGE_0_DATA_HALTED		 (1L<<3)
+#define BNX2_TPAT_CPU_STATE_PAGE_0_INST_HALTED		 (1L<<4)
+#define BNX2_TPAT_CPU_STATE_BAD_DATA_ADDR_HALTED	 (1L<<5)
+#define BNX2_TPAT_CPU_STATE_BAD_PC_HALTED		 (1L<<6)
+#define BNX2_TPAT_CPU_STATE_ALIGN_HALTED		 (1L<<7)
+#define BNX2_TPAT_CPU_STATE_FIO_ABORT_HALTED		 (1L<<8)
+#define BNX2_TPAT_CPU_STATE_SOFT_HALTED			 (1L<<10)
+#define BNX2_TPAT_CPU_STATE_SPAD_UNDERFLOW		 (1L<<11)
+#define BNX2_TPAT_CPU_STATE_INTERRRUPT			 (1L<<12)
+#define BNX2_TPAT_CPU_STATE_DATA_ACCESS_STALL		 (1L<<14)
+#define BNX2_TPAT_CPU_STATE_INST_FETCH_STALL		 (1L<<15)
+#define BNX2_TPAT_CPU_STATE_BLOCKED_READ		 (1L<<31)
+
+#define BNX2_TPAT_CPU_EVENT_MASK			0x00085008
+#define BNX2_TPAT_CPU_EVENT_MASK_BREAKPOINT_MASK	 (1L<<0)
+#define BNX2_TPAT_CPU_EVENT_MASK_BAD_INST_HALTED_MASK	 (1L<<2)
+#define BNX2_TPAT_CPU_EVENT_MASK_PAGE_0_DATA_HALTED_MASK	 (1L<<3)
+#define BNX2_TPAT_CPU_EVENT_MASK_PAGE_0_INST_HALTED_MASK	 (1L<<4)
+#define BNX2_TPAT_CPU_EVENT_MASK_BAD_DATA_ADDR_HALTED_MASK	 (1L<<5)
+#define BNX2_TPAT_CPU_EVENT_MASK_BAD_PC_HALTED_MASK	 (1L<<6)
+#define BNX2_TPAT_CPU_EVENT_MASK_ALIGN_HALTED_MASK	 (1L<<7)
+#define BNX2_TPAT_CPU_EVENT_MASK_FIO_ABORT_MASK		 (1L<<8)
+#define BNX2_TPAT_CPU_EVENT_MASK_SOFT_HALTED_MASK	 (1L<<10)
+#define BNX2_TPAT_CPU_EVENT_MASK_SPAD_UNDERFLOW_MASK	 (1L<<11)
+#define BNX2_TPAT_CPU_EVENT_MASK_INTERRUPT_MASK		 (1L<<12)
+
+#define BNX2_TPAT_CPU_PROGRAM_COUNTER			0x0008501c
+#define BNX2_TPAT_CPU_INSTRUCTION			0x00085020
+#define BNX2_TPAT_CPU_DATA_ACCESS			0x00085024
+#define BNX2_TPAT_CPU_INTERRUPT_ENABLE			0x00085028
+#define BNX2_TPAT_CPU_INTERRUPT_VECTOR			0x0008502c
+#define BNX2_TPAT_CPU_INTERRUPT_SAVED_PC		0x00085030
+#define BNX2_TPAT_CPU_HW_BREAKPOINT			0x00085034
+#define BNX2_TPAT_CPU_HW_BREAKPOINT_DISABLE		 (1L<<0)
+#define BNX2_TPAT_CPU_HW_BREAKPOINT_ADDRESS		 (0x3fffffffL<<2)
+
+#define BNX2_TPAT_CPU_DEBUG_VECT_PEEK			0x00085038
+#define BNX2_TPAT_CPU_DEBUG_VECT_PEEK_1_VALUE		 (0x7ffL<<0)
+#define BNX2_TPAT_CPU_DEBUG_VECT_PEEK_1_PEEK_EN		 (1L<<11)
+#define BNX2_TPAT_CPU_DEBUG_VECT_PEEK_1_SEL		 (0xfL<<12)
+#define BNX2_TPAT_CPU_DEBUG_VECT_PEEK_2_VALUE		 (0x7ffL<<16)
+#define BNX2_TPAT_CPU_DEBUG_VECT_PEEK_2_PEEK_EN		 (1L<<27)
+#define BNX2_TPAT_CPU_DEBUG_VECT_PEEK_2_SEL		 (0xfL<<28)
+
+#define BNX2_TPAT_CPU_LAST_BRANCH_ADDR			0x00085048
+#define BNX2_TPAT_CPU_LAST_BRANCH_ADDR_TYPE		 (1L<<1)
+#define BNX2_TPAT_CPU_LAST_BRANCH_ADDR_TYPE_JUMP	 (0L<<1)
+#define BNX2_TPAT_CPU_LAST_BRANCH_ADDR_TYPE_BRANCH	 (1L<<1)
+#define BNX2_TPAT_CPU_LAST_BRANCH_ADDR_LBA		 (0x3fffffffL<<2)
+
+#define BNX2_TPAT_CPU_REG_FILE				0x00085200
+#define BNX2_TPAT_TPATQ					0x000853c0
+#define BNX2_TPAT_FTQ_CMD				0x000853f8
+#define BNX2_TPAT_FTQ_CMD_OFFSET			 (0x3ffL<<0)
+#define BNX2_TPAT_FTQ_CMD_WR_TOP			 (1L<<10)
+#define BNX2_TPAT_FTQ_CMD_WR_TOP_0			 (0L<<10)
+#define BNX2_TPAT_FTQ_CMD_WR_TOP_1			 (1L<<10)
+#define BNX2_TPAT_FTQ_CMD_SFT_RESET			 (1L<<25)
+#define BNX2_TPAT_FTQ_CMD_RD_DATA			 (1L<<26)
+#define BNX2_TPAT_FTQ_CMD_ADD_INTERVEN			 (1L<<27)
+#define BNX2_TPAT_FTQ_CMD_ADD_DATA			 (1L<<28)
+#define BNX2_TPAT_FTQ_CMD_INTERVENE_CLR			 (1L<<29)
+#define BNX2_TPAT_FTQ_CMD_POP				 (1L<<30)
+#define BNX2_TPAT_FTQ_CMD_BUSY				 (1L<<31)
+
+#define BNX2_TPAT_FTQ_CTL				0x000853fc
+#define BNX2_TPAT_FTQ_CTL_INTERVENE			 (1L<<0)
+#define BNX2_TPAT_FTQ_CTL_OVERFLOW			 (1L<<1)
+#define BNX2_TPAT_FTQ_CTL_FORCE_INTERVENE		 (1L<<2)
+#define BNX2_TPAT_FTQ_CTL_MAX_DEPTH			 (0x3ffL<<12)
+#define BNX2_TPAT_FTQ_CTL_CUR_DEPTH			 (0x3ffL<<22)
+
+#define BNX2_TPAT_SCRATCH				0x000a0000
+#define BNX2_TXP_CPU_MODE				0x00045000
+#define BNX2_TXP_CPU_MODE_LOCAL_RST			 (1L<<0)
+#define BNX2_TXP_CPU_MODE_STEP_ENA			 (1L<<1)
+#define BNX2_TXP_CPU_MODE_PAGE_0_DATA_ENA		 (1L<<2)
+#define BNX2_TXP_CPU_MODE_PAGE_0_INST_ENA		 (1L<<3)
+#define BNX2_TXP_CPU_MODE_MSG_BIT1			 (1L<<6)
+#define BNX2_TXP_CPU_MODE_INTERRUPT_ENA			 (1L<<7)
+#define BNX2_TXP_CPU_MODE_SOFT_HALT			 (1L<<10)
+#define BNX2_TXP_CPU_MODE_BAD_DATA_HALT_ENA		 (1L<<11)
+#define BNX2_TXP_CPU_MODE_BAD_INST_HALT_ENA		 (1L<<12)
+#define BNX2_TXP_CPU_MODE_FIO_ABORT_HALT_ENA		 (1L<<13)
+#define BNX2_TXP_CPU_MODE_SPAD_UNDERFLOW_HALT_ENA	 (1L<<15)
+
+#define BNX2_TXP_CPU_STATE				0x00045004
+#define BNX2_TXP_CPU_STATE_BREAKPOINT			 (1L<<0)
+#define BNX2_TXP_CPU_STATE_BAD_INST_HALTED		 (1L<<2)
+#define BNX2_TXP_CPU_STATE_PAGE_0_DATA_HALTED		 (1L<<3)
+#define BNX2_TXP_CPU_STATE_PAGE_0_INST_HALTED		 (1L<<4)
+#define BNX2_TXP_CPU_STATE_BAD_DATA_ADDR_HALTED		 (1L<<5)
+#define BNX2_TXP_CPU_STATE_BAD_PC_HALTED		 (1L<<6)
+#define BNX2_TXP_CPU_STATE_ALIGN_HALTED			 (1L<<7)
+#define BNX2_TXP_CPU_STATE_FIO_ABORT_HALTED		 (1L<<8)
+#define BNX2_TXP_CPU_STATE_SOFT_HALTED			 (1L<<10)
+#define BNX2_TXP_CPU_STATE_SPAD_UNDERFLOW		 (1L<<11)
+#define BNX2_TXP_CPU_STATE_INTERRRUPT			 (1L<<12)
+#define BNX2_TXP_CPU_STATE_DATA_ACCESS_STALL		 (1L<<14)
+#define BNX2_TXP_CPU_STATE_INST_FETCH_STALL		 (1L<<15)
+#define BNX2_TXP_CPU_STATE_BLOCKED_READ			 (1L<<31)
+
+#define BNX2_TXP_CPU_EVENT_MASK				0x00045008
+#define BNX2_TXP_CPU_EVENT_MASK_BREAKPOINT_MASK		 (1L<<0)
+#define BNX2_TXP_CPU_EVENT_MASK_BAD_INST_HALTED_MASK	 (1L<<2)
+#define BNX2_TXP_CPU_EVENT_MASK_PAGE_0_DATA_HALTED_MASK	 (1L<<3)
+#define BNX2_TXP_CPU_EVENT_MASK_PAGE_0_INST_HALTED_MASK	 (1L<<4)
+#define BNX2_TXP_CPU_EVENT_MASK_BAD_DATA_ADDR_HALTED_MASK	 (1L<<5)
+#define BNX2_TXP_CPU_EVENT_MASK_BAD_PC_HALTED_MASK	 (1L<<6)
+#define BNX2_TXP_CPU_EVENT_MASK_ALIGN_HALTED_MASK	 (1L<<7)
+#define BNX2_TXP_CPU_EVENT_MASK_FIO_ABORT_MASK		 (1L<<8)
+#define BNX2_TXP_CPU_EVENT_MASK_SOFT_HALTED_MASK	 (1L<<10)
+#define BNX2_TXP_CPU_EVENT_MASK_SPAD_UNDERFLOW_MASK	 (1L<<11)
+#define BNX2_TXP_CPU_EVENT_MASK_INTERRUPT_MASK		 (1L<<12)
+
+#define BNX2_TXP_CPU_PROGRAM_COUNTER			0x0004501c
+#define BNX2_TXP_CPU_INSTRUCTION			0x00045020
+#define BNX2_TXP_CPU_DATA_ACCESS			0x00045024
+#define BNX2_TXP_CPU_INTERRUPT_ENABLE			0x00045028
+#define BNX2_TXP_CPU_INTERRUPT_VECTOR			0x0004502c
+#define BNX2_TXP_CPU_INTERRUPT_SAVED_PC			0x00045030
+#define BNX2_TXP_CPU_HW_BREAKPOINT			0x00045034
+#define BNX2_TXP_CPU_HW_BREAKPOINT_DISABLE		 (1L<<0)
+#define BNX2_TXP_CPU_HW_BREAKPOINT_ADDRESS		 (0x3fffffffL<<2)
+
+#define BNX2_TXP_CPU_DEBUG_VECT_PEEK			0x00045038
+#define BNX2_TXP_CPU_DEBUG_VECT_PEEK_1_VALUE		 (0x7ffL<<0)
+#define BNX2_TXP_CPU_DEBUG_VECT_PEEK_1_PEEK_EN		 (1L<<11)
+#define BNX2_TXP_CPU_DEBUG_VECT_PEEK_1_SEL		 (0xfL<<12)
+#define BNX2_TXP_CPU_DEBUG_VECT_PEEK_2_VALUE		 (0x7ffL<<16)
+#define BNX2_TXP_CPU_DEBUG_VECT_PEEK_2_PEEK_EN		 (1L<<27)
+#define BNX2_TXP_CPU_DEBUG_VECT_PEEK_2_SEL		 (0xfL<<28)
+
+#define BNX2_TXP_CPU_LAST_BRANCH_ADDR			0x00045048
+#define BNX2_TXP_CPU_LAST_BRANCH_ADDR_TYPE		 (1L<<1)
+#define BNX2_TXP_CPU_LAST_BRANCH_ADDR_TYPE_JUMP		 (0L<<1)
+#define BNX2_TXP_CPU_LAST_BRANCH_ADDR_TYPE_BRANCH	 (1L<<1)
+#define BNX2_TXP_CPU_LAST_BRANCH_ADDR_LBA		 (0x3fffffffL<<2)
+
+#define BNX2_TXP_CPU_REG_FILE				0x00045200
+#define BNX2_TXP_TXPQ					0x000453c0
+#define BNX2_TXP_FTQ_CMD				0x000453f8
+#define BNX2_TXP_FTQ_CMD_OFFSET				 (0x3ffL<<0)
+#define BNX2_TXP_FTQ_CMD_WR_TOP				 (1L<<10)
+#define BNX2_TXP_FTQ_CMD_WR_TOP_0			 (0L<<10)
+#define BNX2_TXP_FTQ_CMD_WR_TOP_1			 (1L<<10)
+#define BNX2_TXP_FTQ_CMD_SFT_RESET			 (1L<<25)
+#define BNX2_TXP_FTQ_CMD_RD_DATA			 (1L<<26)
+#define BNX2_TXP_FTQ_CMD_ADD_INTERVEN			 (1L<<27)
+#define BNX2_TXP_FTQ_CMD_ADD_DATA			 (1L<<28)
+#define BNX2_TXP_FTQ_CMD_INTERVENE_CLR			 (1L<<29)
+#define BNX2_TXP_FTQ_CMD_POP				 (1L<<30)
+#define BNX2_TXP_FTQ_CMD_BUSY				 (1L<<31)
+
+#define BNX2_TXP_FTQ_CTL				0x000453fc
+#define BNX2_TXP_FTQ_CTL_INTERVENE			 (1L<<0)
+#define BNX2_TXP_FTQ_CTL_OVERFLOW			 (1L<<1)
+#define BNX2_TXP_FTQ_CTL_FORCE_INTERVENE		 (1L<<2)
+#define BNX2_TXP_FTQ_CTL_MAX_DEPTH			 (0x3ffL<<12)
+#define BNX2_TXP_FTQ_CTL_CUR_DEPTH			 (0x3ffL<<22)
+
+#define BNX2_TXP_SCRATCH				0x00060000
+
+
+#include "bnx2_fw.h"
+#include "bnx2_fw2.h"
+
+
+
+#include <zlib.h>
+#define kmalloc(x,y) malloc (x)
+#define vmalloc malloc
+#define kfree free
+#define vfree free
+
+
+
+struct bnx2 {
+  struct z_stream_s	*strm;
+  void			*gunzip_buf;
+};
+
+
+
+#define FW_BUF_SIZE	0x10000
+
+static int
+bnx2_gunzip_init(struct bnx2 *bp)
+{
+  if ((bp->gunzip_buf = vmalloc(FW_BUF_SIZE)) == NULL)
+    goto gunzip_nomem1;
+
+  if ((bp->strm = kmalloc(sizeof(*bp->strm), GFP_KERNEL)) == NULL)
+    goto gunzip_nomem2;
+
+  return 0;
+
+ gunzip_nomem3:
+  kfree(bp->strm);
+  bp->strm = NULL;
+
+ gunzip_nomem2:
+  vfree(bp->gunzip_buf);
+  bp->gunzip_buf = NULL;
+
+ gunzip_nomem1:
+  return -1;
+}
+
+static void
+bnx2_gunzip_end(struct bnx2 *bp)
+{
+  kfree(bp->strm);
+  bp->strm = NULL;
+
+  if (bp->gunzip_buf) {
+    vfree(bp->gunzip_buf);
+    bp->gunzip_buf = NULL;
+  }
+}
+
+static int
+bnx2_gunzip(struct bnx2 *bp, const u8 *zbuf,
+	    int len, void **outbuf, int *outlen)
+{
+  int rc;
+
+  bp->strm->next_in = (u8 *) zbuf;
+  bp->strm->avail_in = len;
+  bp->strm->next_out = bp->gunzip_buf;
+  bp->strm->avail_out = FW_BUF_SIZE;
+
+  rc = inflateInit2(bp->strm, -MAX_WBITS);
+  if (rc != Z_OK)
+    return rc;
+
+  rc = inflate(bp->strm, Z_FINISH);
+
+  *outlen = FW_BUF_SIZE - bp->strm->avail_out;
+  *outbuf = bp->gunzip_buf;
+
+  if ((rc != Z_OK) && (rc != Z_STREAM_END))
+    printf ("Firmware decompression error: %s\n",
+            bp->strm->msg);
+
+  inflateEnd(bp->strm);
+
+  if (rc == Z_STREAM_END)
+    return 0;
+
+  return rc;
+}
+
+
+
+int
+do_firmware (outfp, rv2p, rv2p_len, name)
+     FILE *outfp;
+     const void *rv2p;
+     const int rv2p_len;
+     const char *name;
+{
+  int rc = 0, i;
+  void *text;
+  int text_len;
+  struct bnx2 bp_stack;
+  struct bnx2 *bp = &bp_stack;
+
+  if ((rc = bnx2_gunzip_init(bp)) != 0)
+    return rc;
+
+  rc = bnx2_gunzip(bp, rv2p, rv2p_len, &text, &text_len);
+  if (rc)
+    goto fail;
+
+  text_len -= 4;
+
+  printf ("Processing %s text_len=0x%x\n", name, text_len);
+  fprintf (outfp, "static u8 %s[] = {\n", name);
+#define LINE_WRAP 12
+  for (i=0; i<text_len; i++) {
+    if ((i % LINE_WRAP) == 0)
+      fprintf (outfp, "  ");
+    fprintf (outfp, "0x%.02x", ((u8 *) text)[i]);
+    if (i != text_len - 1)
+      fprintf (outfp, ", ");
+    if ((i % LINE_WRAP) == (LINE_WRAP - 1) || (i == text_len - 1))
+      fprintf (outfp, "\n");
+  }
+  fprintf (outfp, "};\n\n");
+
+  bnx2_gunzip_end(bp);
+  return 0;
+
+ fail:
+  fprintf (stderr, "Error\n");
+  bnx2_gunzip_end(bp);
+  return rc;
+}
+
+int
+main (void)
+{
+  FILE *fp;
+  
+  if (!(fp = fopen ("bnx2_uncompressed_fw.h", "w")))
+    goto open_fail;
+
+  fprintf (fp, "/* This file has been automatically generated by decompressing data\n *"
+           " from bnx2_fw.h and bnx2_fw2.h using tools/firmware/bnx2/fw2hdr. */\n\n");
+
+#define FW(x) do_firmware (fp, x, sizeof (x), #x)
+
+  FW (bnx2_rv2p_proc1);
+  FW (bnx2_rv2p_proc2);
+  FW (bnx2_xi90_rv2p_proc1);
+  FW (bnx2_xi90_rv2p_proc2);
+  FW (bnx2_xi_rv2p_proc1);
+  FW (bnx2_xi_rv2p_proc2);
+  FW (bnx2_COM_b06FwText);
+  FW (bnx2_CP_b06FwText);
+  FW (bnx2_RXP_b06FwText);
+  FW (bnx2_TPAT_b06FwText);
+  FW (bnx2_TXP_b06FwText);
+  FW (bnx2_COM_b09FwText);
+  FW (bnx2_CP_b09FwText);
+  FW (bnx2_RXP_b09FwText);
+  FW (bnx2_TPAT_b09FwText);
+  FW (bnx2_TXP_b09FwText);
+
+  fclose (fp);
+  return 0;
+
+ open_fail:
+  fprintf (stderr, "Open failed\n");
+  return 1;
+}
