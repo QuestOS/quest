@@ -32,6 +32,8 @@
 #include "sched/vcpu.h"
 
 #include "bnx2.h"
+#include "bnx2_uncompressed_fw.h"
+
 #define BNX2_VECTOR 0x4E       /* arbitrary */
 
 #define DEBUG_BNX2
@@ -209,6 +211,7 @@ pci_write_config_dword (pci_device *p, u32 offset, u32 val)
 #define udelay tsc_delay_usec
 #define EBUSY 1
 #define ENODEV 2
+#define EIO 3
 
 static u32
 bnx2_reg_rd_ind(struct bnx2 *bp, u32 offset)
@@ -235,6 +238,12 @@ static u32
 bnx2_shmem_rd(struct bnx2 *bp, u32 offset)
 {
   return (bnx2_reg_rd_ind(bp, bp->shmem_base + offset));
+}
+
+static void
+bnx2_shmem_wr(struct bnx2 *bp, u32 offset, u32 val)
+{
+  bnx2_reg_wr_ind(bp, bp->shmem_base + offset, val);
 }
 
 static void
@@ -849,6 +858,51 @@ bnx2_irq_handler (u8 vec)
   return 0;
 }
 
+static int
+bnx2_fw_sync(struct bnx2 *bp, u32 msg_data, int ack, int silent)
+{
+  int i;
+  u32 val;
+
+  bp->fw_wr_seq++;
+  msg_data |= bp->fw_wr_seq;
+
+  bnx2_shmem_wr(bp, BNX2_DRV_MB, msg_data);
+
+  if (!ack)
+    return 0;
+
+  /* wait for an acknowledgement. */
+  for (i = 0; i < (BNX2_FW_ACK_TIME_OUT_MS / 10); i++) {
+    udelay(10*1000);
+
+    val = bnx2_shmem_rd(bp, BNX2_FW_MB);
+
+    if ((val & BNX2_FW_MSG_ACK) == (msg_data & BNX2_DRV_MSG_SEQ))
+      break;
+  }
+  if ((msg_data & BNX2_DRV_MSG_DATA) == BNX2_DRV_MSG_DATA_WAIT0)
+    return 0;
+
+  /* If we timed out, inform the firmware that this is the case. */
+  if ((val & BNX2_FW_MSG_ACK) != (msg_data & BNX2_DRV_MSG_SEQ)) {
+    if (!silent)
+      DLOG ("fw sync timeout, reset code = %x\n", msg_data);
+
+    msg_data &= ~BNX2_DRV_MSG_CODE;
+    msg_data |= BNX2_DRV_MSG_CODE_FW_TIMEOUT;
+
+    bnx2_shmem_wr(bp, BNX2_DRV_MB, msg_data);
+
+    return -EBUSY;
+  }
+
+  if ((val & BNX2_FW_MSG_STATUS_MASK) != BNX2_FW_MSG_STATUS_OK)
+    return -EIO;
+
+  return 0;
+}
+
 #if 0
 static int
 bnx2_reset_chip(struct bnx2 *bp, u32 reset_code)
@@ -903,7 +957,7 @@ bnx2_reset_chip(struct bnx2 *bp, u32 reset_code)
      */
     if ((CHIP_ID(bp) == CHIP_ID_5706_A0) ||
         (CHIP_ID(bp) == CHIP_ID_5706_A1))
-      msleep(20);
+      udelay(20*1000);
 
     /* Reset takes approximate 30 usec */
     for (i = 0; i < 10; i++) {
@@ -1626,12 +1680,7 @@ bnx2_mac_reset (struct bnx2 *bp)
                   0,
                   DRV_RESET_SIGNATURE);
 
-#if 0
-#define DRV_MSG_DATA_WAIT0 0x00010000
-  fw_sync(bp, DRV_MSG_DATA_WAIT0 | DRV_MSG_CODE_RESET);
-#else
-  udelay (1000);
-#endif
+  bnx2_fw_sync(bp, BNX2_DRV_MSG_DATA_WAIT0 | BNX2_DRV_MSG_CODE_RESET, 1, 1);
 
   val = REG_RD(bp, BNX2_MISC_ID);
   val =
@@ -1655,44 +1704,838 @@ bnx2_mac_reset (struct bnx2 *bp)
     udelay(10);
   }
 
-#if 0
-  fw_sync(bp, DRV_MSG_DATA_WAIT1 | DRV_MSG_CODE_RESET);
-#else
-  udelay (1000);
-#endif
+  bnx2_fw_sync(bp, BNX2_DRV_MSG_DATA_WAIT1 | BNX2_DRV_MSG_CODE_RESET, 1, 0);
+}
+
+static u32
+rv2p_fw_fixup(u32 rv2p_proc, int idx, u32 loc, u32 rv2p_code)
+{
+  switch (idx) {
+  case RV2P_P1_FIXUP_PAGE_SIZE_IDX:
+    rv2p_code &= ~RV2P_BD_PAGE_SIZE_MSK;
+    rv2p_code |= RV2P_BD_PAGE_SIZE;
+    break;
+  }
+  return rv2p_code;
 }
 
 #define RV2P_PROC1 0
 #define RV2P_PROC2 1
 static void
-load_rv2p_fw(struct bnx2 *bp, u32 *rv2p_code, u32 rv2p_code_len, u32 rv2p_proc)
+load_rv2p_fw(struct bnx2 *bp, __le32 *rv2p_code, u32 rv2p_code_len,
+             u32 rv2p_proc, u32 fixup_loc)
 {
+  __le32 *rv2p_code_start = rv2p_code;
   int i;
-  u32 val;
-  /* Read through the instruction array for the RV2P processor */
-  for (i = 0; i < rv2p_code_len; i += 8) {
-    REG_WR(bp, BNX2_RV2P_INSTR_HIGH, *rv2p_code);
-    rv2p_code++;
-    REG_WR(bp, BNX2_RV2P_INSTR_LOW, *rv2p_code);
-    rv2p_code++;
-    /* Write the instruction to the appropriate instruction */
-    /* RAM address. */
-    if (rv2p_proc == RV2P_PROC1) {
-      val = (i / 8) | BNX2_RV2P_PROC1_ADDR_CMD_RDWR;
-      REG_WR(bp, BNX2_RV2P_PROC1_ADDR_CMD, val);
-    }
-    else {
-      val = (i / 8) | BNX2_RV2P_PROC2_ADDR_CMD_RDWR;
-      REG_WR(bp, BNX2_RV2P_PROC2_ADDR_CMD, val);
-    }
+  u32 val, cmd, addr;
+
+  if (rv2p_proc == RV2P_PROC1) {
+    cmd = BNX2_RV2P_PROC1_ADDR_CMD_RDWR;
+    addr = BNX2_RV2P_PROC1_ADDR_CMD;
+  } else {
+    cmd = BNX2_RV2P_PROC2_ADDR_CMD_RDWR;
+    addr = BNX2_RV2P_PROC2_ADDR_CMD;
   }
-  /* Reset the processor */
+
+  for (i = 0; i < rv2p_code_len; i += 8) {
+    REG_WR(bp, BNX2_RV2P_INSTR_HIGH, __le32_to_cpu(*rv2p_code));
+    rv2p_code++;
+    REG_WR(bp, BNX2_RV2P_INSTR_LOW, __le32_to_cpu(*rv2p_code));
+    rv2p_code++;
+
+    val = (i / 8) | cmd;
+    REG_WR(bp, addr, val);
+  }
+
+  rv2p_code = rv2p_code_start;
+  if (fixup_loc && ((fixup_loc * 4) < rv2p_code_len)) {
+    u32 code;
+
+    code = __le32_to_cpu(*(rv2p_code + fixup_loc - 1));
+    REG_WR(bp, BNX2_RV2P_INSTR_HIGH, code);
+    code = __le32_to_cpu(*(rv2p_code + fixup_loc));
+    code = rv2p_fw_fixup(rv2p_proc, 0, fixup_loc, code);
+    REG_WR(bp, BNX2_RV2P_INSTR_LOW, code);
+
+    val = (fixup_loc / 2) | cmd;
+    REG_WR(bp, addr, val);
+  }
+
+  /* Reset the processor, un-stall is done later. */
   if (rv2p_proc == RV2P_PROC1) {
     REG_WR(bp, BNX2_RV2P_COMMAND, BNX2_RV2P_COMMAND_PROC1_RESET);
   }
   else {
     REG_WR(bp, BNX2_RV2P_COMMAND, BNX2_RV2P_COMMAND_PROC2_RESET);
   }
+}
+#define RV2P_PROC1_MAX_BD_PAGE_LOC   9
+#define RV2P_PROC1_BD_PAGE_SIZE_MSK	0xffff
+#define RV2P_PROC1_BD_PAGE_SIZE	((BCM_PAGE_SIZE / 16) - 1)
+#define RV2P_PROC2_MAX_BD_PAGE_LOC   5
+#define RV2P_PROC2_BD_PAGE_SIZE_MSK	0xffff
+#define RV2P_PROC2_BD_PAGE_SIZE	((BCM_PAGE_SIZE / 16) - 1)
+#define XI_RV2P_PROC1_MAX_BD_PAGE_LOC   9
+#define XI_RV2P_PROC1_BD_PAGE_SIZE_MSK	0xffff
+#define XI_RV2P_PROC1_BD_PAGE_SIZE	((BCM_PAGE_SIZE / 16) - 1)
+#define XI90_RV2P_PROC1_MAX_BD_PAGE_LOC   9
+#define XI90_RV2P_PROC1_BD_PAGE_SIZE_MSK	0xffff
+#define XI90_RV2P_PROC1_BD_PAGE_SIZE	((BCM_PAGE_SIZE / 16) - 1)
+#define XI_RV2P_PROC2_MAX_BD_PAGE_LOC   5
+#define XI_RV2P_PROC2_BD_PAGE_SIZE_MSK	0xffff
+#define XI_RV2P_PROC2_BD_PAGE_SIZE	((BCM_PAGE_SIZE / 16) - 1)
+#define XI90_RV2P_PROC2_MAX_BD_PAGE_LOC   5
+#define XI90_RV2P_PROC2_BD_PAGE_SIZE_MSK	0xffff
+#define XI90_RV2P_PROC2_BD_PAGE_SIZE	((BCM_PAGE_SIZE / 16) - 1)
+
+static const u32 bnx2_COM_b06FwData[(0x0/4) + 1] = { 0x0 };
+static const u32 bnx2_COM_b06FwRodata[(0x14/4) + 1] = {
+	0x08000d98, 0x08000de0, 0x08000e20, 0x08000e6c, 0x08000ea0, 0x00000000
+};
+static const u32 bnx2_CP_b06FwData[(0x84/4) + 1] = {
+	0x00000000, 0x0000001b, 0x0000000f, 0x0000000a, 0x00000008, 0x00000006,
+	0x00000005, 0x00000005, 0x00000004, 0x00000004, 0x00000003, 0x00000003,
+	0x00000003, 0x00000003, 0x00000003, 0x00000002, 0x00000002, 0x00000002,
+	0x00000002, 0x00000002, 0x00000002, 0x00000002, 0x00000002, 0x00000002,
+	0x00000002, 0x00000002, 0x00000002, 0x00000002, 0x00000002, 0x00000002,
+	0x00000001, 0x00000001, 0x00000001, 0x00000000 };
+static const u32 bnx2_CP_b06FwRodata[(0x154/4) + 1] = {
+	0x08000f58, 0x08000db0, 0x08000fec, 0x08001094, 0x08000f80, 0x08000fc0,
+	0x080011cc, 0x08000dcc, 0x080011f0, 0x08000e1c, 0x08001634, 0x080015dc,
+	0x08000dcc, 0x08000dcc, 0x08000dcc, 0x0800127c, 0x0800127c, 0x08000dcc,
+	0x08000dcc, 0x08001580, 0x08000dcc, 0x08000dcc, 0x08000dcc, 0x08000dcc,
+	0x080013f0, 0x08000dcc, 0x08000dcc, 0x08000dcc, 0x08000dcc, 0x08000dcc,
+	0x08000dcc, 0x08000dcc, 0x08000dcc, 0x08000dcc, 0x08000dcc, 0x08000dcc,
+	0x08000dcc, 0x08000dcc, 0x08000dcc, 0x08000fe0, 0x08000dcc, 0x08000dcc,
+	0x08001530, 0x08000dcc, 0x08000dcc, 0x08000dcc, 0x08000dcc, 0x08000dcc,
+	0x08000dcc, 0x08000dcc, 0x08000dcc, 0x08000dcc, 0x08000dcc, 0x08000dcc,
+	0x08000dcc, 0x08000dcc, 0x08000dcc, 0x08000dcc, 0x08000dcc, 0x08000dcc,
+	0x0800145c, 0x08000dcc, 0x08000dcc, 0x08001370, 0x080012e0, 0x08002e94,
+	0x08002e9c, 0x08002e64, 0x08002e70, 0x08002e7c, 0x08002e88, 0x080046b4,
+	0x08003f00, 0x08004634, 0x080046b4, 0x080046b4, 0x080044b4, 0x080046b4,
+	0x080046fc, 0x08005524, 0x080054e4, 0x080054b0, 0x08005484, 0x08005460,
+	0x0800541c, 0x00000000 };
+static const u32 bnx2_RXP_b06FwData[(0x0/4) + 1] = { 0x0 };
+static const u32 bnx2_RXP_b06FwRodata[(0x24/4) + 1] = {
+	0x080033f8, 0x080033f8, 0x08003370, 0x080033a8, 0x080033dc, 0x08003400,
+	0x08003400, 0x08003400, 0x080032e0, 0x00000000 };
+static const u32 bnx2_TPAT_b06FwData[(0x0/4) + 1] = { 0x0 };
+static const u32 bnx2_TPAT_b06FwRodata[(0x0/4) + 1] = { 0x0 };
+static const u32 bnx2_TXP_b06FwData[(0x0/4) + 1] = { 0x0 };
+static const u32 bnx2_TXP_b06FwRodata[(0x0/4) + 1] = { 0x0 };
+
+static const u32 bnx2_COM_b09FwData[(0x0/4) + 1] = { 0x0 };
+static const u32 bnx2_COM_b09FwRodata[(0x38/4) + 1] = {
+	0x80080100, 0x80080080, 0x80080000, 0x00000c80, 0x00003200, 0x80080240,
+	0x08000f10, 0x08000f68, 0x08000fac, 0x08001044, 0x08001084, 0x80080100,
+	0x80080080, 0x80080000, 0x00000000 };
+static const u32 bnx2_CP_b09FwData[(0x84/4) + 1] = {
+	0x00000000, 0x0000001b, 0x0000000f, 0x0000000a, 0x00000008, 0x00000006,
+	0x00000005, 0x00000005, 0x00000004, 0x00000004, 0x00000003, 0x00000003,
+	0x00000003, 0x00000003, 0x00000003, 0x00000002, 0x00000002, 0x00000002,
+	0x00000002, 0x00000002, 0x00000002, 0x00000002, 0x00000002, 0x00000002,
+	0x00000002, 0x00000002, 0x00000002, 0x00000002, 0x00000002, 0x00000002,
+	0x00000001, 0x00000001, 0x00000001, 0x00000000 };
+static const u32 bnx2_CP_b09FwRodata[(0x1c0/4) + 1] = {
+	0x80080100, 0x80080080, 0x80080000, 0x00000c00, 0x00003080, 0x08001020,
+	0x080010cc, 0x080010e4, 0x080010f8, 0x0800110c, 0x08001020, 0x08001020,
+	0x08001140, 0x08001178, 0x08001188, 0x080011b0, 0x080018a0, 0x080018a0,
+	0x080018d8, 0x080018d8, 0x080018ec, 0x080018bc, 0x08001b14, 0x08001ae0,
+	0x08001b6c, 0x08001b6c, 0x08001bf4, 0x08001b24, 0x80080240, 0x08002280,
+	0x080020cc, 0x080022a8, 0x08002340, 0x08002490, 0x080024dc, 0x08002600,
+	0x08002508, 0x0800258c, 0x0800213c, 0x08002aa8, 0x08002a4c, 0x080020e8,
+	0x080020e8, 0x080020e8, 0x08002674, 0x08002674, 0x080020e8, 0x080020e8,
+	0x08002924, 0x080020e8, 0x080020e8, 0x080020e8, 0x080020e8, 0x08002984,
+	0x080020e8, 0x080020e8, 0x080020e8, 0x080020e8, 0x080020e8, 0x080020e8,
+	0x080020e8, 0x080020e8, 0x080020e8, 0x080020e8, 0x080020e8, 0x080020e8,
+	0x080020e8, 0x080020e8, 0x080024fc, 0x080020e8, 0x080020e8, 0x080029f4,
+	0x080020e8, 0x080020e8, 0x080020e8, 0x080020e8, 0x080020e8, 0x080020e8,
+	0x080020e8, 0x080020e8, 0x080020e8, 0x080020e8, 0x080020e8, 0x080020e8,
+	0x080020e8, 0x080020e8, 0x080020e8, 0x080020e8, 0x080020e8, 0x08002848,
+	0x080020e8, 0x080020e8, 0x080027bc, 0x08002718, 0x08003860, 0x08003834,
+	0x08003800, 0x080037d4, 0x080037b4, 0x08003768, 0x80080100, 0x80080080,
+	0x80080000, 0x80080080, 0x080047c8, 0x08004800, 0x08004748, 0x080047c8,
+	0x080047c8, 0x08004528, 0x080047c8, 0x08004b9c, 0x00000000 };
+static const u32 bnx2_RXP_b09FwData[(0x0/4) + 1] = { 0x0 };
+static const u32 bnx2_RXP_b09FwRodata[(0x124/4) + 1] = {
+	0x0800330c, 0x0800330c, 0x080033e8, 0x080033bc, 0x080033a0, 0x080032f0,
+	0x080032f0, 0x080032f0, 0x08003314, 0x80080100, 0x80080080, 0x80080000,
+	0x5f865437, 0xe4ac62cc, 0x50103a45, 0x36621985, 0xbf14c0e8, 0x1bc27a1e,
+	0x84f4b556, 0x094ea6fe, 0x7dda01e7, 0xc04d7481, 0x08007a88, 0x08007ab4,
+	0x08007a94, 0x080079d0, 0x08007a94, 0x08007ad4, 0x08007a94, 0x080079d0,
+	0x080079d0, 0x080079d0, 0x080079d0, 0x080079d0, 0x080079d0, 0x080079d0,
+	0x080079d0, 0x080079d0, 0x080079d0, 0x08007ac4, 0x08007aa4, 0x080079d0,
+	0x080079d0, 0x080079d0, 0x080079d0, 0x080079d0, 0x080079d0, 0x080079d0,
+	0x080079d0, 0x080079d0, 0x080079d0, 0x080079d0, 0x080079d0, 0x08007aa4,
+	0x08008090, 0x08007f38, 0x08008058, 0x08007f38, 0x08008028, 0x08007e20,
+	0x08007f38, 0x08007f38, 0x08007f38, 0x08007f38, 0x08007f38, 0x08007f38,
+	0x08007f38, 0x08007f38, 0x08007f38, 0x08007f38, 0x08007f38, 0x08007f38,
+	0x08007f60, 0x00000000 };
+static const u32 bnx2_TPAT_b09FwData[(0x0/4) + 1] = { 0x0 };
+static const u32 bnx2_TPAT_b09FwRodata[(0x4/4) + 1] = {
+	0x00000001, 0x00000000 };
+static const u32 bnx2_TXP_b09FwData[(0x0/4) + 1] = { 0x0 };
+static const u32 bnx2_TXP_b09FwRodata[(0x30/4) + 1] = {
+	0x80000940, 0x80000900, 0x80080100, 0x80080080, 0x80080000, 0x800e0000,
+	0x80080080, 0x80080000, 0x80000a80, 0x80000a00, 0x80000980, 0x80000900,
+	0x00000000 };
+
+struct fw_info {
+	const u32 ver_major;
+	const u32 ver_minor;
+	const u32 ver_fix;
+
+	const u32 start_addr;
+
+	/* Text section. */
+	const u32 text_addr;
+	const u32 text_len;
+	const u32 text_index;
+	__le32 *text;
+	const u8 *gz_text;
+	const u32 gz_text_len;
+
+	/* Data section. */
+	const u32 data_addr;
+	const u32 data_len;
+	const u32 data_index;
+	const u32 *data;
+
+	/* SBSS section. */
+	const u32 sbss_addr;
+	const u32 sbss_len;
+	const u32 sbss_index;
+
+	/* BSS section. */
+	const u32 bss_addr;
+	const u32 bss_len;
+	const u32 bss_index;
+
+	/* Read-only section. */
+	const u32 rodata_addr;
+	const u32 rodata_len;
+	const u32 rodata_index;
+	const u32 *rodata;
+};
+
+struct cpu_reg {
+	u32 mode;
+	u32 mode_value_halt;
+	u32 mode_value_sstep;
+
+	u32 state;
+	u32 state_value_clear;
+
+	u32 gpr0;
+	u32 evmask;
+	u32 pc;
+	u32 inst;
+	u32 bp;
+
+	u32 spad_base;
+
+	u32 mips_view_base;
+};
+
+/* Initialized Values for the Completion Processor. */
+static const struct cpu_reg cpu_reg_com = {
+	.mode = BNX2_COM_CPU_MODE,
+	.mode_value_halt = BNX2_COM_CPU_MODE_SOFT_HALT,
+	.mode_value_sstep = BNX2_COM_CPU_MODE_STEP_ENA,
+	.state = BNX2_COM_CPU_STATE,
+	.state_value_clear = 0xffffff,
+	.gpr0 = BNX2_COM_CPU_REG_FILE,
+	.evmask = BNX2_COM_CPU_EVENT_MASK,
+	.pc = BNX2_COM_CPU_PROGRAM_COUNTER,
+	.inst = BNX2_COM_CPU_INSTRUCTION,
+	.bp = BNX2_COM_CPU_HW_BREAKPOINT,
+	.spad_base = BNX2_COM_SCRATCH,
+	.mips_view_base = 0x8000000,
+};
+
+/* Initialized Values the Command Processor. */
+static const struct cpu_reg cpu_reg_cp = {
+	.mode = BNX2_CP_CPU_MODE,
+	.mode_value_halt = BNX2_CP_CPU_MODE_SOFT_HALT,
+	.mode_value_sstep = BNX2_CP_CPU_MODE_STEP_ENA,
+	.state = BNX2_CP_CPU_STATE,
+	.state_value_clear = 0xffffff,
+	.gpr0 = BNX2_CP_CPU_REG_FILE,
+	.evmask = BNX2_CP_CPU_EVENT_MASK,
+	.pc = BNX2_CP_CPU_PROGRAM_COUNTER,
+	.inst = BNX2_CP_CPU_INSTRUCTION,
+	.bp = BNX2_CP_CPU_HW_BREAKPOINT,
+	.spad_base = BNX2_CP_SCRATCH,
+	.mips_view_base = 0x8000000,
+};
+
+/* Initialized Values for the RX Processor. */
+static const struct cpu_reg cpu_reg_rxp = {
+	.mode = BNX2_RXP_CPU_MODE,
+	.mode_value_halt = BNX2_RXP_CPU_MODE_SOFT_HALT,
+	.mode_value_sstep = BNX2_RXP_CPU_MODE_STEP_ENA,
+	.state = BNX2_RXP_CPU_STATE,
+	.state_value_clear = 0xffffff,
+	.gpr0 = BNX2_RXP_CPU_REG_FILE,
+	.evmask = BNX2_RXP_CPU_EVENT_MASK,
+	.pc = BNX2_RXP_CPU_PROGRAM_COUNTER,
+	.inst = BNX2_RXP_CPU_INSTRUCTION,
+	.bp = BNX2_RXP_CPU_HW_BREAKPOINT,
+	.spad_base = BNX2_RXP_SCRATCH,
+	.mips_view_base = 0x8000000,
+};
+
+/* Initialized Values for the TX Patch-up Processor. */
+static const struct cpu_reg cpu_reg_tpat = {
+	.mode = BNX2_TPAT_CPU_MODE,
+	.mode_value_halt = BNX2_TPAT_CPU_MODE_SOFT_HALT,
+	.mode_value_sstep = BNX2_TPAT_CPU_MODE_STEP_ENA,
+	.state = BNX2_TPAT_CPU_STATE,
+	.state_value_clear = 0xffffff,
+	.gpr0 = BNX2_TPAT_CPU_REG_FILE,
+	.evmask = BNX2_TPAT_CPU_EVENT_MASK,
+	.pc = BNX2_TPAT_CPU_PROGRAM_COUNTER,
+	.inst = BNX2_TPAT_CPU_INSTRUCTION,
+	.bp = BNX2_TPAT_CPU_HW_BREAKPOINT,
+	.spad_base = BNX2_TPAT_SCRATCH,
+	.mips_view_base = 0x8000000,
+};
+
+/* Initialized Values for the TX Processor. */
+static const struct cpu_reg cpu_reg_txp = {
+	.mode = BNX2_TXP_CPU_MODE,
+	.mode_value_halt = BNX2_TXP_CPU_MODE_SOFT_HALT,
+	.mode_value_sstep = BNX2_TXP_CPU_MODE_STEP_ENA,
+	.state = BNX2_TXP_CPU_STATE,
+	.state_value_clear = 0xffffff,
+	.gpr0 = BNX2_TXP_CPU_REG_FILE,
+	.evmask = BNX2_TXP_CPU_EVENT_MASK,
+	.pc = BNX2_TXP_CPU_PROGRAM_COUNTER,
+	.inst = BNX2_TXP_CPU_INSTRUCTION,
+	.bp = BNX2_TXP_CPU_HW_BREAKPOINT,
+	.spad_base = BNX2_TXP_SCRATCH,
+	.mips_view_base = 0x8000000,
+};
+
+CASSERT (0x7534 == sizeof (bnx2_RXP_b06FwText), bnx2_RXP_b06FwText);
+static struct fw_info bnx2_rxp_fw_06 = {
+  /* Firmware version: 5.0.0j6 */
+  .ver_major                    = 0x5,
+  .ver_minor                    = 0x0,
+  .ver_fix                      = 0x0,
+
+  .start_addr                   = 0x080031d8,
+
+  .text_addr                    = 0x08000000,
+  //.text_len                     = 0x7534,
+  .text_index                   = 0x0,
+  .text                         = (__le32 *) bnx2_RXP_b06FwText,
+  .text_len                     = sizeof(bnx2_RXP_b06FwText),
+
+  .data_addr                    = 0x00000000,
+  .data_len                     = 0x0,
+  .data_index                   = 0x0,
+  .data                         = bnx2_RXP_b06FwData,
+
+  .sbss_addr                    = 0x08007580,
+  .sbss_len                     = 0x54,
+  .sbss_index                   = 0x0,
+
+  .bss_addr                     = 0x080075d8,
+  .bss_len                      = 0x450,
+  .bss_index                    = 0x0,
+
+  .rodata_addr                  = 0x08007534,
+  .rodata_len                   = 0x24,
+  .rodata_index                 = 0x0,
+  .rodata                               = bnx2_RXP_b06FwRodata,
+};
+
+CASSERT (0x175c == sizeof (bnx2_TPAT_b06FwText), bnx2_TPAT_b06FwText);
+static struct fw_info bnx2_tpat_fw_06 = {
+  /* Firmware version: 5.0.0j6 */
+  .ver_major                    = 0x5,
+  .ver_minor                    = 0x0,
+  .ver_fix                      = 0x0,
+
+  .start_addr                   = 0x08000488,
+
+  .text_addr                    = 0x08000400,
+  //.text_len                     = 0x175c,
+  .text_index                   = 0x0,
+  .text                         = (__le32 *) bnx2_TPAT_b06FwText,
+  .text_len                     = sizeof(bnx2_TPAT_b06FwText),
+
+  .data_addr                    = 0x00000000,
+  .data_len                     = 0x0,
+  .data_index                   = 0x0,
+  .data                         = bnx2_TPAT_b06FwData,
+
+  .sbss_addr                    = 0x08001b80,
+  .sbss_len                     = 0x44,
+  .sbss_index                   = 0x0,
+
+  .bss_addr                     = 0x08001bc4,
+  .bss_len                      = 0x450,
+  .bss_index                    = 0x0,
+
+  .rodata_addr                  = 0x00000000,
+  .rodata_len                   = 0x0,
+  .rodata_index                 = 0x0,
+  .rodata                               = bnx2_TPAT_b06FwRodata,
+};
+
+CASSERT (0x3b38 == sizeof (bnx2_TXP_b06FwText), bnx2_TXP_b06FwText);
+static struct fw_info bnx2_txp_fw_06 = {
+  /* Firmware version: 5.0.0j6 */
+  .ver_major                    = 0x5,
+  .ver_minor                    = 0x0,
+  .ver_fix                      = 0x0,
+
+  .start_addr                   = 0x080000a8,
+
+  .text_addr                    = 0x08000000,
+  //.text_len                     = 0x3b38,
+  .text_index                   = 0x0,
+  .text                         = (__le32 *) bnx2_TXP_b06FwText,
+  .text_len                     = sizeof(bnx2_TXP_b06FwText),
+
+  .data_addr                    = 0x00000000,
+  .data_len                     = 0x0,
+  .data_index                   = 0x0,
+  .data                         = bnx2_TXP_b06FwData,
+
+  .sbss_addr                    = 0x08003b60,
+  .sbss_len                     = 0x68,
+  .sbss_index                   = 0x0,
+
+  .bss_addr                     = 0x08003bc8,
+  .bss_len                      = 0x14c,
+  .bss_index                    = 0x0,
+
+  .rodata_addr                  = 0x00000000,
+  .rodata_len                   = 0x0,
+  .rodata_index                 = 0x0,
+  .rodata                               = bnx2_TXP_b06FwRodata,
+};
+
+CASSERT (0x4cc8 == sizeof (bnx2_COM_b06FwText), bnx2_COM_b06FwText);
+static struct fw_info bnx2_com_fw_06 = {
+  /* Firmware version: 5.0.0j6 */
+  .ver_major                    = 0x5,
+  .ver_minor                    = 0x0,
+  .ver_fix                      = 0x0,
+
+  .start_addr                   = 0x08000110,
+
+  .text_addr                    = 0x08000000,
+  //.text_len                     = 0x4cc8,
+  .text_index                   = 0x0,
+  .text                         = (__le32 *) bnx2_COM_b06FwText,
+  .text_len                     = sizeof(bnx2_COM_b06FwText),
+
+  .data_addr                    = 0x00000000,
+  .data_len                     = 0x0,
+  .data_index                   = 0x0,
+  .data                         = bnx2_COM_b06FwData,
+
+  .sbss_addr                    = 0x08004d00,
+  .sbss_len                     = 0x38,
+  .sbss_index                   = 0x0,
+
+  .bss_addr                     = 0x08004d38,
+  .bss_len                      = 0xc4,
+  .bss_index                    = 0x0,
+
+  .rodata_addr                  = 0x08004cc8,
+  .rodata_len                   = 0x14,
+  .rodata_index                 = 0x0,
+  .rodata                               = bnx2_COM_b06FwRodata,
+};
+
+CASSERT (0x58c4 == sizeof (bnx2_CP_b06FwText), bnx2_CP_b06FwText);
+static struct fw_info bnx2_cp_fw_06 = {
+  /* Firmware version: 5.0.0j6 */
+  .ver_major                    = 0x5,
+  .ver_minor                    = 0x0,
+  .ver_fix                      = 0x0,
+
+  .start_addr                   = 0x08000088,
+
+  .text_addr                    = 0x08000000,
+  //.text_len                     = 0x58c4,
+  .text_index                   = 0x0,
+  .text                         = (__le32 *) bnx2_CP_b06FwText,
+  .text_len                     = sizeof(bnx2_CP_b06FwText),
+
+  .data_addr                    = 0x08005a40,
+  .data_len                     = 0x84,
+  .data_index                   = 0x0,
+  .data                         = bnx2_CP_b06FwData,
+
+  .sbss_addr                    = 0x08005ac4,
+  .sbss_len                     = 0xf1,
+  .sbss_index                   = 0x0,
+
+  .bss_addr                     = 0x08005bb8,
+  .bss_len                      = 0x5d8,
+  .bss_index                    = 0x0,
+
+  .rodata_addr                  = 0x080058c4,
+  .rodata_len                   = 0x154,
+  .rodata_index                 = 0x0,
+  .rodata                               = bnx2_CP_b06FwRodata,
+};
+
+CASSERT (0x51f8 == sizeof (bnx2_COM_b09FwText), bnx2_COM_b09FwText);
+static struct fw_info bnx2_com_fw_09 = {
+  /* Firmware version: 5.0.0j15 */
+  .ver_major                    = 0x5,
+  .ver_minor                    = 0x0,
+  .ver_fix                      = 0x0,
+
+  .start_addr                   = 0x08000110,
+
+  .text_addr                    = 0x08000000,
+  //.text_len                     = 0x51f8,
+  .text_index                   = 0x0,
+  .text                         = (__le32 *) bnx2_COM_b09FwText,
+  .text_len                     = sizeof(bnx2_COM_b09FwText),
+
+  .data_addr                    = 0x00000000,
+  .data_len                     = 0x0,
+  .data_index                   = 0x0,
+  .data                         = bnx2_COM_b09FwData,
+
+  .sbss_addr                    = 0x08005260,
+  .sbss_len                     = 0x30,
+  .sbss_index                   = 0x0,
+
+  .bss_addr                     = 0x08005290,
+  .bss_len                      = 0x10c,
+  .bss_index                    = 0x0,
+
+  .rodata_addr                  = 0x080051f8,
+  .rodata_len                   = 0x38,
+  .rodata_index                 = 0x0,
+  .rodata                               = bnx2_COM_b09FwRodata,
+};
+
+CASSERT (0x528c == sizeof (bnx2_CP_b09FwText), bnx2_CP_b09FwText);
+static struct fw_info bnx2_cp_fw_09 = {
+  /* Firmware version: 5.0.0j15 */
+  .ver_major                    = 0x5,
+  .ver_minor                    = 0x0,
+  .ver_fix                      = 0x0,
+
+  .start_addr                   = 0x08000088,
+
+  .text_addr                    = 0x08000000,
+  //.text_len                     = 0x528c,
+  .text_index                   = 0x0,
+  .text                         = (__le32 *) bnx2_CP_b09FwText,
+  .text_len                     = sizeof(bnx2_CP_b09FwText),
+
+  .data_addr                    = 0x08005480,
+  .data_len                     = 0x84,
+  .data_index                   = 0x0,
+  .data                         = bnx2_CP_b09FwData,
+
+  .sbss_addr                    = 0x08005508,
+  .sbss_len                     = 0x9d,
+  .sbss_index                   = 0x0,
+
+  .bss_addr                     = 0x080055a8,
+  .bss_len                      = 0x19c,
+  .bss_index                    = 0x0,
+
+  .rodata_addr                  = 0x0800528c,
+  .rodata_len                   = 0x1c0,
+  .rodata_index                 = 0x0,
+  .rodata                               = bnx2_CP_b09FwRodata,
+};
+
+CASSERT (0x8108 == sizeof (bnx2_RXP_b09FwText), bnx2_RXP_b09FwText);
+static struct fw_info bnx2_rxp_fw_09 = {
+  /* Firmware version: 5.0.0j15 */
+  .ver_major                    = 0x5,
+  .ver_minor                    = 0x0,
+  .ver_fix                      = 0x0,
+
+  .start_addr                   = 0x080031d8,
+
+  .text_addr                    = 0x08000000,
+  //.text_len                     = 0x8108,
+  .text_index                   = 0x0,
+  .text                         = (__le32 *) bnx2_RXP_b09FwText,
+  .text_len                     = sizeof(bnx2_RXP_b09FwText),
+
+  .data_addr                    = 0x00000000,
+  .data_len                     = 0x0,
+  .data_index                   = 0x0,
+  .data                         = bnx2_RXP_b09FwData,
+
+  .sbss_addr                    = 0x08008260,
+  .sbss_len                     = 0x60,
+  .sbss_index                   = 0x0,
+
+  .bss_addr                     = 0x080082c0,
+  .bss_len                      = 0x60,
+  .bss_index                    = 0x0,
+
+  .rodata_addr                  = 0x08008108,
+  .rodata_len                   = 0x124,
+  .rodata_index                 = 0x0,
+  .rodata                               = bnx2_RXP_b09FwRodata,
+};
+
+CASSERT (0x17ec == sizeof (bnx2_TPAT_b09FwText), bnx2_TPAT_b09FwText);
+static struct fw_info bnx2_tpat_fw_09 = {
+  /* Firmware version: 5.0.0j15 */
+  .ver_major                    = 0x5,
+  .ver_minor                    = 0x0,
+  .ver_fix                      = 0x0,
+
+  .start_addr                   = 0x08000488,
+
+  .text_addr                    = 0x08000400,
+  //.text_len                     = 0x17ec,
+  .text_index                   = 0x0,
+  .text                         = (__le32 *) bnx2_TPAT_b09FwText,
+  .text_len                     = sizeof(bnx2_TPAT_b09FwText),
+
+  .data_addr                    = 0x00000000,
+  .data_len                     = 0x0,
+  .data_index                   = 0x0,
+  .data                         = bnx2_TPAT_b09FwData,
+
+  .sbss_addr                    = 0x08001c20,
+  .sbss_len                     = 0x3c,
+  .sbss_index                   = 0x0,
+
+  .bss_addr                     = 0x08001c5c,
+  .bss_len                      = 0x344,
+  .bss_index                    = 0x0,
+
+  .rodata_addr                  = 0x08001bec,
+  .rodata_len                   = 0x4,
+  .rodata_index                 = 0x0,
+  .rodata                               = bnx2_TPAT_b09FwRodata,
+};
+
+CASSERT (0x38d0 == sizeof (bnx2_TXP_b09FwText), bnx2_TXP_b09FwText);
+static struct fw_info bnx2_txp_fw_09 = {
+  /* Firmware version: 5.0.0j15 */
+  .ver_major                    = 0x5,
+  .ver_minor                    = 0x0,
+  .ver_fix                      = 0x0,
+
+  .start_addr                   = 0x080000a8,
+
+  .text_addr                    = 0x08000000,
+  //.text_len                     = 0x38d0,
+  .text_index                   = 0x0,
+  .text                         = (__le32 *) bnx2_TXP_b09FwText,
+  .text_len                     = sizeof(bnx2_TXP_b09FwText),
+
+  .data_addr                    = 0x00000000,
+  .data_len                     = 0x0,
+  .data_index                   = 0x0,
+  .data                         = bnx2_TXP_b09FwData,
+
+  .sbss_addr                    = 0x08003920,
+  .sbss_len                     = 0x64,
+  .sbss_index                   = 0x0,
+
+  .bss_addr                     = 0x08003988,
+  .bss_len                      = 0x24c,
+  .bss_index                    = 0x0,
+
+  .rodata_addr                  = 0x080038d0,
+  .rodata_len                   = 0x30,
+  .rodata_index                 = 0x0,
+  .rodata                               = bnx2_TXP_b09FwRodata,
+};
+
+static int
+load_cpu_fw(struct bnx2 *bp, const struct cpu_reg *cpu_reg, struct fw_info *fw)
+{
+  u32 offset;
+  u32 val;
+  int rc;
+
+  /* Halt the CPU. */
+  val = bnx2_reg_rd_ind(bp, cpu_reg->mode);
+  val |= cpu_reg->mode_value_halt;
+  bnx2_reg_wr_ind(bp, cpu_reg->mode, val);
+  bnx2_reg_wr_ind(bp, cpu_reg->state, cpu_reg->state_value_clear);
+
+  /* Load the Text area. */
+  offset = cpu_reg->spad_base + (fw->text_addr - cpu_reg->mips_view_base);
+
+  if (fw->text) {
+    int j;
+    for (j = 0; j < (fw->text_len / 4); j++, offset += 4) {
+      bnx2_reg_wr_ind(bp, offset, __le32_to_cpu(fw->text[j]));
+    }
+  }
+
+  /* Load the Data area. */
+  offset = cpu_reg->spad_base + (fw->data_addr - cpu_reg->mips_view_base);
+  if (fw->data) {
+    int j;
+
+    for (j = 0; j < (fw->data_len / 4); j++, offset += 4) {
+      bnx2_reg_wr_ind(bp, offset, fw->data[j]);
+    }
+  }
+
+  /* Load the SBSS area. */
+  offset = cpu_reg->spad_base + (fw->sbss_addr - cpu_reg->mips_view_base);
+  if (fw->sbss_len) {
+    int j;
+
+    for (j = 0; j < (fw->sbss_len / 4); j++, offset += 4) {
+      bnx2_reg_wr_ind(bp, offset, 0);
+    }
+  }
+
+  /* Load the BSS area. */
+  offset = cpu_reg->spad_base + (fw->bss_addr - cpu_reg->mips_view_base);
+  if (fw->bss_len) {
+    int j;
+
+    for (j = 0; j < (fw->bss_len/4); j++, offset += 4) {
+      bnx2_reg_wr_ind(bp, offset, 0);
+    }
+  }
+
+  /* Load the Read-Only area. */
+  offset = cpu_reg->spad_base +
+    (fw->rodata_addr - cpu_reg->mips_view_base);
+  if (fw->rodata) {
+    int j;
+
+    for (j = 0; j < (fw->rodata_len / 4); j++, offset += 4) {
+      bnx2_reg_wr_ind(bp, offset, fw->rodata[j]);
+    }
+  }
+
+  /* Clear the pre-fetch instruction. */
+  bnx2_reg_wr_ind(bp, cpu_reg->inst, 0);
+  bnx2_reg_wr_ind(bp, cpu_reg->pc, fw->start_addr);
+
+  /* Start the CPU. */
+  val = bnx2_reg_rd_ind(bp, cpu_reg->mode);
+  val &= ~cpu_reg->mode_value_halt;
+  bnx2_reg_wr_ind(bp, cpu_reg->state, cpu_reg->state_value_clear);
+  bnx2_reg_wr_ind(bp, cpu_reg->mode, val);
+
+  return 0;
+}
+
+static bool
+bnx2_init_cpus(struct bnx2 *bp)
+{
+  struct fw_info *fw;
+  int rc = 0, rv2p_len;
+  const void *rv2p;
+  u32 fixup_loc;
+
+  /* Initialize the RV2P processor. */
+  if (CHIP_NUM(bp) == CHIP_NUM_5709) {
+    if ((CHIP_ID(bp) == CHIP_ID_5709_A0) ||
+        (CHIP_ID(bp) == CHIP_ID_5709_A1)) {
+      rv2p = bnx2_xi90_rv2p_proc1;
+      rv2p_len = sizeof(bnx2_xi90_rv2p_proc1);
+      fixup_loc = XI90_RV2P_PROC1_MAX_BD_PAGE_LOC;
+    } else {
+      rv2p = bnx2_xi_rv2p_proc1;
+      rv2p_len = sizeof(bnx2_xi_rv2p_proc1);
+      fixup_loc = XI_RV2P_PROC1_MAX_BD_PAGE_LOC;
+    }
+  } else {
+    rv2p = bnx2_rv2p_proc1;
+    rv2p_len = sizeof(bnx2_rv2p_proc1);
+    fixup_loc = RV2P_PROC1_MAX_BD_PAGE_LOC;
+  }
+
+  load_rv2p_fw(bp, (__le32 *) rv2p, rv2p_len, RV2P_PROC1, fixup_loc);
+
+  if (CHIP_NUM(bp) == CHIP_NUM_5709) {
+    if ((CHIP_ID(bp) == CHIP_ID_5709_A0) ||
+        (CHIP_ID(bp) == CHIP_ID_5709_A1)) {
+      rv2p = bnx2_xi90_rv2p_proc2;
+      rv2p_len = sizeof(bnx2_xi90_rv2p_proc2);
+      fixup_loc = XI90_RV2P_PROC2_MAX_BD_PAGE_LOC;
+    } else {
+      rv2p = bnx2_xi_rv2p_proc2;
+      rv2p_len = sizeof(bnx2_xi_rv2p_proc2);
+      fixup_loc = XI_RV2P_PROC2_MAX_BD_PAGE_LOC;
+    }
+  } else {
+    rv2p = bnx2_rv2p_proc2;
+    rv2p_len = sizeof(bnx2_rv2p_proc2);
+    fixup_loc = RV2P_PROC2_MAX_BD_PAGE_LOC;
+  }
+
+  load_rv2p_fw(bp, (__le32 *) rv2p, rv2p_len, RV2P_PROC2, fixup_loc);
+
+  /* Initialize the RX Processor. */
+  if (CHIP_NUM(bp) == CHIP_NUM_5709)
+    fw = &bnx2_rxp_fw_09;
+  else
+    fw = &bnx2_rxp_fw_06;
+
+  rc = load_cpu_fw(bp, &cpu_reg_rxp, fw);
+  if (rc)
+    goto init_cpu_err;
+
+  /* Initialize the TX Processor. */
+  if (CHIP_NUM(bp) == CHIP_NUM_5709)
+    fw = &bnx2_txp_fw_09;
+  else
+    fw = &bnx2_txp_fw_06;
+
+  rc = load_cpu_fw(bp, &cpu_reg_txp, fw);
+  if (rc)
+    goto init_cpu_err;
+
+  /* Initialize the TX Patch-up Processor. */
+  if (CHIP_NUM(bp) == CHIP_NUM_5709)
+    fw = &bnx2_tpat_fw_09;
+  else
+    fw = &bnx2_tpat_fw_06;
+
+  rc = load_cpu_fw(bp, &cpu_reg_tpat, fw);
+  if (rc)
+    goto init_cpu_err;
+
+  /* Initialize the Completion Processor. */
+  if (CHIP_NUM(bp) == CHIP_NUM_5709)
+    fw = &bnx2_com_fw_09;
+  else
+    fw = &bnx2_com_fw_06;
+
+  rc = load_cpu_fw(bp, &cpu_reg_com, fw);
+  if (rc)
+    goto init_cpu_err;
+
+  /* Initialize the Command Processor. */
+  if (CHIP_NUM(bp) == CHIP_NUM_5709)
+    fw = &bnx2_cp_fw_09;
+  else
+    fw = &bnx2_cp_fw_06;
+
+  rc = load_cpu_fw(bp, &cpu_reg_cp, fw);
+  if (rc)
+    goto init_cpu_err;
+
+  return TRUE;
+
+ init_cpu_err:
+  DLOG ("init_cpu_err rc=%d", rc);
+  return FALSE;
 }
 
 static void
@@ -1765,8 +2608,11 @@ bnx2_mac_init (struct bnx2 *bp)
     REG_WR(bp, BNX2_CTX_PAGE_TBL, pcid_addr);
   }
 
-
-  /* (TODO) LOAD firmware */
+  if (!bnx2_init_cpus (bp)) {
+    DLOG ("bnx2_init_cpus failed");
+    return;
+  }   
+  DLOG ("Initialized onboard CPUs");
 
   /* Program MAC address */
 
@@ -2256,6 +3102,9 @@ bnx2_init (void)
 
   if (!bnx2_init_board (&pdev))
     goto abort_bp;
+
+  bnx2_mac_reset (bp);
+  bnx2_mac_init (bp);
 
   return TRUE;
 
