@@ -208,6 +208,18 @@ pci_write_config_dword (pci_device *p, u32 offset, u32 val)
   pci_write_dword (pci_addr (p->bus, p->slot, p->func, offset), val);
 }
 
+static void
+pci_write_config_word (pci_device *p, u32 offset, u16 val)
+{
+  pci_write_word (pci_addr (p->bus, p->slot, p->func, offset), val);
+}
+
+static void
+pci_read_config_word (pci_device *p, u32 offset, u16 *val)
+{
+  *val = pci_read_word (pci_addr (p->bus, p->slot, p->func, offset));
+}
+
 #define udelay tsc_delay_usec
 #define EBUSY 1
 #define ENODEV 2
@@ -2538,9 +2550,63 @@ bnx2_init_cpus(struct bnx2 *bp)
   return FALSE;
 }
 
+struct bnx2_cpus_scratch_debug {
+  u32	offset;		/*  Scratch pad offset to firmware version */
+  char 	*name;		/*  Name of the CPU */
+};
+
+#define BNX2_SCRATCH_FW_VERSION_OFFSET		0x10
+#define BNX2_TPAT_SCRATCH_FW_VERSION_OFFSET	0x410
+
+static void
+bnx2_print_fw_versions(struct bnx2 *bp)
+{
+  /*  Array of the firmware offset's + CPU strings */
+  const struct bnx2_cpus_scratch_debug cpus_scratch[] = {
+    { .offset = BNX2_TXP_SCRATCH + BNX2_SCRATCH_FW_VERSION_OFFSET,
+      .name   = "TXP" },
+    { .offset = BNX2_TPAT_SCRATCH +
+      BNX2_TPAT_SCRATCH_FW_VERSION_OFFSET,
+      .name   = "TPAT" },
+    { .offset = BNX2_RXP_SCRATCH + BNX2_SCRATCH_FW_VERSION_OFFSET,
+      .name   = "RXP" },
+    { .offset = BNX2_COM_SCRATCH + BNX2_SCRATCH_FW_VERSION_OFFSET,
+      .name   = "COM" },
+    { .offset = BNX2_CP_SCRATCH + BNX2_SCRATCH_FW_VERSION_OFFSET,
+      .name   = "CP" },
+    /* There is no versioning for MCP firmware */
+  };
+  int i;
+
+  logger_printf("bnx2: CPU fw versions: ");
+  for (i = 0; i < ARRAY_SIZE(cpus_scratch); i++) {
+    /*  The FW versions are 11 bytes long + 1 extra byte for
+     *  the NULL termination */
+    char version[12];
+    int j;
+
+    /*  Copy 4 bytes at a time */
+    for (j = 0; j < sizeof(version); j += 4) {
+      u32 val;
+
+      val = bnx2_reg_rd_ind(bp, cpus_scratch[i].offset + j);
+      val = __be32_to_cpu(val);
+      memcpy(&version[j], &val, sizeof(val));
+    }
+
+    /*  Force a NULL terminiated string */
+    version[11] = '\0';
+
+    logger_printf("%s: '%s' ", cpus_scratch[i].name, version);
+  }
+  logger_printf("\n");
+}
+
 static void
 bnx2_mac_init (struct bnx2 *bp)
 {
+  int rc;
+
   /* disable interrupts */
   REG_WR(bp, BNX2_PCICFG_INT_ACK_CMD, BNX2_PCICFG_INT_ACK_CMD_MASK_INT);
 
@@ -2558,15 +2624,23 @@ bnx2_mac_init (struct bnx2 *bp)
   }
   REG_WR(bp, BNX2_DMA_CONFIG, val);
 
-#if 0
-  /* errata */
+  if (CHIP_ID(bp) == CHIP_ID_5706_A0) {
+    val = REG_RD(bp, BNX2_TDMA_CONFIG);
+    val |= BNX2_TDMA_CONFIG_ONE_DMA;
+    REG_WR(bp, BNX2_TDMA_CONFIG, val);
+  }
+
   if (bp->flags & BNX2_FLAG_PCIX) {
     u16 val16;
-    val16 = PCICFG_RD(bp, BNX2_PCICFG_PCIX_COMMAND);
-    val16 &= ~BNX2_PCICFG_PCIX_COMMAND_RELAX_ORDER;
-    PCICFG_WR(bp, BNX2_PCICFG_PCIX_COMMAND, val16);
+
+#define PCI_X_CMD               2       /* Modes & Features */
+#define  PCI_X_CMD_ERO          0x0002  /* Enable Relaxed Ordering */
+
+    pci_read_config_word(bp->pdev, bp->pcix_cap + PCI_X_CMD,
+                         &val16);
+    pci_write_config_word(bp->pdev, bp->pcix_cap + PCI_X_CMD,
+                          val16 & ~PCI_X_CMD_ERO);
   }
-#endif
 
   /* enable context block */
   REG_WR(bp,
@@ -2613,6 +2687,7 @@ bnx2_mac_init (struct bnx2 *bp)
     return;
   }   
   DLOG ("Initialized onboard CPUs");
+  bnx2_print_fw_versions (bp);
 
   /* Program MAC address */
 
@@ -2701,11 +2776,8 @@ bnx2_mac_init (struct bnx2 *bp)
   REG_WR(bp, BNX2_RPM_SORT_USER0, sort_mode | BNX2_RPM_SORT_USER0_ENA);
 
   /* sync firmware */
-#if 0
-  fw_sync(bp, DRV_MSG_DATA_WAIT2 | DRV_MSG_CODE_RESET);
-#else
-  udelay (1000);
-#endif
+  rc = bnx2_fw_sync(bp, BNX2_DRV_MSG_DATA_WAIT2 | BNX2_DRV_MSG_CODE_RESET,
+                    1, 0);
 
   /* Enable the remainder of the NetXtreme II blocks and delay for 20
    * μs to allow the various blocks to complete initialization.  The
@@ -2715,8 +2787,41 @@ bnx2_mac_init (struct bnx2 *bp)
   REG_WR(bp, BNX2_MISC_ENABLE_SET_BITS, 0x5ffffff);
   REG_RD(bp, BNX2_MISC_ENABLE_SET_BITS);
   udelay(20);
+
+  bp->hc_cmd = REG_RD(bp, BNX2_HC_COMMAND);
 }
 
+static void
+bnx2_enable_int(struct bnx2 *bp)
+{
+  int i;
+
+#if 0
+  for (i = 0; i < bp->irq_nvecs; i++) {
+    struct bnx2_napi *bnapi = &bp->bnx2_napi[i];
+
+    REG_WR(bp, BNX2_PCICFG_INT_ACK_CMD, bnapi->int_num |
+           BNX2_PCICFG_INT_ACK_CMD_INDEX_VALID |
+           BNX2_PCICFG_INT_ACK_CMD_MASK_INT |
+           bnapi->last_status_idx);
+
+    REG_WR(bp, BNX2_PCICFG_INT_ACK_CMD, bnapi->int_num |
+           BNX2_PCICFG_INT_ACK_CMD_INDEX_VALID |
+           bnapi->last_status_idx);
+  }
+#else
+  REG_WR(bp, BNX2_PCICFG_INT_ACK_CMD, (1 << 24) |
+         BNX2_PCICFG_INT_ACK_CMD_INDEX_VALID |
+         BNX2_PCICFG_INT_ACK_CMD_MASK_INT |
+         0);
+
+  REG_WR(bp, BNX2_PCICFG_INT_ACK_CMD, (1 << 24) |
+         BNX2_PCICFG_INT_ACK_CMD_INDEX_VALID |
+         0);
+#endif
+
+  REG_WR(bp, BNX2_HC_COMMAND, bp->hc_cmd | BNX2_HC_COMMAND_COAL_NOW);
+}
 
 #define subsystem_vendor(pdev) ((pdev)->data[11] & 0x0000FFFF)
 #define subsystem_device(pdev) (((pdev)->data[11] & 0xFFFF0000) >> 16)
@@ -3063,6 +3168,29 @@ bnx2_init_board (pci_device *pdev)
 
 static uint device_index;
 static pci_device pdev;
+static ethernet_device bnx2_ethdev;
+
+static sint
+bnx2_transmit (u8 *buf, u32 len)
+{
+  return -1;
+}
+
+static bool
+bnx2_get_hwaddr (u8 addr[ETH_ADDR_LEN])
+{
+  struct bnx2 *bp = bnx2_ethdev.drvdata;
+  int i;
+  for (i=0; i<ETH_ADDR_LEN; i++) {
+    addr[i] = bp->mac_addr[i];
+  }
+  return TRUE;
+}
+
+static void
+bnx2_poll (void)
+{
+}
 
 extern bool
 bnx2_init (void)
@@ -3100,11 +3228,33 @@ bnx2_init (void)
   pdev.drvdata = bp;
   bp->pdev = &pdev;
 
+  /* enable memory mapped I/O and bus mastering */
+  pci_write_word (pci_addr (pdev.bus, pdev.slot, pdev.func, 0x04), 0x0006);
+
   if (!bnx2_init_board (&pdev))
     goto abort_bp;
 
   bnx2_mac_reset (bp);
   bnx2_mac_init (bp);
+  bnx2_enable_int(bp);
+
+  DLOG ("PCICMD=0x%.04X", pci_read_word (pci_addr (pdev.bus, pdev.slot, pdev.func, 0x04)));
+  DLOG ("PCISTS=0x%.04X", pci_read_word (pci_addr (pdev.bus, pdev.slot, pdev.func, 0x06)));
+
+  /* clear bits in pci status */
+  pci_write_word (pci_addr (pdev.bus, pdev.slot, pdev.func, 0x06), pci_read_word (pci_addr (pdev.bus, pdev.slot, pdev.func, 0x06)));
+
+  /* Register network device with net subsystem */
+  bnx2_ethdev.recv_func = NULL;
+  bnx2_ethdev.send_func = bnx2_transmit;
+  bnx2_ethdev.get_hwaddr_func = bnx2_get_hwaddr;
+  bnx2_ethdev.poll_func = bnx2_poll;
+  bnx2_ethdev.drvdata = bp;
+
+  if (!net_register_device (&bnx2_ethdev)) {
+    DLOG ("registration failed");
+    goto abort_bp;
+  }
 
   return TRUE;
 
