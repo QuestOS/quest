@@ -4392,6 +4392,43 @@ bnx2_poll (void)
 {
 }
 
+static u32 bnx2_test_stack[1024] ALIGNED (0x1000);
+static void
+bnx2_test_thread (void)
+{
+  struct bnx2 *bp = bnx2_ethdev.drvdata;
+  struct status_block *st = bp->status_blk;
+  struct statistics_block *stats = bp->stats_blk;
+  for (;;) {
+    u32 bmsr;
+    sched_usleep (5*1000000);
+    DLOG ("attn_bits=0x%.08X attn_bits_ack=0x%.08X",
+          st->status_attn_bits,
+          st->status_attn_bits_ack);
+    DLOG ("IfHCInOctets=0x%.08X IfHCInBadOctets=0x%.08X",
+          stats->stat_IfHCInOctets_lo, stats->stat_IfHCInBadOctets_lo);
+    bnx2_read_phy(bp, bp->mii_bmsr1, &bmsr);
+    bnx2_read_phy(bp, bp->mii_bmsr1, &bmsr);
+    DLOG ("bmsr=0x%.08X EMAC_STATUS=0x%.08X", bmsr, REG_RD (bp, BNX2_EMAC_STATUS));
+
+    int i;
+    u32 attn = st->status_attn_bits; /* new state */
+    u32 ack = st->status_attn_bits_ack; /* old state */
+    for (i=0; i<32; i++) {
+      u32 mask = 1 << i;
+      if ((attn & mask) && !(ack & mask)) {
+        /* bit i went from 0 -> 1 */
+        DLOG ("bit %d went from 0 -> 1", i);
+        REG_WR (bp, BNX2_PCICFG_STATUS_BIT_SET_CMD, (1 << i));
+      } else if (!(attn & mask) && (ack & mask)) {
+        /* bit i went from 1 -> 0 */
+        DLOG ("bit %d went from 1 -> 0", i);
+        REG_WR (bp, BNX2_PCICFG_STATUS_BIT_CLEAR_CMD, (1 << i));
+      }
+    }
+  }
+}
+
 extern bool
 bnx2_init (void)
 {
@@ -4492,6 +4529,8 @@ bnx2_init (void)
     DLOG ("registration failed");
     goto abort_status_virt;
   }
+
+  start_kernel_thread ((u32) bnx2_test_thread, (u32) &bnx2_test_stack[1023]);
 
   return TRUE;
 
