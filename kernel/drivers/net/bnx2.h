@@ -6827,6 +6827,8 @@ struct bnx2 {
   /* together in the beginning of the structure. */
   void                  *regview;
   pci_device            *pdev;
+  struct bnx2_rx_ring_info	rx_ring;
+  struct bnx2_tx_ring_info	tx_ring;
 
   u32                   flags;
 #define BNX2_FLAG_PCIX                  0x00000001
