@@ -1802,35 +1802,35 @@ load_rv2p_fw(struct bnx2 *bp, __le32 *rv2p_code, u32 rv2p_code_len,
 
 static const u32 bnx2_COM_b06FwData[(0x0/4) + 1] = { 0x0 };
 static const u32 bnx2_COM_b06FwRodata[(0x14/4) + 1] = {
-	0x08000d98, 0x08000de0, 0x08000e20, 0x08000e6c, 0x08000ea0, 0x00000000
+        0x08000d98, 0x08000de0, 0x08000e20, 0x08000e6c, 0x08000ea0, 0x00000000
 };
 static const u32 bnx2_CP_b06FwData[(0x84/4) + 1] = {
-	0x00000000, 0x0000001b, 0x0000000f, 0x0000000a, 0x00000008, 0x00000006,
-	0x00000005, 0x00000005, 0x00000004, 0x00000004, 0x00000003, 0x00000003,
-	0x00000003, 0x00000003, 0x00000003, 0x00000002, 0x00000002, 0x00000002,
-	0x00000002, 0x00000002, 0x00000002, 0x00000002, 0x00000002, 0x00000002,
-	0x00000002, 0x00000002, 0x00000002, 0x00000002, 0x00000002, 0x00000002,
-	0x00000001, 0x00000001, 0x00000001, 0x00000000 };
+        0x00000000, 0x0000001b, 0x0000000f, 0x0000000a, 0x00000008, 0x00000006,
+        0x00000005, 0x00000005, 0x00000004, 0x00000004, 0x00000003, 0x00000003,
+        0x00000003, 0x00000003, 0x00000003, 0x00000002, 0x00000002, 0x00000002,
+        0x00000002, 0x00000002, 0x00000002, 0x00000002, 0x00000002, 0x00000002,
+        0x00000002, 0x00000002, 0x00000002, 0x00000002, 0x00000002, 0x00000002,
+        0x00000001, 0x00000001, 0x00000001, 0x00000000 };
 static const u32 bnx2_CP_b06FwRodata[(0x154/4) + 1] = {
-	0x08000f58, 0x08000db0, 0x08000fec, 0x08001094, 0x08000f80, 0x08000fc0,
-	0x080011cc, 0x08000dcc, 0x080011f0, 0x08000e1c, 0x08001634, 0x080015dc,
-	0x08000dcc, 0x08000dcc, 0x08000dcc, 0x0800127c, 0x0800127c, 0x08000dcc,
-	0x08000dcc, 0x08001580, 0x08000dcc, 0x08000dcc, 0x08000dcc, 0x08000dcc,
-	0x080013f0, 0x08000dcc, 0x08000dcc, 0x08000dcc, 0x08000dcc, 0x08000dcc,
-	0x08000dcc, 0x08000dcc, 0x08000dcc, 0x08000dcc, 0x08000dcc, 0x08000dcc,
-	0x08000dcc, 0x08000dcc, 0x08000dcc, 0x08000fe0, 0x08000dcc, 0x08000dcc,
-	0x08001530, 0x08000dcc, 0x08000dcc, 0x08000dcc, 0x08000dcc, 0x08000dcc,
-	0x08000dcc, 0x08000dcc, 0x08000dcc, 0x08000dcc, 0x08000dcc, 0x08000dcc,
-	0x08000dcc, 0x08000dcc, 0x08000dcc, 0x08000dcc, 0x08000dcc, 0x08000dcc,
-	0x0800145c, 0x08000dcc, 0x08000dcc, 0x08001370, 0x080012e0, 0x08002e94,
-	0x08002e9c, 0x08002e64, 0x08002e70, 0x08002e7c, 0x08002e88, 0x080046b4,
-	0x08003f00, 0x08004634, 0x080046b4, 0x080046b4, 0x080044b4, 0x080046b4,
-	0x080046fc, 0x08005524, 0x080054e4, 0x080054b0, 0x08005484, 0x08005460,
-	0x0800541c, 0x00000000 };
+        0x08000f58, 0x08000db0, 0x08000fec, 0x08001094, 0x08000f80, 0x08000fc0,
+        0x080011cc, 0x08000dcc, 0x080011f0, 0x08000e1c, 0x08001634, 0x080015dc,
+        0x08000dcc, 0x08000dcc, 0x08000dcc, 0x0800127c, 0x0800127c, 0x08000dcc,
+        0x08000dcc, 0x08001580, 0x08000dcc, 0x08000dcc, 0x08000dcc, 0x08000dcc,
+        0x080013f0, 0x08000dcc, 0x08000dcc, 0x08000dcc, 0x08000dcc, 0x08000dcc,
+        0x08000dcc, 0x08000dcc, 0x08000dcc, 0x08000dcc, 0x08000dcc, 0x08000dcc,
+        0x08000dcc, 0x08000dcc, 0x08000dcc, 0x08000fe0, 0x08000dcc, 0x08000dcc,
+        0x08001530, 0x08000dcc, 0x08000dcc, 0x08000dcc, 0x08000dcc, 0x08000dcc,
+        0x08000dcc, 0x08000dcc, 0x08000dcc, 0x08000dcc, 0x08000dcc, 0x08000dcc,
+        0x08000dcc, 0x08000dcc, 0x08000dcc, 0x08000dcc, 0x08000dcc, 0x08000dcc,
+        0x0800145c, 0x08000dcc, 0x08000dcc, 0x08001370, 0x080012e0, 0x08002e94,
+        0x08002e9c, 0x08002e64, 0x08002e70, 0x08002e7c, 0x08002e88, 0x080046b4,
+        0x08003f00, 0x08004634, 0x080046b4, 0x080046b4, 0x080044b4, 0x080046b4,
+        0x080046fc, 0x08005524, 0x080054e4, 0x080054b0, 0x08005484, 0x08005460,
+        0x0800541c, 0x00000000 };
 static const u32 bnx2_RXP_b06FwData[(0x0/4) + 1] = { 0x0 };
 static const u32 bnx2_RXP_b06FwRodata[(0x24/4) + 1] = {
-	0x080033f8, 0x080033f8, 0x08003370, 0x080033a8, 0x080033dc, 0x08003400,
-	0x08003400, 0x08003400, 0x080032e0, 0x00000000 };
+        0x080033f8, 0x080033f8, 0x08003370, 0x080033a8, 0x080033dc, 0x08003400,
+        0x08003400, 0x08003400, 0x080032e0, 0x00000000 };
 static const u32 bnx2_TPAT_b06FwData[(0x0/4) + 1] = { 0x0 };
 static const u32 bnx2_TPAT_b06FwRodata[(0x0/4) + 1] = { 0x0 };
 static const u32 bnx2_TXP_b06FwData[(0x0/4) + 1] = { 0x0 };
@@ -1838,195 +1838,195 @@ static const u32 bnx2_TXP_b06FwRodata[(0x0/4) + 1] = { 0x0 };
 
 static const u32 bnx2_COM_b09FwData[(0x0/4) + 1] = { 0x0 };
 static const u32 bnx2_COM_b09FwRodata[(0x38/4) + 1] = {
-	0x80080100, 0x80080080, 0x80080000, 0x00000c80, 0x00003200, 0x80080240,
-	0x08000f10, 0x08000f68, 0x08000fac, 0x08001044, 0x08001084, 0x80080100,
-	0x80080080, 0x80080000, 0x00000000 };
+        0x80080100, 0x80080080, 0x80080000, 0x00000c80, 0x00003200, 0x80080240,
+        0x08000f10, 0x08000f68, 0x08000fac, 0x08001044, 0x08001084, 0x80080100,
+        0x80080080, 0x80080000, 0x00000000 };
 static const u32 bnx2_CP_b09FwData[(0x84/4) + 1] = {
-	0x00000000, 0x0000001b, 0x0000000f, 0x0000000a, 0x00000008, 0x00000006,
-	0x00000005, 0x00000005, 0x00000004, 0x00000004, 0x00000003, 0x00000003,
-	0x00000003, 0x00000003, 0x00000003, 0x00000002, 0x00000002, 0x00000002,
-	0x00000002, 0x00000002, 0x00000002, 0x00000002, 0x00000002, 0x00000002,
-	0x00000002, 0x00000002, 0x00000002, 0x00000002, 0x00000002, 0x00000002,
-	0x00000001, 0x00000001, 0x00000001, 0x00000000 };
+        0x00000000, 0x0000001b, 0x0000000f, 0x0000000a, 0x00000008, 0x00000006,
+        0x00000005, 0x00000005, 0x00000004, 0x00000004, 0x00000003, 0x00000003,
+        0x00000003, 0x00000003, 0x00000003, 0x00000002, 0x00000002, 0x00000002,
+        0x00000002, 0x00000002, 0x00000002, 0x00000002, 0x00000002, 0x00000002,
+        0x00000002, 0x00000002, 0x00000002, 0x00000002, 0x00000002, 0x00000002,
+        0x00000001, 0x00000001, 0x00000001, 0x00000000 };
 static const u32 bnx2_CP_b09FwRodata[(0x1c0/4) + 1] = {
-	0x80080100, 0x80080080, 0x80080000, 0x00000c00, 0x00003080, 0x08001020,
-	0x080010cc, 0x080010e4, 0x080010f8, 0x0800110c, 0x08001020, 0x08001020,
-	0x08001140, 0x08001178, 0x08001188, 0x080011b0, 0x080018a0, 0x080018a0,
-	0x080018d8, 0x080018d8, 0x080018ec, 0x080018bc, 0x08001b14, 0x08001ae0,
-	0x08001b6c, 0x08001b6c, 0x08001bf4, 0x08001b24, 0x80080240, 0x08002280,
-	0x080020cc, 0x080022a8, 0x08002340, 0x08002490, 0x080024dc, 0x08002600,
-	0x08002508, 0x0800258c, 0x0800213c, 0x08002aa8, 0x08002a4c, 0x080020e8,
-	0x080020e8, 0x080020e8, 0x08002674, 0x08002674, 0x080020e8, 0x080020e8,
-	0x08002924, 0x080020e8, 0x080020e8, 0x080020e8, 0x080020e8, 0x08002984,
-	0x080020e8, 0x080020e8, 0x080020e8, 0x080020e8, 0x080020e8, 0x080020e8,
-	0x080020e8, 0x080020e8, 0x080020e8, 0x080020e8, 0x080020e8, 0x080020e8,
-	0x080020e8, 0x080020e8, 0x080024fc, 0x080020e8, 0x080020e8, 0x080029f4,
-	0x080020e8, 0x080020e8, 0x080020e8, 0x080020e8, 0x080020e8, 0x080020e8,
-	0x080020e8, 0x080020e8, 0x080020e8, 0x080020e8, 0x080020e8, 0x080020e8,
-	0x080020e8, 0x080020e8, 0x080020e8, 0x080020e8, 0x080020e8, 0x08002848,
-	0x080020e8, 0x080020e8, 0x080027bc, 0x08002718, 0x08003860, 0x08003834,
-	0x08003800, 0x080037d4, 0x080037b4, 0x08003768, 0x80080100, 0x80080080,
-	0x80080000, 0x80080080, 0x080047c8, 0x08004800, 0x08004748, 0x080047c8,
-	0x080047c8, 0x08004528, 0x080047c8, 0x08004b9c, 0x00000000 };
+        0x80080100, 0x80080080, 0x80080000, 0x00000c00, 0x00003080, 0x08001020,
+        0x080010cc, 0x080010e4, 0x080010f8, 0x0800110c, 0x08001020, 0x08001020,
+        0x08001140, 0x08001178, 0x08001188, 0x080011b0, 0x080018a0, 0x080018a0,
+        0x080018d8, 0x080018d8, 0x080018ec, 0x080018bc, 0x08001b14, 0x08001ae0,
+        0x08001b6c, 0x08001b6c, 0x08001bf4, 0x08001b24, 0x80080240, 0x08002280,
+        0x080020cc, 0x080022a8, 0x08002340, 0x08002490, 0x080024dc, 0x08002600,
+        0x08002508, 0x0800258c, 0x0800213c, 0x08002aa8, 0x08002a4c, 0x080020e8,
+        0x080020e8, 0x080020e8, 0x08002674, 0x08002674, 0x080020e8, 0x080020e8,
+        0x08002924, 0x080020e8, 0x080020e8, 0x080020e8, 0x080020e8, 0x08002984,
+        0x080020e8, 0x080020e8, 0x080020e8, 0x080020e8, 0x080020e8, 0x080020e8,
+        0x080020e8, 0x080020e8, 0x080020e8, 0x080020e8, 0x080020e8, 0x080020e8,
+        0x080020e8, 0x080020e8, 0x080024fc, 0x080020e8, 0x080020e8, 0x080029f4,
+        0x080020e8, 0x080020e8, 0x080020e8, 0x080020e8, 0x080020e8, 0x080020e8,
+        0x080020e8, 0x080020e8, 0x080020e8, 0x080020e8, 0x080020e8, 0x080020e8,
+        0x080020e8, 0x080020e8, 0x080020e8, 0x080020e8, 0x080020e8, 0x08002848,
+        0x080020e8, 0x080020e8, 0x080027bc, 0x08002718, 0x08003860, 0x08003834,
+        0x08003800, 0x080037d4, 0x080037b4, 0x08003768, 0x80080100, 0x80080080,
+        0x80080000, 0x80080080, 0x080047c8, 0x08004800, 0x08004748, 0x080047c8,
+        0x080047c8, 0x08004528, 0x080047c8, 0x08004b9c, 0x00000000 };
 static const u32 bnx2_RXP_b09FwData[(0x0/4) + 1] = { 0x0 };
 static const u32 bnx2_RXP_b09FwRodata[(0x124/4) + 1] = {
-	0x0800330c, 0x0800330c, 0x080033e8, 0x080033bc, 0x080033a0, 0x080032f0,
-	0x080032f0, 0x080032f0, 0x08003314, 0x80080100, 0x80080080, 0x80080000,
-	0x5f865437, 0xe4ac62cc, 0x50103a45, 0x36621985, 0xbf14c0e8, 0x1bc27a1e,
-	0x84f4b556, 0x094ea6fe, 0x7dda01e7, 0xc04d7481, 0x08007a88, 0x08007ab4,
-	0x08007a94, 0x080079d0, 0x08007a94, 0x08007ad4, 0x08007a94, 0x080079d0,
-	0x080079d0, 0x080079d0, 0x080079d0, 0x080079d0, 0x080079d0, 0x080079d0,
-	0x080079d0, 0x080079d0, 0x080079d0, 0x08007ac4, 0x08007aa4, 0x080079d0,
-	0x080079d0, 0x080079d0, 0x080079d0, 0x080079d0, 0x080079d0, 0x080079d0,
-	0x080079d0, 0x080079d0, 0x080079d0, 0x080079d0, 0x080079d0, 0x08007aa4,
-	0x08008090, 0x08007f38, 0x08008058, 0x08007f38, 0x08008028, 0x08007e20,
-	0x08007f38, 0x08007f38, 0x08007f38, 0x08007f38, 0x08007f38, 0x08007f38,
-	0x08007f38, 0x08007f38, 0x08007f38, 0x08007f38, 0x08007f38, 0x08007f38,
-	0x08007f60, 0x00000000 };
+        0x0800330c, 0x0800330c, 0x080033e8, 0x080033bc, 0x080033a0, 0x080032f0,
+        0x080032f0, 0x080032f0, 0x08003314, 0x80080100, 0x80080080, 0x80080000,
+        0x5f865437, 0xe4ac62cc, 0x50103a45, 0x36621985, 0xbf14c0e8, 0x1bc27a1e,
+        0x84f4b556, 0x094ea6fe, 0x7dda01e7, 0xc04d7481, 0x08007a88, 0x08007ab4,
+        0x08007a94, 0x080079d0, 0x08007a94, 0x08007ad4, 0x08007a94, 0x080079d0,
+        0x080079d0, 0x080079d0, 0x080079d0, 0x080079d0, 0x080079d0, 0x080079d0,
+        0x080079d0, 0x080079d0, 0x080079d0, 0x08007ac4, 0x08007aa4, 0x080079d0,
+        0x080079d0, 0x080079d0, 0x080079d0, 0x080079d0, 0x080079d0, 0x080079d0,
+        0x080079d0, 0x080079d0, 0x080079d0, 0x080079d0, 0x080079d0, 0x08007aa4,
+        0x08008090, 0x08007f38, 0x08008058, 0x08007f38, 0x08008028, 0x08007e20,
+        0x08007f38, 0x08007f38, 0x08007f38, 0x08007f38, 0x08007f38, 0x08007f38,
+        0x08007f38, 0x08007f38, 0x08007f38, 0x08007f38, 0x08007f38, 0x08007f38,
+        0x08007f60, 0x00000000 };
 static const u32 bnx2_TPAT_b09FwData[(0x0/4) + 1] = { 0x0 };
 static const u32 bnx2_TPAT_b09FwRodata[(0x4/4) + 1] = {
-	0x00000001, 0x00000000 };
+        0x00000001, 0x00000000 };
 static const u32 bnx2_TXP_b09FwData[(0x0/4) + 1] = { 0x0 };
 static const u32 bnx2_TXP_b09FwRodata[(0x30/4) + 1] = {
-	0x80000940, 0x80000900, 0x80080100, 0x80080080, 0x80080000, 0x800e0000,
-	0x80080080, 0x80080000, 0x80000a80, 0x80000a00, 0x80000980, 0x80000900,
-	0x00000000 };
+        0x80000940, 0x80000900, 0x80080100, 0x80080080, 0x80080000, 0x800e0000,
+        0x80080080, 0x80080000, 0x80000a80, 0x80000a00, 0x80000980, 0x80000900,
+        0x00000000 };
 
 struct fw_info {
-	const u32 ver_major;
-	const u32 ver_minor;
-	const u32 ver_fix;
+        const u32 ver_major;
+        const u32 ver_minor;
+        const u32 ver_fix;
 
-	const u32 start_addr;
+        const u32 start_addr;
 
-	/* Text section. */
-	const u32 text_addr;
-	const u32 text_len;
-	const u32 text_index;
-	__le32 *text;
-	const u8 *gz_text;
-	const u32 gz_text_len;
+        /* Text section. */
+        const u32 text_addr;
+        const u32 text_len;
+        const u32 text_index;
+        __le32 *text;
+        const u8 *gz_text;
+        const u32 gz_text_len;
 
-	/* Data section. */
-	const u32 data_addr;
-	const u32 data_len;
-	const u32 data_index;
-	const u32 *data;
+        /* Data section. */
+        const u32 data_addr;
+        const u32 data_len;
+        const u32 data_index;
+        const u32 *data;
 
-	/* SBSS section. */
-	const u32 sbss_addr;
-	const u32 sbss_len;
-	const u32 sbss_index;
+        /* SBSS section. */
+        const u32 sbss_addr;
+        const u32 sbss_len;
+        const u32 sbss_index;
 
-	/* BSS section. */
-	const u32 bss_addr;
-	const u32 bss_len;
-	const u32 bss_index;
+        /* BSS section. */
+        const u32 bss_addr;
+        const u32 bss_len;
+        const u32 bss_index;
 
-	/* Read-only section. */
-	const u32 rodata_addr;
-	const u32 rodata_len;
-	const u32 rodata_index;
-	const u32 *rodata;
+        /* Read-only section. */
+        const u32 rodata_addr;
+        const u32 rodata_len;
+        const u32 rodata_index;
+        const u32 *rodata;
 };
 
 struct cpu_reg {
-	u32 mode;
-	u32 mode_value_halt;
-	u32 mode_value_sstep;
+        u32 mode;
+        u32 mode_value_halt;
+        u32 mode_value_sstep;
 
-	u32 state;
-	u32 state_value_clear;
+        u32 state;
+        u32 state_value_clear;
 
-	u32 gpr0;
-	u32 evmask;
-	u32 pc;
-	u32 inst;
-	u32 bp;
+        u32 gpr0;
+        u32 evmask;
+        u32 pc;
+        u32 inst;
+        u32 bp;
 
-	u32 spad_base;
+        u32 spad_base;
 
-	u32 mips_view_base;
+        u32 mips_view_base;
 };
 
 /* Initialized Values for the Completion Processor. */
 static const struct cpu_reg cpu_reg_com = {
-	.mode = BNX2_COM_CPU_MODE,
-	.mode_value_halt = BNX2_COM_CPU_MODE_SOFT_HALT,
-	.mode_value_sstep = BNX2_COM_CPU_MODE_STEP_ENA,
-	.state = BNX2_COM_CPU_STATE,
-	.state_value_clear = 0xffffff,
-	.gpr0 = BNX2_COM_CPU_REG_FILE,
-	.evmask = BNX2_COM_CPU_EVENT_MASK,
-	.pc = BNX2_COM_CPU_PROGRAM_COUNTER,
-	.inst = BNX2_COM_CPU_INSTRUCTION,
-	.bp = BNX2_COM_CPU_HW_BREAKPOINT,
-	.spad_base = BNX2_COM_SCRATCH,
-	.mips_view_base = 0x8000000,
+        .mode = BNX2_COM_CPU_MODE,
+        .mode_value_halt = BNX2_COM_CPU_MODE_SOFT_HALT,
+        .mode_value_sstep = BNX2_COM_CPU_MODE_STEP_ENA,
+        .state = BNX2_COM_CPU_STATE,
+        .state_value_clear = 0xffffff,
+        .gpr0 = BNX2_COM_CPU_REG_FILE,
+        .evmask = BNX2_COM_CPU_EVENT_MASK,
+        .pc = BNX2_COM_CPU_PROGRAM_COUNTER,
+        .inst = BNX2_COM_CPU_INSTRUCTION,
+        .bp = BNX2_COM_CPU_HW_BREAKPOINT,
+        .spad_base = BNX2_COM_SCRATCH,
+        .mips_view_base = 0x8000000,
 };
 
 /* Initialized Values the Command Processor. */
 static const struct cpu_reg cpu_reg_cp = {
-	.mode = BNX2_CP_CPU_MODE,
-	.mode_value_halt = BNX2_CP_CPU_MODE_SOFT_HALT,
-	.mode_value_sstep = BNX2_CP_CPU_MODE_STEP_ENA,
-	.state = BNX2_CP_CPU_STATE,
-	.state_value_clear = 0xffffff,
-	.gpr0 = BNX2_CP_CPU_REG_FILE,
-	.evmask = BNX2_CP_CPU_EVENT_MASK,
-	.pc = BNX2_CP_CPU_PROGRAM_COUNTER,
-	.inst = BNX2_CP_CPU_INSTRUCTION,
-	.bp = BNX2_CP_CPU_HW_BREAKPOINT,
-	.spad_base = BNX2_CP_SCRATCH,
-	.mips_view_base = 0x8000000,
+        .mode = BNX2_CP_CPU_MODE,
+        .mode_value_halt = BNX2_CP_CPU_MODE_SOFT_HALT,
+        .mode_value_sstep = BNX2_CP_CPU_MODE_STEP_ENA,
+        .state = BNX2_CP_CPU_STATE,
+        .state_value_clear = 0xffffff,
+        .gpr0 = BNX2_CP_CPU_REG_FILE,
+        .evmask = BNX2_CP_CPU_EVENT_MASK,
+        .pc = BNX2_CP_CPU_PROGRAM_COUNTER,
+        .inst = BNX2_CP_CPU_INSTRUCTION,
+        .bp = BNX2_CP_CPU_HW_BREAKPOINT,
+        .spad_base = BNX2_CP_SCRATCH,
+        .mips_view_base = 0x8000000,
 };
 
 /* Initialized Values for the RX Processor. */
 static const struct cpu_reg cpu_reg_rxp = {
-	.mode = BNX2_RXP_CPU_MODE,
-	.mode_value_halt = BNX2_RXP_CPU_MODE_SOFT_HALT,
-	.mode_value_sstep = BNX2_RXP_CPU_MODE_STEP_ENA,
-	.state = BNX2_RXP_CPU_STATE,
-	.state_value_clear = 0xffffff,
-	.gpr0 = BNX2_RXP_CPU_REG_FILE,
-	.evmask = BNX2_RXP_CPU_EVENT_MASK,
-	.pc = BNX2_RXP_CPU_PROGRAM_COUNTER,
-	.inst = BNX2_RXP_CPU_INSTRUCTION,
-	.bp = BNX2_RXP_CPU_HW_BREAKPOINT,
-	.spad_base = BNX2_RXP_SCRATCH,
-	.mips_view_base = 0x8000000,
+        .mode = BNX2_RXP_CPU_MODE,
+        .mode_value_halt = BNX2_RXP_CPU_MODE_SOFT_HALT,
+        .mode_value_sstep = BNX2_RXP_CPU_MODE_STEP_ENA,
+        .state = BNX2_RXP_CPU_STATE,
+        .state_value_clear = 0xffffff,
+        .gpr0 = BNX2_RXP_CPU_REG_FILE,
+        .evmask = BNX2_RXP_CPU_EVENT_MASK,
+        .pc = BNX2_RXP_CPU_PROGRAM_COUNTER,
+        .inst = BNX2_RXP_CPU_INSTRUCTION,
+        .bp = BNX2_RXP_CPU_HW_BREAKPOINT,
+        .spad_base = BNX2_RXP_SCRATCH,
+        .mips_view_base = 0x8000000,
 };
 
 /* Initialized Values for the TX Patch-up Processor. */
 static const struct cpu_reg cpu_reg_tpat = {
-	.mode = BNX2_TPAT_CPU_MODE,
-	.mode_value_halt = BNX2_TPAT_CPU_MODE_SOFT_HALT,
-	.mode_value_sstep = BNX2_TPAT_CPU_MODE_STEP_ENA,
-	.state = BNX2_TPAT_CPU_STATE,
-	.state_value_clear = 0xffffff,
-	.gpr0 = BNX2_TPAT_CPU_REG_FILE,
-	.evmask = BNX2_TPAT_CPU_EVENT_MASK,
-	.pc = BNX2_TPAT_CPU_PROGRAM_COUNTER,
-	.inst = BNX2_TPAT_CPU_INSTRUCTION,
-	.bp = BNX2_TPAT_CPU_HW_BREAKPOINT,
-	.spad_base = BNX2_TPAT_SCRATCH,
-	.mips_view_base = 0x8000000,
+        .mode = BNX2_TPAT_CPU_MODE,
+        .mode_value_halt = BNX2_TPAT_CPU_MODE_SOFT_HALT,
+        .mode_value_sstep = BNX2_TPAT_CPU_MODE_STEP_ENA,
+        .state = BNX2_TPAT_CPU_STATE,
+        .state_value_clear = 0xffffff,
+        .gpr0 = BNX2_TPAT_CPU_REG_FILE,
+        .evmask = BNX2_TPAT_CPU_EVENT_MASK,
+        .pc = BNX2_TPAT_CPU_PROGRAM_COUNTER,
+        .inst = BNX2_TPAT_CPU_INSTRUCTION,
+        .bp = BNX2_TPAT_CPU_HW_BREAKPOINT,
+        .spad_base = BNX2_TPAT_SCRATCH,
+        .mips_view_base = 0x8000000,
 };
 
 /* Initialized Values for the TX Processor. */
 static const struct cpu_reg cpu_reg_txp = {
-	.mode = BNX2_TXP_CPU_MODE,
-	.mode_value_halt = BNX2_TXP_CPU_MODE_SOFT_HALT,
-	.mode_value_sstep = BNX2_TXP_CPU_MODE_STEP_ENA,
-	.state = BNX2_TXP_CPU_STATE,
-	.state_value_clear = 0xffffff,
-	.gpr0 = BNX2_TXP_CPU_REG_FILE,
-	.evmask = BNX2_TXP_CPU_EVENT_MASK,
-	.pc = BNX2_TXP_CPU_PROGRAM_COUNTER,
-	.inst = BNX2_TXP_CPU_INSTRUCTION,
-	.bp = BNX2_TXP_CPU_HW_BREAKPOINT,
-	.spad_base = BNX2_TXP_SCRATCH,
-	.mips_view_base = 0x8000000,
+        .mode = BNX2_TXP_CPU_MODE,
+        .mode_value_halt = BNX2_TXP_CPU_MODE_SOFT_HALT,
+        .mode_value_sstep = BNX2_TXP_CPU_MODE_STEP_ENA,
+        .state = BNX2_TXP_CPU_STATE,
+        .state_value_clear = 0xffffff,
+        .gpr0 = BNX2_TXP_CPU_REG_FILE,
+        .evmask = BNX2_TXP_CPU_EVENT_MASK,
+        .pc = BNX2_TXP_CPU_PROGRAM_COUNTER,
+        .inst = BNX2_TXP_CPU_INSTRUCTION,
+        .bp = BNX2_TXP_CPU_HW_BREAKPOINT,
+        .spad_base = BNX2_TXP_SCRATCH,
+        .mips_view_base = 0x8000000,
 };
 
 CASSERT (0x7534 == sizeof (bnx2_RXP_b06FwText), bnx2_RXP_b06FwText);
@@ -2552,7 +2552,7 @@ bnx2_init_cpus(struct bnx2 *bp)
 
 struct bnx2_cpus_scratch_debug {
   u32	offset;		/*  Scratch pad offset to firmware version */
-  char 	*name;		/*  Name of the CPU */
+  char  *name;		/*  Name of the CPU */
 };
 
 #define BNX2_SCRATCH_FW_VERSION_OFFSET		0x10
@@ -2685,7 +2685,7 @@ bnx2_mac_init (struct bnx2 *bp)
   if (!bnx2_init_cpus (bp)) {
     DLOG ("bnx2_init_cpus failed");
     return;
-  }   
+  }
   DLOG ("Initialized onboard CPUs");
   bnx2_print_fw_versions (bp);
 
@@ -2735,7 +2735,6 @@ bnx2_mac_init (struct bnx2 *bp)
   REG_WR(bp, BNX2_EMAC_ATTENTION_ENA, BNX2_EMAC_ATTENTION_ENA_LINK);
 
   /* Program host memory status block */
-#if 0
   REG_WR(bp, BNX2_HC_STATUS_ADDR_L,
          (u64) bp->status_blk_mapping & 0xffffffff);
   REG_WR(bp, BNX2_HC_STATUS_ADDR_H, (u64) bp->status_blk_mapping >> 32);
@@ -2744,7 +2743,7 @@ bnx2_mac_init (struct bnx2 *bp)
   REG_WR(bp, BNX2_HC_STATISTICS_ADDR_L,
          (u64) bp->stats_blk_mapping & 0xffffffff);
   REG_WR(bp, BNX2_HC_STATISTICS_ADDR_H, (u64) bp->stats_blk_mapping >> 32);
-#endif
+
 
   /* Host coalescing */
   if (CHIP_ID(bp) == CHIP_ID_5706_A1) {
@@ -2756,7 +2755,7 @@ bnx2_mac_init (struct bnx2 *bp)
            BNX2_HC_CONFIG_TX_TMR_MODE |
            BNX2_HC_CONFIG_COLLECT_STATS);
   }
-  REG_WR(bp, BNX2_HC_CONFIG, 
+  REG_WR(bp, BNX2_HC_CONFIG,
          BNX2_HC_CONFIG_RX_TMR_MODE |
          BNX2_HC_CONFIG_TX_TMR_MODE |
          BNX2_HC_CONFIG_COLLECT_STATS);
@@ -3225,6 +3224,32 @@ bnx2_init (void)
 
   pow2_alloc (sizeof (struct bnx2), (u8 **) &bp);
 
+  u32 status_size = sizeof (struct status_block);
+  status_size += LOCK_ALIGNMENT - 1;
+  status_size &= ~(LOCK_ALIGNMENT - 1);
+  u32 status_stats_size =
+     status_size + sizeof (struct statistics_block);
+  u32 status_stats_pages =
+    (status_stats_size >> PAGE_SHIFT) +
+    ((status_stats_size & ((1<<PAGE_SHIFT)-1)) ? 1 : 0);
+  DLOG ("status_size=%d status_stats_size=%d status_stats_pages=%d",
+        status_size, status_stats_size, status_stats_pages);
+  u32 status_stats_phys = alloc_phys_frames (status_stats_pages);
+  if (status_stats_phys == (u32) -1)
+    goto abort_bp;
+  void *status_stats =
+    map_contiguous_virtual_pages (status_stats_phys | 3, status_stats_pages);
+  if (!status_stats)
+    goto abort_status_phys;
+  memset (status_stats, 0, status_stats_pages << PAGE_SHIFT);
+
+  bp->status_blk = (struct status_block *) status_stats;
+  bp->status_blk_mapping = status_stats_phys;
+  bp->stats_blk = (struct statistics_block *) (status_stats + status_size);
+  bp->stats_blk_mapping = status_stats_phys + status_size;
+  DLOG ("status_blk=%p status_blk_mapping=%p", bp->status_blk, bp->status_blk_mapping);
+  DLOG ("stats_blk=%p stats_blk_mapping=%p", bp->stats_blk, bp->stats_blk_mapping);
+
   pdev.drvdata = bp;
   bp->pdev = &pdev;
 
@@ -3232,7 +3257,7 @@ bnx2_init (void)
   pci_write_word (pci_addr (pdev.bus, pdev.slot, pdev.func, 0x04), 0x0006);
 
   if (!bnx2_init_board (&pdev))
-    goto abort_bp;
+    goto abort_status_virt;
 
   bnx2_mac_reset (bp);
   bnx2_mac_init (bp);
@@ -3253,11 +3278,15 @@ bnx2_init (void)
 
   if (!net_register_device (&bnx2_ethdev)) {
     DLOG ("registration failed");
-    goto abort_bp;
+    goto abort_status_virt;
   }
 
   return TRUE;
 
+ abort_status_virt:
+  unmap_virtual_pages (status_stats, status_stats_pages);
+ abort_status_phys:
+  free_phys_frames (status_stats_phys, status_stats_pages);
  abort_bp:
   pow2_free ((u8 *) bp);
  abort:

@@ -6951,6 +6951,7 @@ struct bnx2 {
   u16                   rx_ticks_int;
 
   u32                   stats_ticks;
+  struct status_block   *status_blk;
   dma_addr_t            status_blk_mapping;
 
   struct statistics_block       *stats_blk;
