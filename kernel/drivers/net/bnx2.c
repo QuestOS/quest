@@ -872,10 +872,17 @@ bnx2_set_default_link(struct bnx2 *bp)
     bp->advertising = ETHTOOL_ALL_COPPER_SPEED | ADVERTISED_Autoneg;
 }
 
+static ethernet_device bnx2_ethdev;
+
 static u32
 bnx2_irq_handler (u8 vec)
 {
+  struct bnx2 *bp = bnx2_ethdev.drvdata;
   DLOG ("IRQ");
+  REG_WR(bp, BNX2_PCICFG_INT_ACK_CMD, (0 << 24) |
+         BNX2_PCICFG_INT_ACK_CMD_INDEX_VALID |
+         bp->status_blk->status_idx);
+
   return 0;
 }
 
@@ -2969,12 +2976,12 @@ bnx2_enable_int(struct bnx2 *bp)
            bnapi->last_status_idx);
   }
 #else
-  REG_WR(bp, BNX2_PCICFG_INT_ACK_CMD, (1 << 24) |
+  REG_WR(bp, BNX2_PCICFG_INT_ACK_CMD, (0 << 24) |
          BNX2_PCICFG_INT_ACK_CMD_INDEX_VALID |
          BNX2_PCICFG_INT_ACK_CMD_MASK_INT |
          bp->status_blk->status_idx);
 
-  REG_WR(bp, BNX2_PCICFG_INT_ACK_CMD, (1 << 24) |
+  REG_WR(bp, BNX2_PCICFG_INT_ACK_CMD, (0 << 24) |
          BNX2_PCICFG_INT_ACK_CMD_INDEX_VALID |
          bp->status_blk->status_idx);
 #endif
@@ -4377,7 +4384,6 @@ bnx2_set_link(struct bnx2 *bp)
 
 static uint device_index;
 static pci_device pdev;
-static ethernet_device bnx2_ethdev;
 
 static sint
 bnx2_transmit (u8 *buf, u32 len)
