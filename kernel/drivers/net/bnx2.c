@@ -874,14 +874,66 @@ bnx2_set_default_link(struct bnx2 *bp)
 
 static ethernet_device bnx2_ethdev;
 
+static inline u16
+bnx2_get_hw_rx_cons(struct bnx2 *bp)
+{
+  volatile u16 *ptr;
+  u16 cons;
+
+  ptr = &bp->status_blk->status_rx_quick_consumer_index0;
+  cons = *ptr;  
+  if (unlikely((cons & MAX_RX_DESC_CNT) == MAX_RX_DESC_CNT))
+    cons++;
+  return cons;
+}
+
 static u32
 bnx2_irq_handler (u8 vec)
 {
+  int i;
   struct bnx2 *bp = bnx2_ethdev.drvdata;
-  DLOG ("IRQ");
+  struct bnx2_rx_ring_info *rxr = &bp->rx_ring;
+  u16 hw_cons = bnx2_get_hw_rx_cons (bp), sw_cons = rxr->rx_cons, sw_prod = rxr->rx_prod;
+  struct sw_bd *rx_buf, *next_rx_buf;
+  struct l2_fhdr *rx_hdr;
+
   REG_WR(bp, BNX2_PCICFG_INT_ACK_CMD, (0 << 24) |
          BNX2_PCICFG_INT_ACK_CMD_INDEX_VALID |
          bp->status_blk->status_idx);
+
+  DLOG ("IRQ hw_rx_cons=%d sw_cons=%d sw_prod=%d", hw_cons, sw_cons, sw_prod);
+
+  rx_buf = &rxr->rx_buf_ring[RX_RING_IDX (sw_prod)];
+  rx_hdr = rx_buf->desc;
+
+  if (rx_hdr) {
+    DLOG ("rx_buf[%d (%d)] len=%d status=0x%.08X",
+          RX_RING_IDX (sw_prod),
+          sw_prod,
+          rx_hdr->l2_fhdr_pkt_len,
+          rx_hdr->l2_fhdr_status);
+
+    for (i=0; i<bp->rx_ring_size; i++) {
+      if (rxr->rx_buf_ring[i].desc->l2_fhdr_status != 0) {
+        DLOG ("rx_buf[%d] len=%d status=0x%.08X",
+              i,
+              rxr->rx_buf_ring[i].desc->l2_fhdr_pkt_len,
+              rxr->rx_buf_ring[i].desc->l2_fhdr_status);
+      }
+    }
+  } else
+    DLOG ("rx_hdr=NULL");
+
+  while (hw_cons != sw_cons) {
+    sw_cons = NEXT_RX_BD (sw_cons);
+    sw_prod = NEXT_RX_BD (sw_prod);
+    hw_cons = bnx2_get_hw_rx_cons (bp);
+  }
+
+  //sw_prod = NEXT_RX_BD (sw_prod);
+  rxr->rx_cons = sw_cons;
+  rxr->rx_prod = sw_prod;
+  REG_WR16(bp, rxr->rx_bidx_addr, sw_prod);
 
   return 0;
 }
@@ -1534,6 +1586,7 @@ bnx2_init_rx_ring(struct bnx2 *bp, int ring_num)
     prod = NEXT_RX_BD(prod);
     ring_prod = RX_RING_IDX(prod);
   }
+  prod--;
   rxr->rx_prod = prod;
 
   rxr->rx_bidx_addr = MB_GET_CID_ADDR(cid) + BNX2_L2CTX_HOST_BDIDX;
@@ -3030,7 +3083,7 @@ bnx2_init_board (pci_device *pdev)
   set_vector_handler (BNX2_VECTOR, bnx2_irq_handler);
 
   /* map 64kb at phys_addr */
-#define NUM_PAGES 16
+#define NUM_PAGES 20
   base_addr = map_contiguous_virtual_pages (phys_addr | 3, NUM_PAGES);
   if (!base_addr)
     goto err_out_free_stats;
@@ -4407,19 +4460,6 @@ bnx2_poll (void)
 {
 }
 
-static inline u16
-bnx2_get_hw_rx_cons(struct bnx2 *bp)
-{
-  volatile u16 *ptr;
-  u16 cons;
-
-  ptr = &bp->status_blk->status_rx_quick_consumer_index0;
-  cons = *ptr;  
-  if (unlikely((cons & MAX_RX_DESC_CNT) == MAX_RX_DESC_CNT))
-    cons++;
-  return cons;
-}
-
 static u32 bnx2_test_stack[1024] ALIGNED (0x1000);
 static void
 bnx2_test_thread (void)
@@ -4427,7 +4467,6 @@ bnx2_test_thread (void)
   struct bnx2 *bp = bnx2_ethdev.drvdata;
   struct status_block *st = bp->status_blk;
   struct statistics_block *stats = bp->stats_blk;
-  struct l2_fhdr *rx_hdr;
 
   for (;;) {
     u32 bmsr;
@@ -4465,31 +4504,10 @@ bnx2_test_thread (void)
       }
     }
 
-    struct bnx2_rx_ring_info *rxr = &bp->rx_ring;
-    struct sw_bd *rx_buf, *next_rx_buf;
-    u16 sw_cons, sw_ring_cons;
-    sw_cons = bnx2_get_hw_rx_cons (bp);
-    sw_ring_cons = RX_RING_IDX(sw_cons);
-    rx_buf = &rxr->rx_buf_ring[sw_ring_cons];
-    rx_hdr = rx_buf->desc;
-    DLOG ("%d %d", sw_ring_cons, sw_cons);
-#if 1
-    if (sw_ring_cons < 255) {
-      DLOG ("rx_buf[%d (%d)] len=%d status=0x%.08X",
-            sw_ring_cons,
-            sw_cons,
-            rx_hdr->l2_fhdr_pkt_len,
-            rx_hdr->l2_fhdr_status);
-    }
-#endif
-    for (i=0; i<255; i++) {
-      if (rxr->rx_buf_ring[i].desc->l2_fhdr_status != 0) {
-        DLOG ("rx_buf[%d] len=%d status=0x%.08X",
-              i,
-              rxr->rx_buf_ring[i].desc->l2_fhdr_pkt_len,
-              rxr->rx_buf_ring[i].desc->l2_fhdr_status);
-      }
-    }
+    DLOG ("RXPmode=0x%.08X RXPstate=0x%.08X",
+          bnx2_reg_rd_ind (bp, BNX2_RXP_CPU_MODE),
+          bnx2_reg_rd_ind (bp, BNX2_RXP_CPU_STATE)
+          );
   }
 }
 
