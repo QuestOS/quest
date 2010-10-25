@@ -4432,14 +4432,19 @@ bnx2_test_thread (void)
   for (;;) {
     u32 bmsr;
     sched_usleep (5*1000000);
-    DLOG ("attn_bits=0x%.08X attn_bits_ack=0x%.08X",
+    DLOG ("status_idx=%d attn_bits=0x%.08X attn_bits_ack=0x%.08X",
+          st->status_idx,
           st->status_attn_bits,
           st->status_attn_bits_ack);
     DLOG ("rxQC0=%d rxQC1=%d",
           st->status_rx_quick_consumer_index0,
           st->status_rx_quick_consumer_index1);
-    DLOG ("IfHCInOctets=0x%.08X IfHCInBadOctets=0x%.08X",
-          stats->stat_IfHCInOctets_lo, stats->stat_IfHCInBadOctets_lo);
+    DLOG ("IfHCInOctets=0x%.08X%.08X IfHCInBadOctets=0x%.08X%.08X",
+          stats->stat_IfHCInOctets_hi,
+          stats->stat_IfHCInOctets_lo,
+          stats->stat_IfHCInBadOctets_hi,
+          stats->stat_IfHCInBadOctets_lo
+          );
     bnx2_read_phy(bp, bp->mii_bmsr1, &bmsr);
     bnx2_read_phy(bp, bp->mii_bmsr1, &bmsr);
     DLOG ("bmsr=0x%.08X EMAC_STATUS=0x%.08X", bmsr, REG_RD (bp, BNX2_EMAC_STATUS));
