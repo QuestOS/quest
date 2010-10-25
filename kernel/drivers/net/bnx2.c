@@ -31,6 +31,8 @@
 #include "kernel.h"
 #include "sched/vcpu.h"
 
+#define __LITTLE_ENDIAN
+
 #include "bnx2.h"
 #include "bnx2_uncompressed_fw.h"
 
@@ -1354,6 +1356,7 @@ alloc_skb (u32 size)
   skb->len = size;
   pow2_alloc (size, (u8 **) &skb->data);
   if (!skb->data) return NULL;
+  memset (skb->data, 0, size);
   return skb;
 }
 
@@ -1539,15 +1542,16 @@ bnx2_init_rx_ring(struct bnx2 *bp, int ring_num)
         rxr->rx_prod, rxr->rx_prod_bseq, rx_cid_addr);
 }
 
-#if 0
 static void
 bnx2_init_all_rings(struct bnx2 *bp)
 {
   int i;
   u32 val;
 
-  bnx2_clear_ring_states(bp);
+  //bnx2_clear_ring_states(bp);
 
+  /* FIXME-- transmit */
+#if 0
   REG_WR(bp, BNX2_TSCH_TSS_CFG, 0);
   for (i = 0; i < bp->num_tx_rings; i++)
     bnx2_init_tx_ring(bp, i);
@@ -1555,6 +1559,7 @@ bnx2_init_all_rings(struct bnx2 *bp)
   if (bp->num_tx_rings > 1)
     REG_WR(bp, BNX2_TSCH_TSS_CFG, ((bp->num_tx_rings - 1) << 24) |
            (TX_TSS_CID << 7));
+#endif
 
   REG_WR(bp, BNX2_RLUP_RSS_CONFIG, 0);
   bnx2_reg_wr_ind(bp, BNX2_RXP_SCRATCH_RSS_TBL_SZ, 0);
@@ -1574,7 +1579,7 @@ bnx2_init_all_rings(struct bnx2 *bp)
       if ((i % 4) == 3)
         bnx2_reg_wr_ind(bp,
                         BNX2_RXP_SCRATCH_RSS_TBL + i,
-                        cpu_to_be32(tbl_32));
+                        __cpu_to_be32(tbl_32));
     }
 
     val = BNX2_RLUP_RSS_CONFIG_IPV4_RSS_TYPE_ALL_XI |
@@ -1584,6 +1589,8 @@ bnx2_init_all_rings(struct bnx2 *bp)
 
   }
 }
+
+#if 0
 
 static u32 bnx2_find_max_ring(u32 ring_size, u32 max_size)
 {
@@ -1794,8 +1801,9 @@ bnx2_alloc_rx_mem (struct bnx2 *bp)
   int j;
 
   DLOG ("RX_DESC_CNT=%d", RX_DESC_CNT);
-  bp->rx_max_ring = MAX_RX_RINGS;
-  rxr->rx_buf_ring = vmalloc_pages ((SW_RXBD_RING_SIZE * bp->rx_max_ring) >> PAGE_SHIFT);
+  bp->rx_max_ring = 1;
+  bp->rx_max_ring_idx = (bp->rx_max_ring * RX_DESC_CNT) - 1;
+  rxr->rx_buf_ring = vmalloc_pages (PAGE_ALIGN (SW_RXBD_RING_SIZE * bp->rx_max_ring) >> PAGE_SHIFT);
   if (!rxr->rx_buf_ring)
     goto abort;
   memset (rxr->rx_buf_ring, 0, (SW_RXBD_RING_SIZE * bp->rx_max_ring));
@@ -2964,11 +2972,11 @@ bnx2_enable_int(struct bnx2 *bp)
   REG_WR(bp, BNX2_PCICFG_INT_ACK_CMD, (1 << 24) |
          BNX2_PCICFG_INT_ACK_CMD_INDEX_VALID |
          BNX2_PCICFG_INT_ACK_CMD_MASK_INT |
-         0);
+         bp->status_blk->status_idx);
 
   REG_WR(bp, BNX2_PCICFG_INT_ACK_CMD, (1 << 24) |
          BNX2_PCICFG_INT_ACK_CMD_INDEX_VALID |
-         0);
+         bp->status_blk->status_idx);
 #endif
 
   REG_WR(bp, BNX2_HC_COMMAND, bp->hc_cmd | BNX2_HC_COMMAND_COAL_NOW);
@@ -3205,6 +3213,7 @@ bnx2_init_board (pci_device *pdev)
         bp->mac_addr[3], bp->mac_addr[4], bp->mac_addr[5]);
 
   bp->tx_ring_size = MAX_TX_DESC_CNT;
+  bp->rx_ring_size = 255;
 #if 0
   bnx2_set_rx_ring_size(bp, 255);
 #endif
@@ -4392,6 +4401,19 @@ bnx2_poll (void)
 {
 }
 
+static inline u16
+bnx2_get_hw_rx_cons(struct bnx2 *bp)
+{
+  volatile u16 *ptr;
+  u16 cons;
+
+  ptr = &bp->status_blk->status_rx_quick_consumer_index0;
+  cons = *ptr;  
+  if (unlikely((cons & MAX_RX_DESC_CNT) == MAX_RX_DESC_CNT))
+    cons++;
+  return cons;
+}
+
 static u32 bnx2_test_stack[1024] ALIGNED (0x1000);
 static void
 bnx2_test_thread (void)
@@ -4399,12 +4421,17 @@ bnx2_test_thread (void)
   struct bnx2 *bp = bnx2_ethdev.drvdata;
   struct status_block *st = bp->status_blk;
   struct statistics_block *stats = bp->stats_blk;
+  struct l2_fhdr *rx_hdr;
+
   for (;;) {
     u32 bmsr;
     sched_usleep (5*1000000);
     DLOG ("attn_bits=0x%.08X attn_bits_ack=0x%.08X",
           st->status_attn_bits,
           st->status_attn_bits_ack);
+    DLOG ("rxQC0=%d rxQC1=%d",
+          st->status_rx_quick_consumer_index0,
+          st->status_rx_quick_consumer_index1);
     DLOG ("IfHCInOctets=0x%.08X IfHCInBadOctets=0x%.08X",
           stats->stat_IfHCInOctets_lo, stats->stat_IfHCInBadOctets_lo);
     bnx2_read_phy(bp, bp->mii_bmsr1, &bmsr);
@@ -4424,6 +4451,32 @@ bnx2_test_thread (void)
         /* bit i went from 1 -> 0 */
         DLOG ("bit %d went from 1 -> 0", i);
         REG_WR (bp, BNX2_PCICFG_STATUS_BIT_CLEAR_CMD, (1 << i));
+      }
+    }
+
+    struct bnx2_rx_ring_info *rxr = &bp->rx_ring;
+    struct sw_bd *rx_buf, *next_rx_buf;
+    u16 sw_cons, sw_ring_cons;
+    sw_cons = bnx2_get_hw_rx_cons (bp);
+    sw_ring_cons = RX_RING_IDX(sw_cons);
+    rx_buf = &rxr->rx_buf_ring[sw_ring_cons];
+    rx_hdr = rx_buf->desc;
+    DLOG ("%d %d", sw_ring_cons, sw_cons);
+#if 1
+    if (sw_ring_cons < 255) {
+      DLOG ("rx_buf[%d (%d)] len=%d status=0x%.08X",
+            sw_ring_cons,
+            sw_cons,
+            rx_hdr->l2_fhdr_pkt_len,
+            rx_hdr->l2_fhdr_status);
+    }
+#endif
+    for (i=0; i<255; i++) {
+      if (rxr->rx_buf_ring[i].desc->l2_fhdr_status != 0) {
+        DLOG ("rx_buf[%d] len=%d status=0x%.08X",
+              i,
+              rxr->rx_buf_ring[i].desc->l2_fhdr_pkt_len,
+              rxr->rx_buf_ring[i].desc->l2_fhdr_status);
       }
     }
   }
@@ -4502,8 +4555,11 @@ bnx2_init (void)
   bnx2_mac_reset (bp);
   bnx2_mac_init (bp);
   bnx2_enable_int (bp);
-  bnx2_alloc_rx_mem (bp);
-  bnx2_init_rx_ring (bp, 0);
+  if (!bnx2_alloc_rx_mem (bp)) {
+    DLOG ("failed to alloc rx mem");
+    goto abort_status_virt;
+  }
+  bnx2_init_all_rings (bp);
   spinlock_lock (&bp->phy_lock);
   bnx2_init_phy (bp, TRUE);
   bnx2_set_link(bp);
