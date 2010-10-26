@@ -896,44 +896,68 @@ bnx2_irq_handler (u8 vec)
   u16 hw_cons = bnx2_get_hw_rx_cons (bp), sw_cons = rxr->rx_cons, sw_prod = rxr->rx_prod;
   struct sw_bd *rx_buf, *next_rx_buf;
   struct l2_fhdr *rx_hdr;
+  struct rx_bd *rx_desc;
 
-  REG_WR(bp, BNX2_PCICFG_INT_ACK_CMD, (0 << 24) |
-         BNX2_PCICFG_INT_ACK_CMD_INDEX_VALID |
-         bp->status_blk->status_idx);
+  DLOG ("***IRQ*** hw_cons=%d (%d) sw_cons=%d (%d) sw_prod=%d (%d)",
+        hw_cons, RX_RING_IDX (hw_cons),
+        sw_cons, RX_RING_IDX (sw_cons),
+        sw_prod, RX_RING_IDX (sw_prod));
 
-  DLOG ("IRQ hw_rx_cons=%d sw_cons=%d sw_prod=%d", hw_cons, sw_cons, sw_prod);
 
-  rx_buf = &rxr->rx_buf_ring[RX_RING_IDX (sw_prod)];
+  rx_buf = &rxr->rx_buf_ring[RX_RING_IDX (sw_cons)];
   rx_hdr = rx_buf->desc;
 
-  if (rx_hdr) {
+  if (!rx_hdr) {
+    DLOG ("rx_hdr=NULL %d %d", sw_cons, RX_RING_IDX (sw_cons));
+    sw_prod = NEXT_RX_BD (sw_prod);
+  }
+
+  while (rx_hdr && rx_hdr->l2_fhdr_status && hw_cons != sw_cons) {
+    rx_buf = &rxr->rx_buf_ring[RX_RING_IDX (sw_cons)];
+    rx_desc = &rxr->rx_desc_ring[0][RX_RING_IDX (sw_cons)];
+    rx_hdr = rx_buf->desc;
+
     DLOG ("rx_buf[%d (%d)] len=%d status=0x%.08X",
-          RX_RING_IDX (sw_prod),
-          sw_prod,
+          RX_RING_IDX (sw_cons),
+          sw_cons,
           rx_hdr->l2_fhdr_pkt_len,
           rx_hdr->l2_fhdr_status);
 
-    for (i=0; i<bp->rx_ring_size; i++) {
-      if (rxr->rx_buf_ring[i].desc->l2_fhdr_status != 0) {
-        DLOG ("rx_buf[%d] len=%d status=0x%.08X",
-              i,
-              rxr->rx_buf_ring[i].desc->l2_fhdr_pkt_len,
-              rxr->rx_buf_ring[i].desc->l2_fhdr_status);
-      }
-    }
-  } else
-    DLOG ("rx_hdr=NULL");
+    DLOG ("rx_desc[%d (%d)] len=%d flags=0x%X haddr=0x%.08X%.08X",
+          RX_RING_IDX (sw_cons),
+          sw_cons,
+          rx_desc->rx_bd_len,
+          rx_desc->rx_bd_flags,
+          rx_desc->rx_bd_haddr_hi,
+          rx_desc->rx_bd_haddr_lo);
 
-  while (hw_cons != sw_cons) {
+    memset (rx_buf->skb->data, 0, rx_buf->skb->len);
+    //rxr->rx_prod_bseq += bp->rx_buf_use_size;
+
     sw_cons = NEXT_RX_BD (sw_cons);
     sw_prod = NEXT_RX_BD (sw_prod);
     hw_cons = bnx2_get_hw_rx_cons (bp);
+
+    DLOG ("hw_cons=%d (%d) sw_cons=%d (%d) sw_prod=%d (%d)",
+          hw_cons, RX_RING_IDX (hw_cons),
+          sw_cons, RX_RING_IDX (sw_cons),
+          sw_prod, RX_RING_IDX (sw_prod));
   }
 
-  //sw_prod = NEXT_RX_BD (sw_prod);
   rxr->rx_cons = sw_cons;
   rxr->rx_prod = sw_prod;
+
+  DLOG ("---EOI--- bidx <- %d (%d); prod_bseq = %d",
+        sw_prod, RX_RING_IDX (sw_prod),
+        rxr->rx_prod_bseq);
   REG_WR16(bp, rxr->rx_bidx_addr, sw_prod);
+  //REG_WR(bp, rxr->rx_bseq_addr, rxr->rx_prod_bseq);
+
+  /* Unmask and ACK IRQ */
+  REG_WR(bp, BNX2_PCICFG_INT_ACK_CMD, (0 << 24) |
+         BNX2_PCICFG_INT_ACK_CMD_INDEX_VALID |
+         bp->status_blk->status_idx);
+  REG_RD(bp, BNX2_PCICFG_INT_ACK_CMD);
 
   return 0;
 }
