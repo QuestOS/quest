@@ -63,6 +63,36 @@ static struct predefined_arch_perfevts {
   (sizeof (predefined_arch_perfevts) / sizeof (struct predefined_arch_perfevts))
 
 bool perfmon_enabled = FALSE;
+bool nehalem_perfmon_enabled = FALSE;
+bool westmere_perfmon_enabled = FALSE;
+
+/* x specifies which IA32_PERFEVTSEL and IA32_PMC msr pair to use.
+ * rsp specifies which MSR_OFFCORE_RSP msr to use.
+ * Only MSR_OFFCORE_RSP0 is available in Nehalem.
+ * Westmere has both MSR_OFFCORE_RSP0 and MSR_OFFCORE_RSP1.
+ */
+extern void
+offcore_perfmon_pmc_config (int x, int rsp, uint64 offcore_evts)
+{
+  switch (rsp) {
+    case 0 :
+      if (nehalem_perfmon_enabled || westmere_perfmon_enabled) {
+        wrmsr (MSR_OFFCORE_RSP (0), offcore_evts);
+        perfmon_pmc_config (x, OFFCORE_RSP0_EVT, OFFCORE_RSP_MASK);
+      }
+      break;
+
+    case 1 :
+      if (westmere_perfmon_enabled) {
+        wrmsr (MSR_OFFCORE_RSP (1), offcore_evts);
+        perfmon_pmc_config (x, OFFCORE_RSP1_EVT, OFFCORE_RSP_MASK);
+      }
+      break;
+
+    default :
+      DLOG ("Off-Core Response Event is not supported");
+  }
+}
 
 extern void
 perfmon_init (void)
@@ -76,6 +106,13 @@ perfmon_init (void)
   if ((u8) eax == 0) {
     DLOG ("unsupported");
     return;
+  }
+
+  /* Enable Off-core Rsp Perfmon when current microarchitecture is Nehalem */
+  if ((((display >> 8) & 0xF) == 0x6) &&
+      ((display & 0xFF) == 0x1A)) {
+    DLOG ("Nehalem Enhancements of Performance Monitoring enabled.");
+    nehalem_perfmon_enabled = TRUE;
   }
 
   perfmon_version = (u8) eax;

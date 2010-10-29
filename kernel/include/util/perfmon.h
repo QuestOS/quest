@@ -24,6 +24,28 @@
 #define IA32_PMC(x) (0xC1 + (x))
 /* Performance event select MSRs paired with PMCs */
 #define IA32_PERFEVTSEL(x) (0x186 + (x))
+/* Off-core Response MSR. 0 for Nehalem. 0 and 1 for Westmere. */
+#define MSR_OFFCORE_RSP(x) (0x1A6 + (x))
+#define OFFCORE_RSP0_EVT    0xB7
+#define OFFCORE_RSP1_EVT    0xBB /* Available in Westmere only */
+#define OFFCORE_RSP_MASK   0x01
+
+/* MSR_OFFCORE_RSP_Z Bit Field Definition */
+#define OFFCORE_DMND_DATA_RD            0x1
+#define OFFCORE_DMND_RFO                0x1 << 1
+#define OFFCORE_DMND_IFETCH             0x1 << 2
+#define OFFCORE_WB                      0x1 << 3
+#define OFFCORE_PF_DATA_RD              0x1 << 4
+#define OFFCORE_PF_RFO                  0x1 << 5
+#define OFFCORE_PF_IFETCH               0x1 << 6
+#define OFFCORE_OTHER                   0x1 << 7
+#define OFFCORE_UNCORE_HIT              0x1 << 8
+#define OFFCORE_OTHER_CORE_HIT_SNP      0x1 << 9
+#define OFFCORE_OTHER_CORE_HITM         0x1 << 10
+#define OFFCORE_REMOTE_CACHE_FWD        0x1 << 12
+#define OFFCORE_REMOTE_DRAM             0x1 << 13
+#define OFFCORE_LOCAL_DRAM              0x1 << 14
+#define OFFCORE_NON_DRAM                0x1 << 15
 
 typedef union {
   u32 raw;
@@ -63,7 +85,10 @@ perfmon_pmc_read (int x)
 }
 
 extern void perfmon_init (void);
+extern void offcore_perfmon_pmc_config (int, int, uint64);
 extern bool perfmon_enabled;
+extern bool nehalem_perfmon_enabled;
+extern bool westmere_perfmon_enabled;
 
 #endif
 
