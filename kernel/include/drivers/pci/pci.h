@@ -46,7 +46,7 @@ typedef struct {
   uint32 mask;
 } pci_bar;
 
-typedef struct {
+typedef struct pci_dev {
   uint32 bus, slot, func;
   uint16 vendor;
   uint16 device;
