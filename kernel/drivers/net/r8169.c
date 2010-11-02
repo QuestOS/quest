@@ -36,7 +36,7 @@
 
 #define R8169_VECTOR 0x4F       /* arbitrary */
 
-#define DEBUG_R8169
+//#define DEBUG_R8169
 
 #ifdef DEBUG_R8169
 #define DLOG(fmt,...) DLOG_PREFIX("r8169",fmt,##__VA_ARGS__)
@@ -53,12 +53,6 @@
 #define PCI_SUBSYSTEM_ID        0x2e
 #define PCI_CACHE_LINE_SIZE     0x0c    /* 8 bits */
 #define PCI_LATENCY_TIMER       0x0d    /* 8 bits */
-
-static void
-pci_write_config_dword (pci_device *p, u32 offset, u32 val)
-{
-  pci_write_dword (pci_addr (p->bus, p->slot, p->func, offset), val);
-}
 
 static void
 pci_write_config_word (pci_device *p, u32 offset, u16 val)
@@ -299,7 +293,7 @@ enum cfg_version {
 #define PCI_VENDOR_ID_REALTEK           0x10ec
 #define PCI_VENDOR_ID_DLINK             0x1186
 #define PCI_VENDOR_ID_AT                0x1259
-#define PCI_VENDOR_ID_GIGABYTE		0x1458
+#define PCI_VENDOR_ID_GIGABYTE          0x1458
 
 /* List of compatible cards (ended by { 0xFFFF, 0xFFFF }) */
 static struct {
@@ -1506,15 +1500,8 @@ rtl8169_check_link_status(struct net_device *dev,
 {
   spinlock_lock(&tp->lock);
   if (tp->link_ok(ioaddr)) {
-    /* This is to cancel a scheduled suspend if there's one. */
-    //pm_request_resume(&tp->pci_dev->dev);
-    //netif_carrier_on(dev);
-    //netif_info(tp, ifup, dev, "link up\n");
     DLOG ("link up");
   } else {
-    //netif_carrier_off(dev);
-    //netif_info(tp, ifdown, dev, "link down\n");
-    //pm_schedule_suspend(&tp->pci_dev->dev, 100);
     DLOG ("link down");
   }
   spinlock_unlock(&tp->lock);
@@ -1590,6 +1577,81 @@ static const struct rtl_cfg_info {
 static uint device_index;
 static pci_device pdev;
 
+static inline void rtl8169_mark_to_asic(struct RxDesc *desc, u32 rx_buf_sz);
+
+#define MIN(a,b) ((a) < (b) ? (a) : (b))
+static void
+rx_int (struct rtl8169_private *tp)
+{
+  uint cur_rx;
+
+  cur_rx = tp->cur_rx;
+  for (;;) {
+    uint entry = cur_rx & (NUM_RX_DESC - 1);
+    struct RxDesc *desc = tp->RxDescArray + entry;
+    u32 status;
+
+    status = __le32_to_cpu (desc->opts1);
+    if (status & DescOwn)
+      break;
+    else {
+      struct sk_buff *skb = tp->Rx_skbuff[entry];
+      int pkt_size = (status & 0x00001FFF) - 4;
+      DLOG ("RX: entry=%d size=%d", entry, pkt_size);
+      u8 *p = skb->data;
+      DLOG ("  %.02X %.02X %.02X %.02X %.02X %.02X",
+            p[0], p[1], p[2], p[3], p[4], p[5]);
+      p+=6;
+      DLOG ("  %.02X %.02X %.02X %.02X %.02X %.02X",
+            p[0], p[1], p[2], p[3], p[4], p[5]);
+      if (tp->ethdev.recv_func)
+        tp->ethdev.recv_func (&tp->ethdev, skb->data, pkt_size);
+      rtl8169_mark_to_asic(desc, tp->rx_buf_sz);
+    }
+    cur_rx++;
+  }
+  tp->cur_rx = cur_rx;
+}
+
+static inline void free_skb (struct sk_buff *);
+static void
+tx_int (struct rtl8169_private *tp)
+{
+  void __iomem *ioaddr = tp->mmio_addr;
+  uint dirty_tx, tx_left;
+  dirty_tx = tp->dirty_tx;
+  tx_left = tp->cur_tx - dirty_tx;
+  while (tx_left > 0) {
+    uint entry = dirty_tx & (NUM_TX_DESC - 1);
+    struct ring_info *tx_skb = tp->tx_skb + entry;
+    struct TxDesc *desc = tp->TxDescArray + entry;
+    u32 status;
+
+    status = __le32_to_cpu(tp->TxDescArray[entry].opts1);
+    if (status & DescOwn)
+      break;
+
+    DLOG ("TX: entry %d sent %d bytes", entry, tx_skb->len);
+    desc->opts1 = desc->opts2 = desc->addr = 0;
+    tx_skb->len = 0;
+    free_skb (tx_skb->skb);
+
+    dirty_tx++;
+    tx_left--;
+  }
+  if (tp->dirty_tx != dirty_tx) {
+    tp->dirty_tx = dirty_tx;
+    /*
+     * 8168 hack: TxPoll requests are lost when the Tx packets are
+     * too close. Let's kick an extra TxPoll request when a burst
+     * of start_xmit activity is detected (if it is not detected,
+     * it is slow enough). -- FR
+     */
+    if (tp->cur_tx != dirty_tx)
+      RTL_W8(TxPoll, NPQ);
+  }
+}
+
 static uint
 irq_handler (u8 vec)
 {
@@ -1648,6 +1710,14 @@ irq_handler (u8 vec)
     }
 #endif
 
+    if (status & RxOK) {
+      rx_int (tp);
+    }
+
+    if (status & TxOK) {
+      tx_int (tp);
+    }
+
     /* We only get a new MSI interrupt when all active irq
      * sources on the chip have been acknowledged. So, ack
      * everything we've seen and check if new sources have become
@@ -1657,9 +1727,6 @@ irq_handler (u8 vec)
             (status & RxFIFOOver) ? (status | RxOverflow) : status);
     status = RTL_R16(IntrStatus);
   }
-
-
-  DLOG ("IntrMask = 0x%.04X", RTL_R16 (IntrMask));
 
   return 0;
 }
@@ -1685,55 +1752,55 @@ get_mac_version(struct rtl8169_private *tp,
     int mac_version;
   } mac_info[] = {
     /* 8168D family. */
-    { 0x7cf00000, 0x28300000,	RTL_GIGA_MAC_VER_26 },
-    { 0x7cf00000, 0x28100000,	RTL_GIGA_MAC_VER_25 },
-    { 0x7c800000, 0x28800000,	RTL_GIGA_MAC_VER_27 },
-    { 0x7c800000, 0x28000000,	RTL_GIGA_MAC_VER_26 },
+    { 0x7cf00000, 0x28300000,   RTL_GIGA_MAC_VER_26 },
+    { 0x7cf00000, 0x28100000,   RTL_GIGA_MAC_VER_25 },
+    { 0x7c800000, 0x28800000,   RTL_GIGA_MAC_VER_27 },
+    { 0x7c800000, 0x28000000,   RTL_GIGA_MAC_VER_26 },
 
     /* 8168C family. */
-    { 0x7cf00000, 0x3cb00000,	RTL_GIGA_MAC_VER_24 },
-    { 0x7cf00000, 0x3c900000,	RTL_GIGA_MAC_VER_23 },
-    { 0x7cf00000, 0x3c800000,	RTL_GIGA_MAC_VER_18 },
-    { 0x7c800000, 0x3c800000,	RTL_GIGA_MAC_VER_24 },
-    { 0x7cf00000, 0x3c000000,	RTL_GIGA_MAC_VER_19 },
-    { 0x7cf00000, 0x3c200000,	RTL_GIGA_MAC_VER_20 },
-    { 0x7cf00000, 0x3c300000,	RTL_GIGA_MAC_VER_21 },
-    { 0x7cf00000, 0x3c400000,	RTL_GIGA_MAC_VER_22 },
-    { 0x7c800000, 0x3c000000,	RTL_GIGA_MAC_VER_22 },
+    { 0x7cf00000, 0x3cb00000,   RTL_GIGA_MAC_VER_24 },
+    { 0x7cf00000, 0x3c900000,   RTL_GIGA_MAC_VER_23 },
+    { 0x7cf00000, 0x3c800000,   RTL_GIGA_MAC_VER_18 },
+    { 0x7c800000, 0x3c800000,   RTL_GIGA_MAC_VER_24 },
+    { 0x7cf00000, 0x3c000000,   RTL_GIGA_MAC_VER_19 },
+    { 0x7cf00000, 0x3c200000,   RTL_GIGA_MAC_VER_20 },
+    { 0x7cf00000, 0x3c300000,   RTL_GIGA_MAC_VER_21 },
+    { 0x7cf00000, 0x3c400000,   RTL_GIGA_MAC_VER_22 },
+    { 0x7c800000, 0x3c000000,   RTL_GIGA_MAC_VER_22 },
 
     /* 8168B family. */
-    { 0x7cf00000, 0x38000000,	RTL_GIGA_MAC_VER_12 },
-    { 0x7cf00000, 0x38500000,	RTL_GIGA_MAC_VER_17 },
-    { 0x7c800000, 0x38000000,	RTL_GIGA_MAC_VER_17 },
-    { 0x7c800000, 0x30000000,	RTL_GIGA_MAC_VER_11 },
+    { 0x7cf00000, 0x38000000,   RTL_GIGA_MAC_VER_12 },
+    { 0x7cf00000, 0x38500000,   RTL_GIGA_MAC_VER_17 },
+    { 0x7c800000, 0x38000000,   RTL_GIGA_MAC_VER_17 },
+    { 0x7c800000, 0x30000000,   RTL_GIGA_MAC_VER_11 },
 
     /* 8101 family. */
-    { 0x7cf00000, 0x34a00000,	RTL_GIGA_MAC_VER_09 },
-    { 0x7cf00000, 0x24a00000,	RTL_GIGA_MAC_VER_09 },
-    { 0x7cf00000, 0x34900000,	RTL_GIGA_MAC_VER_08 },
-    { 0x7cf00000, 0x24900000,	RTL_GIGA_MAC_VER_08 },
-    { 0x7cf00000, 0x34800000,	RTL_GIGA_MAC_VER_07 },
-    { 0x7cf00000, 0x24800000,	RTL_GIGA_MAC_VER_07 },
-    { 0x7cf00000, 0x34000000,	RTL_GIGA_MAC_VER_13 },
-    { 0x7cf00000, 0x34300000,	RTL_GIGA_MAC_VER_10 },
-    { 0x7cf00000, 0x34200000,	RTL_GIGA_MAC_VER_16 },
-    { 0x7c800000, 0x34800000,	RTL_GIGA_MAC_VER_09 },
-    { 0x7c800000, 0x24800000,	RTL_GIGA_MAC_VER_09 },
-    { 0x7c800000, 0x34000000,	RTL_GIGA_MAC_VER_16 },
+    { 0x7cf00000, 0x34a00000,   RTL_GIGA_MAC_VER_09 },
+    { 0x7cf00000, 0x24a00000,   RTL_GIGA_MAC_VER_09 },
+    { 0x7cf00000, 0x34900000,   RTL_GIGA_MAC_VER_08 },
+    { 0x7cf00000, 0x24900000,   RTL_GIGA_MAC_VER_08 },
+    { 0x7cf00000, 0x34800000,   RTL_GIGA_MAC_VER_07 },
+    { 0x7cf00000, 0x24800000,   RTL_GIGA_MAC_VER_07 },
+    { 0x7cf00000, 0x34000000,   RTL_GIGA_MAC_VER_13 },
+    { 0x7cf00000, 0x34300000,   RTL_GIGA_MAC_VER_10 },
+    { 0x7cf00000, 0x34200000,   RTL_GIGA_MAC_VER_16 },
+    { 0x7c800000, 0x34800000,   RTL_GIGA_MAC_VER_09 },
+    { 0x7c800000, 0x24800000,   RTL_GIGA_MAC_VER_09 },
+    { 0x7c800000, 0x34000000,   RTL_GIGA_MAC_VER_16 },
     /* FIXME: where did these entries come from ? -- FR */
-    { 0xfc800000, 0x38800000,	RTL_GIGA_MAC_VER_15 },
-    { 0xfc800000, 0x30800000,	RTL_GIGA_MAC_VER_14 },
+    { 0xfc800000, 0x38800000,   RTL_GIGA_MAC_VER_15 },
+    { 0xfc800000, 0x30800000,   RTL_GIGA_MAC_VER_14 },
 
     /* 8110 family. */
-    { 0xfc800000, 0x98000000,	RTL_GIGA_MAC_VER_06 },
-    { 0xfc800000, 0x18000000,	RTL_GIGA_MAC_VER_05 },
-    { 0xfc800000, 0x10000000,	RTL_GIGA_MAC_VER_04 },
-    { 0xfc800000, 0x04000000,	RTL_GIGA_MAC_VER_03 },
-    { 0xfc800000, 0x00800000,	RTL_GIGA_MAC_VER_02 },
-    { 0xfc800000, 0x00000000,	RTL_GIGA_MAC_VER_01 },
+    { 0xfc800000, 0x98000000,   RTL_GIGA_MAC_VER_06 },
+    { 0xfc800000, 0x18000000,   RTL_GIGA_MAC_VER_05 },
+    { 0xfc800000, 0x10000000,   RTL_GIGA_MAC_VER_04 },
+    { 0xfc800000, 0x04000000,   RTL_GIGA_MAC_VER_03 },
+    { 0xfc800000, 0x00800000,   RTL_GIGA_MAC_VER_02 },
+    { 0xfc800000, 0x00000000,   RTL_GIGA_MAC_VER_01 },
 
     /* Catch-all */
-    { 0x00000000, 0x00000000,	RTL_GIGA_MAC_NONE   }
+    { 0x00000000, 0x00000000,   RTL_GIGA_MAC_NONE   }
   }, *p = mac_info;
   u32 reg;
 
@@ -3015,8 +3082,6 @@ static void rtl_hw_phy_config(struct net_device *dev)
   struct rtl8169_private *tp = netdev_priv(dev);
   void __iomem *ioaddr = tp->mmio_addr;
 
-  //rtl8169_print_mac_version(tp);
-
   switch (tp->mac_version) {
   case RTL_GIGA_MAC_VER_01:
     break;
@@ -3183,10 +3248,6 @@ static inline void rtl8169_make_unusable_by_asic(struct RxDesc *desc)
 static void rtl8169_free_rx_skb(struct rtl8169_private *tp,
                                 struct sk_buff **sk_buff, struct RxDesc *desc)
 {
-  //struct pci_dev *pdev = tp->pci_dev;
-
-  //dma_unmap_single(&pdev->dev, le64_to_cpu(desc->addr), tp->rx_buf_sz,
-  //                 PCI_DMA_FROMDEVICE);
   free_skb (*sk_buff);
   *sk_buff = NULL;
   rtl8169_make_unusable_by_asic(desc);
@@ -3237,11 +3298,6 @@ static struct sk_buff *rtl8169_alloc_rx_skb(struct pci_dev *pdev,
   if (!skb)
     goto err_out;
 
-  //skb_reserve(skb, align ? ((pad - 1) & (unsigned long)skb->data) : pad);
-
-  //mapping = dma_map_single(&pdev->dev, skb->data, rx_buf_sz,
-  //                         PCI_DMA_FROMDEVICE);
-
   mapping = (uint) get_phys_addr (skb->data);
 
   rtl8169_map_to_asic(desc, mapping, rx_buf_sz);
@@ -3261,8 +3317,6 @@ static u32 rtl8169_rx_fill(struct rtl8169_private *tp, struct net_device *dev,
   for (cur = start; end - cur != 0; cur++) {
     struct sk_buff *skb;
     unsigned int i = cur % NUM_RX_DESC;
-
-    //WARN_ON((s32)(end - cur) < 0);
 
     if (tp->Rx_skbuff[i])
       continue;
@@ -3327,8 +3381,6 @@ static void rtl_hw_start(struct net_device *dev)
   }
 
   tp->hw_start(dev);
-
-  //netif_start_queue(dev);
 }
 
 struct rtl8169_private *tp;
@@ -3336,12 +3388,52 @@ struct rtl8169_private *tp;
 static sint
 r8169_transmit (u8 *buffer, sint len)
 {
+  DLOG ("TX: buffer=0x%p len=%d", buffer, len);
+  u8 *p = buffer;
+  DLOG ("  %.02X %.02X %.02X %.02X %.02X %.02X",
+        p[0], p[1], p[2], p[3], p[4], p[5]);
+  p+=6;
+  DLOG ("  %.02X %.02X %.02X %.02X %.02X %.02X",
+        p[0], p[1], p[2], p[3], p[4], p[5]);
+  uint entry = tp->cur_tx % NUM_TX_DESC;
+  struct TxDesc *txd = tp->TxDescArray + entry;
+  void __iomem *ioaddr = tp->mmio_addr;
+  dma_addr_t mapping;
+  u32 status;
+  u32 opts1;
+
+  if (le32_to_cpu (txd->opts1) & DescOwn)
+    goto abort;
+  if (len > MAX_FRAME_SIZE)
+    goto abort;
+
+  opts1 = DescOwn | FirstFrag | LastFrag;
+  tp->tx_skb[entry].len = len;
+  struct sk_buff *skb = alloc_skb (len);
+  if (!skb) goto abort;
+  memcpy (skb->data, buffer, len);
+  tp->tx_skb[entry].skb = skb;
+  mapping = (uint) get_phys_addr (skb->data);
+  txd->addr = __cpu_to_le64 (mapping);
+  status = opts1 | len | (RingEnd * !((entry + 1) % NUM_TX_DESC));
+  DLOG ("  cur_tx=%d mapping=0x%p status=0x%p", tp->cur_tx, mapping, status);
+  /* xmit */
+  txd->opts2 = 0;
+  txd->opts1 = __cpu_to_le32 (status);
+
+  tp->cur_tx++;
+
+  RTL_W8 (TxPoll, NPQ); /* set polling bit */
+
+  return len;
+ abort:
   return -1;
 }
 
 static void
 r8169_poll (void)
 {
+  rx_int (tp);
 }
 
 static bool
@@ -3462,7 +3554,6 @@ r8169_init (void)
     tp->features |= RTL_FEATURE_WOL;
   if ((RTL_R8(Config5) & (UWF | BWF | MWF)) != 0)
     tp->features |= RTL_FEATURE_WOL;
-  //tp->features |= rtl_try_msi(pdev, ioaddr, cfg);
   RTL_W8(Cfg9346, Cfg9346_Lock);
 
   if ((tp->mac_version <= RTL_GIGA_MAC_VER_06) &&
@@ -3501,12 +3592,6 @@ r8169_init (void)
   tp->hw_start = cfg->hw_start;
   tp->intr_event = cfg->intr_event;
   tp->napi_event = cfg->napi_event;
-
-  /**************************************************
-   * init_timer(&tp->timer);                        *
-   * tp->timer.data = (unsigned long) dev;          *
-   * tp->timer.function = rtl8169_phy_timer;        *
-   **************************************************/
 
   /* Register network device with net subsystem */
   tp->ethdev.recv_func = NULL;
