@@ -1652,80 +1652,72 @@ tx_int (struct rtl8169_private *tp)
   }
 }
 
+static u32 r8169_bh_stack[1024] ALIGNED (0x1000);
+static task_id r8169_bh_id = 0;
+static void
+r8169_bh_thread (void)
+{
+  logger_printf ("r8169: bh: hello from 0x%x\n", str ());
+  for (;;) {
+    struct rtl8169_private *tp = pci_get_drvdata(&pdev);
+    int handled = 0;
+    int status;
+    void __iomem *ioaddr = tp->mmio_addr;
+
+    status = RTL_R16(IntrStatus);
+
+    while (status && status != 0xffff) {
+      DLOG ("IRQ status=0x%p", status);
+      handled = 1;
+
+      /* Handle all of the error cases first. These will reset
+       * the chip, so just exit the loop.
+       */
+
+      /* Work around for rx fifo overflow */
+      if (unlikely(status & RxFIFOOver)) {
+        //netif_stop_queue(dev);
+        //rtl8169_tx_timeout(&tp->ethdev);
+        break;
+      }
+
+      if (unlikely(status & SYSErr)) {
+        //rtl8169_pcierr_interrupt(&tp->ethdev);
+        break;
+      }
+
+      if (status & LinkChg)
+        rtl8169_check_link_status(&tp->ethdev, tp, ioaddr);
+
+      if (status & RxOK) {
+        rx_int (tp);
+      }
+
+      if (status & TxOK) {
+        tx_int (tp);
+      }
+
+      /* We only get a new MSI interrupt when all active irq
+       * sources on the chip have been acknowledged. So, ack
+       * everything we've seen and check if new sources have become
+       * active to avoid blocking all interrupts from the chip.
+       */
+      RTL_W16(IntrStatus,
+              (status & RxFIFOOver) ? (status | RxOverflow) : status);
+      status = RTL_R16(IntrStatus);
+    }
+
+    iovcpu_job_completion ();
+  }
+}
+
 static uint
 irq_handler (u8 vec)
 {
-  struct rtl8169_private *tp = pci_get_drvdata(&pdev);
-  int handled = 0;
-  int status;
-  void __iomem *ioaddr = tp->mmio_addr;
-
-  status = RTL_R16(IntrStatus);
-
-  while (status && status != 0xffff) {
-    DLOG ("IRQ status=0x%p", status);
-    handled = 1;
-
-    /* Handle all of the error cases first. These will reset
-     * the chip, so just exit the loop.
-     */
-#if 0
-    if (unlikely(!netif_running(dev))) {
-      rtl8169_asic_down(ioaddr);
-      break;
-    }
-#endif
-
-    /* Work around for rx fifo overflow */
-    if (unlikely(status & RxFIFOOver)) {
-      //netif_stop_queue(dev);
-      //rtl8169_tx_timeout(&tp->ethdev);
-      break;
-    }
-
-    if (unlikely(status & SYSErr)) {
-      //rtl8169_pcierr_interrupt(&tp->ethdev);
-      break;
-    }
-
-    if (status & LinkChg)
-      rtl8169_check_link_status(&tp->ethdev, tp, ioaddr);
-
-    /* We need to see the lastest version of tp->intr_mask to
-     * avoid ignoring an MSI interrupt and having to wait for
-     * another event which may never come.
-     */
-    //smp_rmb();
-#if 0
-    if (status & tp->intr_mask & tp->napi_event) {
-      RTL_W16(IntrMask, tp->intr_event & ~tp->napi_event);
-      tp->intr_mask = ~tp->napi_event;
-
-
-      if (likely(napi_schedule_prep(&tp->napi)))
-        __napi_schedule(&tp->napi);
-      else
-        netif_info(tp, intr, dev,
-                   "interrupt %04x in poll\n", status);
-    }
-#endif
-
-    if (status & RxOK) {
-      rx_int (tp);
-    }
-
-    if (status & TxOK) {
-      tx_int (tp);
-    }
-
-    /* We only get a new MSI interrupt when all active irq
-     * sources on the chip have been acknowledged. So, ack
-     * everything we've seen and check if new sources have become
-     * active to avoid blocking all interrupts from the chip.
-     */
-    RTL_W16(IntrStatus,
-            (status & RxFIFOOver) ? (status | RxOverflow) : status);
-    status = RTL_R16(IntrStatus);
+  if (r8169_bh_id) {
+    extern vcpu *vcpu_lookup (int);
+    /* hack: use VCPU2's period */
+    iovcpu_job_wakeup (r8169_bh_id, vcpu_lookup (2)->T);
   }
 
   return 0;
@@ -3435,6 +3427,7 @@ static void
 r8169_poll (void)
 {
   rx_int (tp);
+  tx_int (tp);
 }
 
 static bool
@@ -3637,6 +3630,9 @@ r8169_init (void)
 
   rtl8169_check_link_status(&tp->ethdev, tp, tp->mmio_addr);
 
+  r8169_bh_id = start_kernel_thread ((u32) r8169_bh_thread,
+                                     (u32) &r8169_bh_stack[1023]);
+  set_iovcpu (r8169_bh_id, IOVCPU_CLASS_NET);
 
   return TRUE;
  abort_txdesc:
