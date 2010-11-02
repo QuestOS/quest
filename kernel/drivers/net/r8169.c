@@ -3236,6 +3236,7 @@ alloc_skb (u32 size)
 static inline void
 free_skb (struct sk_buff *skb)
 {
+  pow2_free ((u8 *)skb->data);
   pow2_free ((u8 *)skb);
 }
 
