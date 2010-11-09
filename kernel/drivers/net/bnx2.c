@@ -922,6 +922,12 @@ bnx2_irq_handler (u8 vec)
           sw_cons,
           rx_hdr->l2_fhdr_pkt_len,
           rx_hdr->l2_fhdr_status);
+    u8 *p = rx_buf->skb->data + BNX2_RX_OFFSET;
+    DLOG ("  %.02X %.02X %.02X %.02X %.02X %.02X",
+          p[0], p[1], p[2], p[3], p[4], p[5]);
+    p+=6;
+    DLOG ("  %.02X %.02X %.02X %.02X %.02X %.02X",
+          p[0], p[1], p[2], p[3], p[4], p[5]);
 
     DLOG ("rx_desc[%d (%d)] len=%d flags=0x%X haddr=0x%.08X%.08X",
           RX_RING_IDX (sw_cons),
@@ -932,7 +938,7 @@ bnx2_irq_handler (u8 vec)
           rx_desc->rx_bd_haddr_lo);
 
     memset (rx_buf->skb->data, 0, rx_buf->skb->len);
-    //rxr->rx_prod_bseq += bp->rx_buf_use_size;
+    rxr->rx_prod_bseq += bp->rx_buf_use_size;
 
     sw_cons = NEXT_RX_BD (sw_cons);
     sw_prod = NEXT_RX_BD (sw_prod);
@@ -947,11 +953,31 @@ bnx2_irq_handler (u8 vec)
   rxr->rx_cons = sw_cons;
   rxr->rx_prod = sw_prod;
 
+  u32 repstat, ctxstat;
+  if ((repstat = REG_RD (bp, BNX2_CTX_REP_STATUS))) {
+    ctxstat = REG_RD (bp, BNX2_CTX_STATUS);
+    DLOG ("  CTX status (0x%.08X):%s%s",
+          ctxstat,
+          ctxstat & BNX2_CTX_STATUS_USAGE_CNT_ERR ? " usage_cnt_err" : "",
+          ctxstat & BNX2_CTX_STATUS_INVALID_PAGE ? " invalid_page" : "");
+    DLOG ("  CTX rep status (0x%.08X): entry=0x%X client=0x%X:%s%s%s",
+          repstat,
+          repstat & BNX2_CTX_REP_STATUS_ERROR_ENTRY,
+          (repstat & BNX2_CTX_REP_STATUS_ERROR_CLIENT_ID) >> 10,
+          repstat & BNX2_CTX_REP_STATUS_USAGE_CNT_MAX_ERR ? " usage_cnt_max_err" : "",
+          repstat & BNX2_CTX_REP_STATUS_USAGE_CNT_MIN_ERR ? " usage_cnt_min_err" : "",
+          repstat & BNX2_CTX_REP_STATUS_USAGE_CNT_MISS_ERR ? " usage_cnt_miss_err" : "");
+    REG_WR (bp, BNX2_CTX_REP_STATUS, repstat & (BNX2_CTX_REP_STATUS_USAGE_CNT_MIN_ERR |
+                                                BNX2_CTX_REP_STATUS_USAGE_CNT_MAX_ERR |
+                                                BNX2_CTX_REP_STATUS_USAGE_CNT_MISS_ERR));
+  }
+
   DLOG ("---EOI--- bidx <- %d (%d); prod_bseq = %d",
         sw_prod, RX_RING_IDX (sw_prod),
         rxr->rx_prod_bseq);
+
   REG_WR16(bp, rxr->rx_bidx_addr, sw_prod);
-  //REG_WR(bp, rxr->rx_bseq_addr, rxr->rx_prod_bseq);
+  REG_WR(bp, rxr->rx_bseq_addr, rxr->rx_prod_bseq);
 
   /* Unmask and ACK IRQ */
   REG_WR(bp, BNX2_PCICFG_INT_ACK_CMD, (0 << 24) |
@@ -960,6 +986,20 @@ bnx2_irq_handler (u8 vec)
   REG_RD(bp, BNX2_PCICFG_INT_ACK_CMD);
 
   return 0;
+}
+
+static void
+bnx2_send_heart_beat(struct bnx2 *bp)
+{
+  u32 msg;
+  u32 addr;
+
+  spinlock_lock(&bp->indirect_lock);
+  msg = (u32) (++bp->fw_drv_pulse_wr_seq & BNX2_DRV_PULSE_SEQ_MASK);
+  addr = bp->shmem_base + BNX2_DRV_PULSE_MB;
+  REG_WR(bp, BNX2_PCICFG_REG_WINDOW_ADDRESS, addr);
+  REG_WR(bp, BNX2_PCICFG_REG_WINDOW, msg);
+  spinlock_unlock(&bp->indirect_lock);
 }
 
 static int
@@ -990,7 +1030,7 @@ bnx2_fw_sync(struct bnx2 *bp, u32 msg_data, int ack, int silent)
 
   /* If we timed out, inform the firmware that this is the case. */
   if ((val & BNX2_FW_MSG_ACK) != (msg_data & BNX2_DRV_MSG_SEQ)) {
-    if (!silent)
+    //if (!silent)
       DLOG ("fw sync timeout, reset code = %x\n", msg_data);
 
     msg_data &= ~BNX2_DRV_MSG_CODE;
@@ -1466,6 +1506,11 @@ bnx2_alloc_rx_skb(struct bnx2 *bp, struct bnx2_rx_ring_info *rxr, u16 index)
 
   rxr->rx_prod_bseq += bp->rx_buf_use_size;
 
+#if 0
+  DLOG ("alloc_rx_skb: i=%d: skb=%p mapping=%p desc=%p",
+        index, skb, mapping, rx_buf->desc);
+#endif
+
   return TRUE;
 }
 
@@ -1503,6 +1548,8 @@ bnx2_init_rx_context(struct bnx2 *bp, u32 cid)
       lo_water = 0;
     val |= lo_water | (hi_water << BNX2_L2CTX_HI_WATER_MARK_SHIFT);
   }
+  DLOG ("init_rx_context: L2CTX_CTX_TYPE(%d) <- 0x%.08X",
+        rx_cid_addr, val);
   bnx2_ctx_wr(bp, rx_cid_addr, BNX2_L2CTX_CTX_TYPE, val);
 }
 
@@ -1610,20 +1657,27 @@ bnx2_init_rx_ring(struct bnx2 *bp, int ring_num)
     prod = NEXT_RX_BD(prod);
     ring_prod = RX_RING_IDX(prod);
   }
-  prod--;
+  //prod = 150;
   rxr->rx_prod = prod;
+  rxr->rx_prod_bseq = prod * bp->rx_buf_use_size;
 
   rxr->rx_bidx_addr = MB_GET_CID_ADDR(cid) + BNX2_L2CTX_HOST_BDIDX;
   rxr->rx_bseq_addr = MB_GET_CID_ADDR(cid) + BNX2_L2CTX_HOST_BSEQ;
   rxr->rx_pg_bidx_addr = MB_GET_CID_ADDR(cid) + BNX2_L2CTX_HOST_PG_BDIDX;
 
-  REG_WR16(bp, rxr->rx_pg_bidx_addr, rxr->rx_pg_prod);
+  //REG_WR16(bp, rxr->rx_pg_bidx_addr, rxr->rx_pg_prod);
   REG_WR16(bp, rxr->rx_bidx_addr, prod);
 
   REG_WR(bp, rxr->rx_bseq_addr, rxr->rx_prod_bseq);
 
-  DLOG ("rx_prod=%d rx_prod_bseq=%d rx_cid_addr=%p",
-        rxr->rx_prod, rxr->rx_prod_bseq, rx_cid_addr);
+  DLOG ("rx_prod=%d rx_bidx_addr=0x%x rx_prod_bseq=0x%x rx_cid_addr=%p",
+        rxr->rx_prod, rxr->rx_bidx_addr, rxr->rx_prod_bseq, rx_cid_addr);
+
+  /*******************************************************************
+   * DLOG ("l2ctx_nx_bdhaddr=0x%.08X%.08X",                          *
+   *       bnx2_ctx_rd (bp, rx_cid_addr, BNX2_L2CTX_NX_BDHADDR_HI),  *
+   *       bnx2_ctx_rd (bp, rx_cid_addr, BNX2_L2CTX_NX_BDHADDR_LO)); *
+   *******************************************************************/
 }
 
 static void
@@ -1887,6 +1941,7 @@ bnx2_alloc_rx_mem (struct bnx2 *bp)
   DLOG ("RX_DESC_CNT=%d", RX_DESC_CNT);
   bp->rx_max_ring = 1;
   bp->rx_max_ring_idx = (bp->rx_max_ring * RX_DESC_CNT) - 1;
+  DLOG ("rx_max_ring_idx=%d", bp->rx_max_ring_idx);
   rxr->rx_buf_ring = vmalloc_pages (PAGE_ALIGN (SW_RXBD_RING_SIZE * bp->rx_max_ring) >> PAGE_SHIFT);
   if (!rxr->rx_buf_ring)
     goto abort;
@@ -1905,9 +1960,10 @@ bnx2_alloc_rx_mem (struct bnx2 *bp)
 
   bp->rx_pg_ring_size = 0;
   u32 rx_size = MAX_ETHERNET_PACKET_SIZE + ETH_HLEN + BNX2_RX_OFFSET + 8;
-  bp->rx_buf_use_size = rx_size;
+  bp->rx_buf_use_size = 2048; //rx_size;
   /* hw alignment */
-  bp->rx_buf_size = bp->rx_buf_use_size + BNX2_RX_ALIGN;
+  bp->rx_buf_size = 2048; //bp->rx_buf_use_size + BNX2_RX_ALIGN;
+  DLOG ("rx_buf_use_size=%d rx_buf_size=%d", bp->rx_buf_use_size, bp->rx_buf_size);
   bp->rx_jumbo_thresh = rx_size - BNX2_RX_OFFSET;
   rxr->rx_prod = 0;
   rxr->rx_prod_bseq = 0;
@@ -4459,6 +4515,16 @@ bnx2_set_link(struct bnx2 *bp)
   return 0;
 }
 
+static u32 bnx2_timer_stack[1024] ALIGNED (0x1000);
+static void
+bnx2_timer (struct bnx2 *bp)
+{
+  for (;;) {
+    bnx2_send_heart_beat (bp);
+    sched_usleep (BNX2_TIMER_INTERVAL * 10000);
+  }
+}
+
 static uint device_index;
 static pci_device pdev;
 
@@ -4532,6 +4598,11 @@ bnx2_test_thread (void)
           bnx2_reg_rd_ind (bp, BNX2_RXP_CPU_MODE),
           bnx2_reg_rd_ind (bp, BNX2_RXP_CPU_STATE)
           );
+    DLOG ("CTXcmd=0x%.08X CTXstatus=0x%.08X CTXrepstatus=0x%.08X",
+          REG_RD (bp, BNX2_CTX_COMMAND),
+          REG_RD (bp, BNX2_CTX_STATUS),
+          REG_RD (bp, BNX2_CTX_REP_STATUS));
+    REG_WR (bp, BNX2_CTX_STATUS, 0x07000000 & REG_RD (bp, BNX2_CTX_STATUS));
   }
 }
 
@@ -4640,6 +4711,7 @@ bnx2_init (void)
   }
 
   start_kernel_thread ((u32) bnx2_test_thread, (u32) &bnx2_test_stack[1023]);
+  start_kernel_thread_args ((u32) bnx2_timer, (u32) &bnx2_timer_stack[1023], 1, bp);
 
   return TRUE;
 

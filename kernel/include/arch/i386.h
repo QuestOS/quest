@@ -422,6 +422,7 @@ div_u64_u32_u32 (u64 a, u32 b)
 #define __cpu_to_be32(x) (___constant_swab32(x))
 #define __be32_to_cpu(x) (___constant_swab32(x))
 #define __le32_to_cpu(x) (x)
+#define __le64_to_cpu(x) (x)
 
 
 #define unlikely(x) (x)
