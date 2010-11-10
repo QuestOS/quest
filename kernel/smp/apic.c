@@ -414,6 +414,20 @@ IOAPIC_get_GSI_mapping (uint32 GSI, uint8 *vector, uint64 *flags)
   return GSI;
 }
 
+void
+IOAPIC_dump_entries (void)
+{
+  int i, j;
+  u32 old_addr = mp_IOAPIC_addr;
+  for (i=0;i<mp_num_IOAPICs;i++) {
+    mp_IOAPIC_addr = mp_IOAPICs[i].address;
+    for (j=0; j<mp_IOAPICs[i].numGSIs; j++) {
+      logger_printf ("IOAPIC[%d][%d]=0x%llX\n",
+                     i, j, IOAPIC_read64 (IOAPIC_REDIR + (j * 2)));
+    }
+  }
+  mp_IOAPIC_addr = old_addr;
+}
 
 /* 
  * Local Variables:
