@@ -667,6 +667,15 @@ init (multiboot * pmb)
   { extern void vcpu_init (void); vcpu_init (); }
 #endif
 
+  /* count free pages for informational purposes */
+  u32 *page_table = (u32 *) KERN_PGT;
+  u32 free_pages = 0;
+  for (i = 0; i < 1024; i++)
+    if (page_table[i] == 0)
+      free_pages++;
+  printf ("free kernel pages=%d\n", free_pages);
+  logger_printf ("free kernel pages=%d\n", free_pages);
+
   /* Start the schedulers */
   smp_enable_scheduling ();
 
