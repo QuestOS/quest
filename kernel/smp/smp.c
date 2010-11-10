@@ -77,7 +77,7 @@ int
 smp_init (void)
 {
   uint32 phys_id, log_dest;
-  uint32 intel_mps_init(void);
+  uint32 intel_mps_init(bool);
   uint32 acpi_early_init(void);
   void LAPIC_measure_timer(void);
   void LAPIC_init(void);
@@ -102,6 +102,10 @@ smp_init (void)
 #else
   if ((acpi_early_init()) > 0) {
     /* ACPI succeeded */
+#ifndef NO_INTEL_MPS
+    logger_printf ("Using Intel MP Spec tables for PCI IRQ routing...\n");
+    intel_mps_init (TRUE);      /* PCI IRQ routing only */
+#endif
     mp_ACPI_enabled = 1;
   }
 #endif
@@ -109,7 +113,7 @@ smp_init (void)
 #ifdef NO_INTEL_MPS
   else if (0);
 #else     
-  else if ((intel_mps_init()) > 0) {
+  else if ((intel_mps_init(FALSE)) > 0) {
     /* Intel MPS succeeded */
   }
 #endif

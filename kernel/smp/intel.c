@@ -29,8 +29,8 @@
 #include "drivers/pci/pci.h"
 #include "util/printf.h"
 
-static int process_mp_fp (struct mp_fp *);
-static int process_mp_config (struct mp_config *);
+static int process_mp_fp (struct mp_fp *, bool);
+static int process_mp_config (struct mp_config *, bool);
 static int add_processor (struct mp_config_processor_entry *);
 static struct mp_fp *probe_mp_fp (uint32, uint32);
 
@@ -56,7 +56,7 @@ static struct mp_fp *probe_mp_fp (uint32, uint32);
 /* intel_mps_init() -- Returns the number of processors found if
  * successfully initialized, or else 0. */
 uint32
-intel_mps_init(void)
+intel_mps_init(bool pci_irq_only)
 {
   struct mp_fp *ptr;
 
@@ -66,7 +66,7 @@ intel_mps_init(void)
   else return 0;
 
   if(ptr)
-    return process_mp_fp(ptr);
+    return process_mp_fp(ptr, pci_irq_only);
   else
     return 0;
 }
@@ -94,7 +94,7 @@ probe_mp_fp (uint32 start, uint32 end)
  * function.  It makes further calls to interpret the information
  * found in the tables and begin SMP initialization. */
 int
-process_mp_fp (struct mp_fp *ptr)
+process_mp_fp (struct mp_fp *ptr, bool pci_irq_only)
 {
   struct mp_config *cfg;
 
@@ -134,7 +134,7 @@ process_mp_fp (struct mp_fp *ptr)
   /* Check MP config table given by floating pointer struct */
   cfg = (struct mp_config *) ptr->mpconfig_ptr;
 
-  process_mp_config (cfg);
+  process_mp_config (cfg, pci_irq_only);
 
   return mp_num_cpus;
 }
@@ -145,7 +145,7 @@ process_mp_fp (struct mp_fp *ptr)
  * them. */
 #define printf com1_printf
 static int
-process_mp_config (struct mp_config *cfg)
+process_mp_config (struct mp_config *cfg, bool pci_irq_only)
 {
   int i;
   uint8 *ptr;
@@ -188,17 +188,18 @@ process_mp_config (struct mp_config *cfg)
     struct mp_config_entry *entry = (struct mp_config_entry *) ptr;
     switch (*ptr) {
     case MP_CFG_TYPE_PROCESSOR:        /* Processor entry */
-      printf ("Processor APIC-id: %X version: %X %s%s",
-              entry->processor.APIC_id,
-              entry->processor.APIC_version,
-              (entry->processor.flags & 1) ? "(enabled)" : "(disabled)",
-              (entry->processor.flags & 2) ? " (bootstrap)" : "");
+      if (!pci_irq_only) {
+        printf ("Processor APIC-id: %X version: %X %s%s",
+                entry->processor.APIC_id,
+                entry->processor.APIC_version,
+                (entry->processor.flags & 1) ? "(enabled)" : "(disabled)",
+                (entry->processor.flags & 2) ? " (bootstrap)" : "");
+
+        if (add_processor (&entry->processor))    /* Try to boot it if necessary */
+          printf (" (booted)");
+        printf ("\n");
+      }
       ptr += sizeof (struct mp_config_processor_entry);
-
-      if (add_processor (&entry->processor))    /* Try to boot it if necessary */
-        printf (" (booted)");
-      printf ("\n");
-
       break;
 
     case MP_CFG_TYPE_BUS:      /* Bus entry, find out which one is ISA */
@@ -212,30 +213,33 @@ process_mp_config (struct mp_config *cfg)
       break;
 
     case MP_CFG_TYPE_IO_APIC:  /* IO-APIC entry */
-      printf ("IO APIC-id: %X version: %X address: %.8X",
+      printf ("IO APIC-id: 0x%X version: 0x%X address: 0x%.8X",
               entry->IO_APIC.id,
               entry->IO_APIC.version, entry->IO_APIC.address);
-      if (entry->IO_APIC.flags & 1)
+      if (entry->IO_APIC.flags & 1) {
         mp_IOAPIC_addr = entry->IO_APIC.address;
-      else
-        printf (" (disabled)");
-      printf ("\n");
+        printf ("\n");
 
-      if (mp_num_IOAPICs == MAX_IOAPICS)
-        panic ("Too many IO-APICs.");
-      mp_IOAPICs[mp_num_IOAPICs].id = entry->IO_APIC.id;
-      mp_IOAPICs[mp_num_IOAPICs].address = entry->IO_APIC.address;
-      /* going to assume IO-APICs are listed in order */
-      if (mp_num_IOAPICs == 0)
-        mp_IOAPICs[mp_num_IOAPICs].startGSI = 0;
-      else
-        mp_IOAPICs[mp_num_IOAPICs].startGSI =
-          mp_IOAPICs[mp_num_IOAPICs - 1].startGSI +
-          mp_IOAPICs[mp_num_IOAPICs - 1].numGSIs;
+        if (mp_num_IOAPICs == MAX_IOAPICS)
+          panic ("Too many IO-APICs.");
+        mp_IOAPICs[mp_num_IOAPICs].id = entry->IO_APIC.id;
+        mp_IOAPICs[mp_num_IOAPICs].address = entry->IO_APIC.address;
+        /* going to assume IO-APICs are listed in order */
+        if (mp_num_IOAPICs == 0)
+          mp_IOAPICs[mp_num_IOAPICs].startGSI = 0;
+        else
+          mp_IOAPICs[mp_num_IOAPICs].startGSI =
+            mp_IOAPICs[mp_num_IOAPICs - 1].startGSI +
+            mp_IOAPICs[mp_num_IOAPICs - 1].numGSIs;
 
-      mp_IOAPICs[mp_num_IOAPICs].numGSIs =
-        IOAPIC_num_entries();
-      mp_num_IOAPICs++;
+        mp_IOAPICs[mp_num_IOAPICs].numGSIs =
+          IOAPIC_num_entries();
+        printf ("  startGSI=0x%X numGSIs=%d\n",
+                mp_IOAPICs[mp_num_IOAPICs].startGSI,
+                mp_IOAPICs[mp_num_IOAPICs].numGSIs);
+        mp_num_IOAPICs++;
+      } else
+        printf (" (disabled)\n");
 
       ptr += sizeof (struct mp_config_IO_APIC_entry);
       break;
@@ -289,14 +293,16 @@ process_mp_config (struct mp_config *cfg)
       break;
 
     case MP_CFG_TYPE_LOCAL_INT:        /* Local-interrupt entry */
-      printf
-        ("Local interrupt type: %X flags: %X source: (bus: %X irq: %X) dest: (APIC: %X int: %X)\n",
-         entry->local_int.int_type, entry->local_int.flags,
-         entry->local_int.source_bus_id, entry->local_int.source_bus_irq,
-         entry->local_int.dest_APIC_id, entry->local_int.dest_APIC_intin);
-      /* It's conceivable that local interrupts could be overriden
-       * like IO interrupts, but I have no good examples of it so I
-       * will have to defer doing anything about it. */
+      if (!pci_irq_only) {
+        printf
+          ("Local interrupt type: %X flags: %X source: (bus: %X irq: %X) dest: (APIC: %X int: %X)\n",
+           entry->local_int.int_type, entry->local_int.flags,
+           entry->local_int.source_bus_id, entry->local_int.source_bus_irq,
+           entry->local_int.dest_APIC_id, entry->local_int.dest_APIC_intin);
+        /* It's conceivable that local interrupts could be overriden
+         * like IO interrupts, but I have no good examples of it so I
+         * will have to defer doing anything about it. */
+      }
       ptr += sizeof (struct mp_config_interrupt_entry);
       break;
 
