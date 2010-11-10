@@ -50,8 +50,6 @@ nvm_info_t *nvm = &i82543_nvm;
 #define DLOG(fmt,...) ;
 #endif
 
-#define E1000_VECTOR 0x4C       /* arbitrary */
-
 #define RDESC_COUNT 8           /* must be multiple of 8 */
 #define RDESC_COUNT_MOD_MASK (RDESC_COUNT - 1)
 #define RBUF_SIZE   2048        /* configured in RCTL.BSIZE */
@@ -825,20 +823,14 @@ e1000_init (void)
                     irq_pin, &irq)) {
     /* use PCI routing table */
     DLOG ("Found PCI routing entry irq.gsi=0x%x", irq.gsi);
-    pci_irq_map (&irq, E1000_VECTOR, 0x01,
-                 IOAPIC_DESTINATION_LOGICAL, IOAPIC_DELIVERY_FIXED);
+    if (!pci_irq_map_handler (&irq, e1000_irq_handler, 0x01,
+                              IOAPIC_DESTINATION_LOGICAL,
+                              IOAPIC_DELIVERY_FIXED))
+      goto abort_virt;
     irq_line = irq.gsi;
-  } else {
-#define IOAPIC_FLAGS 0x010000000000A800LL
-    /* assume irq_line is correct */
-    DLOG ("Falling back to PCI config space INT_LN=0x%x", irq_line);
-    IOAPIC_map_GSI (irq_line, E1000_VECTOR, IOAPIC_FLAGS);
   }
 
   DLOG ("Using IRQ line=%.02X pin=%X", irq_line, irq_pin);
-
-  /* Map IRQ to handler */
-  set_vector_handler (E1000_VECTOR, e1000_irq_handler);
 
 #ifdef EEPROM_MICROWIRE
   *((uint16 *) &hwaddr[0]) = eeprom_read (0);

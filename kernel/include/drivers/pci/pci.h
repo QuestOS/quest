@@ -136,6 +136,10 @@ extern bool pci_irq_map (pci_irq_t *irq, uint8 vector,
                          uint8 destmask,
                          IOAPIC_destination_mode_t destmode,
                          IOAPIC_delivery_mode_t delivmode);
+extern bool pci_irq_map_handler (pci_irq_t *irq, vector_handler handler,
+                                 uint8 destmask,
+                                 IOAPIC_destination_mode_t destmode,
+                                 IOAPIC_delivery_mode_t delivmode);
 
 /* ************************************************** */
 

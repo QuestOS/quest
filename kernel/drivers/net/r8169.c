@@ -34,8 +34,6 @@
 #include "kernel.h"
 #include "sched/vcpu.h"
 
-#define R8169_VECTOR 0x4F       /* arbitrary */
-
 //#define DEBUG_R8169
 
 #ifdef DEBUG_R8169
@@ -3482,16 +3480,20 @@ r8169_init (void)
   if (pci_irq_find (pdev.bus, pdev.slot, irq_pin, &irq)) {
     /* use PCI routing table */
     DLOG ("Found PCI routing entry irq.gsi=0x%x", irq.gsi);
-    pci_irq_map (&irq, R8169_VECTOR, 0x01,
-                 IOAPIC_DESTINATION_LOGICAL, IOAPIC_DELIVERY_FIXED);
+    if (!pci_irq_map_handler (&irq, irq_handler, 0x01,
+                              IOAPIC_DESTINATION_LOGICAL,
+                              IOAPIC_DELIVERY_FIXED)) {
+      DLOG ("Failed to map IRQ");
+      goto abort;
+    }
     irq_line = irq.gsi;
+    u8 vector;
+    IOAPIC_get_GSI_mapping (irq.gsi, &vector, NULL);
+    DLOG ("Using vector=0x%X", vector);
   } else {
     DLOG ("Unable to find PCI routing entry");
     goto abort;
   }
-
-  /* Map IRQ to handler */
-  set_vector_handler (R8169_VECTOR, irq_handler);
 
   ioaddr = map_virtual_page (phys_addr | 3);
 

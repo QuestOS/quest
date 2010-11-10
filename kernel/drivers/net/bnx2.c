@@ -3151,16 +3151,15 @@ bnx2_init_board (pci_device *pdev)
   if (pci_irq_find (pdev->bus, pdev->slot, irq_pin, &irq)) {
     /* use PCI routing table */
     DLOG ("Found PCI routing entry irq.gsi=0x%x", irq.gsi);
-    pci_irq_map (&irq, BNX2_VECTOR, 0x01,
-                 IOAPIC_DESTINATION_LOGICAL, IOAPIC_DELIVERY_FIXED);
+    if (!pci_irq_map_handler (&irq, bnx2_irq_handler, 0x01,
+                              IOAPIC_DESTINATION_LOGICAL,
+                              IOAPIC_DELIVERY_FIXED))
+      goto err_out_free_stats;
     irq_line = irq.gsi;
   } else {
     DLOG ("Unable to find PCI routing entry");
     goto err_out_free_stats;
   }
-
-  /* Map IRQ to handler */
-  set_vector_handler (BNX2_VECTOR, bnx2_irq_handler);
 
   /* map 64kb at phys_addr */
 #define NUM_PAGES 20

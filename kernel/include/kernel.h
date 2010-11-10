@@ -119,6 +119,8 @@ typedef uint32 (*vector_handler) (uint8 vector);
 extern void set_vector_handler (uint8 vector, vector_handler func);
 extern void clr_vector_handler (uint8 vector);
 extern vector_handler get_vector_handler (uint8 vector);
+#define MINIMUM_VECTOR_PRIORITY 0x4
+extern u8 find_unused_vector (u8 min_prio);
 extern void init_interrupt_handlers (void);
 
 void stacktrace (void);

@@ -100,6 +100,19 @@ dispatch_vector (uint32 vec)
   return v;
 }
 
+u8
+find_unused_vector (u8 min_prio)
+{
+  u8 i;
+  if (min_prio < MINIMUM_VECTOR_PRIORITY || min_prio > 0xF)
+    return 0;
+  for (i=(min_prio << 4); i < 0xFF; i++) {
+    if (vector_handlers[i] == default_vector_handler)
+      return i;
+  }
+  return (vector_handlers[i] == default_vector_handler ? i : 0);
+}
+
 /* Duplicate parent TSS -- used with fork */
 uint16
 duplicate_TSS (uint32 ebp,

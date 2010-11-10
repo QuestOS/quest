@@ -542,9 +542,27 @@ pcnet_init (void)
   }
 
   /* Map IRQ to handler */
-  IOAPIC_map_GSI (IRQ_to_GSI (mp_ISA_bus_id, irq_line),
-                  PCNET_VECTOR, 0xFF00000000000800LL);
-  set_vector_handler (PCNET_VECTOR, pcnet_irq_handler);
+  pci_irq_t irq;
+  pci_device pdev;
+  if (!pci_get_device (device_index, &pdev)) {
+    DLOG ("pci_get_device");
+    goto abort_virt;
+  }
+
+  if (pci_irq_find (pdev.bus, pdev.slot, irq_pin, &irq)) {
+    /* use PCI routing table */
+    DLOG ("Found PCI routing entry irq.gsi=0x%x", irq.gsi);
+    if (!pci_irq_map_handler (&irq, pcnet_irq_handler, 0x01,
+                              IOAPIC_DESTINATION_LOGICAL,
+                              IOAPIC_DELIVERY_FIXED)) {
+      DLOG ("Failed to map IRQ");
+      goto abort_virt;
+    }
+    irq_line = irq.gsi;
+  } else {
+    DLOG ("Unable to find PCI routing entry");
+    goto abort_virt;
+  }
 
   reset ();
 

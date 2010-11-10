@@ -91,14 +91,30 @@ pci_irq_map (pci_irq_t *irq, uint8 vector,
   else
     flags |= (uint64) IOAPIC_TRIGGER_EDGE;
 
-  return IOAPIC_map_GSI (irq->gsi, vector, flags) == irq->gsi;
+  return IOAPIC_map_GSI (irq->gsi, vector, flags) >= 0;
+}
+
+extern bool
+pci_irq_map_handler (pci_irq_t *irq, vector_handler handler,
+                     uint8 destmask,
+                     IOAPIC_destination_mode_t destmode,
+                     IOAPIC_delivery_mode_t delivmode)
+{
+  u8 vector = find_unused_vector (MINIMUM_VECTOR_PRIORITY);
+  DLOG ("vector=0x%X", vector);
+  if (!vector)
+    return FALSE;
+  if (!pci_irq_map (irq, vector, destmask, destmode, delivmode))
+    return FALSE;
+  set_vector_handler (vector, handler);
+  return TRUE;
 }
 
 /* Unmap given PCI IRQ routing entry */
 extern bool
 pci_irq_unmap (pci_irq_t *irq)
 {
-  return IOAPIC_map_GSI (irq->gsi, 0, 0x0000000000010000LL) == irq->gsi;
+  return IOAPIC_map_GSI (irq->gsi, 0, 0x0000000000010000LL) >= 0;
 }
 
 /*

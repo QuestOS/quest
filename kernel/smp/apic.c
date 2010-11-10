@@ -378,6 +378,42 @@ IOAPIC_map_GSI (uint32 GSI, uint8 vector, uint64 flags)
   return GSI;
 }
 
+int
+IOAPIC_get_GSI_mapping (uint32 GSI, uint8 *vector, uint64 *flags)
+{
+  int i;
+  uint32 old_addr = 0;
+
+  if (mp_ISA_PC)
+    return -1;
+
+  /* First, figure out which IOAPIC */
+  for (i = 0; i < mp_num_IOAPICs; i++) {
+    if (mp_IOAPICs[i].startGSI <= GSI &&
+        GSI < mp_IOAPICs[i].startGSI + mp_IOAPICs[i].numGSIs) {
+      old_addr = mp_IOAPIC_addr;
+      /* set address for macros to use: */
+      mp_IOAPIC_addr = mp_IOAPICs[i].address;
+      /* set GSI relative to startGSI: */
+      GSI -= mp_IOAPICs[i].startGSI;
+      break;
+    }
+  }
+  if (!old_addr)
+    return -1;                  /* not found */
+
+  u64 entry = IOAPIC_read64 (IOAPIC_REDIR + (GSI * 2));
+
+  if (flags)
+    *flags = entry & (~0xFFULL);
+  if (vector)
+    *vector = (u8) (entry & (0xFFULL));
+
+  /* clean up */
+  mp_IOAPIC_addr = old_addr;
+  return GSI;
+}
+
 
 /* 
  * Local Variables:
