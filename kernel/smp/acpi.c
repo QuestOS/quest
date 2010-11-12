@@ -30,6 +30,7 @@
 
 static int process_acpi_tables (void);
 static int acpi_add_processor (ACPI_MADT_LOCAL_APIC *);
+static void acpi_parse_srat (ACPI_TABLE_SRAT *);
 
 /*******************************************************************
  * Support for ACPI via ACPICA, the Intel Reference Implementation *
@@ -113,7 +114,7 @@ void
 acpi_secondary_init(void)
 {
   ACPI_STATUS Status;
-  ACPI_HANDLE SysBusHandle;
+  //ACPI_HANDLE SysBusHandle;
   ACPI_STATUS DisplayOneDevice (ACPI_HANDLE, UINT32, void *, void **);
   /* Complete the ACPICA initialization sequence */
 
@@ -351,6 +352,7 @@ process_acpi_tables (void)
     if (AcpiGetTable (ACPI_SIG_SRAT, 0, (ACPI_TABLE_HEADER **) & srat) == AE_OK) {
       /* System Resource Affinity Table */
       printf ("SRAT: Length: %d\n", srat->Header.Length);
+      acpi_parse_srat (srat);
     }
     if (AcpiGetTable (ACPI_SIG_DMAR, 0, (ACPI_TABLE_HEADER **) & dmar) == AE_OK) {
       /* DMA Remapping */
@@ -499,8 +501,17 @@ DisplayOneDevice (ACPI_HANDLE ObjHandle, UINT32 Level, void *Context,
     AcpiEvaluateObjectTyped (ObjHandle, "_BBN", NULL, &Result,
                              ACPI_TYPE_INTEGER);
   if (ACPI_SUCCESS (Status)) {
-    com1_printf (" BBN=%x", Obj.Integer.Value);
-  }
+    com1_printf (" BBN=%d", Obj.Integer.Value);
+  } else if (Status != AE_NOT_FOUND)
+    com1_printf (" bbnERR=%d", Status);
+
+  Status =
+    AcpiEvaluateObjectTyped (ObjHandle, "_PXM", NULL, &Result,
+                             ACPI_TYPE_INTEGER);
+  if (ACPI_SUCCESS (Status)) {
+    com1_printf (" PXM=%d", Obj.Integer.Value);
+  } else if (Status != AE_NOT_FOUND)
+    com1_printf (" pxmERR=%d", Status);
 
 
   com1_printf ("\n");
@@ -618,6 +629,57 @@ DisplayResource (ACPI_RESOURCE *Resource, void *Context)
   return AE_OK;
 }
 
+/* ************************************************** */
+
+static void
+acpi_parse_srat (ACPI_TABLE_SRAT *srat)
+{
+  ACPI_SRAT_CPU_AFFINITY *cpu;
+  ACPI_SRAT_MEM_AFFINITY *mem;
+  ACPI_SRAT_X2APIC_CPU_AFFINITY *x2apic;
+  u32 prox;
+  ACPI_SUBTABLE_HEADER *sub = (ACPI_SUBTABLE_HEADER *) &srat[1];
+  int len = srat->Header.Length;
+
+  len -= sizeof (ACPI_TABLE_SRAT);
+  while (len > 0) {
+    /* len = size of remaining subtables */
+    /* sub = pointer to subtable */
+    switch (sub->Type) {
+    case ACPI_SRAT_TYPE_CPU_AFFINITY:
+      cpu = (ACPI_SRAT_CPU_AFFINITY *) sub;
+      prox = cpu->ProximityDomainLo |
+        (cpu->ProximityDomainHi[0] << 0x08 |
+         cpu->ProximityDomainHi[1] << 0x10 |
+         cpu->ProximityDomainHi[2] << 0x18);
+      logger_printf ("SRAT: CPU: prox=0x%X apicID=0x%X flags=0x%X%s sapicEID=0x%X\n",
+                     prox, cpu->ApicId, cpu->Flags,
+                     cpu->Flags & ACPI_SRAT_CPU_ENABLED ? " enabled" : "",
+                     cpu->LocalSapicEid);
+      break;
+    case ACPI_SRAT_TYPE_MEMORY_AFFINITY:
+      mem = (ACPI_SRAT_MEM_AFFINITY *) sub;
+      logger_printf ("SRAT: MEM: prox=0x%X base=0x%llX len=0x%llX flags=0x%X%s%s%s\n",
+                     mem->ProximityDomain, mem->BaseAddress, mem->Length, mem->Flags,
+                     mem->Flags & ACPI_SRAT_MEM_ENABLED ? " enabled" : "",
+                     mem->Flags & ACPI_SRAT_MEM_HOT_PLUGGABLE ? " hotplug" : "",
+                     mem->Flags & ACPI_SRAT_MEM_NON_VOLATILE ? " nonvolatile" : "");
+      break;
+    case ACPI_SRAT_TYPE_X2APIC_CPU_AFFINITY:
+      x2apic = (ACPI_SRAT_X2APIC_CPU_AFFINITY *) sub;
+      logger_printf ("SRAT: X2APIC: prox=0x%X apicID=0x%X flags=0x%X%s clockDom=0x%X\n",
+                     x2apic->ProximityDomain, x2apic->ApicId, x2apic->Flags,
+                     x2apic->Flags & ACPI_SRAT_CPU_ENABLED ? " enabled" : "",
+                     x2apic->ClockDomain);
+      break;
+    default:
+      logger_printf ("SRAT: unknown subtype type=%d\n", sub->Type);
+      break;
+    }
+    len -= sub->Length;
+    sub = (ACPI_SUBTABLE_HEADER *) &((u8 *) sub)[sub->Length];
+  }
+}
 
 /* End ACPI support */
 
