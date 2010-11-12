@@ -79,27 +79,27 @@ static struct predefined_arch_perfevts {
   (sizeof (predefined_arch_perfevts) / sizeof (struct predefined_arch_perfevts))
 
 static struct cache_info {
-  uint64 cache_size;             /* Total cache size in bytes */
-  unsigned char num_apic;        /* # of APIC IDs reserved for this package */
-  unsigned num_thread;           /* # of threads sharing this cache */
-  bool fully_assoc;              /* Fully associative? */
-  unsigned char self_init_level; /* Self initialising cache level */
-  unsigned char cache_level;     /* Cache level */
-  unsigned char cache_type;      /* 0 - Null, 1 - Data, 2 - Instruction, 3 - Unified */
-  unsigned associativity;        /* Ways of associativity */
-  unsigned line_part;            /* Physical line partition */
-  unsigned line_size;            /* System coherency line size */
-  unsigned sets;                 /* # of sets */
-  bool inclusive;                /* Cache inclusive to lower cache level? */
-  unsigned char invd;
+  uint64 cache_size;  /* Total cache size in bytes */
+  u8 num_apic;        /* # of APIC IDs reserved for this package */
+  uint num_thread;    /* # of threads sharing this cache */
+  bool fully_assoc;   /* Fully associative? */
+  u8 self_init_level; /* Self initialising cache level */
+  u8 cache_level;     /* Cache level */
+  u8 cache_type;      /* 0 - Null, 1 - Data, 2 - Instruction, 3 - Unified */
+  uint associativity; /* Ways of associativity */
+  uint line_part;     /* Physical line partition */
+  uint line_size;     /* System coherency line size */
+  uint sets;          /* # of sets */
+  bool inclusive;     /* Cache inclusive to lower cache level? */
+  u8 invd;
 } cache_info [IA32_LEVEL_CACHES];
 
 bool perfmon_enabled = FALSE;
 bool nehalem_perfmon_enabled = FALSE;
 bool westmere_perfmon_enabled = FALSE;
 
-unsigned int llc_lines = 0; /* Total number of lines in last level cache */
-unsigned int llc_line_size = 0; /* Last level cache line size */
+uint llc_lines = 0; /* Total number of lines in last level cache */
+uint llc_line_size = 0; /* Last level cache line size */
 
 /* x specifies which IA32_PERFEVTSEL and IA32_PMC msr pair to use.
  * rsp specifies which MSR_OFFCORE_RSP msr to use.
@@ -133,6 +133,10 @@ offcore_perfmon_pmc_config (int x, int rsp, uint64 offcore_evts)
   }
 }
 
+/* Get detailed cache information from the current processor by using
+ * CPUID.4H. Cache information is stored in cache_info list declared
+ * above.
+ */
 static
 void perfmon_get_cache_info (void)
 {
@@ -192,6 +196,27 @@ void perfmon_get_cache_info (void)
   }
 }
 
+/* Get local and global last level cache misses at current time */
+static void
+perfmon_get_misses (uint64 *local_miss, uint64 *global_miss)
+{
+  offcore_perfmon_pmc_config (0, 0, (uint64) 0x0 |
+      OFFCORE_DMND_DATA_RD |
+      OFFCORE_DMND_IFETCH |
+      OFFCORE_WB |
+      OFFCORE_PF_DATA_RD |
+      OFFCORE_PF_RFO |
+      OFFCORE_PF_IFETCH |
+      OFFCORE_OTHER |
+      OFFCORE_REMOTE_CACHE_FWD |
+      OFFCORE_REMOTE_DRAM |
+      OFFCORE_LOCAL_DRAM);
+  *local_miss = perfmon_pmc_read (0);
+  /* --??-- Notice the following code is wrong. UNCORE should be used.*/
+  perfmon_pmc_config (0, 0x2E, 0x41);
+  *global_miss = perfmon_pmc_read (0);
+}
+
 extern uint64
 perfmon_miss_occupancy (void)
 {
@@ -199,10 +224,8 @@ perfmon_miss_occupancy (void)
   uint64 prev_local_miss = 0, prev_global_miss = 0;
   int i = 0;
 
-  offcore_perfmon_pmc_config (0, 0, (uint64) 0x0 | OFFCORE_LOCAL_DRAM);
-  local_miss = perfmon_pmc_read (0);
-  perfmon_pmc_config (0, 0x2E, 0x41);
-  global_miss = perfmon_pmc_read (0);
+  /* Get current local and global last level cache miss info */
+  perfmon_get_misses (&local_miss, &global_miss);
 
   prev_local_miss = percpu_read64 (perfmon_prev_local_miss);
   prev_global_miss = percpu_read64 (perfmon_prev_global_miss);
@@ -215,34 +238,34 @@ perfmon_miss_occupancy (void)
 
   prev_occupancy = percpu_read64 (perfmon_prev_miss_occupancy);
 
-  DLOG ("Local L3 miss: 0x%llX", local_miss);
-  DLOG ("Global L3 miss: 0x%llX", global_miss);
-  DLOG ("Previous miss based occupancy: 0x%llX", prev_occupancy);
+  DLOG ("Local L3 miss difference: %d", local_miss);
+  DLOG ("Global L3 miss difference: %d", global_miss);
+  DLOG ("Previous miss based occupancy: %d", prev_occupancy);
 
   /* i will be used to do the division, which will be implemented as right shift */
   for (i = 0; (llc_lines >> i) > 0 && (llc_lines >> i) != 1; i++);
   //DLOG ("Should shift right %d bits", i);
 
   cur_occupancy = prev_occupancy + local_miss - (global_miss >> i) * prev_occupancy;
-
   percpu_write64 (perfmon_prev_miss_occupancy, cur_occupancy);
 
   return cur_occupancy;
 }
 
-static void
-perfmon_percpu_init (void)
+extern void
+perfmon_percpu_reset (void)
 {
   uint64 local_miss = 0, global_miss = 0;
 
   /* Initialise percpu cache occupancy estimation variables */
-  offcore_perfmon_pmc_config (0, 0, (uint64) 0x0 | OFFCORE_LOCAL_DRAM);
-  local_miss = perfmon_pmc_read (0);
-  perfmon_pmc_config (0, 0x2E, 0x41);
-  global_miss = perfmon_pmc_read (0);
+  perfmon_get_misses (&local_miss, &global_miss);
 
+  DLOG ("Perfmon percpu reset");
+  DLOG ("Local miss: %d", local_miss);
+  DLOG ("Global miss: %d", global_miss);
   percpu_write64 (perfmon_prev_local_miss, local_miss);
   percpu_write64 (perfmon_prev_global_miss, global_miss);
+  percpu_write64 (perfmon_prev_miss_occupancy, 0LL);
 }
 
 extern void
@@ -266,7 +289,6 @@ perfmon_init (void)
     nehalem_perfmon_enabled = TRUE;
     /* Get cache information */
     perfmon_get_cache_info ();
-    perfmon_percpu_init ();
   }
 
   perfmon_version = (u8) eax;
@@ -308,6 +330,9 @@ perfmon_init (void)
   RDTSC (tsc);
   DLOG ("pmc0=0x%llX tsc=0x%llX", perfmon_pmc_read (0), tsc);
 
+  /* Reset percpu perfmon variables */
+  perfmon_percpu_reset ();
+
   perfmon_enabled = TRUE;
 
   uint64 occupancy = 0;
@@ -317,8 +342,8 @@ perfmon_init (void)
   local_miss = percpu_read64 (perfmon_prev_local_miss);
   global_miss = percpu_read64 (perfmon_prev_global_miss);
   DLOG ("Occupancy prediction: %d lines", occupancy);
-  DLOG ("Previous local L3 miss: %d lines", local_miss);
-  DLOG ("Previous global L3 miss: %d lines", global_miss);
+  DLOG ("Previous local L3 miss: %d", local_miss);
+  DLOG ("Previous global L3 miss: %d", global_miss);
 }
 
 /*
