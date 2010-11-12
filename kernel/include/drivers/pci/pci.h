@@ -26,7 +26,7 @@
 
 /* PCI DEVICE definition */
 
-#define PCI_MAX_DEVICES 32      /* arbitrary limit */
+#define PCI_MAX_DEVICES 64      /* arbitrary limit */
 
 typedef struct {
   union {
