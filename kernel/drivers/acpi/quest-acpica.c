@@ -529,7 +529,25 @@ ACPI_STATUS
 AcpiOsReadMemory (ACPI_PHYSICAL_ADDRESS Address, UINT32 * Value, UINT32 Width)
 {
   logger_printf ("AcpiOsReadMemory (0x%p, %d)\n", Address, Width);
-  return AE_NOT_IMPLEMENTED;
+  if (Width != 8 && Width != 16 && Width != 32)
+    return AE_BAD_PARAMETER;
+  u32 frame = Address & ~(0xFFF);
+  u32 offset = Address - frame;
+  u8 *virt = map_virtual_page (frame | 3);
+  if (!virt) return AE_NO_MEMORY;
+  switch (Width) {
+  case 8:
+    *Value = *((u8 *) (&virt[offset]));
+    break;
+  case 16:
+    *Value = *((u16 *) (&virt[offset]));
+    break;
+  case 32:
+    *Value = *((u32 *) (&virt[offset]));
+    break;
+  }
+  unmap_virtual_page (virt);
+  return AE_OK;
 }
 
 
@@ -537,7 +555,25 @@ ACPI_STATUS
 AcpiOsWriteMemory (ACPI_PHYSICAL_ADDRESS Address, UINT32 Value, UINT32 Width)
 {
   logger_printf ("AcpiOsWriteMemory (0x%p, 0x%p, %d)\n", Address, Value, Width);
-  return AE_NOT_IMPLEMENTED;
+  if (Width != 8 && Width != 16 && Width != 32)
+    return AE_BAD_PARAMETER;
+  u32 frame = Address & ~(0xFFF);
+  u32 offset = Address - frame;
+  u8 *virt = map_virtual_page (frame | 3);
+  if (!virt) return AE_NO_MEMORY;
+  switch (Width) {
+  case 8:
+    *((u8 *) (&virt[offset])) = (u8) Value;
+    break;
+  case 16:
+    *((u16 *) (&virt[offset])) = (u16) Value;
+    break;
+  case 32:
+    *((u32 *) (&virt[offset])) = (u32) Value;
+    break;
+  }
+  unmap_virtual_page (virt);
+  return AE_OK;
 }
 
 
@@ -625,7 +661,8 @@ AcpiOsDerivePciId (ACPI_HANDLE Rhandle,
 ACPI_STATUS
 AcpiOsValidateInterface (char *Interface)
 {
-  return AE_NOT_IMPLEMENTED;
+  logger_printf ("AcpiOsValidateInterface (%s)\n", Interface);
+  return AE_SUPPORT;
 }
 
 
