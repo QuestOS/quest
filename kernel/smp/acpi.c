@@ -26,7 +26,6 @@
 #include "drivers/acpi/acmacros.h"
 #include "drivers/acpi/acexcep.h"
 #include "util/printf.h"
-#include "drivers/input/keyboard.h"
 
 static int process_acpi_tables (void);
 static int acpi_add_processor (ACPI_MADT_LOCAL_APIC *);
@@ -85,13 +84,13 @@ acpi_irq_handler (u8 vec)
 static UINT32
 acpi_power_button (void *ctxt)
 {
-  u8 state;
+  ACPI_STATUS AcpiHwWrite (UINT32 Value, ACPI_GENERIC_ADDRESS *Reg);
+
   logger_printf ("ACPI: acpi_power_button\n");
-  AcpiClearEvent (ACPI_EVENT_POWER_BUTTON);
   printf ("REBOOTING...\n");
   com1_printf ("REBOOTING...\n");
-  while (((state = inb (KEYBOARD_STATUS_PORT)) & 2) != 0);
-  outb (0xFE, KEYBOARD_STATUS_PORT);
+  tsc_delay_usec (100000);      /* avoid race between COM1 and Reboot */
+  AcpiHwWrite (AcpiGbl_FADT.ResetValue, &AcpiGbl_FADT.ResetRegister);
   asm volatile ("hlt");
   return 0;
 }
@@ -176,6 +175,9 @@ acpi_secondary_init(void)
   logger_printf ("AcpiInstallNotifyHandler returned %d\n",
                  AcpiInstallNotifyHandler (ACPI_ROOT_OBJECT, ACPI_DEVICE_NOTIFY, acpi_notify_handler, NULL));
 
+  extern u8 AcpiGbl_OsiData;
+  AcpiGbl_OsiData=0;
+
   /* Walk the System Bus "\_SB_" and output info about each object
    * found. */
 
@@ -231,6 +233,8 @@ process_acpi_tables (void)
               fadt->SciInterrupt,
               fadt->Pm1aEventBlock,
               fadt->Pm1aControlBlock);
+      printf ("ResetReg=0x%llX ResetSpace=%d ResetVal=0x%X\n",
+              fadt->ResetRegister.Address, fadt->ResetRegister.SpaceId, fadt->ResetValue);
       acpi_sci_irq = fadt->SciInterrupt;
     } else {
       printf ("AcpiGetTable FADT: FAILED\n");
