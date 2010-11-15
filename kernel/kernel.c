@@ -180,7 +180,7 @@ static bool kernel_threads_running = FALSE;
 static task_id kernel_thread_waitq = 0;
 
 task_id
-start_kernel_thread_args (uint eip, uint esp, uint n, ...)
+create_kernel_thread_args (uint eip, uint esp, bool run, uint n, ...)
 {
   task_id pid;
   uint32 eflags;
@@ -209,10 +209,12 @@ start_kernel_thread_args (uint eip, uint esp, uint n, ...)
 
   lookup_TSS (pid)->priority = 0x1f;
 
-  if (kernel_threads_running)
-    wakeup (pid);
-  else
-    queue_append (&kernel_thread_waitq, pid);
+  if (run) {
+    if (kernel_threads_running)
+      wakeup (pid);
+    else
+      queue_append (&kernel_thread_waitq, pid);
+  }
 
   return pid;
 }
@@ -220,7 +222,7 @@ start_kernel_thread_args (uint eip, uint esp, uint n, ...)
 task_id
 start_kernel_thread (uint eip, uint esp)
 {
-  return start_kernel_thread_args (eip, esp, 0);
+  return create_kernel_thread_args (eip, esp, TRUE, 0);
 }
 
 void

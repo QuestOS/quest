@@ -138,7 +138,7 @@ uint16 duplicate_TSS (uint32 ebp,
 typedef uint16 task_id;
 
 task_id start_kernel_thread (uint eip, uint esp);
-task_id start_kernel_thread_args (uint eip, uint esp, uint n, ...);
+task_id create_kernel_thread_args (uint eip, uint esp, bool run, uint n, ...);
 void exit_kernel_thread (void);
 
 /* Declare space for a stack */

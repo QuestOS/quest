@@ -180,8 +180,8 @@ ieee80211_register_hw (struct ieee80211_hw *hw)
 
   init_tsc_ufreq ();
 
-  start_kernel_thread_args ((u32) beacon_thread, (u32) &beacon_stack[1023],
-                            1, local);
+  create_kernel_thread_args ((u32) beacon_thread, (u32) &beacon_stack[1023],
+                             TRUE, 1, local);
 
   return TRUE;
 }

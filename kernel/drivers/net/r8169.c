@@ -3632,8 +3632,9 @@ r8169_init (void)
 
   rtl8169_check_link_status(&tp->ethdev, tp, tp->mmio_addr);
 
-  r8169_bh_id = start_kernel_thread ((u32) r8169_bh_thread,
-                                     (u32) &r8169_bh_stack[1023]);
+  r8169_bh_id = create_kernel_thread_args ((u32) r8169_bh_thread,
+                                           (u32) &r8169_bh_stack[1023],
+                                           FALSE, 0);
   set_iovcpu (r8169_bh_id, IOVCPU_CLASS_NET);
 
   return TRUE;

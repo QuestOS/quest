@@ -873,8 +873,9 @@ e1000_init (void)
     goto abort_virt;
   }
 
-  e1000_bh_id = start_kernel_thread ((u32) e1000_bh_thread,
-                                     (u32) &e1000_bh_stack[1023]);
+  e1000_bh_id = create_kernel_thread_args ((u32) e1000_bh_thread,
+                                           (u32) &e1000_bh_stack[1023],
+                                           FALSE, 0);
   set_iovcpu (e1000_bh_id, IOVCPU_CLASS_NET);
 
   return TRUE;
