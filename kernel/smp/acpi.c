@@ -195,13 +195,11 @@ static int
 process_acpi_tables (void)
 {
   extern uint32 mp_LAPIC_addr;
-  /******************************************
-   * extern uint32 mp_num_IOAPICs;          *
-   * extern uint32 mp_IOAPIC_addr;          *
-   * extern mp_IOAPIC_info mp_IOAPICs[];    *
-   * extern uint32 mp_num_overrides;        *
-   * extern mp_int_override mp_overrides[]; *
-   ******************************************/
+  extern uint32 mp_num_IOAPICs;
+  extern uint32 mp_IOAPIC_addr;
+  extern mp_IOAPIC_info mp_IOAPICs[];
+  extern uint32 mp_num_overrides;
+  extern mp_int_override mp_overrides[];
 
   ACPI_STATUS status;
 
@@ -269,21 +267,17 @@ process_acpi_tables (void)
         }
         case ACPI_MADT_TYPE_IO_APIC:{
           /* IO-APIC entry */
-          /**************************************************************
-           * Leave IO-APIC entries to Intel MP spec                     *
-           *                                                            *
-           * ACPI_MADT_IO_APIC *sub = (ACPI_MADT_IO_APIC *) ptr;        *
-           * printf ("IO-APIC ID: %X Address: %X IRQBase: %X\n",        *
-           *         sub->Id, sub->Address, sub->GlobalIrqBase);        *
-           * if (mp_num_IOAPICs == MAX_IOAPICS)                         *
-           *   panic ("Too many IO-APICs.");                            *
-           * mp_IOAPIC_addr = sub->Address;                             *
-           * mp_IOAPICs[mp_num_IOAPICs].id = sub->Id;                   *
-           * mp_IOAPICs[mp_num_IOAPICs].address = sub->Address;         *
-           * mp_IOAPICs[mp_num_IOAPICs].startGSI = sub->GlobalIrqBase;  *
-           * mp_IOAPICs[mp_num_IOAPICs].numGSIs = IOAPIC_num_entries(); *
-           * mp_num_IOAPICs++;                                          *
-           **************************************************************/
+          ACPI_MADT_IO_APIC *sub = (ACPI_MADT_IO_APIC *) ptr;
+          printf ("IO-APIC ID: %X Address: %X IRQBase: %X\n",
+                  sub->Id, sub->Address, sub->GlobalIrqBase);
+          if (mp_num_IOAPICs == MAX_IOAPICS)
+            panic ("Too many IO-APICs.");
+          mp_IOAPIC_addr = sub->Address;
+          mp_IOAPICs[mp_num_IOAPICs].id = sub->Id;
+          mp_IOAPICs[mp_num_IOAPICs].address = sub->Address;
+          mp_IOAPICs[mp_num_IOAPICs].startGSI = sub->GlobalIrqBase;
+          mp_IOAPICs[mp_num_IOAPICs].numGSIs = IOAPIC_num_entries();
+          mp_num_IOAPICs++;
           break;
         }
         case ACPI_MADT_TYPE_INTERRUPT_OVERRIDE:{
@@ -292,16 +286,12 @@ process_acpi_tables (void)
             (ACPI_MADT_INTERRUPT_OVERRIDE *) ptr;
           printf ("Int. Override: Bus: %X SourceIRQ: %X GlobalIRQ: %X Flags: %X\n",
                   sub->Bus, sub->SourceIrq, sub->GlobalIrq, sub->IntiFlags);
-          /*****************************************************************************
-           * Leave Interrupt Overrides to Intel MP spec                                *
-           *                                                                           *
-           * if (mp_num_overrides == MAX_INT_OVERRIDES)                                *
-           *   panic ("Too many interrupt overrides.");                                *
-           * mp_overrides[mp_num_overrides].src_bus = sub->Bus;                        *
-           * mp_overrides[mp_num_overrides].src_IRQ = sub->SourceIrq;                  *
-           * mp_overrides[mp_num_overrides].dest_GSI = sub->GlobalIrq;                 *
-           * mp_num_overrides++;                                                       *
-           *****************************************************************************/
+          if (mp_num_overrides == MAX_INT_OVERRIDES)
+            panic ("Too many interrupt overrides.");
+          mp_overrides[mp_num_overrides].src_bus = sub->Bus;
+          mp_overrides[mp_num_overrides].src_IRQ = sub->SourceIrq;
+          mp_overrides[mp_num_overrides].dest_GSI = sub->GlobalIrq;
+          mp_num_overrides++;
           /* (special case) SCI interrupt: it can be different in ACPI
            * tables vs Intel MPS tables. */
           if (sub->SourceIrq == acpi_sci_irq) {
@@ -428,6 +418,9 @@ GetLnkInfo (char *lnkname, pci_irq_t *irq)
   }
 }
 
+#define READ(bus, slot, func, reg, type)                \
+  pci_read_##type (pci_addr (bus, slot, func, reg))
+
 ACPI_STATUS
 DisplayOneDevice (ACPI_HANDLE ObjHandle, UINT32 Level, void *Context,
                   void **RetVal)
@@ -443,6 +436,7 @@ DisplayOneDevice (ACPI_HANDLE ObjHandle, UINT32 Level, void *Context,
   ACPI_PCI_ROUTING_TABLE *prtd;
   uint32 addr=0;
   bool pcibus=FALSE;
+  u8 busnum;
 
   Path.Length = sizeof (Buffer);
   Path.Pointer = Buffer;
@@ -456,13 +450,14 @@ DisplayOneDevice (ACPI_HANDLE ObjHandle, UINT32 Level, void *Context,
     com1_printf ("    ");
     if (Info->Flags & ACPI_PCI_ROOT_BRIDGE) {
       com1_printf (" PCI_ROOT");
+      busnum = 0;
       pcibus = TRUE;
     }
     if (Info->Valid & ACPI_VALID_STA)
       com1_printf (" STA %.8X", Info->CurrentStatus);
     if (Info->Valid & ACPI_VALID_ADR) {
       com1_printf (" ADR %.8X", Info->Address);
-      addr = Info->Address;
+      addr = Info->Address >> 16;
     }
     if (Info->Valid & ACPI_VALID_HID)
       com1_printf (" HID %s", Info->HardwareId.String);
@@ -520,7 +515,6 @@ DisplayOneDevice (ACPI_HANDLE ObjHandle, UINT32 Level, void *Context,
 
   com1_printf ("\n");
 
-
   for (;;) {
     Status = AcpiGetIrqRoutingTable (ObjHandle, &Prt);
     if (ACPI_FAILURE (Status)) {
@@ -532,14 +526,25 @@ DisplayOneDevice (ACPI_HANDLE ObjHandle, UINT32 Level, void *Context,
   }
   if (ACPI_SUCCESS (Status)) {
     int i;
+
+    /* Check if ObjHandle refers to a non-root PCI bus */
+    if (READ (0, addr, 0, 0, dword) != 0xFFFFFFFF) {
+      u8 hdrtype = READ (0, addr, 0, 0x0E, byte);
+      if (hdrtype == 1) {
+        /* PCI-to-PCI bridge headerType == 1 */
+        busnum = READ (0, addr, 0, 0x19, byte);
+        com1_printf ("  bus=0x%.02X\n", busnum);
+        pcibus = TRUE;
+      }
+    }
+
     for (i=0;i<sizeof(prt_buf);) {
       pci_irq_t irq;
       prtd = (ACPI_PCI_ROUTING_TABLE *)(&prt_buf[i]);
       if (prtd->Length == 0) break;
 
-      /* only support bus==0 for now */
-      if (addr == 0 && pcibus) {
-        irq.bus = 0;
+      if (pcibus) {
+        irq.bus = busnum;
         irq.dev = (uint32) ((prtd->Address >> 16) & 0xFF);
         irq.pin = prtd->Pin + 1; /* ACPI numbers pins from 0 */
         irq.gsi = 0;
@@ -564,11 +569,8 @@ DisplayOneDevice (ACPI_HANDLE ObjHandle, UINT32 Level, void *Context,
         irq.trigger = TRIGGER_DEFAULT;
       }
 
-      /********************************************
-       * Leave PCI IRQ routing to Intel MP Spec   *
-       * if (addr == 0 && pcibus && irq.gsi != 0) *
-       *   pci_irq_register (&irq);               *
-       ********************************************/
+      if (pcibus && irq.gsi != 0)
+        pci_irq_register (&irq);
 
       i+=prtd->Length;
     }

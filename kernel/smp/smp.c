@@ -102,10 +102,6 @@ smp_init (void)
 #else
   if ((acpi_early_init()) > 0) {
     /* ACPI succeeded */
-#ifndef NO_INTEL_MPS
-    logger_printf ("Using Intel MP Spec tables for PCI IRQ routing...\n");
-    intel_mps_init (TRUE);      /* PCI IRQ routing only */
-#endif
     mp_ACPI_enabled = 1;
   }
 #endif
