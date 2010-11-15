@@ -371,10 +371,10 @@ e1000_bh_thread (void)
      * interrupt. */
     uint32 icr = ICR;
     DLOG ("IRQ: ICR=%p CTRL=%p CTRLE=%p STA=%p", icr, CTRL, CTRLEXT, STATUS);
-    DLOG ("PHY_CTL=0x%.04X", mdi_read (0));
-    DLOG ("PHY_STA=0x%.04X", mdi_read (1));
-    DLOG ("PHY_GCON=0x%.04X", mdi_read (9));
-    DLOG ("PHY_GSTA=0x%.04X", mdi_read (10));
+    //DLOG ("PHY_CTL=0x%.04X", mdi_read (0));
+    //DLOG ("PHY_STA=0x%.04X", mdi_read (1));
+    //DLOG ("PHY_GCON=0x%.04X", mdi_read (9));
+    //DLOG ("PHY_GSTA=0x%.04X", mdi_read (10));
     DLOG ("TPT=%p", TPT);
 
     if (icr & ICR_RXT)            /* RX */
@@ -722,10 +722,10 @@ reset (void)
 #endif
 
 
-  DLOG ("PHY_CTL=0x%.04X", mdi_read (0));
-  DLOG ("PHY_STA=0x%.04X", mdi_read (1));
-  DLOG ("PHY_GCON=0x%.04X", mdi_read (9));
-  DLOG ("PHY_GSTA=0x%.04X", mdi_read (10));
+  //DLOG ("PHY_CTL=0x%.04X", mdi_read (0));
+  //DLOG ("PHY_STA=0x%.04X", mdi_read (1));
+  //DLOG ("PHY_GCON=0x%.04X", mdi_read (9));
+  //DLOG ("PHY_GSTA=0x%.04X", mdi_read (10));
 
 
   (void) TPT;                   /* clear TPT statistic */
