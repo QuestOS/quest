@@ -147,6 +147,64 @@ _sw_init_user_task:
 
         iret
 
+
+        /* Fast-path IPC: pass registers EAX, EDX */
+        /* %esi: source TSS pointer
+         * %edi: destination TSS pointer */
+        .globl _sw_ipc
+_sw_ipc:
+        /* save EIP */
+        call 1f
+        /* resume point */
+        ret
+1:      popl %ebx
+        movl %ebx, 32(%esi)
+
+        /* save EBP */
+        movl %ebp, 60(%esi)
+
+        /* save EFLAGS */
+        pushf
+        popl %ebx
+        movl %ebx, 36(%esi)
+
+        /* save stack */
+        movl %esp, %ebp
+        movl %ebp, 56(%esi)
+
+        /* restore CR3 if necessary */
+        movl 28(%edi), %ebx
+
+        /* skip if kernel thread */
+        movl $pgd, %ebp
+        cmpl %ebx, %ebp
+        je 2f
+
+        /* skip if already loaded */
+        movl %cr3, %ebp
+        cmpl %ebx, %ebp
+        je 2f
+
+        movl %ebx, %cr3
+2:
+
+        /* restore stack */
+        movl 56(%edi), %ebp
+        movl %ebp, %esp
+
+        /* restore EBP */
+        movl 60(%edi), %ebp
+
+        /* restore EFLAGS */
+        movl 36(%edi), %ebx
+        pushl %ebx
+        popf
+
+        /* restore EIP */
+        leal 32(%edi), %ebx
+        jmp *(%ebx)
+
+
 /*
  * Local Variables:
  * mode: asm
