@@ -28,16 +28,16 @@ _sw_jmp_task:
         call 1f
         /* resume point */
         ret
-1:      popl %eax
-        movl %eax, 32(%esi)
+1:      popl %ebx
+        movl %ebx, 32(%esi)
 
         /* save EBP */
         movl %ebp, 60(%esi)
 
         /* save EFLAGS */
         pushf
-        popl %eax
-        movl %eax, 36(%esi)
+        popl %ebx
+        movl %ebx, 36(%esi)
 
         /* save stack */
         movl %esp, %ebp
@@ -47,26 +47,26 @@ _sw_jmp_task:
 
         /* force CR3 load if source is NULL */
 srcNULL:
-        movl 28(%edi), %eax
+        movl 28(%edi), %ebx
         jmp stoCR3
 
         /* -------------------- */
         /* restore destination TSS */
 restore:
         /* restore CR3 if necessary */
-        movl 28(%edi), %eax
+        movl 28(%edi), %ebx
 
         /* skip if kernel thread */
         movl $pgd, %edx
-        cmpl %eax, %edx
+        cmpl %ebx, %edx
         je skipCR3
 
         /* skip if already loaded */
         movl %cr3, %edx
-        cmpl %eax, %edx
+        cmpl %ebx, %edx
         je skipCR3
 
-stoCR3: movl %eax, %cr3
+stoCR3: movl %ebx, %cr3
 skipCR3:
 
         /* restore stack */
@@ -77,21 +77,21 @@ skipCR3:
         movl 60(%edi), %ebp
 
         /* restore EFLAGS */
-        movl 36(%edi), %eax
-        pushl %eax
+        movl 36(%edi), %ebx
+        pushl %ebx
         popf
 
         /* restore EIP */
-        leal 32(%edi), %eax
-        jmp *(%eax)
+        leal 32(%edi), %ebx
+        jmp *(%ebx)
 
         /* Start initial task */
         /* %edi: TSS pointer */
         .globl _sw_init_task
 _sw_init_task:
         /* setup EFLAGS */
-        movl 36(%edi), %eax
-        pushl %eax
+        movl 36(%edi), %ebx
+        pushl %ebx
         popf
 
         /* setup stack */
@@ -99,12 +99,12 @@ _sw_init_task:
         movl %ebp, %esp
 
         /* setup CR3 */
-        movl 28(%edi), %eax
-        movl %eax, %cr3
+        movl 28(%edi), %ebx
+        movl %ebx, %cr3
 
         /* invoke task */
-        leal 32(%edi), %eax
-        jmp *(%eax)
+        leal 32(%edi), %ebx
+        jmp *(%ebx)
 
         /* Start initial task in userspace */
         /* %edi: TSS pointer */
@@ -113,8 +113,8 @@ _sw_init_user_task:
         subl $20, %esp
 
         /* setup CR3 */
-        movl 28(%edi), %eax
-        movl %eax, %cr3
+        movl 28(%edi), %ebx
+        movl %ebx, %cr3
 
         /* setup stack */
         movl $0x23, 16(%esp)
@@ -122,20 +122,20 @@ _sw_init_user_task:
         movl %ebp, 12(%esp)
 
         /* setup EFLAGS */
-        movl 36(%edi), %eax
-        movl %eax, 8(%esp)
+        movl 36(%edi), %ebx
+        movl %ebx, 8(%esp)
 
         /* setup CS:EIP */
         movl $0x1B, 4(%esp)
-        movl 32(%edi), %eax
-        movl %eax, 0(%esp)
+        movl 32(%edi), %ebx
+        movl %ebx, 0(%esp)
 
         /* setup data segments */
-        movl $0x23, %eax
-        movw %ax, %ds
-        movw %ax, %es
-        movw %ax, %fs
-        movw %ax, %gs
+        movl $0x23, %ebx
+        movw %bx, %ds
+        movw %bx, %es
+        movw %bx, %fs
+        movw %bx, %gs
 
         /* so programs can assume zeroed registers */
         xorl %eax, %eax
