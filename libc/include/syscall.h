@@ -57,15 +57,15 @@ usleep (unsigned usec)
 
 }
 
-static inline int
+static inline unsigned short
 fork (void)
 {
 
-  int retval;
+  unsigned int retval;
 
   asm volatile ("int $0x31\n":"=a" (retval)::CLOBBERS1);
 
-  return retval;
+  return (unsigned short) retval;
 }
 
 
