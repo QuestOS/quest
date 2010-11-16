@@ -64,6 +64,8 @@ static u32 testR_stack[1024] ALIGNED (0x1000);
 
 static task_id testR_id = 0, testS_id = 0;
 static bool ready = FALSE;
+static u64 start, finish;
+extern u32 tsc_freq_msec;
 
 static void
 testS (void)
@@ -71,9 +73,11 @@ testS (void)
   u32 arg1, arg2;
   while (!ready) sched_usleep (1000);
   DLOG ("testS: sending");
+  RDTSC (start);
   fast_send (testR_id, 0xCAFEBABE, 0xDEADBEEF);
   fast_recv (&arg1, &arg2);
-  DLOG ("testS: answer was 0x%X and 0x%X", arg1, arg2);
+  RDTSC (finish);
+  DLOG ("testS: answer was 0x%X and 0x%X (0x%llX cycles)", arg1, arg2, (finish - start));
   for (;;) sched_usleep (1000000);
 }
 
@@ -84,8 +88,10 @@ testR (void)
   DLOG ("testR: hello from 0x%x", testR_id);
   ready = TRUE;
   fast_recv (&arg1, &arg2);
-  DLOG ("testR: got 0x%X and 0x%X", arg1, arg2);
+  RDTSC (finish);
+  DLOG ("testR: got 0x%X and 0x%X (0x%llX cycles)", arg1, arg2, (finish - start));
   sched_usleep (1000000);
+  RDTSC (start);
   fast_send (testS_id, arg1 + arg2, arg1 | arg2);
   for (;;) sched_usleep (1000000);
 }
