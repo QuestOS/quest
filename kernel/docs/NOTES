@@ -1,3 +1,25 @@
+Tuesday 2010-11-16 md
+
+  Micro-benchmarked SYSENTER vs software INT.  SYSENTER takes ~128
+  cycles where software INT takes ~300 cycles.  Is that worth losing
+  two register parameters?
+
+Monday 2010-11-15 md
+
+  Non-root PCI buses show up in ACPI with an "ADR" field that is not
+  actually the bus number, but rather the device number of the
+  PCI-to-PCI bridge device.  Then you must read the bus number from
+  the PCI configuration space header of that bridge.  Now I can obtain
+  PCI routing information from ACPI alone.
+
+  Added fast_send/recv register-passing IPC mechanism.  Seems to take
+  about 400-600 cycles per message.  Investigating SYSENTER for fast
+  userspace invocation of the IPC mechanism.  The problem with
+  SYSENTER is that it does not save the user's EIP/ESP for you.  You
+  must find some way of passing them to the kernel.  Usually by
+  storing them in registers.  Which takes away two registers from
+  syscall/IPC purposes.
+
 Wednesday 2010-09-01 md
 
   Introduced UDP logging to help avoid overhead.  It seems to drop
