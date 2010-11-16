@@ -89,6 +89,8 @@ extern void offcore_perfmon_pmc_config (int, int, uint64);
 extern bool perfmon_enabled;
 extern bool nehalem_perfmon_enabled;
 extern bool westmere_perfmon_enabled;
+extern uint64 perfmon_miss_occupancy (void);
+extern void perfmon_percpu_reset (void);
 
 #endif
 

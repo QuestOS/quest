@@ -20,6 +20,7 @@
 #include "util/cpuid.h"
 #include "util/debug.h"
 #include "util/perfmon.h"
+#include "arch/i386-percpu.h"
 
 #define DEBUG_PERFMON
 
@@ -38,6 +39,21 @@ static u8 bit_width, perfmon_version, num_pmcs=0;
 #define IA32_PERF_GLOBAL_OVF_CTRL 0x390
 
 #define IA32_FIXED_CTR(x) (0x309 + (x))
+
+#define IA32_LEVEL_CACHES  0x5
+
+DEF_PER_CPU (u64, perfmon_prev_local_miss);
+INIT_PER_CPU (perfmon_prev_local_miss) {
+  percpu_write64 (perfmon_prev_local_miss, 0LL);
+}
+DEF_PER_CPU (u64, perfmon_prev_global_miss);
+INIT_PER_CPU (perfmon_prev_global_miss) {
+  percpu_write64 (perfmon_prev_global_miss, 0LL);
+}
+DEF_PER_CPU (u64, perfmon_prev_miss_occupancy);
+INIT_PER_CPU (perfmon_prev_miss_occupancy) {
+  percpu_write64 (perfmon_prev_miss_occupancy, 0LL);
+}
 
 static struct predefined_arch_perfevts {
   char *name;
@@ -62,9 +78,28 @@ static struct predefined_arch_perfevts {
 #define NUM_PREDEFINED_ARCH_PERFEVTS \
   (sizeof (predefined_arch_perfevts) / sizeof (struct predefined_arch_perfevts))
 
+static struct cache_info {
+  uint64 cache_size;  /* Total cache size in bytes */
+  u8 num_apic;        /* # of APIC IDs reserved for this package */
+  uint num_thread;    /* # of threads sharing this cache */
+  bool fully_assoc;   /* Fully associative? */
+  u8 self_init_level; /* Self initialising cache level */
+  u8 cache_level;     /* Cache level */
+  u8 cache_type;      /* 0 - Null, 1 - Data, 2 - Instruction, 3 - Unified */
+  uint associativity; /* Ways of associativity */
+  uint line_part;     /* Physical line partition */
+  uint line_size;     /* System coherency line size */
+  uint sets;          /* # of sets */
+  bool inclusive;     /* Cache inclusive to lower cache level? */
+  u8 invd;
+} cache_info [IA32_LEVEL_CACHES];
+
 bool perfmon_enabled = FALSE;
 bool nehalem_perfmon_enabled = FALSE;
 bool westmere_perfmon_enabled = FALSE;
+
+uint llc_lines = 0; /* Total number of lines in last level cache */
+uint llc_line_size = 0; /* Last level cache line size */
 
 /* x specifies which IA32_PERFEVTSEL and IA32_PMC msr pair to use.
  * rsp specifies which MSR_OFFCORE_RSP msr to use.
@@ -79,6 +114,8 @@ offcore_perfmon_pmc_config (int x, int rsp, uint64 offcore_evts)
       if (nehalem_perfmon_enabled || westmere_perfmon_enabled) {
         wrmsr (MSR_OFFCORE_RSP (0), offcore_evts);
         perfmon_pmc_config (x, OFFCORE_RSP0_EVT, OFFCORE_RSP_MASK);
+      } else {
+        DLOG ("Off-Core Response Event is not supported");
       }
       break;
 
@@ -86,12 +123,149 @@ offcore_perfmon_pmc_config (int x, int rsp, uint64 offcore_evts)
       if (westmere_perfmon_enabled) {
         wrmsr (MSR_OFFCORE_RSP (1), offcore_evts);
         perfmon_pmc_config (x, OFFCORE_RSP1_EVT, OFFCORE_RSP_MASK);
+      } else {
+        DLOG ("MSR_OFFCORE_RSP1 is only available on Westmere");
       }
       break;
 
     default :
-      DLOG ("Off-Core Response Event is not supported");
+      DLOG ("At most 2 off-core response msr's are supported");
   }
+}
+
+/* Get detailed cache information from the current processor by using
+ * CPUID.4H. Cache information is stored in cache_info list declared
+ * above.
+ */
+static
+void perfmon_get_cache_info (void)
+{
+  u32 eax = 0, ebx = 0, ecx = 0, edx = 0;
+  int level = 0 ,i = 0;
+
+  for (i = 0; i < IA32_LEVEL_CACHES; i++) {
+    cpuid (0x4, i, &eax, &ebx, &ecx, &edx);
+    //DLOG ("eax=0x%X, ebx=0x%x, ecx=0x%x, edx=0x%x", eax, ebx, ecx, edx);
+    if (!(eax & 0x1F)) {
+      llc_lines = cache_info [i-1].associativity * cache_info [i-1].sets;
+      llc_line_size = cache_info [i-1].line_size;
+      DLOG ("Last level cache line size: %d", llc_line_size);
+      DLOG ("%d lines in total", llc_lines);
+      break;
+    }
+    level = (eax >> 5) & 0x7;
+    cache_info [i].num_apic = ((eax >> 26) & 0x3F) + 1;
+    cache_info [i].num_thread = ((eax >> 14) & 0xFFF) + 1;
+    cache_info [i].fully_assoc = (eax >> 9) & 0x1;
+    cache_info [i].self_init_level = (eax >> 8) & 0x1;
+    cache_info [i].cache_level = level;
+    cache_info [i].cache_type = eax & 0x1F;
+    cache_info [i].associativity = ((ebx >> 22) & 0x3FF) + 1;
+    cache_info [i].line_part = ((ebx >> 12) & 0x3FF) + 1;
+    cache_info [i].line_size = (ebx & 0xFFF) + 1;
+    cache_info [i].sets = ecx + 1;
+    cache_info [i].inclusive = (edx >> 1) & 0x1;
+    cache_info [i].invd = edx & 0x1;
+    cache_info [i].cache_size =
+      cache_info [i].associativity * cache_info [i].line_part *
+      cache_info [i].line_size * cache_info [i].sets;
+
+    DLOG ("Level %d cache detected:", level);
+    DLOG ("  Total cache size: %lld KB", cache_info [i].cache_size / 1024);
+    switch (cache_info [i].cache_type) {
+      case 1 :
+        DLOG ("  Level %d  Data Cache", cache_info [i].cache_level);
+        break;
+      case 2 :
+        DLOG ("  Level %d  Instruction Cache", cache_info [i].cache_level);
+        break;
+      case 3 :
+        DLOG ("  Level %d  Unified Cache", cache_info [i].cache_level);
+        break;
+      default:
+        DLOG ("  Level %d  Unknown Cache", cache_info [i].cache_level);
+    }
+    if (cache_info [i].fully_assoc)
+      DLOG ("  Fully associative");
+    else
+      DLOG ("  %d way associative", cache_info [i].associativity);
+    DLOG ("  Line size: %d", cache_info [i].line_size);
+    DLOG ("  Physical line partitions: %d", cache_info [i].line_part);
+    DLOG ("  Number of sets: %d", cache_info [i].sets);
+    DLOG ("  Inclusive: %s", cache_info [i].inclusive ? "Yes" : "No");
+  }
+}
+
+/* Get local and global last level cache misses at current time */
+static void
+perfmon_get_misses (uint64 *local_miss, uint64 *global_miss)
+{
+  offcore_perfmon_pmc_config (0, 0, (uint64) 0x0 |
+      OFFCORE_DMND_DATA_RD |
+      OFFCORE_DMND_IFETCH |
+      OFFCORE_WB |
+      OFFCORE_PF_DATA_RD |
+      OFFCORE_PF_RFO |
+      OFFCORE_PF_IFETCH |
+      OFFCORE_OTHER |
+      OFFCORE_REMOTE_CACHE_FWD |
+      OFFCORE_REMOTE_DRAM |
+      OFFCORE_LOCAL_DRAM);
+  *local_miss = perfmon_pmc_read (0);
+  /* --??-- Notice the following code is wrong. UNCORE should be used.*/
+  perfmon_pmc_config (0, 0x2E, 0x41);
+  *global_miss = perfmon_pmc_read (0);
+}
+
+extern uint64
+perfmon_miss_occupancy (void)
+{
+  uint64 cur_occupancy = 0, prev_occupancy = 0, local_miss = 0, global_miss = 0;
+  uint64 prev_local_miss = 0, prev_global_miss = 0;
+  int i = 0;
+
+  /* Get current local and global last level cache miss info */
+  perfmon_get_misses (&local_miss, &global_miss);
+
+  prev_local_miss = percpu_read64 (perfmon_prev_local_miss);
+  prev_global_miss = percpu_read64 (perfmon_prev_global_miss);
+
+  percpu_write64 (perfmon_prev_local_miss, local_miss);
+  percpu_write64 (perfmon_prev_global_miss, global_miss);
+
+  local_miss -= prev_local_miss;
+  global_miss -= prev_global_miss;
+
+  prev_occupancy = percpu_read64 (perfmon_prev_miss_occupancy);
+
+  DLOG ("Local L3 miss difference: %d", local_miss);
+  DLOG ("Global L3 miss difference: %d", global_miss);
+  DLOG ("Previous miss based occupancy: %d", prev_occupancy);
+
+  /* i will be used to do the division, which will be implemented as right shift */
+  for (i = 0; (llc_lines >> i) > 0 && (llc_lines >> i) != 1; i++);
+  //DLOG ("Should shift right %d bits", i);
+
+  cur_occupancy = prev_occupancy + local_miss - (global_miss >> i) * prev_occupancy;
+  percpu_write64 (perfmon_prev_miss_occupancy, cur_occupancy);
+
+  return cur_occupancy;
+}
+
+extern void
+perfmon_percpu_reset (void)
+{
+  uint64 local_miss = 0, global_miss = 0;
+
+  /* Initialise percpu cache occupancy estimation variables */
+  perfmon_get_misses (&local_miss, &global_miss);
+
+  DLOG ("Perfmon percpu reset");
+  DLOG ("Local miss: %d", local_miss);
+  DLOG ("Global miss: %d", global_miss);
+  percpu_write64 (perfmon_prev_local_miss, local_miss);
+  percpu_write64 (perfmon_prev_global_miss, global_miss);
+  percpu_write64 (perfmon_prev_miss_occupancy, 0LL);
 }
 
 extern void
@@ -113,6 +287,8 @@ perfmon_init (void)
       ((display & 0xFF) == 0x1A)) {
     DLOG ("Nehalem Enhancements of Performance Monitoring enabled.");
     nehalem_perfmon_enabled = TRUE;
+    /* Get cache information */
+    perfmon_get_cache_info ();
   }
 
   perfmon_version = (u8) eax;
@@ -154,7 +330,20 @@ perfmon_init (void)
   RDTSC (tsc);
   DLOG ("pmc0=0x%llX tsc=0x%llX", perfmon_pmc_read (0), tsc);
 
+  /* Reset percpu perfmon variables */
+  perfmon_percpu_reset ();
+
   perfmon_enabled = TRUE;
+
+  uint64 occupancy = 0;
+  uint64 local_miss = 0, global_miss = 0;
+  occupancy = perfmon_miss_occupancy ();
+  occupancy = percpu_read64 (perfmon_prev_miss_occupancy);
+  local_miss = percpu_read64 (perfmon_prev_local_miss);
+  global_miss = percpu_read64 (perfmon_prev_global_miss);
+  DLOG ("Occupancy prediction: %d lines", occupancy);
+  DLOG ("Previous local L3 miss: %d", local_miss);
+  DLOG ("Previous global L3 miss: %d", global_miss);
 }
 
 /*
