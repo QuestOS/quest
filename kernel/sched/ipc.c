@@ -28,8 +28,8 @@
 #define DLOG(fmt,...) ;
 #endif
 
-extern int
-fast_send (task_id dst_id, u32 arg1, u32 arg2)
+inline int
+fast_send_r (task_id dst_id, u32 arg1, u32 arg2)
 {
   quest_tss *src = lookup_TSS (str ());
   quest_tss *dst = lookup_TSS (dst_id);
@@ -44,16 +44,39 @@ fast_send (task_id dst_id, u32 arg1, u32 arg2)
   return 0;
 }
 
-extern int
-fast_recv (u32 *arg1, u32 *arg2)
+inline int
+fast_recv_r (u32 *arg1, u32 *arg2)
 {
-  u32 eax, edx;
   schedule ();
-  asm volatile ("movl %%eax, %0\n"
-                "movl %%edx, %1\n"
-                :"=a" (eax), "=d" (edx));
-  *arg1 = eax;
-  *arg2 = edx;
+  asm volatile ("":"=a" (*arg1), "=d" (*arg2));
+  return 0;
+}
+
+inline int
+fast_send_m (task_id dst_id, u32 arg1, u32 arg2)
+{
+  quest_tss *src = lookup_TSS (str ());
+  quest_tss *dst = lookup_TSS (dst_id);
+  /* requires: dst should be blocked */
+
+  wakeup (str ());
+  percpu_write (current_task, dst_id);
+  dst->tss.ulEAX = arg1;
+  dst->tss.ulEDX = arg2;
+  asm volatile ("call _sw_ipc"
+                :
+                :"S" (src), "D" (dst)
+                :"eax", "ebx", "ecx", "edx");
+  return 0;
+}
+
+inline int
+fast_recv_m (u32 *arg1, u32 *arg2)
+{
+  schedule ();
+  quest_tss *cur = lookup_TSS (str ());
+  *arg1 = cur->tss.ulEAX;
+  *arg2 = cur->tss.ulEDX;
   return 0;
 }
 
@@ -71,14 +94,26 @@ static void
 testS (void)
 {
   u32 arg1, arg2;
-  while (!ready) sched_usleep (1000);
-  DLOG ("testS: sending");
-  RDTSC (start);
-  fast_send (testR_id, 0xCAFEBABE, 0xDEADBEEF);
-  fast_recv (&arg1, &arg2);
-  RDTSC (finish);
-  DLOG ("testS: answer was 0x%X and 0x%X (0x%llX cycles)", arg1, arg2, (finish - start));
-  for (;;) sched_usleep (1000000);
+  DLOG ("testS: hello from 0x%x", testS_id);
+  for (;;) {
+    /* REG */
+    while (!ready) sched_usleep (1000);
+    RDTSC (start);
+    fast_send_r (testR_id, 0xCAFEBABE, 0xDEADBEEF);
+    fast_recv_r (&arg1, &arg2);
+    RDTSC (finish);
+    DLOG ("testS: REG: cycles=0x%.08llX: answer was 0x%X and 0x%X", finish - start, arg1, arg2);
+    sched_usleep (1000000);
+
+    /* MEM */
+    while (!ready) sched_usleep (1000);
+    RDTSC (start);
+    fast_send_m (testR_id, 0xCAFEBABE, 0xDEADBEEF);
+    fast_recv_m (&arg1, &arg2);
+    RDTSC (finish);
+    DLOG ("testS: MEM: cycles=0x%.08llX: answer was 0x%X and 0x%X", finish - start, arg1, arg2);
+    sched_usleep (1000000);
+  }
 }
 
 static void
@@ -86,14 +121,29 @@ testR (void)
 {
   u32 arg1, arg2;
   DLOG ("testR: hello from 0x%x", testR_id);
-  ready = TRUE;
-  fast_recv (&arg1, &arg2);
-  RDTSC (finish);
-  DLOG ("testR: got 0x%X and 0x%X (0x%llX cycles)", arg1, arg2, (finish - start));
-  sched_usleep (1000000);
-  RDTSC (start);
-  fast_send (testS_id, arg1 + arg2, arg1 | arg2);
-  for (;;) sched_usleep (1000000);
+  for (;;) {
+    /* REG */
+    ready = TRUE;
+    fast_recv_r (&arg1, &arg2);
+    RDTSC (finish);
+    ready = FALSE;
+    DLOG ("testR: REG: cycles=0x%.08llX: got 0x%X and 0x%X", finish - start, arg1, arg2);
+    sched_usleep (1000000);
+    RDTSC (start);
+    fast_send_r (testS_id, arg1 + arg2, arg1 | arg2);
+    sched_usleep (1000000);
+
+    /* MEM */
+    ready = TRUE;
+    fast_recv_m (&arg1, &arg2);
+    RDTSC (finish);
+    ready = FALSE;
+    DLOG ("testR: MEM: cycles=0x%.08llX: got 0x%X and 0x%X", finish - start, arg1, arg2);
+    sched_usleep (1000000);
+    RDTSC (start);
+    fast_send_m (testS_id, arg1 + arg2, arg1 | arg2);
+    sched_usleep (1000000);
+  }
 }
 
 extern void
