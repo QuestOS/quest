@@ -75,9 +75,17 @@ struct sched_param
   int k;                        /* window of requests  */
 };
 
+/* A Quest TSS is a software-only construct, a.k.a Thread Control
+ * Block (TCB). */
 typedef struct _quest_tss
 {
-  tss tss;                      /* hardware defined portion of TSS */
+  u32 ESP;
+  u32 EBP;
+  u32 EIP;
+  u32 CR3;
+  u32 EFLAGS;
+  u32 arg1, arg2;
+
   uint16 next;                  /* selector for next TSS in corresponding queue
                                    (beit the runqueue for the CPU or a waitqueue for
                                    a resource; 0 if task is at end of queue. If a
@@ -159,7 +167,7 @@ extern uint32 kl_stack[][1024] __attribute__ ((aligned (4096)));
 /* Declare space for a page table mappings for kernel stacks */
 extern uint32 kls_pg_table[][1024] __attribute__ ((aligned (4096)));
 
-extern tss idleTSS[MAX_CPUS];
+extern quest_tss idleTSS[MAX_CPUS];
 
 extern tss cpuTSS[MAX_CPUS];
 

@@ -126,7 +126,7 @@ duplicate_TSS (uint32 ebp,
 
   int i;
   descriptor *ad = (descriptor *) KERN_GDT;
-  tss *pTSS;
+  quest_tss *pTSS;
   uint32 pa;
 
   pa = alloc_phys_frame (); /* --??-- For now, whole page per tss */
@@ -158,9 +158,9 @@ duplicate_TSS (uint32 ebp,
   /* See pp 6-7 in IA-32 vol 3 docs for meanings of these assignments */
   ad[i].uLimit0 = 0xFFF;        /* --??-- Right now, a page per TSS */
   ad[i].uLimit1 = 0;
-  ad[i].pBase0 = (uint32) pTSS & 0xFFFF;
-  ad[i].pBase1 = ((uint32) pTSS >> 16) & 0xFF;
-  ad[i].pBase2 = (uint32) pTSS >> 24;
+  ad[i].pBase0 = (u32) pTSS & 0xFFFF;
+  ad[i].pBase1 = ((u32) pTSS >> 16) & 0xFF;
+  ad[i].pBase2 = (u32) pTSS >> 24;
   ad[i].uType = 0x09;           /* 32-bit tss */
   ad[i].uDPL = 0;               /* Only let kernel perform task-switching */
   ad[i].fPresent = 1;
@@ -168,25 +168,15 @@ duplicate_TSS (uint32 ebp,
   ad[i].fX = 0;
   ad[i].fGranularity = 0;       /* Set granularity of tss in bytes */
 
-  pTSS->pCR3 = (void *) child_directory;
+  pTSS->CR3 = (u32) child_directory;
 
   /* The child will begin running at the specified EIP */
-  pTSS->ulEIP = child_eip;
-  pTSS->ulEFlags = child_eflags & 0xFFFFBFFF;   /* Disable NT flag */
-  pTSS->ulESP = child_esp;
-  pTSS->ulEBP = child_ebp;
-  pTSS->usES = 0x10;
-  pTSS->usCS = 0x08;
-  pTSS->usSS = 0x10;
-  pTSS->usDS = 0x10;
-  pTSS->usFS = 0x10;
-  pTSS->usGS = 0x10;
-  pTSS->usIOMap = 0xFFFF;
-  pTSS->usSS0 = 0x10;           /* Kernel stack segment */
-  pTSS->ulESP0 = (uint32) KERN_STK + 0x1000;
+  pTSS->EIP = child_eip;
+  pTSS->EFLAGS = child_eflags & 0xFFFFBFFF;   /* Disable NT flag */
+  pTSS->ESP = child_esp;
+  pTSS->EBP = child_ebp;
 
-  quest_tss *tssp = (quest_tss *)pTSS;
-  tssp->cpu = 0xFF;
+  pTSS->cpu = 0xFF;
 
   /* Return the index into the GDT for the segment */
   return i << 3;

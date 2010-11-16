@@ -61,8 +61,8 @@ fast_send_m (task_id dst_id, u32 arg1, u32 arg2)
 
   wakeup (str ());
   percpu_write (current_task, dst_id);
-  dst->tss.ulEAX = arg1;
-  dst->tss.ulEDX = arg2;
+  dst->arg1 = arg1;
+  dst->arg2 = arg2;
   asm volatile ("call _sw_ipc"
                 :
                 :"S" (src), "D" (dst)
@@ -75,8 +75,8 @@ fast_recv_m (u32 *arg1, u32 *arg2)
 {
   schedule ();
   quest_tss *cur = lookup_TSS (str ());
-  *arg1 = cur->tss.ulEAX;
-  *arg2 = cur->tss.ulEDX;
+  *arg1 = cur->arg1;
+  *arg2 = cur->arg2;
   return 0;
 }
 

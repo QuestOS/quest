@@ -19,12 +19,12 @@
 #define USER_CS 0x1B
 #define USER_DS 0x23
 
-        /* offsets into TSS */
-#define EIP 32
-#define EBP 60
-#define EFLAGS 36
-#define ESP 56
-#define CR3 28
+        /* offsets into TSS/TCB */
+#define EIP 8
+#define EBP 4
+#define EFLAGS 16
+#define ESP 0
+#define CR3 12
 
         /* Software task-switch */
         /* %esi: source TSS pointer

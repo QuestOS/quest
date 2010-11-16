@@ -80,7 +80,7 @@ alloc_idle_TSS (int cpu_num)
 {
   int i;
   descriptor *ad = (descriptor *)KERN_GDT;
-  tss *pTSS = (tss *) (&idleTSS[cpu_num]);
+  quest_tss *pTSS = (quest_tss *) (&idleTSS[cpu_num]);
   void idle_task (void);
 
   /* Search 2KB GDT for first free entry */
@@ -93,9 +93,9 @@ alloc_idle_TSS (int cpu_num)
 
   ad[i].uLimit0 = sizeof (idleTSS[cpu_num]) - 1;
   ad[i].uLimit1 = 0;
-  ad[i].pBase0 = (uint32) pTSS & 0xFFFF;
-  ad[i].pBase1 = ((uint32) pTSS >> 16) & 0xFF;
-  ad[i].pBase2 = (uint32) pTSS >> 24;
+  ad[i].pBase0 = (u32) pTSS & 0xFFFF;
+  ad[i].pBase1 = ((u32) pTSS >> 16) & 0xFF;
+  ad[i].pBase2 = (u32) pTSS >> 24;
   ad[i].uType = 0x09;           /* 32-bit tss */
   ad[i].uDPL = 0;               /* Only let kernel perform task-switching */
   ad[i].fPresent = 1;
@@ -105,24 +105,13 @@ alloc_idle_TSS (int cpu_num)
 
   u32 *stk = map_virtual_page (alloc_phys_frame () | 3);
 
-  pTSS->pCR3 = get_pdbr ();
-  pTSS->ulEIP = (uint32) & idle_task;
+  pTSS->CR3 = (u32) get_pdbr ();
+  pTSS->EIP = (u32) & idle_task;
 
-  pTSS->ulEFlags = F_1 | F_IOPL0;
+  pTSS->EFLAGS = F_1 | F_IOPL0;
 
-  pTSS->ulESP = (u32) &stk[1023];
-  pTSS->ulEBP = pTSS->ulESP;
-  pTSS->usCS = 0x08;
-  pTSS->usES = 0x10;
-  pTSS->usSS = 0x10;
-  pTSS->usDS = 0x10;
-  pTSS->usFS = 0x10;
-  pTSS->usGS = 0x10;
-  pTSS->usIOMap = 0xFFFF;
-  /***********************************************
-   * pTSS->usSS0 = 0x10;                         *
-   * pTSS->ulESP0 = (uint32)KERN_STK + 0x1000; *
-   ***********************************************/
+  pTSS->ESP = (u32) &stk[1023];
+  pTSS->EBP = pTSS->ESP;
 
   /* Return the index into the GDT for the segment */
   return i << 3;
@@ -137,7 +126,7 @@ alloc_TSS (void *pPageDirectory, void *pEntry, int mod_num)
 
   int i;
   descriptor *ad = (idt + 256); /* Get address of GDT from IDT address */
-  tss *pTSS = (tss *) ul_tss[mod_num];
+  quest_tss *pTSS = (quest_tss *) ul_tss[mod_num];
 
   /* Search 2KB GDT for first free entry */
   for (i = 1; i < 256; i++)
@@ -149,9 +138,9 @@ alloc_TSS (void *pPageDirectory, void *pEntry, int mod_num)
 
   ad[i].uLimit0 = sizeof (ul_tss[mod_num]) - 1;
   ad[i].uLimit1 = 0;
-  ad[i].pBase0 = (uint32) pTSS & 0xFFFF;
-  ad[i].pBase1 = ((uint32) pTSS >> 16) & 0xFF;
-  ad[i].pBase2 = (uint32) pTSS >> 24;
+  ad[i].pBase0 = (u32) pTSS & 0xFFFF;
+  ad[i].pBase1 = ((u32) pTSS >> 16) & 0xFF;
+  ad[i].pBase2 = (u32) pTSS >> 24;
   ad[i].uType = 0x09;           /* 32-bit tss */
   ad[i].uDPL = 0;               /* Only let kernel perform task-switching */
   ad[i].fPresent = 1;
@@ -159,26 +148,17 @@ alloc_TSS (void *pPageDirectory, void *pEntry, int mod_num)
   ad[i].fX = 0;
   ad[i].fGranularity = 0;       /* Set granularity of tss in bytes */
 
-  pTSS->pCR3 = pPageDirectory;
-  pTSS->ulEIP = (uint32) pEntry;
+  pTSS->CR3 = (u32) pPageDirectory;
+  pTSS->EIP = (u32) pEntry;
 
   if (mod_num != 1)
-    pTSS->ulEFlags = F_1 | F_IF | F_IOPL0;
+    pTSS->EFLAGS = F_1 | F_IF | F_IOPL0;
   else
-    pTSS->ulEFlags = F_1 | F_IF | F_IOPL;       /* Give terminal server access to
-                                                 * screen memory */
+    pTSS->EFLAGS = F_1 | F_IF | F_IOPL;       /* Give terminal server access to
+                                               * screen memory */
 
-  pTSS->ulESP = 0x400000 - 100;
-  pTSS->ulEBP = 0x400000 - 100;
-  pTSS->usES = 0x23;
-  pTSS->usCS = 0x1B;
-  pTSS->usSS = 0x23;
-  pTSS->usDS = 0x23;
-  pTSS->usFS = 0x23;
-  pTSS->usGS = 0x23;
-  pTSS->usIOMap = 0xFFFF;
-  pTSS->usSS0 = 0x10;
-  pTSS->ulESP0 = (uint32) KERN_STK + 0x1000;
+  pTSS->ESP = 0x400000 - 100;
+  pTSS->EBP = 0x400000 - 100;
 
   /* Return the index into the GDT for the segment */
   return i << 3;
