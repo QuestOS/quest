@@ -780,8 +780,10 @@ uhci_init (void)
     DLOG ("Found PCI routing entry irq.gsi=0x%x", irq.gsi);
     if (!pci_irq_map_handler (&irq, uhci_irq_handler, 0x01,
                               IOAPIC_DESTINATION_LOGICAL,
-                              IOAPIC_DELIVERY_FIXED))
+                              IOAPIC_DELIVERY_FIXED)) {
+      DLOG ("Unable to map IRQ handler");
       return FALSE;
+    }
     irq_line = irq.gsi;
   }
 
