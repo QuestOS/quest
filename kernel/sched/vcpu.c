@@ -51,10 +51,10 @@ u64 vcpu_init_time;
 
 struct vcpu_params { vcpu_type type; u32 C, T; iovcpu_class class; };
 static struct vcpu_params init_params[] = {
-  { MAIN_VCPU, 100, 300 },
-  { MAIN_VCPU, 100, 400 },
-  { MAIN_VCPU, 100, 500 },
-  { MAIN_VCPU, 100, 700 },
+  { MAIN_VCPU, 20, 100 },
+  { MAIN_VCPU, 20, 100 },
+  { MAIN_VCPU, 20, 100 },
+  { MAIN_VCPU, 20, 100 },
 
 #ifdef SPORADIC_IO
   { IO_VCPU, 10, 300, IOVCPU_CLASS_USB },
