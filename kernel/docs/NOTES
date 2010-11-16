@@ -4,6 +4,27 @@ Tuesday 2010-11-16 md
   cycles where software INT takes ~300 cycles.  Is that worth losing
   two register parameters?
 
+  Back to measuring IPC.  Kernel thread to thread.  One thread sends 2
+  words to the other, then there is a response of 2 words.  Times in
+  cycles.
+
+  Call (REG): avg 342, stddev 25
+  Call (MEM): avg 366, stddev 33
+  Ret (REG): avg 361, stddev 24
+  Ret (MEM): avg 385, stddev 25
+
+  Seems to be a fairly consistent 24 cycle difference between using
+  two registers to pass two parameters, or writing (and reading) those
+  two parameters from memory in the TSS.  Still, that is just within
+  one standard deviation from the average, so it's not necessarily
+  that big a deal.
+
+  Discussion of Nehalem L1 cache leads me to believe that 8 of those
+  24 cycles come from the two memory references to retrieve the passed
+  parameters.  The remaining 16 cycles are due to "lookup_TSS (str
+  ())" in order to get the pointer to the current TSS.  That can
+  probably be eliminated or reduced with better book-keeping.
+
 Monday 2010-11-15 md
 
   Non-root PCI buses show up in ACPI with an "ADR" field that is not
