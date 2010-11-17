@@ -89,7 +89,6 @@ fast_sendrecv_m (task_id dst_id, u32 arg1, u32 arg2, u32 *r_arg1, u32 *r_arg2)
   quest_tss *dst = lookup_TSS (dst_id);
 
   semaphore_wait (&dst->Msem, 1, -1);
-  wakeup (str ());
   dst->M[0] = arg1;
   dst->M[1] = arg2;
   semaphore_signal (&src->Msem, 1);
