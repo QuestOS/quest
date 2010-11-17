@@ -20,6 +20,7 @@
 #include <drivers/net/ethernet.h>
 #include <util/printf.h>
 #include <kernel.h>
+#include "sched/sched.h"
 
 #define DEBUG_ASIX
 

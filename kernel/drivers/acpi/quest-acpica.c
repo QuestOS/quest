@@ -143,7 +143,7 @@
 #include"mem/mem.h"
 #include"smp/smp.h"
 #include"smp/apic.h"
-
+#include "sched/sched.h"
 
 /*
  * OSL Initialization and shutdown primitives

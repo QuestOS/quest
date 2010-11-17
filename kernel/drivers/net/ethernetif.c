@@ -70,6 +70,7 @@
 #include "util/debug.h"
 #include "util/printf.h"
 #include "util/circular.h"
+#include "sched/sched.h"
 
 //#define DEBUG_NETIF
 

@@ -20,6 +20,7 @@
 #include "drivers/usb/uhci.h"
 #include "util/printf.h"
 #include "sched/vcpu.h"
+#include "sched/sched.h"
 #include "kernel.h"
 
 #define USB_MASS_STORAGE_CLASS 0x8

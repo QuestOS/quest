@@ -46,6 +46,7 @@
 #include <util/printf.h>
 #include <util/circular.h>
 #include <kernel.h>
+#include "sched/sched.h"
 #include <drivers/eeprom/93cx6.h>
 #include "rtl818x.h"
 

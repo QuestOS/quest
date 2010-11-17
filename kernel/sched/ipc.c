@@ -19,6 +19,7 @@
 #include "sched/sched.h"
 #include "util/debug.h"
 #include "util/printf.h"
+#include "smp/semaphore.h"
 
 #define DEBUG_IPC
 

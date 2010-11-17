@@ -35,6 +35,7 @@
 #include "util/debug.h"
 #include "drivers/input/keymap.h"
 #include "drivers/input/keyboard.h"
+#include "sched/sched.h"
 #include "sched/vcpu.h"
 
 //#define DEBUG_SYSCALL

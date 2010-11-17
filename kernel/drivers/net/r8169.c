@@ -33,6 +33,7 @@
 #include "mem/pow2.h"
 #include "kernel.h"
 #include "sched/vcpu.h"
+#include "sched/sched.h"
 
 //#define DEBUG_R8169
 

@@ -63,6 +63,7 @@
 #ifndef __ASSEMBLER__
 #include "arch/i386.h"
 #include "smp/spinlock.h"
+#include "smp/semaphore.h"
 
 struct sched_param
 {

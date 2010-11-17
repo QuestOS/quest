@@ -27,6 +27,7 @@
 #include "drivers/acpi/acexcep.h"
 #include "util/printf.h"
 #include "util/perfmon.h"
+#include "sched/sched.h"
 
 //#define DEBUG_SMP 1
 

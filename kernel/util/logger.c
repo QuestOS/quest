@@ -18,6 +18,7 @@
 #include "kernel.h"
 #include "util/printf.h"
 #include "util/debug.h"
+#include "sched/sched.h"
 
 #ifndef NO_LOGGER
 static u32 logger_stack[1024] ALIGNED(0x1000);

@@ -20,6 +20,7 @@
 #include "drivers/pci/pci.h"
 #include "drivers/net/ethernet.h"
 #include "arch/i386.h"
+#include "arch/i386-percpu.h"
 #include "util/printf.h"
 #include "smp/smp.h"
 #include "smp/apic.h"

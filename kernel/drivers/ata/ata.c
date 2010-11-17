@@ -21,6 +21,7 @@
 #include "util/printf.h"
 #include "smp/smp.h"
 #include "smp/apic.h"
+#include "sched/sched.h"
 #include "sched/vcpu.h"
 #include "kernel.h"
 

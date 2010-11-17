@@ -31,6 +31,7 @@
 #include "util/debug.h"
 #include "util/perfmon.h"
 #include "drivers/input/keyboard.h"
+#include "sched/sched.h"
 
 extern descriptor idt[];
 

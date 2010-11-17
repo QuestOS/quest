@@ -23,6 +23,7 @@
 #include <mem/pow2.h>
 #include <arch/i386-div64.h>
 #include <kernel.h>
+#include "sched/sched.h"
 
 #define DEBUG_UHCI
 //#define DEBUG_UHCI_VERBOSE

@@ -21,6 +21,7 @@
 #include "smp/smp.h"
 #include "smp/apic.h"
 #include "util/printf.h"
+#include "sched/sched.h"
 
 /* Scheduler-integrated blocking sleep routines */
 
