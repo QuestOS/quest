@@ -15,26 +15,59 @@
  *  along with this program.  If not, see <http://www.gnu.org/licenses/>.
  */
 
-#ifndef _SEMAPHORE_H_
-#define _SEMAPHORE_H_
-#include "types.h"
+#include "kernel.h"
 #include "smp/spinlock.h"
+#include "sched/sched.h"
 
-struct _semaphore
+int
+semaphore_init (semaphore * sem, int max, int init)
 {
-  int s, max;
-  spinlock lock;
-  u16 waitqueue;
-};
-typedef struct _semaphore semaphore;
+  sem->s = init;
+  sem->max = max;
+  sem->waitqueue = 0;
+  spinlock_init (&sem->lock);
+  return 0;
+}
 
-int semaphore_init (semaphore * sem, int max, int init);
-int semaphore_signal (semaphore * sem, int s);
+int
+semaphore_signal (semaphore * sem, int s)
+{
+  int status = 0;
+  spinlock_lock (&sem->lock);
+  sem->s += s;
+  if (sem->s > sem->max) {
+    sem->s = sem->max;
+    status = -1;
+  }
+  /* wake up waiters */
+  wakeup_queue (&sem->waitqueue);
+  spinlock_unlock (&sem->lock);
+  return status;
+}
+
 /* timeout: millisec, (-1) for indefinite */
-int semaphore_wait (semaphore * sem, int s, s16 timeout);
-int semaphore_destroy (semaphore * sem);
+int
+semaphore_wait (semaphore * sem, int s, s16 timeout)
+{
+  for (;;) {
+    spinlock_lock (&sem->lock);
+    if (sem->s >= s) {
+      sem->s -= s;
+      spinlock_unlock (&sem->lock);
+      return 0;
+    } else {
+      queue_append (&sem->waitqueue, str ());
+      spinlock_unlock (&sem->lock);
+      schedule ();
+    }
+  }
+}
 
-#endif
+int
+semaphore_destroy (semaphore * sem)
+{
+  return 0;
+}
 
 /*
  * Local Variables:
