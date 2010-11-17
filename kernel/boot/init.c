@@ -161,6 +161,8 @@ alloc_TSS (void *pPageDirectory, void *pEntry, int mod_num)
   pTSS->ESP = 0x400000 - 100;
   pTSS->EBP = 0x400000 - 100;
 
+  semaphore_init (&pTSS->Msem, 1, 0);
+
   /* Return the index into the GDT for the segment */
   return i << 3;
 }

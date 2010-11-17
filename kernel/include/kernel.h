@@ -76,6 +76,8 @@ struct sched_param
   int k;                        /* window of requests  */
 };
 
+#define NUM_M 32
+
 /* A Quest TSS is a software-only construct, a.k.a Thread Control
  * Block (TCB). */
 typedef struct _quest_tss
@@ -85,7 +87,8 @@ typedef struct _quest_tss
   u32 EIP;
   u32 CR3;
   u32 EFLAGS;
-  u32 arg1, arg2;
+  struct _semaphore Msem;
+  u32 M[NUM_M];
 
   uint16 next;                  /* selector for next TSS in corresponding queue
                                    (beit the runqueue for the CPU or a waitqueue for

@@ -30,40 +30,16 @@
 #endif
 
 inline int
-fast_send_r (task_id dst_id, u32 arg1, u32 arg2)
-{
-  quest_tss *src = lookup_TSS (str ());
-  quest_tss *dst = lookup_TSS (dst_id);
-  /* requires: dst should be blocked */
-
-  wakeup (str ());
-  percpu_write (current_task, dst_id);
-  asm volatile ("call _sw_ipc"
-                :
-                :"S" (src), "D" (dst), "a" (arg1), "d" (arg2)
-                :"ebx", "ecx");
-  return 0;
-}
-
-inline int
-fast_recv_r (u32 *arg1, u32 *arg2)
-{
-  schedule ();
-  asm volatile ("":"=a" (*arg1), "=d" (*arg2));
-  return 0;
-}
-
-inline int
 fast_send_m (task_id dst_id, u32 arg1, u32 arg2)
 {
   quest_tss *src = lookup_TSS (str ());
   quest_tss *dst = lookup_TSS (dst_id);
-  /* requires: dst should be blocked */
 
+  semaphore_wait (&dst->Msem, 1, -1);
   wakeup (str ());
-  percpu_write (current_task, dst_id);
-  dst->arg1 = arg1;
-  dst->arg2 = arg2;
+  dst->M[0] = arg1;
+  dst->M[1] = arg2;
+  ltr (dst_id);
   asm volatile ("call _sw_ipc"
                 :
                 :"S" (src), "D" (dst)
@@ -72,12 +48,59 @@ fast_send_m (task_id dst_id, u32 arg1, u32 arg2)
 }
 
 inline int
+fast_call_m (task_id dst_id, u32 arg1, u32 arg2, u32 *r_arg1, u32 *r_arg2)
+{
+  quest_tss *src = lookup_TSS (str ());
+  quest_tss *dst = lookup_TSS (dst_id);
+
+  semaphore_wait (&dst->Msem, 1, -1);
+  dst->M[0] = arg1;
+  dst->M[1] = arg2;
+  semaphore_signal (&src->Msem, 1);
+  ltr (dst_id);
+  asm volatile ("call _sw_ipc"
+                :"+S" (src), "+D" (dst)
+                :
+                :"eax", "ebx", "ecx", "edx", "cc", "memory");
+  /* after _sw_ipc dst and src are swapped */
+  *r_arg1 = dst->M[0];
+  *r_arg2 = dst->M[1];
+  return 0;
+}
+
+inline int
 fast_recv_m (u32 *arg1, u32 *arg2)
 {
-  schedule ();
-  quest_tss *cur = lookup_TSS (str ());
-  *arg1 = cur->arg1;
-  *arg2 = cur->arg2;
+  quest_tss *cur;
+  semaphore_signal (&lookup_TSS (str ())->Msem, 1);
+  asm volatile ("call *%1"
+                :"=D" (cur)
+                :"m" (schedule)
+                :"eax", "ebx", "ecx", "edx", "esi", "cc", "memory");
+  *arg1 = cur->M[0];
+  *arg2 = cur->M[1];
+  return 0;
+}
+
+inline int
+fast_sendrecv_m (task_id dst_id, u32 arg1, u32 arg2, u32 *r_arg1, u32 *r_arg2)
+{
+  quest_tss *src = lookup_TSS (str ());
+  quest_tss *dst = lookup_TSS (dst_id);
+
+  semaphore_wait (&dst->Msem, 1, -1);
+  wakeup (str ());
+  dst->M[0] = arg1;
+  dst->M[1] = arg2;
+  semaphore_signal (&src->Msem, 1);
+  ltr (dst_id);
+  asm volatile ("call _sw_ipc"
+                :"+S" (src), "+D" (dst)
+                :
+                :"eax", "ebx", "ecx", "edx", "cc", "memory");
+  /* after _sw_ipc dst and src are swapped */
+  *r_arg1 = dst->M[0];
+  *r_arg2 = dst->M[1];
   return 0;
 }
 
@@ -87,7 +110,6 @@ static u32 testS_stack[1024] ALIGNED (0x1000);
 static u32 testR_stack[1024] ALIGNED (0x1000);
 
 static task_id testR_id = 0, testS_id = 0;
-static bool ready = FALSE;
 static u64 start, finish;
 extern u32 tsc_freq_msec;
 
@@ -97,20 +119,8 @@ testS (void)
   u32 arg1, arg2;
   DLOG ("testS: hello from 0x%x", testS_id);
   for (;;) {
-    /* REG */
-    while (!ready) sched_usleep (1000);
     RDTSC (start);
-    fast_send_r (testR_id, 0xCAFEBABE, 0xDEADBEEF);
-    fast_recv_r (&arg1, &arg2);
-    RDTSC (finish);
-    DLOG ("testS: REG: cycles=0x%.08llX: answer was 0x%X and 0x%X", finish - start, arg1, arg2);
-    sched_usleep (1000000);
-
-    /* MEM */
-    while (!ready) sched_usleep (1000);
-    RDTSC (start);
-    fast_send_m (testR_id, 0xCAFEBABE, 0xDEADBEEF);
-    fast_recv_m (&arg1, &arg2);
+    fast_call_m (testR_id, 0xCAFEBABE, 0xDEADBEEF, &arg1, &arg2);
     RDTSC (finish);
     DLOG ("testS: MEM: cycles=0x%.08llX: answer was 0x%X and 0x%X", finish - start, arg1, arg2);
     sched_usleep (1000000);
@@ -122,28 +132,12 @@ testR (void)
 {
   u32 arg1, arg2;
   DLOG ("testR: hello from 0x%x", testR_id);
+  fast_recv_m (&arg1, &arg2);
   for (;;) {
-    /* REG */
-    ready = TRUE;
-    fast_recv_r (&arg1, &arg2);
     RDTSC (finish);
-    ready = FALSE;
-    DLOG ("testR: REG: cycles=0x%.08llX: got 0x%X and 0x%X", finish - start, arg1, arg2);
-    sched_usleep (1000000);
-    RDTSC (start);
-    fast_send_r (testS_id, arg1 + arg2, arg1 | arg2);
-    sched_usleep (1000000);
-
-    /* MEM */
-    ready = TRUE;
-    fast_recv_m (&arg1, &arg2);
-    RDTSC (finish);
-    ready = FALSE;
     DLOG ("testR: MEM: cycles=0x%.08llX: got 0x%X and 0x%X", finish - start, arg1, arg2);
-    sched_usleep (1000000);
     RDTSC (start);
-    fast_send_m (testS_id, arg1 + arg2, arg1 | arg2);
-    sched_usleep (1000000);
+    fast_sendrecv_m (testS_id, arg1 + arg2, arg1 | arg2, &arg1, &arg2);
   }
 }
 

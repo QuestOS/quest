@@ -177,6 +177,8 @@ duplicate_TSS (uint32 ebp,
   pTSS->ESP = child_esp;
   pTSS->EBP = child_ebp;
 
+  semaphore_init (&pTSS->Msem, 1, 0);
+
   pTSS->cpu = 0xFF;
 
   /* Return the index into the GDT for the segment */
