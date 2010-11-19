@@ -21,6 +21,7 @@
 #include <drivers/usb/uhci.h>
 #include <util/printf.h>
 #include <kernel.h>
+#include <sched/sched.h>
 
 #define USB_HUB_CLASS 0x9
 

@@ -21,6 +21,7 @@
 #include <arch/i386.h>
 #include <util/printf.h>
 #include <kernel.h>
+#include <sched/sched.h>
 
 #define DEBUG_UVC
 

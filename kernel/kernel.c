@@ -23,6 +23,7 @@
 #include "util/debug.h"
 #include "mem/virtual.h"
 #include "mem/physical.h"
+#include "sched/sched.h"
 
 static spinlock kernel_lock ALIGNED(LOCK_ALIGNMENT) = SPINLOCK_INIT;
 
