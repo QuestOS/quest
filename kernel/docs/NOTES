@@ -1,3 +1,42 @@
+Friday 2010-11-19 md
+
+  So it turns out that the LAPIC IDs on baldrick are not contiguously
+  numbered, which breaks a few assumptions.  I instituted a numbering
+  system accessible via a percpu variable, and that fixed that
+  problem.  The LAPIC ID numbering scheme for Xeon non-HT processors
+  fixes the least significant bit at 0.  In addition, the LAPIC ID
+  register disagrees with the CPUID initial LAPIC value and the ACPI
+  MADT entry.  I'm not sure how IPIs are managing to work, but if I
+  stick with the initial LAPIC value things seem to be ok.  According
+  to the manual 3A, the LAPIC ID 0x16 breaks down to "cluster ID 2,
+  processor 3" on this Xeon.
+
+Thursday 2010-11-18 md
+
+  I'm hesitant to finish implementing synchronous IPC because of the
+  various problems it has, especially on SMP.  What is the meaning of
+  sync. IPC across CPUs?  On a single CPU it is simple because you can
+  just switch threads back and forth.  With multiple CPUs then you
+  have to consider whether or not the thread is currently running on
+  the target CPU: do you wrest control away from some poor hapless
+  third thread if that is currently running?  What do you do with the
+  source CPU while the target CPU is processing your message?  There's
+  a lot of potential for inefficiency or unpredictable interference
+  from other threads.  Also sync. IPC has lots of disadvantages when
+  it comes to providing service to large numbers of client threads.
+  Asynchronous IPC scales better but has issues with buffer
+  management, and possible unpredictability.
+
+  Barrelfish implements async. IPC by using shared memory to exploit
+  cache coherency protocols.  This seems like the best way to go for
+  interprocessor communication.  Might need some kind of hybrid
+  sync/async communication depending on where the target is running.
+
+Wednesday 2010-11-17 md
+
+  Fixed up synchronous IPC call/replywait functions.  Debating further
+  designs.
+
 Tuesday 2010-11-16 md
 
   Micro-benchmarked SYSENTER vs software INT.  SYSENTER takes ~128
