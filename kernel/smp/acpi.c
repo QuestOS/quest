@@ -26,6 +26,7 @@
 #include "drivers/acpi/acmacros.h"
 #include "drivers/acpi/acexcep.h"
 #include "util/printf.h"
+#include "util/cpuid.h"
 
 static int process_acpi_tables (void);
 static int acpi_add_processor (ACPI_MADT_LOCAL_APIC *);
@@ -255,7 +256,7 @@ process_acpi_tables (void)
         case ACPI_MADT_TYPE_LOCAL_APIC:{
           /* Processor entry */
           ACPI_MADT_LOCAL_APIC *sub = (ACPI_MADT_LOCAL_APIC *) ptr;
-          printf ("Processor: %X APIC-ID: %X %s",
+          printf ("Processor: 0x%X APIC-ID: 0x%X %s",
                   sub->ProcessorId,
                   sub->Id,
                   sub->LapicFlags & 1 ? "(enabled)" : "(disabled)");
@@ -369,7 +370,9 @@ static int
 acpi_add_processor (ACPI_MADT_LOCAL_APIC * ptr)
 {
 #ifndef NO_SMP
-  uint8 this_apic_id = LAPIC_get_physical_ID ();
+  u32 ebx;
+  cpuid (1, 0, NULL, &ebx, NULL, NULL);
+  uint8 this_apic_id = ebx >> 24;
   uint8 apic_id = ptr->Id;
 
   if (!(ptr->LapicFlags & 1))
