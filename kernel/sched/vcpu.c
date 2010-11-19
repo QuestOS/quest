@@ -293,7 +293,7 @@ vcpu_rr_schedule (void)
     percpu_write (vcpu_queue, queue);
     percpu_write (vcpu_current, vcpu);
     DLOG ("vcpu_schedule: pcpu=%d vcpu=%p vcpu->tr=0x%x ->runqueue=0x%x next=0x%x",
-          LAPIC_get_physical_ID (), vcpu, vcpu->tr, vcpu->runqueue, next);
+          get_pcpu_id (), vcpu, vcpu->tr, vcpu->runqueue, next);
   }
   if (vcpu)
     /* handle beginning-of-timeslice accounting */
@@ -305,7 +305,7 @@ vcpu_rr_schedule (void)
   }
   if (next == 0) {
     /* workaround: vcpu_idle_task was not initialized yet */
-    next = idleTSS_selector[LAPIC_get_physical_ID ()];
+    next = idleTSS_selector[get_pcpu_id ()];
     percpu_write (vcpu_idle_task, next);
   }
 
@@ -319,7 +319,7 @@ vcpu_rr_schedule (void)
 extern void
 vcpu_rr_wakeup (task_id task)
 {
-  DLOG ("vcpu_wakeup (0x%x), cpu=%d", task, LAPIC_get_physical_ID ());
+  DLOG ("vcpu_wakeup (0x%x), cpu=%d", task, get_pcpu_id ());
   quest_tss *tssp = lookup_TSS (task);
   static int next_vcpu_binding = 1;
 
@@ -715,7 +715,7 @@ vcpu_schedule (void)
   }
   if (next == 0) {
     /* workaround: vcpu_idle_task was not initialized yet */
-    next = idleTSS_selector[LAPIC_get_physical_ID ()];
+    next = idleTSS_selector[get_pcpu_id ()];
     percpu_write (vcpu_idle_task, next);
   }
 
@@ -740,7 +740,7 @@ vcpu_schedule (void)
 extern void
 vcpu_wakeup (task_id task)
 {
-  DLOG ("vcpu_wakeup (0x%x), cpu=%d", task, LAPIC_get_physical_ID ());
+  DLOG ("vcpu_wakeup (0x%x), cpu=%d", task, get_pcpu_id ());
   quest_tss *tssp = lookup_TSS (task);
   static int next_vcpu_binding = 1;
 

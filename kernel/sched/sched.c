@@ -142,7 +142,7 @@ sprr_schedule (void)
 
 #ifdef DEBUG_SCHED
     DLOG ("CPU %x: switching to task: %x runqueue(%x):",
-          LAPIC_get_physical_ID (), next, prio);
+          get_pcpu_id (), next, prio);
     {                           /* print runqueue to com1 */
       quest_tss *tssp;
       int sel = runqueue[prio];
@@ -168,7 +168,7 @@ sprr_schedule (void)
      * If a task calls schedule() and is selected from the runqueue,
      * then it must be switched out.  Go to IDLE task if nothing else.
      */
-    uint8 phys_id = LAPIC_get_physical_ID ();
+    uint8 phys_id = get_pcpu_id ();
     uint16 idle_sel = idleTSS_selector[phys_id];
 
     DLOG ("CPU %x: idling", phys_id);
@@ -209,7 +209,7 @@ INIT_PER_CPU (mpq_runqueue) {
 }
 DEF_PER_CPU (u16, mpq_idle_task);
 INIT_PER_CPU (mpq_idle_task) {
-  percpu_write (mpq_idle_task, idleTSS_selector[LAPIC_get_physical_ID ()]);
+  percpu_write (mpq_idle_task, 0);
 }
 
 extern void
@@ -224,7 +224,7 @@ mpq_wakeup (uint16 selector)
   if (tssp->cpu == 0xFF) {
     queue_append (&mpq_global_runqueue, selector);
   } else {
-    if (tssp->cpu != LAPIC_get_physical_ID ()) {
+    if (tssp->cpu != get_pcpu_id ()) {
       queue_append (percpu_pointer (tssp->cpu, mpq_runqueue), selector);
     } else {
       u16 q = percpu_read (mpq_runqueue);
@@ -241,18 +241,18 @@ mpq_schedule (void)
   if (q) {
     next = queue_remove_head (&q);
     percpu_write (mpq_runqueue, q);
-    DLOG ("cpu %d running task 0x%x", (u32) LAPIC_get_physical_ID (), next);
+    DLOG ("cpu %d running task 0x%x", (u32) get_pcpu_id (), next);
   } else if (mpq_global_runqueue) {
     next = queue_remove_head (&mpq_global_runqueue);
     quest_tss *tssp = lookup_TSS (next);
-    tssp->cpu = LAPIC_get_physical_ID ();
+    tssp->cpu = get_pcpu_id ();
     DLOG ("binding task 0x%x to cpu %d", next, tssp->cpu);
   } else {
     next = percpu_read (mpq_idle_task);
   }
   if (next == 0) {
     /* workaround: mpq_idle_task was not initialized yet */
-    next = idleTSS_selector[LAPIC_get_physical_ID ()];
+    next = idleTSS_selector[get_pcpu_id ()];
     percpu_write (mpq_idle_task, next);
   }
   if (str () == next)

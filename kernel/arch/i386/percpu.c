@@ -43,11 +43,26 @@
 #define DLOG(fmt,...) ;
 #endif
 
+uint global_pcpu_id = 0;
+
+/* Establish a contiguous sequence of unique ID numbers, one for each
+ * logical processor in the system. */
+DEF_PER_CPU (uint, pcpu_id);
+INIT_PER_CPU (pcpu_id) {
+  percpu_write (pcpu_id, global_pcpu_id++);
+}
+extern uint
+get_pcpu_id (void)
+{
+  return percpu_read (pcpu_id);
+}
+
 extern s8 _percpu_pages_plus_one;
 extern void (*_percpu_ctor_list)();
 
 u8 *percpu_virt[MAX_CPUS];
 
+/* should only be used on one processor at a time */
 extern void
 percpu_per_cpu_init (void)
 {
@@ -81,7 +96,10 @@ percpu_per_cpu_init (void)
   uint start_virt = (uint) map_contiguous_virtual_pages (start_frame | 3, pages);
   if (start_virt == 0) panic ("out of virtual RAM");
 
-  percpu_virt[LAPIC_get_physical_ID ()] = (u8 *) start_virt;
+  DLOG ("LAPIC_get_physical_ID=0x%X", LAPIC_get_physical_ID ());
+  /* global_pcpu_id will be the current ID until it is incremented in
+   * the pcpu_id initialization function */
+  percpu_virt[global_pcpu_id] = (u8 *) start_virt;
 
   descriptor seg = {
     .pBase0 = start_virt & 0xFFFF,
@@ -101,8 +119,6 @@ percpu_per_cpu_init (void)
   memcpy (&ad[i], &seg, sizeof (seg));
 
   i <<= 3;
-  DLOG ("init percpu_pages=%d segsel=0x%X start_frame=%p start_virt=%p",
-        pages, i, start_frame, start_virt);
 
   asm volatile ("mov %0, %%"PER_CPU_SEG_STR"\n"
                 "mov %0, %%"PER_CPU_DBG_STR :: "r" (i));
@@ -111,6 +127,9 @@ percpu_per_cpu_init (void)
   void (**ctor) ();
   for (ctor = &_percpu_ctor_list; *ctor; ctor++)
     (*ctor) ();
+
+  DLOG ("init n=%d percpu_pages=%d segsel=0x%X start_frame=%p start_virt=%p",
+        percpu_read (pcpu_id), pages, i, start_frame, start_virt);
 }
 
 /*

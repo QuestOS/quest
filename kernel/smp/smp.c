@@ -87,7 +87,7 @@ smp_init (void)
 
   LAPIC_init();
   
-  phys_id = LAPIC_get_physical_ID();
+  phys_id = get_pcpu_id();
 
   /* setup a logical destination address */
   log_dest = 0x01000000 << phys_id;
@@ -256,7 +256,7 @@ ap_init (void)
   LAPIC_init();
   LAPIC_set_task_priority(0x20); /* task priority = 0x20 */
 
-  phys_id = LAPIC_get_physical_ID();
+  phys_id = get_pcpu_id ();
 
   /* setup a logical destination address */
   log_dest = 0x01000000 << phys_id;

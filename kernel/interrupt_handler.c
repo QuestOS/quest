@@ -974,7 +974,7 @@ _interrupt29 (void)
 extern void
 _interrupt3e (void)
 {
-  uint8 phys_id = LAPIC_get_physical_ID ();
+  uint8 phys_id = get_pcpu_id ();
   send_eoi ();
   LAPIC_start_timer (cpu_bus_freq / QUANTUM_HZ); /* setup next tick */
 
