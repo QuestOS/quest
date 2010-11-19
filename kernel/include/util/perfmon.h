@@ -28,7 +28,32 @@
 #define MSR_OFFCORE_RSP(x) (0x1A6 + (x))
 #define OFFCORE_RSP0_EVT    0xB7
 #define OFFCORE_RSP1_EVT    0xBB /* Available in Westmere only */
-#define OFFCORE_RSP_MASK   0x01
+#define OFFCORE_RSP_MASK    0x01
+/* Uncore performance monitoring facility */
+#define MSR_UNCORE_PERF_GLOBAL_CTRL       0x391
+#define MSR_UNCORE_PERF_GLOBAL_STATUS     0x392
+#define MSR_UNCORE_PERF_GLOBAL_OVF_CTRL   0x393
+
+#define MSR_UNCORE_PERFEVTSEL(x)  (0x3B0 + (x))
+#define MSR_UNCORE_PMC(x)         (0x3C0 + (x))
+
+/* MSR_UNCORE_PERF_GLOBAL_CTRL bit fields to enable/disable
+ * general-purpose and fixed-function counters in the uncore
+ */
+#define UNCORE_EN_PC0       0x1
+#define UNCORE_EN_PC1       0x1 << 1
+#define UNCORE_EN_PC2       0x1 << 2
+#define UNCORE_EN_PC3       0x1 << 3
+#define UNCORE_EN_PC4       0x1 << 4
+#define UNCORE_EN_PC5       0x1 << 5
+#define UNCORE_EN_PC6       0x1 << 6
+#define UNCORE_EN_PC7       0x1 << 7
+#define UNCORE_EN_FC0       0x1 << 32
+#define UNCORE_PMI_CORE0    0x1 << 48
+#define UNCORE_PMI_CORE1    0x1 << 49
+#define UNCORE_PMI_CORE2    0x1 << 50
+#define UNCORE_PMI_CORE3    0x1 << 51
+#define UNCORE_PMI_FRZ      0x1 << 63
 
 /* MSR_OFFCORE_RSP_Z Bit Field Definition */
 #define OFFCORE_DMND_DATA_RD            0x1
@@ -57,7 +82,20 @@ typedef union {
     u8 edge_detect:1;
     u8 pin_control:1;
     u8 int_enable:1;
-    u8 _reserved:1;
+    u8 _reserved0:1;
+    u8 enable_counters:1;
+    u8 invert_counter_mask:1;
+    u8 counter_mask;
+  } PACKED;
+  struct {
+    u8 event_select;
+    u8 unit_mask;
+    u8 _reserved1:1;
+    u8 reset_occ:1;
+    u8 edge_detect:1;
+    u8 _reserved2:1;
+    u8 pmi_enable:1;
+    u8 _reserved3:1;
     u8 enable_counters:1;
     u8 invert_counter_mask:1;
     u8 counter_mask;
@@ -78,10 +116,36 @@ perfmon_pmc_config (int x, u8 event_select, u8 unit_mask)
   wrmsr (IA32_PERFEVTSEL (x), conf.raw);
 }
 
+static inline void
+perfmon_uncore_pmc_config (int x, u8 event_select, u8 unit_mask)
+{
+  ia32_perfevtsel_t conf;
+
+  conf.raw = 0;
+  conf.event_select = event_select;
+  conf.unit_mask = unit_mask;
+  conf.enable_counters = 1;
+  conf.edge_detect = 1;
+
+  wrmsr (MSR_UNCORE_PERFEVTSEL (x), conf.raw);
+}
+
 static inline u64
 perfmon_pmc_read (int x)
 {
   return rdmsr (IA32_PMC (x));
+}
+
+static inline void
+perfmon_uncore_cntr_enable (uint64 counters)
+{
+  wrmsr (MSR_UNCORE_PERF_GLOBAL_CTRL, counters);
+}
+
+static inline u64
+perfmon_uncore_pmc_read (int x)
+{
+  return rdmsr (MSR_UNCORE_PMC (x));
 }
 
 extern void perfmon_init (void);
