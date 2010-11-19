@@ -21,6 +21,7 @@
 #include "util/debug.h"
 #include "util/perfmon.h"
 #include "arch/i386-percpu.h"
+#include "mem/mem.h"
 
 #define DEBUG_PERFMON
 
@@ -207,23 +208,7 @@ void perfmon_get_cache_info (void)
 static void
 perfmon_get_misses (uint64 *local_miss, uint64 *global_miss)
 {
-  offcore_perfmon_pmc_config (0, 0, (uint64) 0x0 |
-      OFFCORE_DMND_DATA_RD |
-      OFFCORE_DMND_IFETCH |
-      OFFCORE_WB |
-      OFFCORE_PF_DATA_RD |
-      OFFCORE_PF_RFO |
-      OFFCORE_PF_IFETCH |
-      OFFCORE_OTHER |
-      OFFCORE_REMOTE_CACHE_FWD |
-      OFFCORE_REMOTE_DRAM |
-      OFFCORE_LOCAL_DRAM);
   *local_miss = perfmon_pmc_read (0);
-
-  /* 0x0A and 0x0F for UNC_L3_LINES_IN.ANY */
-  //perfmon_uncore_pmc_config (0, 0x0A, 0x0F);
-  /* 0x09 and 0x03 for UNC_L3_MISS.ANY */
-  perfmon_uncore_pmc_config (0, 0x09, 0x03);
   *global_miss = perfmon_uncore_pmc_read (0);
 }
 
@@ -297,9 +282,10 @@ perfmon_init (void)
       ((display & 0xFF) == 0x1A)) {
     DLOG ("Nehalem Enhancements of Performance Monitoring enabled.");
     nehalem_perfmon_enabled = TRUE;
-    /* Get cache information */
-    perfmon_get_cache_info ();
   }
+
+  /* Get cache information */
+  perfmon_get_cache_info ();
 
   perfmon_version = (u8) eax;
 
@@ -340,11 +326,32 @@ perfmon_init (void)
   RDTSC (tsc);
   DLOG ("pmc0=0x%llX tsc=0x%llX", perfmon_pmc_read (0), tsc);
 
-  /* If platform is Nehalem, enable uncore counter 0 for global L3 miss */
+  /* If platform is Nehalem, enable uncore counter and set events */
   if (nehalem_perfmon_enabled) {
-    DLOG ("Uncore perfmon counter enabled");
-    perfmon_uncore_cntr_enable (0x0 | UNCORE_EN_PC0);
-    DLOG ("Uncore perfmon global control: 0x%llX", rdmsr (MSR_UNCORE_PERF_GLOBAL_CTRL));
+    perfmon_uncore_cntr_enable (0x0LL | UNCORE_EN_PC0 | UNCORE_EN_FC0);
+    perfmon_uncore_fixed_enable (0);
+
+    DLOG ("Selecting local and global cache miss events");
+
+    /* Monitering local last level cache miss from off-core */
+    offcore_perfmon_pmc_config (0, 0, (uint64) 0x0 |
+        OFFCORE_DMND_DATA_RD |
+        OFFCORE_DMND_IFETCH |
+        OFFCORE_WB |
+        OFFCORE_PF_DATA_RD |
+        OFFCORE_PF_RFO |
+        OFFCORE_PF_IFETCH |
+        OFFCORE_OTHER |
+        OFFCORE_REMOTE_CACHE_FWD |
+        OFFCORE_REMOTE_DRAM |
+        OFFCORE_LOCAL_DRAM);
+
+    /* Monitering global last level cache miss from uncore */
+    /* 0x0A and 0x0F for UNC_L3_LINES_IN.ANY */
+    perfmon_uncore_pmc_config (0, 0x0A, 0x0F);
+    /* 0x09 and 0x03 for UNC_L3_MISS.ANY */
+    //perfmon_uncore_pmc_config (0, 0x09, 0x03);
+    //wrmsr (0x3B0, 0x0A + (0x0F << 8) + (0x1 << 22) + (0x1 << 18));
   }
 
   /* Reset percpu perfmon variables */
@@ -352,7 +359,13 @@ perfmon_init (void)
 
   perfmon_enabled = TRUE;
 
+#if 0
   asm volatile ("wbinvd");
+
+  DLOG ("Now, after flush");
+  DLOG ("Fixed reading: 0x%llX", rdmsr (MSR_UNCORE_FIXED_CTR0));
+
+  perfmon_percpu_reset ();
 
   uint64 occupancy = 0;
   uint64 local_miss = 0, global_miss = 0;
@@ -364,9 +377,12 @@ perfmon_init (void)
   DLOG ("Previous local L3 miss: %d", local_miss);
   DLOG ("Previous global L3 miss: %d", global_miss);
 
-  perfmon_get_cache_info ();
-
-  DLOG ("Now, after flush");
+  uint32 phy_addr = alloc_phys_frames (70);
+  void * virt_addr = map_contiguous_virtual_pages (phy_addr | 0x3, 70);
+  int k = 0;
+  for (k = 0; k < 70 * 4096; k++) {
+    *(((char*) virt_addr) + k) = 1;
+  }
 
   occupancy = perfmon_miss_occupancy ();
   occupancy = percpu_read64 (perfmon_prev_miss_occupancy);
@@ -375,6 +391,11 @@ perfmon_init (void)
   DLOG ("Occupancy prediction: %d lines", occupancy);
   DLOG ("Previous local L3 miss: %d", local_miss);
   DLOG ("Previous global L3 miss: %d", global_miss);
+
+  DLOG ("Fixed reading: 0x%llX", rdmsr (MSR_UNCORE_FIXED_CTR0));
+
+  for (;;);
+#endif
 }
 
 /*
