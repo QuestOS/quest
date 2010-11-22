@@ -370,6 +370,16 @@ strcpy (char *dest, const char *src)
   return memcpy (dest, src, strlen (src) + 1);
 }
 
+static inline int
+strcmp (const char *a, const char *b)
+{
+  int i = 0;
+  while (*a && *b)
+    i += *(a++) - *(b++);
+  i += *a - *b;
+  return i;
+}
+
 static inline uint64
 rdmsr (uint32 ecx)
 {
