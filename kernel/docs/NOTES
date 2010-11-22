@@ -1,3 +1,9 @@
+Monday 2010-11-22 md
+
+  Scratched a long-standing itch by implementing a "module system" for
+  drivers and other components which can be loaded in any particular
+  order, with dependencies.
+
 Friday 2010-11-19 md
 
   So it turns out that the LAPIC IDs on baldrick are not contiguously

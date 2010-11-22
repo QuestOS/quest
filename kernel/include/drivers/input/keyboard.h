@@ -44,7 +44,7 @@ typedef struct
   key keys[KEY_EVENT_MAX];
 } key_event;
 
-void init_keyboard_8042 (void);
+bool init_keyboard_8042 (void);
 void keyboard_8042_next (key_event *);
 
 #endif

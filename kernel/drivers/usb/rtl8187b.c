@@ -2521,6 +2521,13 @@ rtl8187_detect_rf(void)
     return &rtl8225z2_b_ops;
 }
 
+#include "module/header.h"
+
+static const struct module_ops mod_ops = {
+  .init = usb_rtl8187b_driver_init
+};
+
+DEF_MODULE (usb___rtl8187b, "USB rtl8187b wifi driver", &mod_ops, {"usb", "net___ethernet"});
 
 /*
  * Local Variables:

@@ -67,7 +67,7 @@ typedef struct pci_dev {
 /* PCI interface */
 
 /* Initialize and probe for devices */
-void pci_init (void);
+bool pci_init (void);
 
 /* Search for device by vendor, device, classcode, or subclass.  The
  * value (~0) is treated as a wildcard.  'start_index' allows you to

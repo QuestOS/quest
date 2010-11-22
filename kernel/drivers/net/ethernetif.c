@@ -71,6 +71,7 @@
 #include "util/printf.h"
 #include "util/circular.h"
 #include "sched/sched.h"
+#include "module/header.h"
 
 //#define DEBUG_NETIF
 
@@ -861,6 +862,12 @@ net_tmr_process(void)
   }
 #endif
 }
+
+static const struct module_ops mod_ops = {
+  .init = net_init
+};
+
+DEF_MODULE (net___ethernet, "ethernet driver", &mod_ops, {});
 
 /*
  * Local Variables:

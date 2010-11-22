@@ -268,7 +268,7 @@ perfmon_percpu_reset (void)
   percpu_write64 (perfmon_prev_miss_occupancy, 0LL);
 }
 
-extern void
+extern bool
 perfmon_init (void)
 {
   u32 eax, ebx, edx, i, display;
@@ -279,7 +279,7 @@ perfmon_init (void)
 
   if ((u8) eax == 0) {
     DLOG ("unsupported");
-    return;
+    return FALSE;
   }
 
   /* Enable Off-core Rsp Perfmon when current microarchitecture is Nehalem */
@@ -344,7 +344,16 @@ perfmon_init (void)
   DLOG ("Occupancy prediction: %d lines", occupancy);
   DLOG ("Previous local L3 miss: %d", local_miss);
   DLOG ("Previous global L3 miss: %d", global_miss);
+  return TRUE;
 }
+
+#include "module/header.h"
+
+static const struct module_ops mod_ops = {
+  .init = perfmon_init
+};
+
+DEF_MODULE (perfmon, "Performance monitoring driver", &mod_ops, {});
 
 /*
  * Local Variables:

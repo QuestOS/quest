@@ -4741,6 +4741,14 @@ bnx2_init (void)
   return FALSE;
 }
 
+#include "module/header.h"
+
+static const struct module_ops mod_ops = {
+  .init = bnx2_init
+};
+
+//DEF_MODULE (net___bnx2, "bnx2 network driver", &mod_ops, {"net___ethernet", "pci"});
+
 /*
  * Local Variables:
  * indent-tabs-mode: nil

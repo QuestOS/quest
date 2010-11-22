@@ -69,7 +69,7 @@ logger_thread (void)
 }
 #endif
 
-extern void
+extern bool
 logger_init (void)
 {
 #ifndef NO_LOGGER
@@ -80,6 +80,7 @@ logger_init (void)
   lookup_TSS (id)->cpu = lowest_priority_vcpu ();
 #endif
 #endif
+  return TRUE;
 }
 
 extern void
@@ -101,6 +102,14 @@ logger_putc (char c)
     com1_putc (c);
 #endif
 }
+
+#include "module/header.h"
+
+static const struct module_ops mod_ops = {
+  .init = logger_init
+};
+
+DEF_MODULE (logger, "Log manager", &mod_ops, {});
 
 /*
  * Local Variables:

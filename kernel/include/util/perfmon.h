@@ -84,7 +84,7 @@ perfmon_pmc_read (int x)
   return rdmsr (IA32_PMC (x));
 }
 
-extern void perfmon_init (void);
+extern bool perfmon_init (void);
 extern void offcore_perfmon_pmc_config (int, int, uint64);
 extern bool perfmon_enabled;
 extern bool nehalem_perfmon_enabled;

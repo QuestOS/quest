@@ -279,6 +279,20 @@ usb_set_interface(USB_DEVICE_INFO * dev, uint16_t alt, uint16_t interface)
   return -1;
 }
 
+bool
+usb_init (void)
+{
+  return TRUE;
+}
+
+#include "module/header.h"
+
+static const struct module_ops mod_ops = {
+  .init = usb_init
+};
+
+DEF_MODULE (usb, "USB manager", &mod_ops, {});
+
 /*
  * Local Variables:
  * indent-tabs-mode: nil

@@ -891,6 +891,14 @@ e1000_init (void)
   return FALSE;
 }
 
+#include "module/header.h"
+
+static const struct module_ops mod_ops = {
+  .init = e1000_init
+};
+
+DEF_MODULE (net___e1000, "e1000 network driver", &mod_ops, {"net___ethernet", "pci"});
+
 /*
  * Local Variables:
  * indent-tabs-mode: nil

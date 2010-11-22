@@ -539,69 +539,14 @@ init (multiboot * pmb)
    * to utilize the dummy TSS without locking the kernel yet. */
   smp_secondary_init ();
 
-  /* Logging thread */
-  logger_init ();
+  /* Load all modules */
+  { extern bool module_load_all (void); module_load_all (); }
 
-  /* Performance monitoring */
-  perfmon_init ();
-
-  /* Initialize interrupt-driven keyboard driver */
-  init_keyboard_8042 ();
-
-  /* Initialize PCI */
-  pci_init ();
-
-  /* Initialize LWIP/network subsystem */
-  net_init ();
-
-  /* Initialize PCnet card (depends on network) */
-  pcnet_init ();
-
-  /* Initialize e1000 card (depends on network) */
-  { bool e1000_init (void); e1000_init (); }
-
-  /* Initialize e1000e card (depends on network) */
-  { bool e1000e_init (void); e1000e_init (); }
-
-  /* Initialize bnx2 card (depends on network) */
-  //{ bool bnx2_init (void); bnx2_init (); }
-
-  /* Initialize r8169 card (depends on network) */
-  { bool r8169_init (void); r8169_init (); }
-
-  /* Initialize USB hub driver */
-  { bool usb_hub_driver_init (void); usb_hub_driver_init (); }
-
-  /* Initialize USB mass storage driver */
-  { bool usb_mass_storage_driver_init (void); usb_mass_storage_driver_init (); }
-
-  /* Initialize USB FTDI Serial Converter driver */
-  { bool usb_ftdi_driver_init (void); usb_ftdi_driver_init ();}
-
-  /* Initialize USB PL2303 Serial Converter driver */
-  { bool usb_pl2303_driver_init (void); usb_pl2303_driver_init ();}
-
-  /* Initialize USB Video Class driver */
-  { bool usb_uvc_driver_init (void); usb_uvc_driver_init ();}
-
-  /* Initialize USB net driver */
-  { bool usb_net_driver_init (void); usb_net_driver_init (); }
-
-  /* Initialize USB asix (network) driver */
-  { bool usb_asix_driver_init (void); usb_asix_driver_init (); }
-
-  /* Initialize USB rtl8187b (wifi) driver */
-  { bool usb_rtl8187b_driver_init (void); usb_rtl8187b_driver_init (); }
-
-  /* Initialize USB */
-  { bool uhci_init (void); uhci_init (); }
+  { extern bool usb_do_enumeration (void); usb_do_enumeration (); }
 
   /* hard-code the configuration for now */
   net_set_default ("en0");
   net_dhcp_start ("en0");
-
-  /* Initialize ATA/ATAPI subsystem */
-  ata_init ();
 
   switch (root_type) {
   case VFS_FSYS_EZEXT2:

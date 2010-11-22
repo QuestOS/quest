@@ -22,7 +22,7 @@
 #include <kernel.h>
 #include "sched/sched.h"
 
-#define DEBUG_ASIX
+//#define DEBUG_ASIX
 
 #ifdef DEBUG_ASIX
 #define DLOG(fmt,...) DLOG_PREFIX("asix",fmt,##__VA_ARGS__)
@@ -508,6 +508,13 @@ usb_asix_driver_init (void)
   return usb_register_driver (&asix_driver);
 }
 
+#include "module/header.h"
+
+static const struct module_ops mod_ops = {
+  .init = usb_asix_driver_init
+};
+
+DEF_MODULE (usb___asix, "USB asix network driver", &mod_ops, {"usb", "net___ethernet"});
 
 
 /*

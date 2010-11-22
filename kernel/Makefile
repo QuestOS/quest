@@ -23,7 +23,7 @@ PROGS = quest \
 
 ##################################################
 
-OBJS =  boot/boot.o boot/init.o kernel.o \
+OBJS =  boot/boot.o boot/init.o kernel.o module/loader.o \
 	interrupt.o interrupt_handler.o \
 	smp/boot-smp.o smp/smp.o smp/intel.o smp/acpi.o smp/apic.o smp/semaphore.o \
 	arch/i386/percpu.o arch/i386/measure.o \

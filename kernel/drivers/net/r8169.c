@@ -34,6 +34,7 @@
 #include "kernel.h"
 #include "sched/vcpu.h"
 #include "sched/sched.h"
+#include "module/header.h"
 
 //#define DEBUG_R8169
 
@@ -3650,6 +3651,12 @@ r8169_init (void)
  abort:
   return FALSE;
 }
+
+static const struct module_ops mod_ops = {
+  .init = r8169_init
+};
+
+DEF_MODULE (net___r8169, "r8169 network driver", &mod_ops, {"net___ethernet", "pci"});
 
 
 /*

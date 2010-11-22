@@ -388,7 +388,7 @@ ata_poll_for_irq (uint32 bus)
 }
 
 /* Initialize and identify the ATA drives in the system. */
-void
+bool
 ata_init (void)
 {
   uint32 bus, drive, i;
@@ -434,6 +434,8 @@ ata_init (void)
     set_vector_handler (ATA_VECTOR_PRIMARY, ata_irq_handler);
     set_vector_handler (ATA_VECTOR_SECONDARY, ata_irq_handler);
   }
+
+  return TRUE;
 }
 
 u64 atapi_cycles=0, atapi_count=0, atapi_max=0, atapi_min=~0LL;
@@ -657,6 +659,14 @@ atapi_sample_bps (void)
   atapi_timestamps = 0;
   return bytes_sec;
 }
+
+#include "module/header.h"
+
+static const struct module_ops mod_ops = {
+  .init = ata_init
+};
+
+DEF_MODULE (storage___ata, "ATA/ATAPI driver", &mod_ops, {});
 
 /*
  * Local Variables:

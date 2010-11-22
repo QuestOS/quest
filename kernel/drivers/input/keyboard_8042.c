@@ -212,7 +212,7 @@ kbd_irq_handler (uint8 vec)
 }
 
 /* Setup the circular buffer and the IRQ handler. */
-void
+bool
 init_keyboard_8042 (void)
 {
   int i;
@@ -234,6 +234,7 @@ init_keyboard_8042 (void)
                     KEYBOARD_VECTOR, 0xFF00000000000800LL);
     set_vector_handler (KEYBOARD_VECTOR, kbd_irq_handler);
   }
+  return TRUE;
 }
 
 /* Retrieve the next key event or block. */
@@ -242,6 +243,14 @@ keyboard_8042_next (key_event *e)
 {
   circular_remove (&keyb_buffer, (void *)e);
 }
+
+#include "module/header.h"
+
+static const struct module_ops mod_ops = {
+  .init = init_keyboard_8042
+};
+
+DEF_MODULE (input___kb8042, "Keyboard (i8042) driver", &mod_ops, {});
 
 /*
  * Local Variables:

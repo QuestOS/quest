@@ -724,9 +724,28 @@ usb_register_driver (USB_DRIVER *driver)
   return TRUE;
 }
 
+static bool uhci_operational = FALSE;
+bool
+usb_do_enumeration (void)
+{
+  int i;
+#include <drivers/usb/usb_tests.h>
+  if (!uhci_operational) return FALSE;
+  DLOG ("begin enumeration");
+
+  for (i=0;i<2;i++) {
+    port_reset (i);
+
+    uhci_enumerate ();
+    show_usb_regs (bus, dev, func);
+  }
+  DLOG ("end enumeration");
+  return TRUE;
+}
+
 static uint irq_line;
 
-int
+bool
 uhci_init (void)
 {
   uint i, device_index, irq_pin;
@@ -814,28 +833,8 @@ uhci_init (void)
   /* Perform global reset on host controller */
   uhci_reset ();
 
-#if 1
-#include <drivers/usb/usb_tests.h>
-
-  DLOG ("begin enumeration");
-
-  for (i=0;i<2;i++) {
-    port_reset (i);
-
-    uhci_enumerate ();
-    show_usb_regs (bus, dev, func);
-  }
-  DLOG ("end enumeration");
-
-#else
-#include <drivers/usb/usb_tests.h>
-
-  isochronous_transfer_test ();
-  show_usb_regs(bus, dev, func);
-
-#endif
-
-  return 0;
+  uhci_operational = TRUE;
+  return TRUE;
 }
 
 int
@@ -1590,6 +1589,14 @@ uhci_show_regs (void)
 
   return;
 }
+
+#include "module/header.h"
+
+static const struct module_ops mod_ops = {
+  .init = uhci_init
+};
+
+DEF_MODULE (usb___uhci, "UHCI driver", &mod_ops, {"usb", "pci"});
 
 /*
  * Local Variables:

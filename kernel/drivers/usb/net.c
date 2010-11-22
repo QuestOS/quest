@@ -296,6 +296,13 @@ usb_net_driver_init (void)
   return usb_register_driver (&net_driver);
 }
 
+#include "module/header.h"
+
+static const struct module_ops mod_ops = {
+  .init = usb_net_driver_init
+};
+
+DEF_MODULE (usb___net, "USB net driver", &mod_ops, {"usb", "net___ethernet"});
 
 
 /*

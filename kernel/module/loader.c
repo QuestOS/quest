@@ -86,7 +86,7 @@ module_load (const char *name)
 extern bool
 module_load_all (void)
 {
-  int count = 0, pages = 0, i;
+  u32 count = 0, pages = 0, i;
   u32 phys;
   modruntime_t *mr;
   DLOG ("loading all modules");
@@ -95,6 +95,7 @@ module_load_all (void)
     DLOG ("found name=\"%s\" desc: %s", (*mod)->name, (*mod)->desc);
     count++;
   }
+  if (!count) return TRUE;
   pages = ((count * sizeof (modruntime_t) - 1) >> 12) + 1;
   phys = alloc_phys_frames (pages);
   if (phys == (u32) -1) goto abort;

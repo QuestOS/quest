@@ -362,6 +362,14 @@ umsc_tmr_test (void)
   uhci_show_regs ();
 }
 
+#include "module/header.h"
+
+static const struct module_ops mod_ops = {
+  .init = usb_mass_storage_driver_init
+};
+
+DEF_MODULE (usb___umsc, "USB mass storage driver", &mod_ops, {"usb"});
+
 
 /*
  * Local Variables:

@@ -31,8 +31,8 @@ struct module {
   const char **dependencies;
 };
 
-#define DEF_MODULE(n,d,o,deps)                                          \
-  static const char *_module_##n##_deps[] = deps;                       \
+#define DEF_MODULE(n,d,o,...)                                           \
+  static const char *_module_##n##_deps[] = __VA_ARGS__;                \
   static struct module _module_##n = {                                  \
     .name = __stringify(n),                                             \
     .desc = d,                                                          \
@@ -40,7 +40,7 @@ struct module {
     .ops = o,                                                           \
     .dependencies = _module_##n##_deps                                  \
   };                                                                    \
-  static _MODULE_PTR_ATTR const struct module *_module_##n##_ptr = &_module_##n
+  _MODULE_PTR_ATTR const struct module *_module_##n##_ptr = &_module_##n
 
 #define _MODULE_PTR_ATTR __attribute__((section(".module.ptrs"), unused))
 

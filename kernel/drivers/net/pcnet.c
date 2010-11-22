@@ -588,6 +588,14 @@ pcnet_init (void)
 
 /* ************************************************** */
 
+#include "module/header.h"
+
+static const struct module_ops mod_ops = {
+  .init = pcnet_init
+};
+
+DEF_MODULE (net___pcnet, "pcnet network driver", &mod_ops, {"net___ethernet", "pci"});
+
 /* 
  * Local Variables:
  * indent-tabs-mode: nil
