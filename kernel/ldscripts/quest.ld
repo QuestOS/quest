@@ -38,9 +38,15 @@ SECTIONS {
   .ctors : AT ( ( LOADADDR (.rodata) + SIZEOF (.rodata) + 3 ) & 0xFFFFFFFC )
               { *(.percpu.ctor); LONG(0) } : virtualtext
 
+  . = ALIGN(4);
+  /* Insert a read-only null-terminated array of pointers to modules */
+  _module_ptr_list = .;
+  .moduleptrs : AT ( ( LOADADDR (.ctors) + SIZEOF (.ctors) + 3 ) & 0xFFFFFFFC )
+                   { *(.module.ptrs); LONG(0) } : virtualtext
+
   . = ALIGN(0x1000);
    _kernel_readwrite = .;
-  .data : AT ( ( LOADADDR(.ctors) + SIZEOF(.ctors) + 0xFFF ) & 0xFFFFF000 ) 
+  .data : AT ( ( LOADADDR(.moduleptrs) + SIZEOF(.moduleptrs) + 0xFFF ) & 0xFFFFF000 )
              { *(.data) } : virtualdata
   .bss : AT ( LOADADDR(.data) + SIZEOF(.data) )
             { *(.bss) *(COMMON) } : virtualdata
