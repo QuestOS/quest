@@ -1,0 +1,34 @@
+Interface
+~~~~~~~~~
+
+DEF_MODULE (name, description, module_ops pointer, dependencies)
+
+  where
+    name is a C symbol
+    description is a string
+    module_ops pointer is type (const struct module_ops *)
+    dependencies is a const array of strings: { "dep1", "dep2", ... } or empty: {}
+
+The module ops currently include only an "init" function:
+
+   struct module_ops { bool (*init) (void); };
+
+Naming hierarchy
+~~~~~~~~~~~~~~~~
+
+The (currently informal) hierarchical name is built by inserting 3
+underscores "___" in between components of the name,
+e.g. "usb___uhci".
+
+Example of defining a module
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+#include "module/header.h"
+
+bool usb_asix_driver_init (void) { ... return TRUE; }
+
+static const struct module_ops mod_ops = {
+  .init = usb_asix_driver_init
+};
+
+DEF_MODULE (usb___asix, "USB asix network driver", &mod_ops, {"usb", "net___ethernet"});

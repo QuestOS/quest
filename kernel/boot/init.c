@@ -539,9 +539,10 @@ init (multiboot * pmb)
    * to utilize the dummy TSS without locking the kernel yet. */
   smp_secondary_init ();
 
-  /* Load all modules */
+  /* Load all modules, chasing dependencies */
   { extern bool module_load_all (void); module_load_all (); }
 
+  /* Enumerate the USB bus */
   { extern bool usb_do_enumeration (void); usb_do_enumeration (); }
 
   /* hard-code the configuration for now */

@@ -140,7 +140,7 @@ testR (void)
   }
 }
 
-extern void
+extern bool
 ipc_init (void)
 {
   DLOG ("hello");
@@ -148,7 +148,16 @@ ipc_init (void)
   testR_id = start_kernel_thread ((u32) testR, (u32) &testR_stack[1023]);
   lookup_TSS (testS_id)->cpu = 0;
   lookup_TSS (testR_id)->cpu = 0;
+  return TRUE;
 }
+
+#include "module/header.h"
+
+static const struct module_ops mod_ops = {
+  .init = ipc_init
+};
+
+DEF_MODULE (ipc, "IPC manager", &mod_ops, {});
 
 /*
  * Local Variables:
