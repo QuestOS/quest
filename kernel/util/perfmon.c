@@ -21,6 +21,7 @@
 #include "util/debug.h"
 #include "util/perfmon.h"
 #include "arch/i386-percpu.h"
+#include "mem/mem.h"
 
 #define DEBUG_PERFMON
 
@@ -42,6 +43,7 @@ static u8 bit_width, perfmon_version, num_pmcs=0;
 
 #define IA32_LEVEL_CACHES  0x5
 
+/* Percpu variables for previous cache miss and occupancy information */
 DEF_PER_CPU (u64, perfmon_prev_local_miss);
 INIT_PER_CPU (perfmon_prev_local_miss) {
   percpu_write64 (perfmon_prev_local_miss, 0LL);
@@ -153,6 +155,11 @@ void perfmon_get_cache_info (void)
       DLOG ("%d lines in total", llc_lines);
       break;
     }
+
+    /* For details about the bit fields below, please refer to Intel
+     * documentation on cpuid instructuion. Application Note 485,
+     * page 29-30, Table 2-9
+     */
     level = (eax >> 5) & 0x7;
     cache_info [i].num_apic = ((eax >> 26) & 0x3F) + 1;
     cache_info [i].num_thread = ((eax >> 14) & 0xFFF) + 1;
@@ -166,6 +173,7 @@ void perfmon_get_cache_info (void)
     cache_info [i].sets = ecx + 1;
     cache_info [i].inclusive = (edx >> 1) & 0x1;
     cache_info [i].invd = edx & 0x1;
+    /* Cache size = ways x partitions x line size x sets */
     cache_info [i].cache_size =
       cache_info [i].associativity * cache_info [i].line_part *
       cache_info [i].line_size * cache_info [i].sets;
@@ -200,21 +208,8 @@ void perfmon_get_cache_info (void)
 static void
 perfmon_get_misses (uint64 *local_miss, uint64 *global_miss)
 {
-  offcore_perfmon_pmc_config (0, 0, (uint64) 0x0 |
-      OFFCORE_DMND_DATA_RD |
-      OFFCORE_DMND_IFETCH |
-      OFFCORE_WB |
-      OFFCORE_PF_DATA_RD |
-      OFFCORE_PF_RFO |
-      OFFCORE_PF_IFETCH |
-      OFFCORE_OTHER |
-      OFFCORE_REMOTE_CACHE_FWD |
-      OFFCORE_REMOTE_DRAM |
-      OFFCORE_LOCAL_DRAM);
   *local_miss = perfmon_pmc_read (0);
-  /* --??-- Notice the following code is wrong. UNCORE should be used.*/
-  perfmon_pmc_config (0, 0x2E, 0x41);
-  *global_miss = perfmon_pmc_read (0);
+  *global_miss = perfmon_uncore_pmc_read (0);
 }
 
 extern uint64
@@ -287,9 +282,10 @@ perfmon_init (void)
       ((display & 0xFF) == 0x1A)) {
     DLOG ("Nehalem Enhancements of Performance Monitoring enabled.");
     nehalem_perfmon_enabled = TRUE;
-    /* Get cache information */
-    perfmon_get_cache_info ();
   }
+
+  /* Get cache information */
+  perfmon_get_cache_info ();
 
   perfmon_version = (u8) eax;
 
@@ -330,10 +326,46 @@ perfmon_init (void)
   RDTSC (tsc);
   DLOG ("pmc0=0x%llX tsc=0x%llX", perfmon_pmc_read (0), tsc);
 
+  /* If platform is Nehalem, enable uncore counter and set events */
+  if (nehalem_perfmon_enabled) {
+    perfmon_uncore_cntr_enable (0x0LL | UNCORE_EN_PC0 | UNCORE_EN_FC0);
+    perfmon_uncore_fixed_enable (0);
+
+    DLOG ("Selecting local and global cache miss events");
+
+    /* Monitering local last level cache miss from off-core */
+    offcore_perfmon_pmc_config (0, 0, (uint64) 0x0 |
+        OFFCORE_DMND_DATA_RD |
+        OFFCORE_DMND_IFETCH |
+        OFFCORE_WB |
+        OFFCORE_PF_DATA_RD |
+        OFFCORE_PF_RFO |
+        OFFCORE_PF_IFETCH |
+        OFFCORE_OTHER |
+        OFFCORE_REMOTE_CACHE_FWD |
+        OFFCORE_REMOTE_DRAM |
+        OFFCORE_LOCAL_DRAM);
+
+    /* Monitering global last level cache miss from uncore */
+    /* 0x0A and 0x0F for UNC_L3_LINES_IN.ANY */
+    perfmon_uncore_pmc_config (0, 0x0A, 0x0F);
+    /* 0x09 and 0x03 for UNC_L3_MISS.ANY */
+    //perfmon_uncore_pmc_config (0, 0x09, 0x03);
+    //wrmsr (0x3B0, 0x0A + (0x0F << 8) + (0x1 << 22) + (0x1 << 18));
+  }
+
   /* Reset percpu perfmon variables */
   perfmon_percpu_reset ();
 
   perfmon_enabled = TRUE;
+
+#if 0
+  asm volatile ("wbinvd");
+
+  DLOG ("Now, after flush");
+  DLOG ("Fixed reading: 0x%llX", rdmsr (MSR_UNCORE_FIXED_CTR0));
+
+  perfmon_percpu_reset ();
 
   uint64 occupancy = 0;
   uint64 local_miss = 0, global_miss = 0;
@@ -344,6 +376,26 @@ perfmon_init (void)
   DLOG ("Occupancy prediction: %d lines", occupancy);
   DLOG ("Previous local L3 miss: %d", local_miss);
   DLOG ("Previous global L3 miss: %d", global_miss);
+
+  uint32 phy_addr = alloc_phys_frames (70);
+  void * virt_addr = map_contiguous_virtual_pages (phy_addr | 0x3, 70);
+  int k = 0;
+  for (k = 0; k < 70 * 4096; k++) {
+    *(((char*) virt_addr) + k) = 1;
+  }
+
+  occupancy = perfmon_miss_occupancy ();
+  occupancy = percpu_read64 (perfmon_prev_miss_occupancy);
+  local_miss = percpu_read64 (perfmon_prev_local_miss);
+  global_miss = percpu_read64 (perfmon_prev_global_miss);
+  DLOG ("Occupancy prediction: %d lines", occupancy);
+  DLOG ("Previous local L3 miss: %d", local_miss);
+  DLOG ("Previous global L3 miss: %d", global_miss);
+
+  DLOG ("Fixed reading: 0x%llX", rdmsr (MSR_UNCORE_FIXED_CTR0));
+
+  for (;;);
+#endif
   return TRUE;
 }
 
