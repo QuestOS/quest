@@ -34,8 +34,9 @@
 #define MSR_UNCORE_PERF_GLOBAL_STATUS     0x392
 #define MSR_UNCORE_PERF_GLOBAL_OVF_CTRL   0x393
 
-#define MSR_UNCORE_PERFEVTSEL(x)  (0x3B0 + (x))
-#define MSR_UNCORE_PMC(x)         (0x3C0 + (x))
+/* The addresses of these two clusters of MSRs are wrong in older version of intel manual */
+#define MSR_UNCORE_PERFEVTSEL(x)  (0x3C0 + (x))
+#define MSR_UNCORE_PMC(x)         (0x3B0 + (x))
 
 #define MSR_UNCORE_FIXED_CTR0        0x394
 #define MSR_UNCORE_FIXED_CTR_CTRL    0x395

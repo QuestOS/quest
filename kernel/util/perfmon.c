@@ -351,7 +351,6 @@ perfmon_init (void)
     perfmon_uncore_pmc_config (0, 0x0A, 0x0F);
     /* 0x09 and 0x03 for UNC_L3_MISS.ANY */
     //perfmon_uncore_pmc_config (0, 0x09, 0x03);
-    //wrmsr (0x3B0, 0x0A + (0x0F << 8) + (0x1 << 22) + (0x1 << 18));
   }
 
   /* Reset percpu perfmon variables */
@@ -377,10 +376,10 @@ perfmon_init (void)
   DLOG ("Previous local L3 miss: %d", local_miss);
   DLOG ("Previous global L3 miss: %d", global_miss);
 
-  uint32 phy_addr = alloc_phys_frames (70);
-  void * virt_addr = map_contiguous_virtual_pages (phy_addr | 0x3, 70);
+  uint32 phy_addr = alloc_phys_frames (64);
+  void * virt_addr = map_contiguous_virtual_pages (phy_addr | 0x3, 64);
   int k = 0;
-  for (k = 0; k < 70 * 4096; k++) {
+  for (k = 0; k < 4096 * 64; k++) {
     *(((char*) virt_addr) + k) = 1;
   }
 
