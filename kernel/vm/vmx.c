@@ -34,6 +34,8 @@
 #define DLOG(fmt,...) ;
 #endif
 
+#define com1_printf logger_printf
+
 #define IA32_FEATURE_CONTROL         0x003A
 #define IA32_SYSENTER_CS             0x0174
 #define IA32_SYSENTER_ESP            0x0175
@@ -531,11 +533,14 @@ vmx_create_VM (virtual_machine *vm)
   return -1;
 }
 
+static u32 saved_esp;
+
 int
 vmx_enter_VM (virtual_machine *vm)
 {
   uint32 phys_id = (uint32)LAPIC_get_physical_ID ();
-  uint32 cr, esp, eip, state = 0;
+  uint32 cr, esp, eip, state = 0, flags;
+  uint16 fs;
 
   if (!vm->loaded || vm->current_cpu != phys_id)
     goto not_loaded;
@@ -560,11 +565,12 @@ vmx_enter_VM (virtual_machine *vm)
   vmwrite (0x10, VMXENC_HOST_SS_SEL);
   vmwrite (0x10, VMXENC_HOST_DS_SEL);
   vmwrite (0x10, VMXENC_HOST_ES_SEL);
-  vmwrite (0x10, VMXENC_HOST_FS_SEL);
+  asm volatile ("movw %%fs, %0":"=r" (fs));
+  vmwrite (fs, VMXENC_HOST_FS_SEL);
   vmwrite (0x10, VMXENC_HOST_GS_SEL);
-  vmwrite (str (), VMXENC_HOST_TR_SEL);
-  vmwrite ((uint32) lookup_TSS (str ()), VMXENC_HOST_TR_BASE);
-  vmwrite ((uint32) lookup_GDT_selector (0x10), VMXENC_HOST_FS_BASE);
+  vmwrite (hw_str (), VMXENC_HOST_TR_SEL);
+  vmwrite ((uint32) lookup_TSS (hw_str ()), VMXENC_HOST_TR_BASE);
+  vmwrite ((uint32) lookup_GDT_selector (fs), VMXENC_HOST_FS_BASE);
   vmwrite ((uint32) lookup_GDT_selector (0x10), VMXENC_HOST_GS_BASE);
   vmwrite ((uint32) sgdtr (), VMXENC_HOST_GDTR_BASE);
   vmwrite ((uint32) sidtr (), VMXENC_HOST_IDTR_BASE);
@@ -580,7 +586,6 @@ vmx_enter_VM (virtual_machine *vm)
                 "pusha\n"
                 "movl %%esp, %1\n"
                 "vmwrite %1, %3\n"
-                "addl $8, %%esp\n"
                 /* Do trick to get current EIP and differentiate between the first
                  * and second time this code is invoked. */
                 "call 1f\n"
@@ -605,7 +610,7 @@ vmx_enter_VM (virtual_machine *vm)
   if (eip) {
     // printf ("Entering VM!\n");
     vmwrite (eip, VMXENC_HOST_RIP);
-
+    asm volatile ("movl %%esp, %0":"=m" (saved_esp));
     if (vm->launched) {
       asm volatile ("movl $1, %0\n"
                     "movl $2, %1\n"
@@ -629,6 +634,33 @@ vmx_enter_VM (virtual_machine *vm)
                     :"=m" (vm->launched), "=m"(state)
                     :"c" (8), "S" (&vm->guest_regs):"edi","cc","memory");
     }
+    asm volatile ("movl %0, %%esp\npopa"::"m" (saved_esp));
+  }
+  asm volatile ("pushfl\npop %0":"=r" (flags));
+  if (flags & (F_CF | F_ZF)) {
+  //if (vmx_get_error () != 0) {
+#if DEBUG_VMX > 1
+    uint32 error = vmread (VMXENC_VM_INSTR_ERROR);
+#endif
+    uint32 reason = vmread (VMXENC_EXIT_REASON);
+
+    if (state == 1)
+      /* Failure to VMLAUNCH */
+      vm->launched = FALSE;
+
+#if DEBUG_VMX > 1
+    com1_printf ("VM-ENTRY: error: %.8X (%s)\n  reason: %.8X qual: %.8X\n",
+                 error,
+                 (error < VMX_NUM_INSTR_ERRORS ? vm_instruction_errors[error] : "n/a"),
+                 reason,
+                 vmread (VMXENC_EXIT_QUAL));
+#endif
+    if (reason & 0x80000000) {
+#if DEBUG_VMX > 0
+      com1_printf ("  VM-ENTRY failure, code: %d\n", reason & 0xFF);
+#endif
+    }
+    goto abort_vmentry;
   }
 
   if (!eip) {
@@ -665,29 +697,6 @@ vmx_enter_VM (virtual_machine *vm)
         /* continue guest */
         goto enter;
     }
-  } else if (vmx_get_error () != 0) {
-#if DEBUG_VMX > 1
-    uint32 error = vmread (VMXENC_VM_INSTR_ERROR);
-#endif
-    uint32 reason = vmread (VMXENC_EXIT_REASON);
-
-    if (state == 1)
-      /* Failure to VMLAUNCH */
-      vm->launched = FALSE;
-
-#if DEBUG_VMX > 1
-    com1_printf ("VM-ENTRY: error: %.8X (%s)\n  reason: %.8X qual: %.8X\n",
-                 error,
-                 (error < VMX_NUM_INSTR_ERRORS ? vm_instruction_errors[error] : "n/a"),
-                 reason,
-                 vmread (VMXENC_EXIT_QUAL));
-#endif
-    if (reason & 0x80000000) {
-#if DEBUG_VMX > 0
-      com1_printf ("  VM-ENTRY failure, code: %d\n", reason & 0xFF);
-#endif
-    }
-    goto abort_vmentry;
   }
 
   return 0;
@@ -727,8 +736,10 @@ vmx_init (void)
 
   if (vmx_enter_VM (&first_vm) != 0)
     goto vm_error;
-  if (vmx_enter_VM (&first_vm) != 0)
-    goto vm_error;
+
+  //if (vmx_enter_VM (&first_vm) != 0)
+  //  goto vm_error;
+
   if (vmx_unload_VM (&first_vm) != 0)
     goto vm_error;
   vmx_destroy_VM (&first_vm);
