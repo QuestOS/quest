@@ -91,6 +91,10 @@ typedef union {
     u8 invert_counter_mask:1;
     u8 counter_mask;
   } PACKED;
+} ia32_perfevtsel_t;
+
+typedef union {
+  u32 raw;
   struct {
     u8 event_select;
     u8 unit_mask;
@@ -104,7 +108,7 @@ typedef union {
     u8 invert_counter_mask:1;
     u8 counter_mask;
   } PACKED;
-} ia32_perfevtsel_t;
+} unc_perfevtsel_t;
 
 static inline void
 perfmon_pmc_config (int x, u8 event_select, u8 unit_mask)
@@ -123,13 +127,12 @@ perfmon_pmc_config (int x, u8 event_select, u8 unit_mask)
 static inline void
 perfmon_uncore_pmc_config (int x, u8 event_select, u8 unit_mask)
 {
-  ia32_perfevtsel_t conf;
+  unc_perfevtsel_t conf;
 
   conf.raw = 0;
   conf.event_select = event_select;
   conf.unit_mask = unit_mask;
   conf.enable_counters = 1;
-  //conf.edge_detect = 1;
 
   wrmsr (MSR_UNCORE_PERFEVTSEL(x), conf.raw);
 }
@@ -146,6 +149,7 @@ perfmon_uncore_cntr_enable (uint64 counters)
   wrmsr (MSR_UNCORE_PERF_GLOBAL_CTRL, counters);
 }
 
+/* Enable fixed counter. If pmi is true, enable pmi, otherwise pmi is disabled */
 static inline void
 perfmon_uncore_fixed_enable (bool pmi)
 {
