@@ -374,8 +374,10 @@ static inline int
 strcmp (const char *a, const char *b)
 {
   int i = 0;
-  while (*a && *b)
-    i += *(a++) - *(b++);
+  while (*a && *b) {
+    i = *(a++) - *(b++);
+    if (i != 0) return i;
+  }
   i += *a - *b;
   return i;
 }
