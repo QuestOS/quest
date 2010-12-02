@@ -91,6 +91,23 @@ lookup_TSS (uint16 selector)
                         (ad[selector >> 3].pBase2 << 24));
 }
 
+extern void *
+lookup_GDT_selector (uint16 selector)
+{
+
+  descriptor *ad = (descriptor *) KERN_GDT;
+
+  return (void *) (ad[selector >> 3].pBase0 |
+                   (ad[selector >> 3].pBase1 << 16) |
+                   (ad[selector >> 3].pBase2 << 24));
+}
+
+extern void
+get_GDT_descriptor (uint16 selector, descriptor *ad)
+{
+  *ad = ((descriptor *) KERN_GDT)[selector >> 3];
+}
+
 /* Idle loop for CPU IDLE task */
 void
 idle_task (void)

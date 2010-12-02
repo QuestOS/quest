@@ -241,6 +241,15 @@ inl (uint16 usPort)
   return ul;
 }
 
+static inline void
+insb (uint16 usPort, void *buf, int count)
+{
+
+  asm volatile ("cld; rep insb"
+                :"=c" (count), "=D" (buf)
+                :"0" (count), "1" (buf), "d" (usPort)
+                :"memory","flags");
+}
 
 static inline void
 insw (uint16 usPort, void *buf, int count)
@@ -252,6 +261,54 @@ insw (uint16 usPort, void *buf, int count)
                 :"memory","flags");
 }
 
+static inline void
+insl (uint16 usPort, void *buf, int count)
+{
+
+  asm volatile ("cld; rep insl"
+                :"=c" (count), "=D" (buf)
+                :"0" (count), "1" (buf), "d" (usPort)
+                :"memory","flags");
+}
+
+static inline void
+insb_rev (uint16 usPort, void *buf, int count)
+{
+
+  asm volatile ("std; rep insb"
+                :"=c" (count), "=D" (buf)
+                :"0" (count), "1" (buf), "d" (usPort)
+                :"memory","flags");
+}
+
+static inline void
+insw_rev (uint16 usPort, void *buf, int count)
+{
+
+  asm volatile ("std; rep insw"
+                :"=c" (count), "=D" (buf)
+                :"0" (count), "1" (buf), "d" (usPort)
+                :"memory","flags");
+}
+
+static inline void
+insl_rev (uint16 usPort, void *buf, int count)
+{
+
+  asm volatile ("std; rep insl"
+                :"=c" (count), "=D" (buf)
+                :"0" (count), "1" (buf), "d" (usPort)
+                :"memory","flags");
+}
+
+static inline void
+outsb (uint16 usPort, void *buf, int count)
+{
+  asm volatile ("cld; rep outsb"
+                :"=S" (buf), "=c" (count)
+                :"0" (buf), "1" (count), "d" (usPort)
+                :"flags");
+}
 
 static inline void
 outsw (uint16 usPort, void *buf, int count)
@@ -262,6 +319,42 @@ outsw (uint16 usPort, void *buf, int count)
                 :"flags");
 }
 
+static inline void
+outsl (uint16 usPort, void *buf, int count)
+{
+  asm volatile ("cld; rep outsl"
+                :"=S" (buf), "=c" (count)
+                :"0" (buf), "1" (count), "d" (usPort)
+                :"flags");
+}
+
+
+static inline void
+outsb_rev (uint16 usPort, void *buf, int count)
+{
+  asm volatile ("std; rep outsb"
+                :"=S" (buf), "=c" (count)
+                :"0" (buf), "1" (count), "d" (usPort)
+                :"flags");
+}
+
+static inline void
+outsw_rev (uint16 usPort, void *buf, int count)
+{
+  asm volatile ("std; rep outsw"
+                :"=S" (buf), "=c" (count)
+                :"0" (buf), "1" (count), "d" (usPort)
+                :"flags");
+}
+
+static inline void
+outsl_rev (uint16 usPort, void *buf, int count)
+{
+  asm volatile ("std; rep outsl"
+                :"=S" (buf), "=c" (count)
+                :"0" (buf), "1" (count), "d" (usPort)
+                :"flags");
+}
 
 static inline void
 outb (uint8 uch, uint16 usPort)
@@ -283,6 +376,38 @@ outl (uint32 ul, uint16 usPort)
 {
 
   asm volatile ("outl %0,%1"::"a" (ul), "Nd" (usPort));
+}
+
+static inline void *
+sgdtr (void)
+{
+  uint8 buf[6];
+  asm volatile ("sgdt %0":"=m" (buf));
+  return (void *) *((uint32 *) (buf + 2));
+}
+
+static inline void *
+sidtr (void)
+{
+  uint8 buf[6];
+  asm volatile ("sidt %0":"=m" (buf));
+  return (void *) *((uint32 *) (buf + 2));
+}
+
+static inline uint16
+sgdtr_limit (void)
+{
+  uint8 buf[6];
+  asm volatile ("sgdt %0":"=m" (buf));
+  return *((uint16 *) buf);
+}
+
+static inline uint16
+sidtr_limit (void)
+{
+  uint8 buf[6];
+  asm volatile ("sidt %0":"=m" (buf));
+  return *((uint16 *) buf);
 }
 
 #define GET_ESP(esp) asm volatile ("movl %%esp, %0":"=r" (esp):);
