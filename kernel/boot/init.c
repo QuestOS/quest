@@ -408,8 +408,6 @@ init (multiboot * pmb)
 
   cpuid_get_brand_string (brandstring, I386_CPUID_BRAND_STRING_LENGTH);
   printf ("CPUID says: %s\n", brandstring);
-  if (cpuid_vmx_support ())
-    print ("VMX support detected\n");
   if (!cpuid_msr_support ())
     panic ("Model-specific registers not supported!\n");
   if (!cpuid_tsc_support ())

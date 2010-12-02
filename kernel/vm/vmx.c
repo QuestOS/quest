@@ -26,7 +26,13 @@
 #include "arch/i386.h"
 #include "sched/sched.h"
 
-#define DEBUG_VMX 2
+#define DEBUG_VMX 3
+
+#if DEBUG_VMX > 0
+#define DLOG(fmt,...) DLOG_PREFIX("vmx",fmt,##__VA_ARGS__)
+#else
+#define DLOG(fmt,...) ;
+#endif
 
 #define IA32_FEATURE_CONTROL         0x003A
 #define IA32_SYSENTER_CS             0x0174
@@ -238,6 +244,7 @@ uint32 vmx_vm86_pgt[1024] __attribute__ ((aligned(0x1000)));
 void
 vmx_global_init (void)
 {
+  DLOG ("global_init");
   /* Map real-mode code at virtual address 0x8000 for VM86 task */
   extern uint32 _code16start, _code16_pages, _code16physicalstart;
   uint32 phys_pgt = (uint32) get_phys_addr (vmx_vm86_pgt);
@@ -268,7 +275,8 @@ vmx_global_init (void)
 void
 vmx_processor_init (void)
 {
-  uint8 phys_id = LAPIC_get_physical_ID ();
+  uint8 phys_id = get_pcpu_id ();
+  DLOG ("processor_init pcpu_id=%d", phys_id);
   uint32 cr0, cr4;
   uint32 *vmxon_virt;
 
@@ -687,6 +695,56 @@ vmx_enter_VM (virtual_machine *vm)
  not_loaded:
   return -1;
 }
+
+static bool
+vmx_init (void)
+{
+  virtual_machine first_vm;
+
+  vmx_detect ();
+  if (!vmx_enabled) {
+    DLOG ("VMX not enabled");
+    goto vm_error;
+  }
+
+  vmx_global_init ();
+
+  vmx_processor_init ();
+
+  if (vmx_create_VM (&first_vm) != 0)
+    goto vm_error;
+
+#if 0
+  /* read MBR from first drive */
+  if (pata_drives[0].ata_type == ATA_TYPE_PATA) {
+    ata_drive_read_sector (ATA_BUS_PRIMARY, ATA_DRIVE_MASTER, 0, (uint8 *)0x7c00);
+    vmwrite (0x7C00, VMXENC_GUEST_RIP);
+    first_vm.guest_regs.edx = 0x80;
+  }
+#else
+  /* default to "graphics demo" in vm86 mode */
+#endif
+
+  if (vmx_enter_VM (&first_vm) != 0)
+    goto vm_error;
+  if (vmx_enter_VM (&first_vm) != 0)
+    goto vm_error;
+  if (vmx_unload_VM (&first_vm) != 0)
+    goto vm_error;
+  vmx_destroy_VM (&first_vm);
+
+  return TRUE;
+ vm_error:
+  return FALSE;
+}
+
+#include "module/header.h"
+
+static const struct module_ops mod_ops = {
+  .init = vmx_init
+};
+
+DEF_MODULE (vm___vmx, "VMX hardware virtualization driver", &mod_ops, {});
 
 
 /*
