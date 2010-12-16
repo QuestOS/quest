@@ -477,6 +477,11 @@ init (multiboot * pmb)
     unmap_virtual_page (pe);
   }
 
+  /* Clear bitmap entries for first megabyte of RAM so we don't
+   * overwrite BIOS tables we might be interested in later. */
+  for (i=0; i<256; i++)
+    BITMAP_CLR (mm_table, i);
+
 #if 0
   /* Test that mm_table is setup correct */
   for (i = 0; i < 2000; i++)

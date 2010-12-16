@@ -1,3 +1,20 @@
+Thursday 2010-12-09 md
+
+  Measured round-trip VM-ENTER/VM-EXIT at about 1500 cycles.
+
+Monday 2010-12-06 md
+
+  There's a bug somewhere that's preventing my old BIOS mode 013h
+  graphical demos from working inside of VMX/VM86.  This worked
+  originally on percy last year.  I tested "real" real-mode and the
+  graphics worked, so the problem is something to do with either my
+  virtualization code, or something else in the Quest bootup sequence.
+
+Friday 2010-12-02 md
+
+  Merged old VMX/VM86 code that creates hardware VT virtual machines
+  using VM86 to emulate real mode.
+
 Monday 2010-11-22 md
 
   Scratched a long-standing itch by implementing a "module system" for

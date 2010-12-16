@@ -20,7 +20,15 @@
 #include "kernel.h"
 #include "util/printf.h"
 
-#define DEBUG_VM86 2
+#define DEBUG_VM86 4
+
+#if DEBUG_VM86 > 0
+#define DLOG(fmt,...) DLOG_PREFIX("vm86",fmt,##__VA_ARGS__)
+#else
+#define DLOG(fmt,...) ;
+#endif
+
+#define com1_printf logger_printf
 
 /* Stored BIOS interrupt vector table */
 vm86_farptr vmx_vm86_IVT[256];
@@ -35,6 +43,18 @@ vmx_vm86_global_init (void)
   /* Yes, I'm really dereferencing the address "0x0": back-up the BIOS
    * interrupt vector table. */
   memcpy ((uint8 *) vmx_vm86_IVT, (uint8 *) 0x0, 256*sizeof(vm86_farptr));
+#if DEBUG_VM86 > 3
+  int i,j;
+  /* print the first 32 entries of the IVT */
+  for (i=0;i<4;i++) {
+    logger_printf ("  ");
+    for (j=0;j<8;j++) {
+      logger_printf ("IVT[0x%.02X]=%.04X:%.04X ",
+                     i*8 + j, vmx_vm86_IVT[i*8+j].segm, vmx_vm86_IVT[i*8+j].offs);
+    }
+    logger_printf ("\n");
+  }
+#endif
   /* FIXME: Leave page 0 mapped until I implement a vm86 PF handler. */
   //  vmx_vm86_pgt[0] = 0;
   flush_tlb_all ();
@@ -256,7 +276,7 @@ vmx_vm86_handle_GPF (virtual_machine *vm)
       uint8 vec = eip[1];
       vm86_farptr dest = vmx_vm86_IVT[vec];
       vm86_farptr new_stk;
-#if DEBUG_VM86 > 1
+#if DEBUG_VM86 > 3
       com1_printf ("  interrupt to vector %.02X farjump to CS:IP = %.04X:%.04X\n",
                    vec, dest.segm, dest.offs);
 #endif
@@ -276,7 +296,7 @@ vmx_vm86_handle_GPF (virtual_machine *vm)
         stk[2] |= F_IF;
       else
         stk[2] &= ~F_IF;
-#if DEBUG_VM86 > 1
+#if DEBUG_VM86 > 3
       com1_printf ("  New SS:SP = %.04X:%.04X  IRET CS:IP = %.04X:%.04X FL = %.04X\n",
                    new_stk.segm, new_stk.offs,
                    stk[1], stk[0], stk[2]);

@@ -290,47 +290,36 @@ vmx_processor_init (void)
                 "orl $0x20, %0\n"
                 "movl %0, %%cr0":"=r" (cr0));
 
-#if DEBUG_VMX > 3
-  com1_printf ("IA32_FEATURE_CONTROL: %.8X\n", (uint32) rdmsr (IA32_FEATURE_CONTROL));
-  com1_printf ("IA32_VMX_BASIC: %.8X%.8X\n",
-               (uint32) (rdmsr (IA32_VMX_BASIC) >> 32),
-               (uint32) rdmsr (IA32_VMX_BASIC));
-  com1_printf ("IA32_VMX_CR0_FIXED0: %.8X\n", (uint32) rdmsr (IA32_VMX_CR0_FIXED0));
-  com1_printf ("IA32_VMX_CR0_FIXED1: %.8X\n", (uint32) rdmsr (IA32_VMX_CR0_FIXED1));
-  com1_printf ("IA32_VMX_CR4_FIXED0: %.8X\n", (uint32) rdmsr (IA32_VMX_CR4_FIXED0));
-  com1_printf ("IA32_VMX_CR4_FIXED1: %.8X\n", (uint32) rdmsr (IA32_VMX_CR4_FIXED1));
+#if DEBUG_VMX > 1
+  com1_printf ("IA32_FEATURE_CONTROL: 0x%.8X\n", (uint32) rdmsr (IA32_FEATURE_CONTROL));
+  com1_printf ("IA32_VMX_BASIC: 0x%.16llX\n",
+               rdmsr (IA32_VMX_BASIC));
+  com1_printf ("IA32_VMX_CR0_FIXED0: 0x%.8X\n", (uint32) rdmsr (IA32_VMX_CR0_FIXED0));
+  com1_printf ("IA32_VMX_CR0_FIXED1: 0x%.8X\n", (uint32) rdmsr (IA32_VMX_CR0_FIXED1));
+  com1_printf ("IA32_VMX_CR4_FIXED0: 0x%.8X\n", (uint32) rdmsr (IA32_VMX_CR4_FIXED0));
+  com1_printf ("IA32_VMX_CR4_FIXED1: 0x%.8X\n", (uint32) rdmsr (IA32_VMX_CR4_FIXED1));
 
-  com1_printf ("IA32_VMX_PINBASED_CTLS: %.8X%.8X\n",
-               (uint32) (rdmsr (IA32_VMX_PINBASED_CTLS) >> 32),
-               (uint32) rdmsr (IA32_VMX_PINBASED_CTLS));
-  com1_printf ("IA32_VMX_TRUE_PINBASED_CTLS: %.8X%.8X\n",
-               (uint32) (rdmsr (IA32_VMX_TRUE_PINBASED_CTLS) >> 32),
-               (uint32) rdmsr (IA32_VMX_TRUE_PINBASED_CTLS));
-  com1_printf ("IA32_VMX_PROCBASED_CTLS: %.8X%.8X\n",
-               (uint32) (rdmsr (IA32_VMX_PROCBASED_CTLS) >> 32),
-               (uint32) rdmsr (IA32_VMX_PROCBASED_CTLS));
-  com1_printf ("IA32_VMX_TRUE_PROCBASED_CTLS: %.8X%.8X\n",
-               (uint32) (rdmsr (IA32_VMX_TRUE_PROCBASED_CTLS) >> 32),
-               (uint32) rdmsr (IA32_VMX_TRUE_PROCBASED_CTLS));
-  com1_printf ("IA32_VMX_PROCBASED_CTLS2: %.8X%.8X\n",
-               (uint32) (rdmsr (IA32_VMX_PROCBASED_CTLS2) >> 32),
-               (uint32) rdmsr (IA32_VMX_PROCBASED_CTLS2));
+  com1_printf ("IA32_VMX_PINBASED_CTLS: 0x%.16llX\n",
+               rdmsr (IA32_VMX_PINBASED_CTLS));
+  com1_printf ("IA32_VMX_TRUE_PINBASED_CTLS: 0x%.16llX\n",
+               rdmsr (IA32_VMX_TRUE_PINBASED_CTLS));
+  com1_printf ("IA32_VMX_PROCBASED_CTLS: 0x%.16llX\n",
+               rdmsr (IA32_VMX_PROCBASED_CTLS));
+  com1_printf ("IA32_VMX_TRUE_PROCBASED_CTLS: 0x%.16llX\n",
+               rdmsr (IA32_VMX_TRUE_PROCBASED_CTLS));
+  com1_printf ("IA32_VMX_PROCBASED_CTLS2: 0x%.16llX\n",
+               rdmsr (IA32_VMX_PROCBASED_CTLS2));
 
-  com1_printf ("IA32_VMX_EXIT_CTLS: %.8X%.8X\n",
-               (uint32) (rdmsr (IA32_VMX_EXIT_CTLS) >> 32),
-               (uint32) rdmsr (IA32_VMX_EXIT_CTLS));
-  com1_printf ("IA32_VMX_ENTRY_CTLS: %.8X%.8X\n",
-               (uint32) (rdmsr (IA32_VMX_ENTRY_CTLS) >> 32),
-               (uint32) rdmsr (IA32_VMX_ENTRY_CTLS));
-  com1_printf ("IA32_VMX_TRUE_EXIT_CTLS: %.8X%.8X\n",
-               (uint32) (rdmsr (IA32_VMX_TRUE_EXIT_CTLS) >> 32),
-               (uint32) rdmsr (IA32_VMX_TRUE_EXIT_CTLS));
-  com1_printf ("IA32_VMX_TRUE_ENTRY_CTLS: %.8X%.8X\n",
-               (uint32) (rdmsr (IA32_VMX_TRUE_ENTRY_CTLS) >> 32),
-               (uint32) rdmsr (IA32_VMX_TRUE_ENTRY_CTLS));
-  com1_printf ("IA32_VMX_MISC: %.8X%.8X\n",
-               (uint32) (rdmsr (IA32_VMX_MISC) >> 32),
-               (uint32) rdmsr (IA32_VMX_MISC));
+  com1_printf ("IA32_VMX_EXIT_CTLS: 0x%.16llX\n",
+               rdmsr (IA32_VMX_EXIT_CTLS));
+  com1_printf ("IA32_VMX_ENTRY_CTLS: 0x%.16llX\n",
+               rdmsr (IA32_VMX_ENTRY_CTLS));
+  com1_printf ("IA32_VMX_TRUE_EXIT_CTLS: 0x%.16llX\n",
+               rdmsr (IA32_VMX_TRUE_EXIT_CTLS));
+  com1_printf ("IA32_VMX_TRUE_ENTRY_CTLS: 0x%.16llX\n",
+               rdmsr (IA32_VMX_TRUE_ENTRY_CTLS));
+  com1_printf ("IA32_VMX_MISC: 0x%.16llX\n",
+               rdmsr (IA32_VMX_MISC));
 #endif
 
   /* Enable VMX */
@@ -541,11 +530,11 @@ vmx_enter_VM (virtual_machine *vm)
   uint32 phys_id = (uint32)LAPIC_get_physical_ID ();
   uint32 cr, esp, eip, state = 0, flags;
   uint16 fs;
+  u64 start, finish;
 
   if (!vm->loaded || vm->current_cpu != phys_id)
     goto not_loaded;
 
- enter:
   /* Save Host State */
   vmwrite (rdmsr (IA32_VMX_PINBASED_CTLS), VMXENC_PINBASED_VM_EXEC_CTRLS);
   vmwrite (rdmsr (IA32_VMX_PROCBASED_CTLS), VMXENC_PROCBASED_VM_EXEC_CTRLS);
@@ -579,6 +568,9 @@ vmx_enter_VM (virtual_machine *vm)
   vmwrite (rdmsr (IA32_SYSENTER_ESP), VMXENC_HOST_IA32_SYSENTER_ESP);
   vmwrite (rdmsr (IA32_SYSENTER_EIP), VMXENC_HOST_IA32_SYSENTER_EIP);
   vmwrite (vmread (VMXENC_GUEST_CS_ACCESS) | 0x1, VMXENC_GUEST_CS_ACCESS);
+
+ enter:
+  RDTSC (start);
 
   /* clobber-list is not necessary here because "pusha" below saves
    * HOST registers */
@@ -635,39 +627,39 @@ vmx_enter_VM (virtual_machine *vm)
                     :"c" (8), "S" (&vm->guest_regs):"edi","cc","memory");
     }
     asm volatile ("movl %0, %%esp\npopa"::"m" (saved_esp));
-  }
-  asm volatile ("pushfl\npop %0":"=r" (flags));
-  if (flags & (F_CF | F_ZF)) {
-  //if (vmx_get_error () != 0) {
+    asm volatile ("pushfl\npop %0":"=r" (flags));
+    if (flags & (F_CF | F_ZF)) {
+      //if (vmx_get_error () != 0) {
 #if DEBUG_VMX > 1
-    uint32 error = vmread (VMXENC_VM_INSTR_ERROR);
+      uint32 error = vmread (VMXENC_VM_INSTR_ERROR);
 #endif
-    uint32 reason = vmread (VMXENC_EXIT_REASON);
+      uint32 reason = vmread (VMXENC_EXIT_REASON);
 
-    if (state == 1)
-      /* Failure to VMLAUNCH */
-      vm->launched = FALSE;
+      if (state == 1)
+        /* Failure to VMLAUNCH */
+        vm->launched = FALSE;
 
 #if DEBUG_VMX > 1
-    com1_printf ("VM-ENTRY: error: %.8X (%s)\n  reason: %.8X qual: %.8X\n",
-                 error,
-                 (error < VMX_NUM_INSTR_ERRORS ? vm_instruction_errors[error] : "n/a"),
-                 reason,
-                 vmread (VMXENC_EXIT_QUAL));
+      com1_printf ("VM-ENTRY: error: %.8X (%s)\n  reason: %.8X qual: %.8X\n",
+                   error,
+                   (error < VMX_NUM_INSTR_ERRORS ? vm_instruction_errors[error] : "n/a"),
+                   reason,
+                   vmread (VMXENC_EXIT_QUAL));
 #endif
-    if (reason & 0x80000000) {
+      if (reason & 0x80000000) {
 #if DEBUG_VMX > 0
-      com1_printf ("  VM-ENTRY failure, code: %d\n", reason & 0xFF);
+        com1_printf ("  VM-ENTRY failure, code: %d\n", reason & 0xFF);
 #endif
+      }
+      goto abort_vmentry;
     }
-    goto abort_vmentry;
   }
 
   if (!eip) {
     /* VM-exited */
     uint32 reason = vmread (VMXENC_EXIT_REASON);
     uint32 intinf = vmread (VMXENC_VM_EXIT_INTERRUPT_INFO);
-#if DEBUG_VMX > 2
+#if DEBUG_VMX > 1
     uint32 qualif = vmread (VMXENC_EXIT_QUAL);
     uint32 ercode = vmread (VMXENC_VM_EXIT_INTERRUPT_ERRCODE);
     uint32 inslen = vmread (VMXENC_VM_EXIT_INSTR_LEN);
@@ -683,11 +675,14 @@ vmx_enter_VM (virtual_machine *vm)
         vm->launched = FALSE;
     }
 
+    RDTSC (finish);
+
 #if DEBUG_VMX > 2
-    com1_printf ("VM-EXIT: %s\n  reason=%.8X qualif=%.8X\n  intinf=%.8X ercode=%.8X\n  inslen=%.8X insinf=%.8X\n",
+    com1_printf ("VM-EXIT: %s\n  reason=%.8X qualif=%.8X\n  intinf=%.8X ercode=%.8X\n  inslen=%.8X insinf=%.8X\n  cycles=0x%llX\n",
                  (reason < VMX_NUM_EXIT_REASONS ?
                   vm_exit_reasons[reason] : "invalid exit-reason"),
-                 reason, qualif, intinf, ercode, inslen, insinf);
+                 reason, qualif, intinf, ercode, inslen, insinf,
+                 finish - start);
     vmx_vm_exit_reason ();
 #endif
 
@@ -696,6 +691,15 @@ vmx_enter_VM (virtual_machine *vm)
       if (vmx_vm86_handle_GPF (vm) == 0)
         /* continue guest */
         goto enter;
+    } else {
+      /* Not a vm86 related VM-EXIT */
+#if DEBUG_VMX > 1
+      com1_printf ("VM-EXIT: %s\n  reason=%.8X qualif=%.8X\n  intinf=%.8X ercode=%.8X\n  inslen=%.8X insinf=%.8X\n",
+                   (reason < VMX_NUM_EXIT_REASONS ?
+                    vm_exit_reasons[reason] : "invalid exit-reason"),
+                   reason, qualif, intinf, ercode, inslen, insinf);
+      vmx_vm_exit_reason ();
+#endif
     }
   }
 
@@ -734,11 +738,13 @@ vmx_init (void)
   /* default to "graphics demo" in vm86 mode */
 #endif
 
+  for (;;) {
+    if (vmx_enter_VM (&first_vm) != 0)
+      goto vm_error;
+  }
+
   if (vmx_enter_VM (&first_vm) != 0)
     goto vm_error;
-
-  //if (vmx_enter_VM (&first_vm) != 0)
-  //  goto vm_error;
 
   if (vmx_unload_VM (&first_vm) != 0)
     goto vm_error;
@@ -755,7 +761,7 @@ static const struct module_ops mod_ops = {
   .init = vmx_init
 };
 
-DEF_MODULE (vm___vmx, "VMX hardware virtualization driver", &mod_ops, {});
+//DEF_MODULE (vm___vmx, "VMX hardware virtualization driver", &mod_ops, {});
 
 
 /*

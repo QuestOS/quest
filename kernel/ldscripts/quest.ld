@@ -61,9 +61,9 @@ SECTIONS {
    * it is linked with virtual addresses starting at 0x8000.  The kernel
    * will setup the page-table mappings to support this. */
   . = 0x8000; _code16start = .; 
-  .text16 : AT ( ( LOADADDR(.bss) + SIZEOF(.bss) + 0xFFF ) & 0xFFFFF000 ) 
+  _code16physicalstart = ( LOADADDR(.bss) + SIZEOF(.bss) + 0xFFF ) & 0xFFFFF000;
+  .text16 : AT ( _code16physicalstart ) 
             { vm/code16.o (.text16) } : virtualtext16
   _code16end = ALIGN(0x1000);
   _code16_pages = ( _code16end - _code16start ) / 0x1000;
-  _code16physicalstart = LOADADDR(.text16);
 }
