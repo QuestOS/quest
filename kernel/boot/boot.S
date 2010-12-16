@@ -20,15 +20,15 @@
  * boot.S
  *
  *
- * NOTE:         All references to Intel documentation are from the manuals 
- *               dated 1997-2001. Updated book versions may be on-line.         
+ * NOTE:         All references to Intel documentation are from the manuals
+ *               dated 1997-2001. Updated book versions may be on-line.
  */
 
 
 #include "kernel.h"
 
         .globl initial_gdt
-        
+
         .bss
         .align 0x1000 /* align page directory on 4K boundary - 2-12 Manual vol 3 */
         .comm pgd, 0x1000   /* setup 4Kbytes for page global directory */
@@ -36,12 +36,12 @@
         .align 0x1000
         .comm idt, 0x1000   /* setup 4Kbytes for IDT+GDT */
 
-        .align 0x1000 
+        .align 0x1000
         .comm kern_pg_table, 0x1000 /* setup 4Kbytes for kernel page table */
 
         .align 0x1000
         .comm tmp_stack, 0x1000
-        
+
         .data
         .align 4
 initial_gdt:
@@ -77,7 +77,7 @@ idt_ptr:
         .short 0x7FF     /* length - 256 descriptors */
         .long KERN_IDT   /* linear address */
 
-        
+
         .text
         .globl _start
 
@@ -116,19 +116,21 @@ real_start:
         rep movsl
         lgdt gdt_ptr /* pass address of 6-byte object */
 
+        /* call realmodetest */
+
         /* set up support for 4MB paging */
         movl %cr4, %eax /* EAX is temporary for CR4 */
         orl $0x10, %eax /* Set PSE bit of CR4 */
         movl %eax, %cr4
 
         /* Setup 1st page directory entry for super-paging */
-        movl $0x83, %eax 
+        movl $0x83, %eax
         movl %eax, pgd
 
         /* LAPIC address mapping - 4MB page @ 0xFEC00000 */
         movl $0xFEC00083, %eax
-        movl %eax, pgd+0xFEC 
-        
+        movl %eax, pgd+0xFEC
+
         /* Set 1024th (top) entry in PGD to reference kern_pg_table
          * Here, we have 1 4MB superpage for the entire kernel
          */
@@ -151,12 +153,12 @@ real_start:
 1:      stosl
         addl $0x1000, %eax
         loop 1b
-        
+
         /* Setup entry in kernel page table for KERNEL IDT/GDT */
-        movl $idt+3, %eax /* idt is page aligned in bss - 
+        movl $idt+3, %eax /* idt is page aligned in bss -
                            * set physical address in
                            * kernel page table:
-                           * +3 indicates present/write-enabled 
+                           * +3 indicates present/write-enabled
                            */
 
         /* NOTE: shift 10 bits rather than 12 due to kern_pg_table being
@@ -165,7 +167,7 @@ real_start:
 
         /* Here, remap kern_pg_table to high virtual memory to be
            accessible later by user-level code via syscalls */
-        movl $kern_pg_table+3, %eax 
+        movl $kern_pg_table+3, %eax
         movl %eax, kern_pg_table + ( ( KERN_PGT >> 10 ) & 0x0FFF )
 
         /* This is for mapping screen memory into kernel for screen dumps */
@@ -182,7 +184,7 @@ real_start:
         /* Manual vol 3 pg 8-14: Need a far jump after initializing CR0 */
         ljmp $0x08,$1f /* Seg selector: index=1,TI=0,RPL=00 for Kernel CS
                                         AT&T syntax req'res comma-separated offset */
-1:              
+1:
 
         /* Setup remaining segment selectors */
         movw $0x10, %ax /* Set DS-SS to refer to KERNEL DS */
@@ -205,7 +207,7 @@ real_start:
         /* For now populate int_table w/ interrupt gate descriptors.
          * These clear the IF flag when invoked
          */
-1:      
+1:
         lodsl
         movw %ax,%dx
         movw $0xEE00,%ax /* DPL = 11 -- is that right? */
@@ -213,13 +215,100 @@ real_start:
         addl $4,%edi
         stosl /* Store top 32-bits of descriptor held in EAX into IDT */
         loop 1b
-        
+
         lidt idt_ptr
 
         popl %ebx
         movl $stack+0x1000, %esp      /* setup real C stack */
         pushl %ebx                      /* pass GRUB multiboot info */
         call init /* start of C code */
+
+realmodetest:
+        push %ebp
+        movl %esp, %ebp
+        movl $_code16physicalstart, %esi
+        movl $_code16start, %edi
+        movl $_code16_pages, %ecx
+        shll $12, %ecx
+        rep movsb
+
+        movl $realmodestub, %esi
+        movl $0x7c00, %edi
+        movl realmodestub_len, %ecx
+        rep movsb
+
+        lgdt 0x7c00 + realmodegdtdesc - realmodestub
+        movw $0x20, %ax
+        movw %ax, %ds
+        movw %ax, %es
+        movw %ax, %fs
+        movw %ax, %gs
+        movw %ax, %ss
+
+        ljmp $0x18, $0x7c00
+
+1:      jmp 1b
+        ret
+
+        .code16
+realmodestub:
+        /* disable pmode */
+        movl %cr0, %eax
+        andb $0xFE, %al
+        movl %eax, %cr0
+
+        data32 ljmp $0x0, $1f
+1:
+        xorw %ax, %ax
+        movw %ax, %ds
+        movw %ax, %es
+        movw %ax, %fs
+        movw %ax, %gs
+        movw %ax, %ss
+        movw $0x9000, %sp
+        lidt 0x7c00 + ivt - realmodestub
+        sti
+        ljmp $0x0, $_code16start
+ivt:    .short 0x3ff
+        .long  0x0
+        .p2align        2       /* force 4-byte alignment */
+realmodegdt:
+        .word   0, 0
+        .byte   0, 0, 0, 0
+
+        /* -- code segment --
+         * base = 0x00000000, limit = 0xFFFFF (4 KiB Granularity), present
+         * type = 32bit code execute/read, DPL = 0
+         */
+        .word   0xFFFF, 0
+        .byte   0, 0x9A, 0xCF, 0
+
+        /* -- data segment --
+         * base = 0x00000000, limit 0xFFFFF (4 KiB Granularity), present
+         * type = 32 bit data read/write, DPL = 0
+         */
+        .word   0xFFFF, 0
+        .byte   0, 0x92, 0xCF, 0
+
+        /* -- 16 bit real mode CS --
+         * base = 0x00000000, limit 0x0FFFF (1 B Granularity), present
+         * type = 16 bit code execute/read only/conforming, DPL = 0
+         */
+        .word   0xFFFF, 0
+        .byte   0, 0x9E, 0, 0
+
+        /* -- 16 bit real mode DS --
+         * base = 0x00000000, limit 0x0FFFF (1 B Granularity), present
+         * type = 16 bit data read/write, DPL = 0
+         */
+        .word   0xFFFF, 0
+        .byte   0, 0x92, 0, 0
+realmodegdtdesc:
+        .word   0x27                    /* limit */
+        .long   realmodegdt             /* addr */
+realmodestub_len:
+        .long . - realmodestub
+        .code32
 
 int_table:
         /* interrupts 0x00-0x1F - processor traps */
@@ -256,13 +345,13 @@ int_table:
         .long interrupt1e
         .long interrupt1f
 
-        /* interrupts 0x20-0x2F - PIC/IRQ interrupt requests */ 
+        /* interrupts 0x20-0x2F - PIC/IRQ interrupt requests */
         .long timer             /* PIT */
         .long interrupt21
         .long interrupt22
         .long interrupt23
         .long interrupt24
-        .long soundcard         /* soundcard --??-- in future, 
+        .long soundcard         /* soundcard --??-- in future,
                                    don't hardcode IRQ of soundcard */
         .long interrupt26
         .long interrupt27
