@@ -84,7 +84,12 @@ typedef struct _quest_tss
 {
   u32 ESP;
   u32 EBP;
-  u32 EIP;
+  /* The initial instruction pointer is written both to here and the
+   * kernel stack.  In the case of the initial user-space application,
+   * this field is used to load the first IRET into user-space.  In
+   * all other cases, the kernel stack contains the EIP to resume
+   * operation. */
+  u32 initial_EIP;
   u32 CR3;
   u32 EFLAGS;
   struct _semaphore Msem;

@@ -20,7 +20,7 @@
 #define USER_DS 0x23
 
         /* offsets into TSS/TCB */
-#define EIP 8
+#define initial_EIP 8
 #define EBP 4
 #define EFLAGS 16
 #define ESP 0
@@ -34,13 +34,6 @@ _sw_jmp_task:
         /* check if source is NULL */
         testl %esi, %esi
         jz srcNULL
-
-        /* save EIP */
-        call 1f
-        /* resume point */
-        ret
-1:      popl %ebx
-        movl %ebx, EIP(%esi)
 
         /* save EBP */
         movl %ebp, EBP(%esi)
@@ -92,9 +85,8 @@ skipCR3:
         pushl %ebx
         popf
 
-        /* restore EIP */
-        leal EIP(%edi), %ebx
-        jmp *(%ebx)
+        ret
+
 
         /* Start initial task */
         /* %edi: TSS pointer */
@@ -114,8 +106,7 @@ _sw_init_task:
         movl %ebx, %cr3
 
         /* invoke task */
-        leal EIP(%edi), %ebx
-        jmp *(%ebx)
+        ret
 
         /* Start initial task in userspace */
         /* %edi: TSS pointer */
@@ -138,7 +129,7 @@ _sw_init_user_task:
 
         /* setup CS:EIP */
         movl $USER_CS, 4(%esp)
-        movl EIP(%edi), %ebx
+        movl initial_EIP(%edi), %ebx
         movl %ebx, 0(%esp)
 
         /* setup data segments */
@@ -164,13 +155,6 @@ _sw_init_user_task:
          * %edi: destination TSS pointer */
         .globl _sw_ipc
 _sw_ipc:
-        /* save EIP */
-        call 1f
-        /* resume point */
-        ret
-1:      popl %ebx
-        movl %ebx, EIP(%esi)
-
         /* save EBP */
         movl %ebp, EBP(%esi)
 
@@ -211,10 +195,7 @@ _sw_ipc:
         pushl %ebx
         popf
 
-        /* restore EIP */
-        leal EIP(%edi), %ebx
-        jmp *(%ebx)
-
+        ret
 
 /*
  * Local Variables:

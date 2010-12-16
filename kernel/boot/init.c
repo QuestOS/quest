@@ -107,8 +107,8 @@ alloc_idle_TSS (int cpu_num)
   u32 *stk = map_virtual_page (alloc_phys_frame () | 3);
 
   pTSS->CR3 = (u32) get_pdbr ();
-  pTSS->EIP = (u32) & idle_task;
-
+  pTSS->initial_EIP = (u32) & idle_task;
+  stk[1023] = pTSS->initial_EIP;
   pTSS->EFLAGS = F_1 | F_IOPL0;
 
   pTSS->ESP = (u32) &stk[1023];
@@ -150,7 +150,7 @@ alloc_TSS (void *pPageDirectory, void *pEntry, int mod_num)
   ad[i].fGranularity = 0;       /* Set granularity of tss in bytes */
 
   pTSS->CR3 = (u32) pPageDirectory;
-  pTSS->EIP = (u32) pEntry;
+  pTSS->initial_EIP = (u32) pEntry;
 
   if (mod_num != 1)
     pTSS->EFLAGS = F_1 | F_IF | F_IOPL0;

@@ -172,7 +172,8 @@ duplicate_TSS (uint32 ebp,
   pTSS->CR3 = (u32) child_directory;
 
   /* The child will begin running at the specified EIP */
-  pTSS->EIP = child_eip;
+  pTSS->initial_EIP = child_eip;
+  *((u32 *) child_esp) = pTSS->initial_EIP;
   pTSS->EFLAGS = child_eflags & 0xFFFFBFFF;   /* Disable NT flag */
   pTSS->ESP = child_esp;
   pTSS->EBP = child_ebp;
