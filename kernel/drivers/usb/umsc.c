@@ -20,6 +20,7 @@
 #include "drivers/usb/uhci.h"
 #include "util/printf.h"
 #include "sched/vcpu.h"
+#include "sched/sched.h"
 #include "kernel.h"
 
 #define USB_MASS_STORAGE_CLASS 0x8
@@ -360,6 +361,14 @@ umsc_tmr_test (void)
 
   uhci_show_regs ();
 }
+
+#include "module/header.h"
+
+static const struct module_ops mod_ops = {
+  .init = usb_mass_storage_driver_init
+};
+
+DEF_MODULE (usb___umsc, "USB mass storage driver", &mod_ops, {"usb"});
 
 
 /*

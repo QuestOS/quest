@@ -296,6 +296,14 @@ usb_pl2303_driver_init (void)
   return usb_register_driver (&pl2303_driver);
 }
 
+#include "module/header.h"
+
+static const struct module_ops mod_ops = {
+  .init = usb_pl2303_driver_init
+};
+
+DEF_MODULE (usb___pl2303, "USB pl2303 serial port driver", &mod_ops, {"usb"});
+
 /*
  * Local Variables:
  * indent-tabs-mode: nil

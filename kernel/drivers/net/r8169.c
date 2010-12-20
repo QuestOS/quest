@@ -33,8 +33,8 @@
 #include "mem/pow2.h"
 #include "kernel.h"
 #include "sched/vcpu.h"
-
-#define R8169_VECTOR 0x4F       /* arbitrary */
+#include "sched/sched.h"
+#include "module/header.h"
 
 //#define DEBUG_R8169
 
@@ -3482,16 +3482,20 @@ r8169_init (void)
   if (pci_irq_find (pdev.bus, pdev.slot, irq_pin, &irq)) {
     /* use PCI routing table */
     DLOG ("Found PCI routing entry irq.gsi=0x%x", irq.gsi);
-    pci_irq_map (&irq, R8169_VECTOR, 0x01,
-                 IOAPIC_DESTINATION_LOGICAL, IOAPIC_DELIVERY_FIXED);
+    if (!pci_irq_map_handler (&irq, irq_handler, 0x01,
+                              IOAPIC_DESTINATION_LOGICAL,
+                              IOAPIC_DELIVERY_FIXED)) {
+      DLOG ("Failed to map IRQ");
+      goto abort;
+    }
     irq_line = irq.gsi;
+    u8 vector;
+    IOAPIC_get_GSI_mapping (irq.gsi, &vector, NULL);
+    DLOG ("Using vector=0x%X", vector);
   } else {
     DLOG ("Unable to find PCI routing entry");
     goto abort;
   }
-
-  /* Map IRQ to handler */
-  set_vector_handler (R8169_VECTOR, irq_handler);
 
   ioaddr = map_virtual_page (phys_addr | 3);
 
@@ -3630,8 +3634,9 @@ r8169_init (void)
 
   rtl8169_check_link_status(&tp->ethdev, tp, tp->mmio_addr);
 
-  r8169_bh_id = start_kernel_thread ((u32) r8169_bh_thread,
-                                     (u32) &r8169_bh_stack[1023]);
+  r8169_bh_id = create_kernel_thread_args ((u32) r8169_bh_thread,
+                                           (u32) &r8169_bh_stack[1023],
+                                           FALSE, 0);
   set_iovcpu (r8169_bh_id, IOVCPU_CLASS_NET);
 
   return TRUE;
@@ -3646,6 +3651,12 @@ r8169_init (void)
  abort:
   return FALSE;
 }
+
+static const struct module_ops mod_ops = {
+  .init = r8169_init
+};
+
+DEF_MODULE (net___r8169, "r8169 network driver", &mod_ops, {"net___ethernet", "pci"});
 
 
 /*

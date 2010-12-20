@@ -15,32 +15,38 @@
  *  along with this program.  If not, see <http://www.gnu.org/licenses/>.
  */
 
-#ifndef _DEBUG_H_
-#define _DEBUG_H_
+#ifndef _VM86_H_
+#define _VM86_H_
 
-extern void com1_putc (char);
-extern void com1_puts (char *);
-extern void com1_putx (uint32);
+#include "types.h"
+#include "vm/vm86-defs.h"
+#include "vm/vmx.h"
 
-void logger_printf (const char *fmt, ...);
-#define DLOG_PREFIX(pre,fmt,...) logger_printf (pre": "fmt"\n", ##__VA_ARGS__)
+#define REAL_TO_LIN32(s,o,type)                                         \
+  ((type *) ((((uint32) (s) & 0xFFFF) << 4) + ((uint32) (o) & 0xFFFF)))
 
-extern bool logger_init (void);
-extern void logger_putc (char);
+struct _vm86_farptr
+{
+  uint16 offs;
+  uint16 segm;
+} PACKED;
+typedef struct _vm86_farptr vm86_farptr;
+#define FP_TO_LIN32(fp,type) (REAL_TO_LIN32 ((fp).segm, (fp).offs, type))
+#define LIN32_TO_FP(p)                                                  \
+  ((vm86_farptr) { .segm = ((uint32) (p) & (~0xFFFF)) >> 4, .offs = (uint32) (p) & 0xFFFF })
 
-void stacktrace_frame (uint esp, uint ebp);
-void stacktrace (void);
-
+sint32 vmx_vm86_handle_GPF (virtual_machine *);
+void vmx_vm86_global_init (void);
 
 #endif
 
-/* 
+/*
  * Local Variables:
  * indent-tabs-mode: nil
  * mode: C
  * c-file-style: "gnu"
  * c-basic-offset: 2
- * End: 
+ * End:
  */
 
 /* vi: set et sw=2 sts=2: */

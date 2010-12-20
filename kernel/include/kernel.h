@@ -63,6 +63,7 @@
 #ifndef __ASSEMBLER__
 #include "arch/i386.h"
 #include "smp/spinlock.h"
+#include "smp/semaphore.h"
 
 struct sched_param
 {
@@ -75,9 +76,25 @@ struct sched_param
   int k;                        /* window of requests  */
 };
 
+#define NUM_M 32
+
+/* A Quest TSS is a software-only construct, a.k.a Thread Control
+ * Block (TCB). */
 typedef struct _quest_tss
 {
-  tss tss;                      /* hardware defined portion of TSS */
+  u32 ESP;
+  u32 EBP;
+  /* The initial instruction pointer is written both to here and the
+   * kernel stack.  In the case of the initial user-space application,
+   * this field is used to load the first IRET into user-space.  In
+   * all other cases, the kernel stack contains the EIP to resume
+   * operation. */
+  u32 initial_EIP;
+  u32 CR3;
+  u32 EFLAGS;
+  struct _semaphore Msem;
+  u32 M[NUM_M];
+
   uint16 next;                  /* selector for next TSS in corresponding queue
                                    (beit the runqueue for the CPU or a waitqueue for
                                    a resource; 0 if task is at end of queue. If a
@@ -102,6 +119,8 @@ extern char *kernel_version;
 extern uint16 runqueue[];       /* TSS of next runnable task; 0 if none */
 
 extern quest_tss *lookup_TSS (uint16 selector);
+extern void *lookup_GDT_selector (uint16 selector);
+extern void get_GDT_descriptor (uint16, descriptor *);
 
 extern void panic (char *sz) __attribute__ ((noreturn));
 
@@ -119,6 +138,8 @@ typedef uint32 (*vector_handler) (uint8 vector);
 extern void set_vector_handler (uint8 vector, vector_handler func);
 extern void clr_vector_handler (uint8 vector);
 extern vector_handler get_vector_handler (uint8 vector);
+#define MINIMUM_VECTOR_PRIORITY 0x4
+extern u8 find_unused_vector (u8 min_prio);
 extern void init_interrupt_handlers (void);
 
 void stacktrace (void);
@@ -136,7 +157,7 @@ uint16 duplicate_TSS (uint32 ebp,
 typedef uint16 task_id;
 
 task_id start_kernel_thread (uint eip, uint esp);
-task_id start_kernel_thread_args (uint eip, uint esp, uint n, ...);
+task_id create_kernel_thread_args (uint eip, uint esp, bool run, uint n, ...);
 void exit_kernel_thread (void);
 
 /* Declare space for a stack */
@@ -157,7 +178,7 @@ extern uint32 kl_stack[][1024] __attribute__ ((aligned (4096)));
 /* Declare space for a page table mappings for kernel stacks */
 extern uint32 kls_pg_table[][1024] __attribute__ ((aligned (4096)));
 
-extern tss idleTSS[MAX_CPUS];
+extern quest_tss idleTSS[MAX_CPUS];
 
 extern tss cpuTSS[MAX_CPUS];
 
@@ -179,6 +200,8 @@ checksum (uint8 * ptr, int length)
     sum += *ptr++;
   return sum;
 }
+
+extern uint get_pcpu_id (void);
 
 #endif /* __ASSEMBLER__ */
 #endif

@@ -21,6 +21,7 @@
 #include <drivers/usb/uhci.h>
 #include <util/printf.h>
 #include <kernel.h>
+#include <sched/sched.h>
 
 #define USB_HUB_CLASS 0x9
 
@@ -171,6 +172,14 @@ usb_hub_driver_init (void)
 {
   return usb_register_driver (&hub_driver);
 }
+
+#include "module/header.h"
+
+static const struct module_ops mod_ops = {
+  .init = usb_hub_driver_init
+};
+
+DEF_MODULE (usb___hub, "USB hub driver", &mod_ops, {"usb"});
 
 /*
  * Local Variables:

@@ -23,6 +23,7 @@
 #include "util/debug.h"
 #include "mem/virtual.h"
 #include "mem/physical.h"
+#include "sched/sched.h"
 
 static spinlock kernel_lock ALIGNED(LOCK_ALIGNMENT) = SPINLOCK_INIT;
 
@@ -45,7 +46,7 @@ uint32 kl_stack[NR_MODS][1024] ALIGNED (0x1000);
 uint32 kls_pg_table[NR_MODS][1024] ALIGNED (0x1000);
 
 /* Each CPU gets an IDLE task -- something to do when nothing else */
-tss idleTSS[MAX_CPUS];
+quest_tss idleTSS[MAX_CPUS];
 uint16 idleTSS_selector[MAX_CPUS];
 
 /* Each CPU gets a CPU TSS for sw task switching */
@@ -88,6 +89,23 @@ lookup_TSS (uint16 selector)
   return (quest_tss *) (ad[selector >> 3].pBase0 |
                         (ad[selector >> 3].pBase1 << 16) |
                         (ad[selector >> 3].pBase2 << 24));
+}
+
+extern void *
+lookup_GDT_selector (uint16 selector)
+{
+
+  descriptor *ad = (descriptor *) KERN_GDT;
+
+  return (void *) (ad[selector >> 3].pBase0 |
+                   (ad[selector >> 3].pBase1 << 16) |
+                   (ad[selector >> 3].pBase2 << 24));
+}
+
+extern void
+get_GDT_descriptor (uint16 selector, descriptor *ad)
+{
+  *ad = ((descriptor *) KERN_GDT)[selector >> 3];
 }
 
 /* Idle loop for CPU IDLE task */
@@ -180,7 +198,7 @@ static bool kernel_threads_running = FALSE;
 static task_id kernel_thread_waitq = 0;
 
 task_id
-start_kernel_thread_args (uint eip, uint esp, uint n, ...)
+create_kernel_thread_args (uint eip, uint esp, bool run, uint n, ...)
 {
   task_id pid;
   uint32 eflags;
@@ -209,10 +227,12 @@ start_kernel_thread_args (uint eip, uint esp, uint n, ...)
 
   lookup_TSS (pid)->priority = 0x1f;
 
-  if (kernel_threads_running)
-    wakeup (pid);
-  else
-    queue_append (&kernel_thread_waitq, pid);
+  if (run) {
+    if (kernel_threads_running)
+      wakeup (pid);
+    else
+      queue_append (&kernel_thread_waitq, pid);
+  }
 
   return pid;
 }
@@ -220,7 +240,7 @@ start_kernel_thread_args (uint eip, uint esp, uint n, ...)
 task_id
 start_kernel_thread (uint eip, uint esp)
 {
-  return start_kernel_thread_args (eip, esp, 0);
+  return create_kernel_thread_args (eip, esp, TRUE, 0);
 }
 
 void

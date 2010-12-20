@@ -26,9 +26,11 @@
 #include "drivers/acpi/acmacros.h"
 #include "drivers/acpi/acexcep.h"
 #include "util/printf.h"
+#include "util/cpuid.h"
 
 static int process_acpi_tables (void);
 static int acpi_add_processor (ACPI_MADT_LOCAL_APIC *);
+static void acpi_parse_srat (ACPI_TABLE_SRAT *);
 
 /*******************************************************************
  * Support for ACPI via ACPICA, the Intel Reference Implementation *
@@ -43,7 +45,7 @@ static int acpi_add_processor (ACPI_MADT_LOCAL_APIC *);
 /* ACPICA early initialization requires some static space be set aside
  * for ACPI tables -- and there is no dynamic memory allocation
  * available at this stage, so here it is: */
-#define ACPI_MAX_INIT_TABLES 16
+#define ACPI_MAX_INIT_TABLES 24
 static ACPI_TABLE_DESC TableArray[ACPI_MAX_INIT_TABLES];
 
 uint32
@@ -66,13 +68,54 @@ acpi_enable_IOAPIC (void)
     com1_printf ("ACPI: IOAPIC mode enabled.\n");
 }
 
+static u8 acpi_sci_irq = 9, acpi_sci_flags = 0;
+static u32
+acpi_irq_handler (u8 vec)
+{
+  extern ACPI_OSD_HANDLER acpi_service_routine;
+  extern void *acpi_service_routine_context;
+
+  //logger_printf ("ACPI: IRQ (vec=0x%X) acpi_service_routine=0x%p\n", vec, acpi_service_routine);
+  if (acpi_service_routine) {
+    acpi_service_routine (acpi_service_routine_context);
+  }
+  return 0;
+}
+
+static UINT32
+acpi_power_button (void *ctxt)
+{
+  ACPI_STATUS AcpiHwWrite (UINT32 Value, ACPI_GENERIC_ADDRESS *Reg);
+
+  logger_printf ("ACPI: acpi_power_button\n");
+  printf ("REBOOTING...\n");
+  com1_printf ("REBOOTING...\n");
+  tsc_delay_usec (100000);      /* avoid race between COM1 and Reboot */
+  AcpiHwWrite (AcpiGbl_FADT.ResetValue, &AcpiGbl_FADT.ResetRegister);
+  asm volatile ("hlt");
+  return 0;
+}
+
+static void
+acpi_notify_handler (ACPI_HANDLE Device,
+                     UINT32 Value,
+                     void *Context)
+{
+  ACPI_BUFFER Path;
+  ACPI_STATUS Status;
+  logger_printf ("ACPI: acpi_notify_handler (0x%p, 0x%X)\n", Device, Value);
+  Status = AcpiGetName (Device, ACPI_FULL_PATHNAME, &Path);
+  if (ACPI_SUCCESS (Status)) {
+    logger_printf ("    DeviceName=%s\n", Path.Pointer);
+  }
+}
+
 void
 acpi_secondary_init(void)
 {
   ACPI_STATUS Status;
-  ACPI_HANDLE SysBusHandle;
+  //ACPI_HANDLE SysBusHandle;
   ACPI_STATUS DisplayOneDevice (ACPI_HANDLE, UINT32, void *, void **);
-
   /* Complete the ACPICA initialization sequence */
 
   Status = AcpiInitializeSubsystem ();
@@ -81,7 +124,7 @@ acpi_secondary_init(void)
   }
   Status = AcpiReallocateRootTable ();
   if (ACPI_FAILURE (Status)) {
-    com1_printf ("Failed: AcpiReallocateRootTable.\n");
+    com1_printf ("Failed: AcpiReallocateRootTable %d.\n", Status);
   }
   Status = AcpiLoadTables ();
   if (ACPI_FAILURE (Status)) {
@@ -99,12 +142,53 @@ acpi_secondary_init(void)
   /* Must enable IOAPIC before checking any PCI routing tables. */
   acpi_enable_IOAPIC ();
 
+  /* Install System Control Interrupt */
+  u8 vector = find_unused_vector (MINIMUM_VECTOR_PRIORITY);
+  if (vector) {
+    u64 flags = IOAPIC_DELIVERY_FIXED | IOAPIC_DESTINATION_LOGICAL;
+    u8 gsi = acpi_sci_irq;
+    /* SCI defaults to LEVEL/LOW in IO-APIC mode. */
+    if ((acpi_sci_flags & ACPI_MADT_POLARITY_MASK) == ACPI_MADT_POLARITY_ACTIVE_HIGH)
+      flags |= IOAPIC_POLARITY_HIGH;
+    else
+      flags |= IOAPIC_POLARITY_LOW;
+    if ((acpi_sci_flags & ACPI_MADT_TRIGGER_MASK) == ACPI_MADT_TRIGGER_EDGE)
+      flags |= IOAPIC_TRIGGER_EDGE;
+    else
+      flags |= IOAPIC_TRIGGER_LEVEL;
+    if (IOAPIC_map_GSI (gsi, vector, 0x0100000000000000ULL | flags) != -1) {
+      set_vector_handler (vector, acpi_irq_handler);
+      logger_printf ("ACPI: mapped GSI 0x%X to vector 0x%X (%s, %s)\n",
+                     gsi, vector,
+                     flags & IOAPIC_TRIGGER_LEVEL ? "level" : "edge",
+                     flags & IOAPIC_POLARITY_LOW ? "low" : "high");
+    } else
+      logger_printf ("ACPI: failed to map GSI\n");
+  } else
+    logger_printf ("ACPI: failed to find unused vector\n");
+
+  logger_printf ("AcpiEnableEvent returned %d\n",
+                 AcpiEnableEvent (ACPI_EVENT_POWER_BUTTON, 0));
+  logger_printf ("AcpiInstallFixedEventHandler returned %d\n",
+                 AcpiInstallFixedEventHandler (ACPI_EVENT_POWER_BUTTON, acpi_power_button, NULL));
+  logger_printf ("AcpiInstallNotifyHandler returned %d\n",
+                 AcpiInstallNotifyHandler (ACPI_ROOT_OBJECT, ACPI_SYSTEM_NOTIFY, acpi_notify_handler, NULL));
+  logger_printf ("AcpiInstallNotifyHandler returned %d\n",
+                 AcpiInstallNotifyHandler (ACPI_ROOT_OBJECT, ACPI_DEVICE_NOTIFY, acpi_notify_handler, NULL));
+
+  extern u8 AcpiGbl_OsiData;
+  AcpiGbl_OsiData=0;
+
   /* Walk the System Bus "\_SB_" and output info about each object
    * found. */
 
+#if 0
   AcpiGetHandle (ACPI_ROOT_OBJECT, ACPI_NS_SYSTEM_BUS, &SysBusHandle);
   AcpiWalkNamespace (ACPI_TYPE_ANY, SysBusHandle, INT_MAX,
                      DisplayOneDevice, NULL, NULL);
+#else
+  AcpiGetDevices (NULL, DisplayOneDevice, NULL, NULL);
+#endif
 }
 
 #define printf com1_printf
@@ -120,7 +204,8 @@ process_acpi_tables (void)
 
   ACPI_STATUS status;
 
-  status = AcpiInitializeTables (TableArray, ACPI_MAX_INIT_TABLES, TRUE);
+  status = AcpiInitializeTables (TableArray, ACPI_MAX_INIT_TABLES, FALSE);
+
   if (status == AE_OK) {
     ACPI_TABLE_MADT *madt;
     ACPI_TABLE_FADT *fadt;
@@ -129,6 +214,30 @@ process_acpi_tables (void)
     ACPI_TABLE_MCFG *mcfg;
     ACPI_TABLE_HPET *hpet;
     ACPI_TABLE_TCPA *tcpa;
+    ACPI_TABLE_SRAT *srat;
+    ACPI_TABLE_DMAR *dmar;
+
+    if (AcpiGetTable (ACPI_SIG_FADT, 0, (ACPI_TABLE_HEADER **) & fadt) ==
+        AE_OK) {
+      /* Fixed ACPI Description Table */
+      printf ("Bootflags: %s %s %s\n",
+              (fadt->BootFlags & ACPI_FADT_LEGACY_DEVICES) ?
+              "HAS_LEGACY_DEVICES" : "NO_LEGACY_DEVICES",
+              (fadt->BootFlags & ACPI_FADT_8042) ?
+              "HAS_KBD_8042" : "NO_KBD_8042",
+              (fadt->BootFlags & ACPI_FADT_NO_VGA) ?
+              "NO_VGA_PROBING" : "VGA_PROBING_OK");
+      printf ("Flags=0x%X SCI_IRQ=0x%X Pm1aEvt=0x%p Pm1aCtl=0x%p\n",
+              fadt->Flags,
+              fadt->SciInterrupt,
+              fadt->Pm1aEventBlock,
+              fadt->Pm1aControlBlock);
+      printf ("ResetReg=0x%llX ResetSpace=%d ResetVal=0x%X\n",
+              fadt->ResetRegister.Address, fadt->ResetRegister.SpaceId, fadt->ResetValue);
+      acpi_sci_irq = fadt->SciInterrupt;
+    } else {
+      printf ("AcpiGetTable FADT: FAILED\n");
+    }
 
     mp_ISA_bus_id = 0;
     if (AcpiGetTable (ACPI_SIG_MADT, 0, (ACPI_TABLE_HEADER **) & madt) ==
@@ -145,47 +254,53 @@ process_acpi_tables (void)
       while (ptr < lim) {
         switch (((ACPI_SUBTABLE_HEADER *) ptr)->Type) {
         case ACPI_MADT_TYPE_LOCAL_APIC:{
-            /* Processor entry */
-            ACPI_MADT_LOCAL_APIC *sub = (ACPI_MADT_LOCAL_APIC *) ptr;
-            printf ("Processor: %X APIC-ID: %X %s",
-                    sub->ProcessorId,
-                    sub->Id,
-                    sub->LapicFlags & 1 ? "(enabled)" : "(disabled)");
-            if (acpi_add_processor (sub)) {
-              printf (" (booted)");
-            }
-            printf ("\n");
-            break;
+          /* Processor entry */
+          ACPI_MADT_LOCAL_APIC *sub = (ACPI_MADT_LOCAL_APIC *) ptr;
+          printf ("Processor: 0x%X APIC-ID: 0x%X %s",
+                  sub->ProcessorId,
+                  sub->Id,
+                  sub->LapicFlags & 1 ? "(enabled)" : "(disabled)");
+          if (acpi_add_processor (sub)) {
+            printf (" (booted)");
           }
+          printf ("\n");
+          break;
+        }
         case ACPI_MADT_TYPE_IO_APIC:{
-            /* IO-APIC entry */
-            ACPI_MADT_IO_APIC *sub = (ACPI_MADT_IO_APIC *) ptr;
-            printf ("IO-APIC ID: %X Address: %X IRQBase: %X\n",
-                    sub->Id, sub->Address, sub->GlobalIrqBase);
-            if (mp_num_IOAPICs == MAX_IOAPICS)
-              panic ("Too many IO-APICs.");
-            mp_IOAPIC_addr = sub->Address;
-            mp_IOAPICs[mp_num_IOAPICs].id = sub->Id;
-            mp_IOAPICs[mp_num_IOAPICs].address = sub->Address;
-            mp_IOAPICs[mp_num_IOAPICs].startGSI = sub->GlobalIrqBase;
-            mp_IOAPICs[mp_num_IOAPICs].numGSIs = IOAPIC_num_entries();
-            mp_num_IOAPICs++;
-            break;
-          }
+          /* IO-APIC entry */
+          ACPI_MADT_IO_APIC *sub = (ACPI_MADT_IO_APIC *) ptr;
+          printf ("IO-APIC ID: %X Address: %X IRQBase: %X\n",
+                  sub->Id, sub->Address, sub->GlobalIrqBase);
+          if (mp_num_IOAPICs == MAX_IOAPICS)
+            panic ("Too many IO-APICs.");
+          mp_IOAPIC_addr = sub->Address;
+          mp_IOAPICs[mp_num_IOAPICs].id = sub->Id;
+          mp_IOAPICs[mp_num_IOAPICs].address = sub->Address;
+          mp_IOAPICs[mp_num_IOAPICs].startGSI = sub->GlobalIrqBase;
+          mp_IOAPICs[mp_num_IOAPICs].numGSIs = IOAPIC_num_entries();
+          mp_num_IOAPICs++;
+          break;
+        }
         case ACPI_MADT_TYPE_INTERRUPT_OVERRIDE:{
-            /* Interrupt Override entry */
-            ACPI_MADT_INTERRUPT_OVERRIDE *sub =
-              (ACPI_MADT_INTERRUPT_OVERRIDE *) ptr;
-            printf ("Int. Override: Bus: %X SourceIRQ: %X GlobalIRQ: %X Flags: %X\n",
-                    sub->Bus, sub->SourceIrq, sub->GlobalIrq, sub->IntiFlags);
-            if (mp_num_overrides == MAX_INT_OVERRIDES)
-              panic ("Too many interrupt overrides.");
-            mp_overrides[mp_num_overrides].src_bus = sub->Bus;
-            mp_overrides[mp_num_overrides].src_IRQ = sub->SourceIrq;
-            mp_overrides[mp_num_overrides].dest_GSI = sub->GlobalIrq;
-            mp_num_overrides++;
-            break;
+          /* Interrupt Override entry */
+          ACPI_MADT_INTERRUPT_OVERRIDE *sub =
+            (ACPI_MADT_INTERRUPT_OVERRIDE *) ptr;
+          printf ("Int. Override: Bus: %X SourceIRQ: %X GlobalIRQ: %X Flags: %X\n",
+                  sub->Bus, sub->SourceIrq, sub->GlobalIrq, sub->IntiFlags);
+          if (mp_num_overrides == MAX_INT_OVERRIDES)
+            panic ("Too many interrupt overrides.");
+          mp_overrides[mp_num_overrides].src_bus = sub->Bus;
+          mp_overrides[mp_num_overrides].src_IRQ = sub->SourceIrq;
+          mp_overrides[mp_num_overrides].dest_GSI = sub->GlobalIrq;
+          mp_num_overrides++;
+          /* (special case) SCI interrupt: it can be different in ACPI
+           * tables vs Intel MPS tables. */
+          if (sub->SourceIrq == acpi_sci_irq) {
+            acpi_sci_irq = sub->GlobalIrq;
+            acpi_sci_flags = sub->IntiFlags;
           }
+          break;
+        }
         default:
           printf ("MADT sub-entry: %X\n",
                   ((ACPI_SUBTABLE_HEADER *) ptr)->Type);
@@ -197,35 +312,22 @@ process_acpi_tables (void)
       printf ("AcpiGetTable MADT: FAILED\n");
       return 0;
     }
-    if (AcpiGetTable (ACPI_SIG_FADT, 0, (ACPI_TABLE_HEADER **) & fadt) ==
-        AE_OK) {
-      /* Fixed ACPI Description Table */
-      printf ("Bootflags: %s %s %s\n",
-              (fadt->BootFlags & ACPI_FADT_LEGACY_DEVICES) ?
-              "HAS_LEGACY_DEVICES" : "NO_LEGACY_DEVICES",
-              (fadt->BootFlags & ACPI_FADT_8042) ?
-              "HAS_KBD_8042" : "NO_KBD_8042",
-              (fadt->BootFlags & ACPI_FADT_NO_VGA) ?
-              "NO_VGA_PROBING" : "VGA_PROBING_OK");
-    } else {
-      printf ("AcpiGetTable FADT: FAILED\n");
-    }
     if (AcpiGetTable (ACPI_SIG_BOOT, 0, (ACPI_TABLE_HEADER **) & boot) ==
         AE_OK) {
       /* Simple Boot Information Table */
-      printf ("BOOT: CmosIndex=%X\n", boot->CmosIndex);
+      printf ("BOOT: CmosIndex=0x%X\n", boot->CmosIndex);
     }
     if (AcpiGetTable (ACPI_SIG_TCPA, 0, (ACPI_TABLE_HEADER **) & tcpa) ==
         AE_OK) {
       /* Trusted Computing Platform Alliance table */
-      printf ("TCPA: MaxLog=%X Addr Upper: %.8X Lower: %.8X\n",
+      printf ("TCPA: MaxLog=0x%X Addr: 0x%llX\n",
               tcpa->MaxLogLength,
-              (uint32) (tcpa->LogAddress >> 32), (uint32) tcpa->LogAddress);
+              tcpa->LogAddress);
     }
     if (AcpiGetTable (ACPI_SIG_HPET, 0, (ACPI_TABLE_HEADER **) & hpet) ==
         AE_OK) {
       /* High Precision Event Timer table */
-      printf ("HPET: ID: %X Addr: %p Seq#: %X MinTick: %X Flags: %X\n",
+      printf ("HPET: ID: 0x%X Addr: 0x%p Seq#: 0x%X MinTick: 0x%X Flags: 0x%X\n",
               hpet->Id,
               hpet->Address,
               (uint32) hpet->Sequence,
@@ -234,14 +336,25 @@ process_acpi_tables (void)
     if (AcpiGetTable (ACPI_SIG_MCFG, 0, (ACPI_TABLE_HEADER **) & mcfg) ==
         AE_OK) {
       /* PCI Memory Mapped Configuration table */
-      printf ("MCFG: Length: %X Reserved: %.8X%.8X\n",
+      printf ("MCFG: Length: %d Reserved: 0x%llX\n",
               mcfg->Header.Length,
-              *((uint32 *) mcfg->Reserved),
-              *((uint32 *) (mcfg->Reserved + 4)));
+              mcfg->Reserved);
     }
     if (AcpiGetTable (ACPI_SIG_ASF, 0, (ACPI_TABLE_HEADER **) & asf) == AE_OK) {
       /* Alert Standard Format table */
-      printf ("ASF: Length: %X\n", mcfg->Header.Length);
+      printf ("ASF: Length: %d\n", mcfg->Header.Length);
+    }
+    if (AcpiGetTable (ACPI_SIG_SRAT, 0, (ACPI_TABLE_HEADER **) & srat) == AE_OK) {
+      /* System Resource Affinity Table */
+      printf ("SRAT: Length: %d\n", srat->Header.Length);
+      acpi_parse_srat (srat);
+    }
+    if (AcpiGetTable (ACPI_SIG_DMAR, 0, (ACPI_TABLE_HEADER **) & dmar) == AE_OK) {
+      /* DMA Remapping */
+      printf ("DMAR: Length: %d Flags: 0x%X Width: %d\n",
+              dmar->Header.Length,
+              dmar->Flags,
+              dmar->Width);
     }
   } else
     return 0;
@@ -257,7 +370,9 @@ static int
 acpi_add_processor (ACPI_MADT_LOCAL_APIC * ptr)
 {
 #ifndef NO_SMP
-  uint8 this_apic_id = LAPIC_get_physical_ID ();
+  u32 ebx;
+  cpuid (1, 0, NULL, &ebx, NULL, NULL);
+  uint8 this_apic_id = ebx >> 24;
   uint8 apic_id = ptr->Id;
 
   if (!(ptr->LapicFlags & 1))
@@ -306,6 +421,9 @@ GetLnkInfo (char *lnkname, pci_irq_t *irq)
   }
 }
 
+#define READ(bus, slot, func, reg, type)                \
+  pci_read_##type (pci_addr (bus, slot, func, reg))
+
 ACPI_STATUS
 DisplayOneDevice (ACPI_HANDLE ObjHandle, UINT32 Level, void *Context,
                   void **RetVal)
@@ -321,6 +439,7 @@ DisplayOneDevice (ACPI_HANDLE ObjHandle, UINT32 Level, void *Context,
   ACPI_PCI_ROUTING_TABLE *prtd;
   uint32 addr=0;
   bool pcibus=FALSE;
+  u8 busnum;
 
   Path.Length = sizeof (Buffer);
   Path.Pointer = Buffer;
@@ -334,13 +453,14 @@ DisplayOneDevice (ACPI_HANDLE ObjHandle, UINT32 Level, void *Context,
     com1_printf ("    ");
     if (Info->Flags & ACPI_PCI_ROOT_BRIDGE) {
       com1_printf (" PCI_ROOT");
+      busnum = 0;
       pcibus = TRUE;
     }
     if (Info->Valid & ACPI_VALID_STA)
       com1_printf (" STA %.8X", Info->CurrentStatus);
     if (Info->Valid & ACPI_VALID_ADR) {
       com1_printf (" ADR %.8X", Info->Address);
-      addr = Info->Address;
+      addr = Info->Address >> 16;
     }
     if (Info->Valid & ACPI_VALID_HID)
       com1_printf (" HID %s", Info->HardwareId.String);
@@ -383,12 +503,20 @@ DisplayOneDevice (ACPI_HANDLE ObjHandle, UINT32 Level, void *Context,
     AcpiEvaluateObjectTyped (ObjHandle, "_BBN", NULL, &Result,
                              ACPI_TYPE_INTEGER);
   if (ACPI_SUCCESS (Status)) {
-    com1_printf (" BBN=%x", Obj.Integer.Value);
-  }
+    com1_printf (" BBN=%d", Obj.Integer.Value);
+  } else if (Status != AE_NOT_FOUND)
+    com1_printf (" bbnERR=%d", Status);
+
+  Status =
+    AcpiEvaluateObjectTyped (ObjHandle, "_PXM", NULL, &Result,
+                             ACPI_TYPE_INTEGER);
+  if (ACPI_SUCCESS (Status)) {
+    com1_printf (" PXM=%d", Obj.Integer.Value);
+  } else if (Status != AE_NOT_FOUND)
+    com1_printf (" pxmERR=%d", Status);
 
 
   com1_printf ("\n");
-
 
   for (;;) {
     Status = AcpiGetIrqRoutingTable (ObjHandle, &Prt);
@@ -401,14 +529,25 @@ DisplayOneDevice (ACPI_HANDLE ObjHandle, UINT32 Level, void *Context,
   }
   if (ACPI_SUCCESS (Status)) {
     int i;
+
+    /* Check if ObjHandle refers to a non-root PCI bus */
+    if (READ (0, addr, 0, 0, dword) != 0xFFFFFFFF) {
+      u8 hdrtype = READ (0, addr, 0, 0x0E, byte);
+      if (hdrtype == 1) {
+        /* PCI-to-PCI bridge headerType == 1 */
+        busnum = READ (0, addr, 0, 0x19, byte);
+        com1_printf ("  bus=0x%.02X\n", busnum);
+        pcibus = TRUE;
+      }
+    }
+
     for (i=0;i<sizeof(prt_buf);) {
       pci_irq_t irq;
       prtd = (ACPI_PCI_ROUTING_TABLE *)(&prt_buf[i]);
       if (prtd->Length == 0) break;
 
-      /* only support bus==0 for now */
-      if (addr == 0 && pcibus) {
-        irq.bus = 0;
+      if (pcibus) {
+        irq.bus = busnum;
         irq.dev = (uint32) ((prtd->Address >> 16) & 0xFF);
         irq.pin = prtd->Pin + 1; /* ACPI numbers pins from 0 */
         irq.gsi = 0;
@@ -433,8 +572,9 @@ DisplayOneDevice (ACPI_HANDLE ObjHandle, UINT32 Level, void *Context,
         irq.trigger = TRIGGER_DEFAULT;
       }
 
-      if (addr == 0 && pcibus && irq.gsi != 0)
+      if (pcibus && irq.gsi != 0)
         pci_irq_register (&irq);
+
       i+=prtd->Length;
     }
   }
@@ -498,6 +638,57 @@ DisplayResource (ACPI_RESOURCE *Resource, void *Context)
   return AE_OK;
 }
 
+/* ************************************************** */
+
+static void
+acpi_parse_srat (ACPI_TABLE_SRAT *srat)
+{
+  ACPI_SRAT_CPU_AFFINITY *cpu;
+  ACPI_SRAT_MEM_AFFINITY *mem;
+  ACPI_SRAT_X2APIC_CPU_AFFINITY *x2apic;
+  u32 prox;
+  ACPI_SUBTABLE_HEADER *sub = (ACPI_SUBTABLE_HEADER *) &srat[1];
+  int len = srat->Header.Length;
+
+  len -= sizeof (ACPI_TABLE_SRAT);
+  while (len > 0) {
+    /* len = size of remaining subtables */
+    /* sub = pointer to subtable */
+    switch (sub->Type) {
+    case ACPI_SRAT_TYPE_CPU_AFFINITY:
+      cpu = (ACPI_SRAT_CPU_AFFINITY *) sub;
+      prox = cpu->ProximityDomainLo |
+        (cpu->ProximityDomainHi[0] << 0x08 |
+         cpu->ProximityDomainHi[1] << 0x10 |
+         cpu->ProximityDomainHi[2] << 0x18);
+      logger_printf ("SRAT: CPU: prox=0x%X apicID=0x%X flags=0x%X%s sapicEID=0x%X\n",
+                     prox, cpu->ApicId, cpu->Flags,
+                     cpu->Flags & ACPI_SRAT_CPU_ENABLED ? " enabled" : "",
+                     cpu->LocalSapicEid);
+      break;
+    case ACPI_SRAT_TYPE_MEMORY_AFFINITY:
+      mem = (ACPI_SRAT_MEM_AFFINITY *) sub;
+      logger_printf ("SRAT: MEM: prox=0x%X base=0x%llX len=0x%llX flags=0x%X%s%s%s\n",
+                     mem->ProximityDomain, mem->BaseAddress, mem->Length, mem->Flags,
+                     mem->Flags & ACPI_SRAT_MEM_ENABLED ? " enabled" : "",
+                     mem->Flags & ACPI_SRAT_MEM_HOT_PLUGGABLE ? " hotplug" : "",
+                     mem->Flags & ACPI_SRAT_MEM_NON_VOLATILE ? " nonvolatile" : "");
+      break;
+    case ACPI_SRAT_TYPE_X2APIC_CPU_AFFINITY:
+      x2apic = (ACPI_SRAT_X2APIC_CPU_AFFINITY *) sub;
+      logger_printf ("SRAT: X2APIC: prox=0x%X apicID=0x%X flags=0x%X%s clockDom=0x%X\n",
+                     x2apic->ProximityDomain, x2apic->ApicId, x2apic->Flags,
+                     x2apic->Flags & ACPI_SRAT_CPU_ENABLED ? " enabled" : "",
+                     x2apic->ClockDomain);
+      break;
+    default:
+      logger_printf ("SRAT: unknown subtype type=%d\n", sub->Type);
+      break;
+    }
+    len -= sub->Length;
+    sub = (ACPI_SUBTABLE_HEADER *) &((u8 *) sub)[sub->Length];
+  }
+}
 
 /* End ACPI support */
 

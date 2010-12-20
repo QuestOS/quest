@@ -37,6 +37,7 @@ uint64 IOAPIC_read64 (uint8);
 void IOAPIC_write64 (uint8, uint64);
 mp_IOAPIC_info *IOAPIC_lookup (uint8);
 int IOAPIC_map_GSI (uint32, uint8, uint64);
+int IOAPIC_get_GSI_mapping (uint32 GSI, uint8 *vector, uint64 *flags);
 uint32 IOAPIC_num_entries (void);
 extern uint32 mp_ISA_bus_id;
 

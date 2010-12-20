@@ -27,6 +27,7 @@
 #include "drivers/acpi/acexcep.h"
 #include "util/printf.h"
 #include "util/perfmon.h"
+#include "sched/sched.h"
 
 //#define DEBUG_SMP 1
 
@@ -77,7 +78,7 @@ int
 smp_init (void)
 {
   uint32 phys_id, log_dest;
-  uint32 intel_mps_init(void);
+  uint32 intel_mps_init(bool);
   uint32 acpi_early_init(void);
   void LAPIC_measure_timer(void);
   void LAPIC_init(void);
@@ -86,7 +87,7 @@ smp_init (void)
 
   LAPIC_init();
   
-  phys_id = LAPIC_get_physical_ID();
+  phys_id = get_pcpu_id();
 
   /* setup a logical destination address */
   log_dest = 0x01000000 << phys_id;
@@ -109,7 +110,7 @@ smp_init (void)
 #ifdef NO_INTEL_MPS
   else if (0);
 #else     
-  else if ((intel_mps_init()) > 0) {
+  else if ((intel_mps_init(FALSE)) > 0) {
     /* Intel MPS succeeded */
   }
 #endif
@@ -255,7 +256,7 @@ ap_init (void)
   LAPIC_init();
   LAPIC_set_task_priority(0x20); /* task priority = 0x20 */
 
-  phys_id = LAPIC_get_physical_ID();
+  phys_id = get_pcpu_id ();
 
   /* setup a logical destination address */
   log_dest = 0x01000000 << phys_id;

@@ -21,6 +21,7 @@
 #include <arch/i386.h>
 #include <util/printf.h>
 #include <kernel.h>
+#include <sched/sched.h>
 
 #define DEBUG_UVC
 
@@ -683,6 +684,14 @@ uvc_device_cfg (
 
   return 0;
 }
+
+#include "module/header.h"
+
+static const struct module_ops mod_ops = {
+  .init = usb_uvc_driver_init
+};
+
+DEF_MODULE (usb___uvc, "USB video driver", &mod_ops, {"usb"});
 
 /*
  * Local Variables:

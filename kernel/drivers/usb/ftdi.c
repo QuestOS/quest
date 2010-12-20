@@ -431,6 +431,14 @@ usb_ftdi_driver_init (void)
   return usb_register_driver (&ftdi_driver);
 }
 
+#include "module/header.h"
+
+static const struct module_ops mod_ops = {
+  .init = usb_ftdi_driver_init
+};
+
+DEF_MODULE (usb___ftdi, "USB FTDI driver", &mod_ops, {"usb"});
+
 /*
  * Local Variables:
  * indent-tabs-mode: nil

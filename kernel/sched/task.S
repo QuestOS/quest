@@ -15,6 +15,17 @@
  *  along with this program.  If not, see <http://www.gnu.org/licenses/>.
  */
 
+        /* segments */
+#define USER_CS 0x1B
+#define USER_DS 0x23
+
+        /* offsets into TSS/TCB */
+#define initial_EIP 8
+#define EBP 4
+#define EFLAGS 16
+#define ESP 0
+#define CR3 12
+
         /* Software task-switch */
         /* %esi: source TSS pointer
          * %edi: destination TSS pointer */
@@ -24,87 +35,78 @@ _sw_jmp_task:
         testl %esi, %esi
         jz srcNULL
 
-        /* save EIP */
-        call 1f
-        /* resume point */
-        ret
-1:      popl %eax
-        movl %eax, 32(%esi)
-
         /* save EBP */
-        movl %ebp, 60(%esi)
+        movl %ebp, EBP(%esi)
 
         /* save EFLAGS */
         pushf
-        popl %eax
-        movl %eax, 36(%esi)
+        popl %ebx
+        movl %ebx, EFLAGS(%esi)
 
         /* save stack */
         movl %esp, %ebp
-        movl %ebp, 56(%esi)
+        movl %ebp, ESP(%esi)
 
         jmp restore
 
         /* force CR3 load if source is NULL */
 srcNULL:
-        movl 28(%edi), %eax
+        movl CR3(%edi), %ebx
         jmp stoCR3
 
         /* -------------------- */
         /* restore destination TSS */
 restore:
         /* restore CR3 if necessary */
-        movl 28(%edi), %eax
+        movl CR3(%edi), %ebx
 
         /* skip if kernel thread */
         movl $pgd, %edx
-        cmpl %eax, %edx
+        cmpl %ebx, %edx
         je skipCR3
 
         /* skip if already loaded */
         movl %cr3, %edx
-        cmpl %eax, %edx
+        cmpl %ebx, %edx
         je skipCR3
 
-stoCR3: movl %eax, %cr3
+stoCR3: movl %ebx, %cr3
 skipCR3:
 
         /* restore stack */
-        movl 56(%edi), %ebp
+        movl ESP(%edi), %ebp
         movl %ebp, %esp
 
         /* restore EBP */
-        movl 60(%edi), %ebp
+        movl EBP(%edi), %ebp
 
         /* restore EFLAGS */
-        movl 36(%edi), %eax
-        pushl %eax
+        movl EFLAGS(%edi), %ebx
+        pushl %ebx
         popf
 
-        /* restore EIP */
-        leal 32(%edi), %eax
-        jmp *(%eax)
+        ret
+
 
         /* Start initial task */
         /* %edi: TSS pointer */
         .globl _sw_init_task
 _sw_init_task:
         /* setup EFLAGS */
-        movl 36(%edi), %eax
-        pushl %eax
+        movl EFLAGS(%edi), %ebx
+        pushl %ebx
         popf
 
         /* setup stack */
-        movl 56(%edi), %ebp
+        movl ESP(%edi), %ebp
         movl %ebp, %esp
 
         /* setup CR3 */
-        movl 28(%edi), %eax
-        movl %eax, %cr3
+        movl CR3(%edi), %ebx
+        movl %ebx, %cr3
 
         /* invoke task */
-        leal 32(%edi), %eax
-        jmp *(%eax)
+        ret
 
         /* Start initial task in userspace */
         /* %edi: TSS pointer */
@@ -113,29 +115,29 @@ _sw_init_user_task:
         subl $20, %esp
 
         /* setup CR3 */
-        movl 28(%edi), %eax
-        movl %eax, %cr3
+        movl CR3(%edi), %ebx
+        movl %ebx, %cr3
 
         /* setup stack */
-        movl $0x23, 16(%esp)
-        movl 56(%edi), %ebp
+        movl $USER_DS, 16(%esp)
+        movl ESP(%edi), %ebp
         movl %ebp, 12(%esp)
 
         /* setup EFLAGS */
-        movl 36(%edi), %eax
-        movl %eax, 8(%esp)
+        movl EFLAGS(%edi), %ebx
+        movl %ebx, 8(%esp)
 
         /* setup CS:EIP */
-        movl $0x1B, 4(%esp)
-        movl 32(%edi), %eax
-        movl %eax, 0(%esp)
+        movl $USER_CS, 4(%esp)
+        movl initial_EIP(%edi), %ebx
+        movl %ebx, 0(%esp)
 
         /* setup data segments */
-        movl $0x23, %eax
-        movw %ax, %ds
-        movw %ax, %es
-        movw %ax, %fs
-        movw %ax, %gs
+        movl $USER_DS, %ebx
+        movw %bx, %ds
+        movw %bx, %es
+        movw %bx, %fs
+        movw %bx, %gs
 
         /* so programs can assume zeroed registers */
         xorl %eax, %eax
@@ -146,6 +148,54 @@ _sw_init_user_task:
         xorl %edi, %edi
 
         iret
+
+
+        /* Fast-path IPC: pass registers EAX, EDX */
+        /* %esi: source TSS pointer
+         * %edi: destination TSS pointer */
+        .globl _sw_ipc
+_sw_ipc:
+        /* save EBP */
+        movl %ebp, EBP(%esi)
+
+        /* save EFLAGS */
+        pushf
+        popl %ebx
+        movl %ebx, EFLAGS(%esi)
+
+        /* save stack */
+        movl %esp, %ebp
+        movl %ebp, ESP(%esi)
+
+        /* restore CR3 if necessary */
+        movl CR3(%edi), %ebx
+
+        /* skip if kernel thread */
+        movl $pgd, %ebp
+        cmpl %ebx, %ebp
+        je 2f
+
+        /* skip if already loaded */
+        movl %cr3, %ebp
+        cmpl %ebx, %ebp
+        je 2f
+
+        movl %ebx, %cr3
+2:
+
+        /* restore stack */
+        movl ESP(%edi), %ebp
+        movl %ebp, %esp
+
+        /* restore EBP */
+        movl EBP(%edi), %ebp
+
+        /* restore EFLAGS */
+        movl EFLAGS(%edi), %ebx
+        pushl %ebx
+        popf
+
+        ret
 
 /*
  * Local Variables:

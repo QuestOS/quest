@@ -143,7 +143,7 @@
 #include"mem/mem.h"
 #include"smp/smp.h"
 #include"smp/apic.h"
-
+#include "sched/sched.h"
 
 /*
  * OSL Initialization and shutdown primitives
@@ -413,10 +413,13 @@ ACPI_STATUS
 AcpiOsInstallInterruptHandler (UINT32 InterruptNumber,
                                ACPI_OSD_HANDLER ServiceRoutine, void *Context)
 {
+  logger_printf ("AcpiOsInstallInterruptHandler (0x%X, 0x%p, 0x%p)\n",
+                 InterruptNumber, ServiceRoutine, Context);
+
   acpi_service_routine = ServiceRoutine;
   acpi_service_routine_context = Context;
-  IOAPIC_map_GSI (IRQ_to_GSI (mp_ISA_bus_id, InterruptNumber),
-                  0x29, 0x0100000000000800LL);
+  //IOAPIC_map_GSI (IRQ_to_GSI (mp_ISA_bus_id, InterruptNumber),
+  //                0x29, 0x0100000000000800LL);
   return AE_OK;
 }
 
@@ -425,7 +428,8 @@ ACPI_STATUS
 AcpiOsRemoveInterruptHandler (UINT32 InterruptNumber,
                               ACPI_OSD_HANDLER ServiceRoutine)
 {
-  return AE_NOT_IMPLEMENTED;
+  acpi_service_routine = NULL;
+  return AE_OK;
 }
 
 
@@ -436,7 +440,13 @@ AcpiOsRemoveInterruptHandler (UINT32 InterruptNumber,
 ACPI_THREAD_ID
 AcpiOsGetThreadId (void)
 {
-  return str ();
+  /* ACPICA whines about thread ID==0, even though it calls this
+   * function during early boot -- far before anything like "threads"
+   * could possibly even begin to exist.  Stupid Intel. */
+
+  /* After whining it defaults to ThreadId=1.  So let's just shut it
+   * up here and now. */
+  return str () || 1;
 }
 
 
@@ -458,14 +468,14 @@ AcpiOsWaitEventsComplete (void *Context)
 void
 AcpiOsSleep (ACPI_INTEGER Milliseconds)
 {
-  return;
+  sched_usleep (Milliseconds * 1000);
 }
 
 
 void
 AcpiOsStall (UINT32 Microseconds)
 {
-  return;
+  tsc_delay_usec (Microseconds);
 }
 
 
@@ -487,6 +497,7 @@ AcpiOsReadPort (ACPI_IO_ADDRESS Address, UINT32 * Value, UINT32 Width)
     *Value = inl (Address);
     break;
   }
+  //logger_printf ("AcpiOsReadPort (0x%.04X, %d) = 0x%X\n", Address, Width, (*Value) & ((1 << Width) - 1));
   return AE_OK;
 }
 
@@ -494,6 +505,7 @@ AcpiOsReadPort (ACPI_IO_ADDRESS Address, UINT32 * Value, UINT32 Width)
 ACPI_STATUS
 AcpiOsWritePort (ACPI_IO_ADDRESS Address, UINT32 Value, UINT32 Width)
 {
+  //logger_printf ("AcpiOsWritePort (0x%.04X, 0x%X, %d)\n", Address, (Value) & ((1 << Width) - 1), Width);
   switch (Width) {
   case 8:
     outb ((UINT8) Value, Address);
@@ -516,16 +528,52 @@ AcpiOsWritePort (ACPI_IO_ADDRESS Address, UINT32 Value, UINT32 Width)
 ACPI_STATUS
 AcpiOsReadMemory (ACPI_PHYSICAL_ADDRESS Address, UINT32 * Value, UINT32 Width)
 {
-  com1_printf ("AcpiOsReadMemory (%p, %d)\n", Address, Width);
-  return AE_NOT_IMPLEMENTED;
+  logger_printf ("AcpiOsReadMemory (0x%p, %d)\n", Address, Width);
+  if (Width != 8 && Width != 16 && Width != 32)
+    return AE_BAD_PARAMETER;
+  u32 frame = Address & ~(0xFFF);
+  u32 offset = Address - frame;
+  u8 *virt = map_virtual_page (frame | 3);
+  if (!virt) return AE_NO_MEMORY;
+  switch (Width) {
+  case 8:
+    *Value = *((u8 *) (&virt[offset]));
+    break;
+  case 16:
+    *Value = *((u16 *) (&virt[offset]));
+    break;
+  case 32:
+    *Value = *((u32 *) (&virt[offset]));
+    break;
+  }
+  unmap_virtual_page (virt);
+  return AE_OK;
 }
 
 
 ACPI_STATUS
 AcpiOsWriteMemory (ACPI_PHYSICAL_ADDRESS Address, UINT32 Value, UINT32 Width)
 {
-  com1_printf ("AcpiOsWriteMemory (%p, %p, %d)\n", Address, Value, Width);
-  return AE_NOT_IMPLEMENTED;
+  logger_printf ("AcpiOsWriteMemory (0x%p, 0x%p, %d)\n", Address, Value, Width);
+  if (Width != 8 && Width != 16 && Width != 32)
+    return AE_BAD_PARAMETER;
+  u32 frame = Address & ~(0xFFF);
+  u32 offset = Address - frame;
+  u8 *virt = map_virtual_page (frame | 3);
+  if (!virt) return AE_NO_MEMORY;
+  switch (Width) {
+  case 8:
+    *((u8 *) (&virt[offset])) = (u8) Value;
+    break;
+  case 16:
+    *((u16 *) (&virt[offset])) = (u16) Value;
+    break;
+  case 32:
+    *((u32 *) (&virt[offset])) = (u32) Value;
+    break;
+  }
+  unmap_virtual_page (virt);
+  return AE_OK;
 }
 
 
@@ -613,7 +661,8 @@ AcpiOsDerivePciId (ACPI_HANDLE Rhandle,
 ACPI_STATUS
 AcpiOsValidateInterface (char *Interface)
 {
-  return AE_NOT_IMPLEMENTED;
+  logger_printf ("AcpiOsValidateInterface (%s)\n", Interface);
+  return AE_SUPPORT;
 }
 
 

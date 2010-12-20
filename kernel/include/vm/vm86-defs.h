@@ -15,32 +15,21 @@
  *  along with this program.  If not, see <http://www.gnu.org/licenses/>.
  */
 
-#ifndef _DEBUG_H_
-#define _DEBUG_H_
+#ifndef _VM86_DEFS_H_
+#define _VM86_DEFS_H_
 
-extern void com1_putc (char);
-extern void com1_puts (char *);
-extern void com1_putx (uint32);
-
-void logger_printf (const char *fmt, ...);
-#define DLOG_PREFIX(pre,fmt,...) logger_printf (pre": "fmt"\n", ##__VA_ARGS__)
-
-extern bool logger_init (void);
-extern void logger_putc (char);
-
-void stacktrace_frame (uint esp, uint ebp);
-void stacktrace (void);
-
+#define VMX_VM86_START_SS_SEL 0x7F00
+#define VMX_VM86_START_SP 0x1000
 
 #endif
 
-/* 
+/*
  * Local Variables:
  * indent-tabs-mode: nil
  * mode: C
  * c-file-style: "gnu"
  * c-basic-offset: 2
- * End: 
+ * End:
  */
 
 /* vi: set et sw=2 sts=2: */

@@ -31,6 +31,7 @@
 #include "util/debug.h"
 #include "util/perfmon.h"
 #include "drivers/input/keyboard.h"
+#include "sched/sched.h"
 
 extern descriptor idt[];
 
@@ -80,7 +81,7 @@ alloc_idle_TSS (int cpu_num)
 {
   int i;
   descriptor *ad = (descriptor *)KERN_GDT;
-  tss *pTSS = (tss *) (&idleTSS[cpu_num]);
+  quest_tss *pTSS = (quest_tss *) (&idleTSS[cpu_num]);
   void idle_task (void);
 
   /* Search 2KB GDT for first free entry */
@@ -93,9 +94,9 @@ alloc_idle_TSS (int cpu_num)
 
   ad[i].uLimit0 = sizeof (idleTSS[cpu_num]) - 1;
   ad[i].uLimit1 = 0;
-  ad[i].pBase0 = (uint32) pTSS & 0xFFFF;
-  ad[i].pBase1 = ((uint32) pTSS >> 16) & 0xFF;
-  ad[i].pBase2 = (uint32) pTSS >> 24;
+  ad[i].pBase0 = (u32) pTSS & 0xFFFF;
+  ad[i].pBase1 = ((u32) pTSS >> 16) & 0xFF;
+  ad[i].pBase2 = (u32) pTSS >> 24;
   ad[i].uType = 0x09;           /* 32-bit tss */
   ad[i].uDPL = 0;               /* Only let kernel perform task-switching */
   ad[i].fPresent = 1;
@@ -105,24 +106,13 @@ alloc_idle_TSS (int cpu_num)
 
   u32 *stk = map_virtual_page (alloc_phys_frame () | 3);
 
-  pTSS->pCR3 = get_pdbr ();
-  pTSS->ulEIP = (uint32) & idle_task;
+  pTSS->CR3 = (u32) get_pdbr ();
+  pTSS->initial_EIP = (u32) & idle_task;
+  stk[1023] = pTSS->initial_EIP;
+  pTSS->EFLAGS = F_1 | F_IOPL0;
 
-  pTSS->ulEFlags = F_1 | F_IOPL0;
-
-  pTSS->ulESP = (u32) &stk[1023];
-  pTSS->ulEBP = pTSS->ulESP;
-  pTSS->usCS = 0x08;
-  pTSS->usES = 0x10;
-  pTSS->usSS = 0x10;
-  pTSS->usDS = 0x10;
-  pTSS->usFS = 0x10;
-  pTSS->usGS = 0x10;
-  pTSS->usIOMap = 0xFFFF;
-  /***********************************************
-   * pTSS->usSS0 = 0x10;                         *
-   * pTSS->ulESP0 = (uint32)KERN_STK + 0x1000; *
-   ***********************************************/
+  pTSS->ESP = (u32) &stk[1023];
+  pTSS->EBP = pTSS->ESP;
 
   /* Return the index into the GDT for the segment */
   return i << 3;
@@ -137,7 +127,7 @@ alloc_TSS (void *pPageDirectory, void *pEntry, int mod_num)
 
   int i;
   descriptor *ad = (idt + 256); /* Get address of GDT from IDT address */
-  tss *pTSS = (tss *) ul_tss[mod_num];
+  quest_tss *pTSS = (quest_tss *) ul_tss[mod_num];
 
   /* Search 2KB GDT for first free entry */
   for (i = 1; i < 256; i++)
@@ -149,9 +139,9 @@ alloc_TSS (void *pPageDirectory, void *pEntry, int mod_num)
 
   ad[i].uLimit0 = sizeof (ul_tss[mod_num]) - 1;
   ad[i].uLimit1 = 0;
-  ad[i].pBase0 = (uint32) pTSS & 0xFFFF;
-  ad[i].pBase1 = ((uint32) pTSS >> 16) & 0xFF;
-  ad[i].pBase2 = (uint32) pTSS >> 24;
+  ad[i].pBase0 = (u32) pTSS & 0xFFFF;
+  ad[i].pBase1 = ((u32) pTSS >> 16) & 0xFF;
+  ad[i].pBase2 = (u32) pTSS >> 24;
   ad[i].uType = 0x09;           /* 32-bit tss */
   ad[i].uDPL = 0;               /* Only let kernel perform task-switching */
   ad[i].fPresent = 1;
@@ -159,26 +149,19 @@ alloc_TSS (void *pPageDirectory, void *pEntry, int mod_num)
   ad[i].fX = 0;
   ad[i].fGranularity = 0;       /* Set granularity of tss in bytes */
 
-  pTSS->pCR3 = pPageDirectory;
-  pTSS->ulEIP = (uint32) pEntry;
+  pTSS->CR3 = (u32) pPageDirectory;
+  pTSS->initial_EIP = (u32) pEntry;
 
   if (mod_num != 1)
-    pTSS->ulEFlags = F_1 | F_IF | F_IOPL0;
+    pTSS->EFLAGS = F_1 | F_IF | F_IOPL0;
   else
-    pTSS->ulEFlags = F_1 | F_IF | F_IOPL;       /* Give terminal server access to
-                                                 * screen memory */
+    pTSS->EFLAGS = F_1 | F_IF | F_IOPL;       /* Give terminal server access to
+                                               * screen memory */
 
-  pTSS->ulESP = 0x400000 - 100;
-  pTSS->ulEBP = 0x400000 - 100;
-  pTSS->usES = 0x23;
-  pTSS->usCS = 0x1B;
-  pTSS->usSS = 0x23;
-  pTSS->usDS = 0x23;
-  pTSS->usFS = 0x23;
-  pTSS->usGS = 0x23;
-  pTSS->usIOMap = 0xFFFF;
-  pTSS->usSS0 = 0x10;
-  pTSS->ulESP0 = (uint32) KERN_STK + 0x1000;
+  pTSS->ESP = 0x400000 - 100;
+  pTSS->EBP = 0x400000 - 100;
+
+  semaphore_init (&pTSS->Msem, 1, 0);
 
   /* Return the index into the GDT for the segment */
   return i << 3;
@@ -425,8 +408,6 @@ init (multiboot * pmb)
 
   cpuid_get_brand_string (brandstring, I386_CPUID_BRAND_STRING_LENGTH);
   printf ("CPUID says: %s\n", brandstring);
-  if (cpuid_vmx_support ())
-    print ("VMX support detected\n");
   if (!cpuid_msr_support ())
     panic ("Model-specific registers not supported!\n");
   if (!cpuid_tsc_support ())
@@ -496,6 +477,11 @@ init (multiboot * pmb)
     unmap_virtual_page (pe);
   }
 
+  /* Clear bitmap entries for first megabyte of RAM so we don't
+   * overwrite BIOS tables we might be interested in later. */
+  for (i=0; i<256; i++)
+    BITMAP_CLR (mm_table, i);
+
 #if 0
   /* Test that mm_table is setup correct */
   for (i = 0; i < 2000; i++)
@@ -556,69 +542,15 @@ init (multiboot * pmb)
    * to utilize the dummy TSS without locking the kernel yet. */
   smp_secondary_init ();
 
-  /* Logging thread */
-  logger_init ();
+  /* Load all modules, chasing dependencies */
+  { extern bool module_load_all (void); module_load_all (); }
 
-  /* Performance monitoring */
-  perfmon_init ();
-
-  /* Initialize interrupt-driven keyboard driver */
-  init_keyboard_8042 ();
-
-  /* Initialize PCI */
-  pci_init ();
-
-  /* Initialize LWIP/network subsystem */
-  net_init ();
-
-  /* Initialize PCnet card (depends on network) */
-  pcnet_init ();
-
-  /* Initialize e1000 card (depends on network) */
-  { bool e1000_init (void); e1000_init (); }
-
-  /* Initialize e1000e card (depends on network) */
-  { bool e1000e_init (void); e1000e_init (); }
-
-  /* Initialize bnx2 card (depends on network) */
-  //{ bool bnx2_init (void); bnx2_init (); }
-
-  /* Initialize r8169 card (depends on network) */
-  { bool r8169_init (void); r8169_init (); }
-
-  /* Initialize USB hub driver */
-  { bool usb_hub_driver_init (void); usb_hub_driver_init (); }
-
-  /* Initialize USB mass storage driver */
-  { bool usb_mass_storage_driver_init (void); usb_mass_storage_driver_init (); }
-
-  /* Initialize USB FTDI Serial Converter driver */
-  { bool usb_ftdi_driver_init (void); usb_ftdi_driver_init ();}
-
-  /* Initialize USB PL2303 Serial Converter driver */
-  { bool usb_pl2303_driver_init (void); usb_pl2303_driver_init ();}
-
-  /* Initialize USB Video Class driver */
-  { bool usb_uvc_driver_init (void); usb_uvc_driver_init ();}
-
-  /* Initialize USB net driver */
-  { bool usb_net_driver_init (void); usb_net_driver_init (); }
-
-  /* Initialize USB asix (network) driver */
-  { bool usb_asix_driver_init (void); usb_asix_driver_init (); }
-
-  /* Initialize USB rtl8187b (wifi) driver */
-  { bool usb_rtl8187b_driver_init (void); usb_rtl8187b_driver_init (); }
-
-  /* Initialize USB */
-  { bool uhci_init (void); uhci_init (); }
+  /* Enumerate the USB bus */
+  { extern bool usb_do_enumeration (void); usb_do_enumeration (); }
 
   /* hard-code the configuration for now */
   net_set_default ("en0");
   net_dhcp_start ("en0");
-
-  /* Initialize ATA/ATAPI subsystem */
-  ata_init ();
 
   switch (root_type) {
   case VFS_FSYS_EZEXT2:
@@ -666,6 +598,15 @@ init (multiboot * pmb)
   /* Initialize VCPU scheduler */
   { extern void vcpu_init (void); vcpu_init (); }
 #endif
+
+  /* count free pages for informational purposes */
+  u32 *page_table = (u32 *) KERN_PGT;
+  u32 free_pages = 0;
+  for (i = 0; i < 1024; i++)
+    if (page_table[i] == 0)
+      free_pages++;
+  printf ("free kernel pages=%d\n", free_pages);
+  logger_printf ("free kernel pages=%d\n", free_pages);
 
   /* Start the schedulers */
   smp_enable_scheduling ();

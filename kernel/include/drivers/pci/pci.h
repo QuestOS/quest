@@ -26,7 +26,7 @@
 
 /* PCI DEVICE definition */
 
-#define PCI_MAX_DEVICES 32      /* arbitrary limit */
+#define PCI_MAX_DEVICES 64      /* arbitrary limit */
 
 typedef struct {
   union {
@@ -67,7 +67,7 @@ typedef struct pci_dev {
 /* PCI interface */
 
 /* Initialize and probe for devices */
-void pci_init (void);
+bool pci_init (void);
 
 /* Search for device by vendor, device, classcode, or subclass.  The
  * value (~0) is treated as a wildcard.  'start_index' allows you to
@@ -136,6 +136,10 @@ extern bool pci_irq_map (pci_irq_t *irq, uint8 vector,
                          uint8 destmask,
                          IOAPIC_destination_mode_t destmode,
                          IOAPIC_delivery_mode_t delivmode);
+extern bool pci_irq_map_handler (pci_irq_t *irq, vector_handler handler,
+                                 uint8 destmask,
+                                 IOAPIC_destination_mode_t destmode,
+                                 IOAPIC_delivery_mode_t delivmode);
 
 /* ************************************************** */
 

@@ -146,7 +146,7 @@ typedef struct
   uint32_t padding[2];          // QH must be aligned on 16-byte boundary
 } UHCI_QH;
 
-extern int uhci_init (void);
+extern bool uhci_init (void);
 extern int uhci_reset (void);
 extern int port_reset (uint8_t);
 extern int uhci_isochronous_transfer (uint8_t, uint8_t, addr_t, int, int *,

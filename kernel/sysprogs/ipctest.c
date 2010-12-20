@@ -15,32 +15,40 @@
  *  along with this program.  If not, see <http://www.gnu.org/licenses/>.
  */
 
-#ifndef _DEBUG_H_
-#define _DEBUG_H_
+#include "syscall.h"
 
-extern void com1_putc (char);
-extern void com1_puts (char *);
-extern void com1_putx (uint32);
+static void
+client (void)
+{
+  putchar ('C');
+  for (;;) {
+  }
+}
 
-void logger_printf (const char *fmt, ...);
-#define DLOG_PREFIX(pre,fmt,...) logger_printf (pre": "fmt"\n", ##__VA_ARGS__)
+static void
+server (void)
+{
+  putchar ('S');
+  for (;;) {
+  }
+}
 
-extern bool logger_init (void);
-extern void logger_putc (char);
+void
+_start ()
+{
+  if (fork () == 0)
+    client ();
+  else
+    server ();
+}
 
-void stacktrace_frame (uint esp, uint ebp);
-void stacktrace (void);
-
-
-#endif
-
-/* 
+/*
  * Local Variables:
  * indent-tabs-mode: nil
  * mode: C
  * c-file-style: "gnu"
  * c-basic-offset: 2
- * End: 
+ * End:
  */
 
 /* vi: set et sw=2 sts=2: */

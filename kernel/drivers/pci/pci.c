@@ -196,11 +196,12 @@ probe (void)
 
 }
 
-void
+bool
 pci_init (void)
 {
   DLOG("init");
   probe ();
+  return TRUE;
 }
 
 bool
@@ -287,6 +288,14 @@ pci_get_interrupt (uint index, uint* line, uint* pin)
   *pin = (devices[index].data[0xF] >> 8) & 0xFF;
   return TRUE;
 }
+
+#include "module/header.h"
+
+static const struct module_ops mod_ops = {
+  .init = pci_init
+};
+
+DEF_MODULE (pci, "PCI bus driver", &mod_ops, {});
 
 /*
  * Local Variables:

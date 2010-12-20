@@ -36,8 +36,6 @@
 #include "bnx2.h"
 #include "bnx2_uncompressed_fw.h"
 
-#define BNX2_VECTOR 0x4E       /* arbitrary */
-
 #define DEBUG_BNX2
 
 #ifdef DEBUG_BNX2
@@ -975,6 +973,7 @@ bnx2_irq_handler (u8 vec)
   DLOG ("---EOI--- bidx <- %d (%d); prod_bseq = %d",
         sw_prod, RX_RING_IDX (sw_prod),
         rxr->rx_prod_bseq);
+  DLOG ("  csv: %d, %d", sw_prod, rxr->rx_prod_bseq);
 
   REG_WR16(bp, rxr->rx_bidx_addr, sw_prod);
   REG_WR(bp, rxr->rx_bseq_addr, rxr->rx_prod_bseq);
@@ -1577,6 +1576,7 @@ bnx2_init_rxbd_rings(struct rx_bd *rx_ring[], dma_addr_t dma[], u32 buf_size,
   }
 }
 
+static struct rx_bd *backup_rx_desc;
 static void
 bnx2_init_rx_ring(struct bnx2 *bp, int ring_num)
 {
@@ -1659,7 +1659,7 @@ bnx2_init_rx_ring(struct bnx2 *bp, int ring_num)
   }
   //prod = 150;
   rxr->rx_prod = prod;
-  rxr->rx_prod_bseq = prod * bp->rx_buf_use_size;
+  rxr->rx_prod_bseq = (prod - 1) * bp->rx_buf_use_size;
 
   rxr->rx_bidx_addr = MB_GET_CID_ADDR(cid) + BNX2_L2CTX_HOST_BDIDX;
   rxr->rx_bseq_addr = MB_GET_CID_ADDR(cid) + BNX2_L2CTX_HOST_BSEQ;
@@ -1672,6 +1672,10 @@ bnx2_init_rx_ring(struct bnx2 *bp, int ring_num)
 
   DLOG ("rx_prod=%d rx_bidx_addr=0x%x rx_prod_bseq=0x%x rx_cid_addr=%p",
         rxr->rx_prod, rxr->rx_bidx_addr, rxr->rx_prod_bseq, rx_cid_addr);
+  DLOG ("  csv: %d, %d", rxr->rx_prod, rxr->rx_prod_bseq);
+
+  pow2_alloc (RXBD_RING_SIZE, (u8 **) &backup_rx_desc);
+  memcpy (backup_rx_desc, &rxr->rx_desc_ring[0][0], RXBD_RING_SIZE);
 
   /*******************************************************************
    * DLOG ("l2ctx_nx_bdhaddr=0x%.08X%.08X",                          *
@@ -3151,16 +3155,15 @@ bnx2_init_board (pci_device *pdev)
   if (pci_irq_find (pdev->bus, pdev->slot, irq_pin, &irq)) {
     /* use PCI routing table */
     DLOG ("Found PCI routing entry irq.gsi=0x%x", irq.gsi);
-    pci_irq_map (&irq, BNX2_VECTOR, 0x01,
-                 IOAPIC_DESTINATION_LOGICAL, IOAPIC_DELIVERY_FIXED);
+    if (!pci_irq_map_handler (&irq, bnx2_irq_handler, 0x01,
+                              IOAPIC_DESTINATION_LOGICAL,
+                              IOAPIC_DELIVERY_FIXED))
+      goto err_out_free_stats;
     irq_line = irq.gsi;
   } else {
     DLOG ("Unable to find PCI routing entry");
     goto err_out_free_stats;
   }
-
-  /* Map IRQ to handler */
-  set_vector_handler (BNX2_VECTOR, bnx2_irq_handler);
 
   /* map 64kb at phys_addr */
 #define NUM_PAGES 20
@@ -4603,6 +4606,19 @@ bnx2_test_thread (void)
           REG_RD (bp, BNX2_CTX_STATUS),
           REG_RD (bp, BNX2_CTX_REP_STATUS));
     REG_WR (bp, BNX2_CTX_STATUS, 0x07000000 & REG_RD (bp, BNX2_CTX_STATUS));
+
+    struct bnx2_rx_ring_info *rxr = &bp->rx_ring;
+    struct rx_bd *rx_desc;
+    rx_desc = &rxr->rx_desc_ring[0][255];
+    DLOG ("  rx_desc[255]=0x%p 0x%p 0x%p 0x%p",
+          rx_desc->rx_bd_haddr_hi,
+          rx_desc->rx_bd_haddr_lo,
+          rx_desc->rx_bd_len,
+          rx_desc->rx_bd_flags);
+    for (i=0; i<RXBD_RING_SIZE; i++)
+      if (((u8 *) backup_rx_desc)[i] != ((u8 *) rxr->rx_desc_ring[0])[i])
+        DLOG ("  rx_desc byte changed at i=%d from 0x%X to 0x%X",
+              i, ((u8 *) backup_rx_desc)[i], ((u8 *) rxr->rx_desc_ring[0])[i]);
   }
 }
 
@@ -4710,8 +4726,8 @@ bnx2_init (void)
     goto abort_status_virt;
   }
 
-  start_kernel_thread ((u32) bnx2_test_thread, (u32) &bnx2_test_stack[1023]);
-  start_kernel_thread_args ((u32) bnx2_timer, (u32) &bnx2_timer_stack[1023], 1, bp);
+  create_kernel_thread_args ((u32) bnx2_test_thread, (u32) &bnx2_test_stack[1023], TRUE, 0);
+  create_kernel_thread_args ((u32) bnx2_timer, (u32) &bnx2_timer_stack[1023], TRUE, 1, bp);
 
   return TRUE;
 
@@ -4724,6 +4740,14 @@ bnx2_init (void)
  abort:
   return FALSE;
 }
+
+#include "module/header.h"
+
+static const struct module_ops mod_ops = {
+  .init = bnx2_init
+};
+
+//DEF_MODULE (net___bnx2, "bnx2 network driver", &mod_ops, {"net___ethernet", "pci"});
 
 /*
  * Local Variables:

@@ -23,6 +23,7 @@
 #include <mem/pow2.h>
 #include <arch/i386-div64.h>
 #include <kernel.h>
+#include "sched/sched.h"
 
 #define DEBUG_UHCI
 //#define DEBUG_UHCI_VERBOSE
@@ -723,9 +724,28 @@ usb_register_driver (USB_DRIVER *driver)
   return TRUE;
 }
 
+static bool uhci_operational = FALSE;
+bool
+usb_do_enumeration (void)
+{
+  int i;
+#include <drivers/usb/usb_tests.h>
+  if (!uhci_operational) return FALSE;
+  DLOG ("begin enumeration");
+
+  for (i=0;i<2;i++) {
+    port_reset (i);
+
+    uhci_enumerate ();
+    show_usb_regs (bus, dev, func);
+  }
+  DLOG ("end enumeration");
+  return TRUE;
+}
+
 static uint irq_line;
 
-int
+bool
 uhci_init (void)
 {
   uint i, device_index, irq_pin;
@@ -775,22 +795,17 @@ uhci_init (void)
 
   DLOG ("Using IRQ pin=%X", irq_pin);
 
-#define UHCI_VECTOR 0x50
   if (pci_irq_find (bus, dev, irq_pin, &irq)) {
     /* use PCI routing table */
     DLOG ("Found PCI routing entry irq.gsi=0x%x", irq.gsi);
-    pci_irq_map (&irq, UHCI_VECTOR, 0x01,
-                 IOAPIC_DESTINATION_LOGICAL, IOAPIC_DELIVERY_FIXED);
+    if (!pci_irq_map_handler (&irq, uhci_irq_handler, 0x01,
+                              IOAPIC_DESTINATION_LOGICAL,
+                              IOAPIC_DELIVERY_FIXED)) {
+      DLOG ("Unable to map IRQ handler");
+      return FALSE;
+    }
     irq_line = irq.gsi;
-  } else {
-#define IOAPIC_FLAGS 0x010000000000A800LL
-    /* assume irq_line is correct */
-    DLOG ("Falling back to PCI config space INT_LN=0x%x", irq_line);
-    IOAPIC_map_GSI (irq_line, UHCI_VECTOR, IOAPIC_FLAGS);
   }
-
-  set_vector_handler (UHCI_VECTOR, uhci_irq_handler);
-
 
   td_phys = (uint32) get_phys_addr ((void *) td);
   qh_phys = (uint32) get_phys_addr ((void *) qh);
@@ -818,28 +833,8 @@ uhci_init (void)
   /* Perform global reset on host controller */
   uhci_reset ();
 
-#if 1
-#include <drivers/usb/usb_tests.h>
-
-  DLOG ("begin enumeration");
-
-  for (i=0;i<2;i++) {
-    port_reset (i);
-
-    uhci_enumerate ();
-    show_usb_regs (bus, dev, func);
-  }
-  DLOG ("end enumeration");
-
-#else
-#include <drivers/usb/usb_tests.h>
-
-  isochronous_transfer_test ();
-  show_usb_regs(bus, dev, func);
-
-#endif
-
-  return 0;
+  uhci_operational = TRUE;
+  return TRUE;
 }
 
 int
@@ -1594,6 +1589,14 @@ uhci_show_regs (void)
 
   return;
 }
+
+#include "module/header.h"
+
+static const struct module_ops mod_ops = {
+  .init = uhci_init
+};
+
+DEF_MODULE (usb___uhci, "UHCI driver", &mod_ops, {"usb", "pci"});
 
 /*
  * Local Variables:

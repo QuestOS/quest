@@ -20,6 +20,7 @@
 #include "drivers/pci/pci.h"
 #include "drivers/net/ethernet.h"
 #include "arch/i386.h"
+#include "arch/i386-percpu.h"
 #include "util/printf.h"
 #include "smp/smp.h"
 #include "smp/apic.h"
@@ -49,8 +50,6 @@ nvm_info_t *nvm = &i82543_nvm;
 #else
 #define DLOG(fmt,...) ;
 #endif
-
-#define E1000_VECTOR 0x4C       /* arbitrary */
 
 #define RDESC_COUNT 8           /* must be multiple of 8 */
 #define RDESC_COUNT_MOD_MASK (RDESC_COUNT - 1)
@@ -373,10 +372,10 @@ e1000_bh_thread (void)
      * interrupt. */
     uint32 icr = ICR;
     DLOG ("IRQ: ICR=%p CTRL=%p CTRLE=%p STA=%p", icr, CTRL, CTRLEXT, STATUS);
-    DLOG ("PHY_CTL=0x%.04X", mdi_read (0));
-    DLOG ("PHY_STA=0x%.04X", mdi_read (1));
-    DLOG ("PHY_GCON=0x%.04X", mdi_read (9));
-    DLOG ("PHY_GSTA=0x%.04X", mdi_read (10));
+    //DLOG ("PHY_CTL=0x%.04X", mdi_read (0));
+    //DLOG ("PHY_STA=0x%.04X", mdi_read (1));
+    //DLOG ("PHY_GCON=0x%.04X", mdi_read (9));
+    //DLOG ("PHY_GSTA=0x%.04X", mdi_read (10));
     DLOG ("TPT=%p", TPT);
 
     if (icr & ICR_RXT)            /* RX */
@@ -724,10 +723,10 @@ reset (void)
 #endif
 
 
-  DLOG ("PHY_CTL=0x%.04X", mdi_read (0));
-  DLOG ("PHY_STA=0x%.04X", mdi_read (1));
-  DLOG ("PHY_GCON=0x%.04X", mdi_read (9));
-  DLOG ("PHY_GSTA=0x%.04X", mdi_read (10));
+  //DLOG ("PHY_CTL=0x%.04X", mdi_read (0));
+  //DLOG ("PHY_STA=0x%.04X", mdi_read (1));
+  //DLOG ("PHY_GCON=0x%.04X", mdi_read (9));
+  //DLOG ("PHY_GSTA=0x%.04X", mdi_read (10));
 
 
   (void) TPT;                   /* clear TPT statistic */
@@ -825,20 +824,14 @@ e1000_init (void)
                     irq_pin, &irq)) {
     /* use PCI routing table */
     DLOG ("Found PCI routing entry irq.gsi=0x%x", irq.gsi);
-    pci_irq_map (&irq, E1000_VECTOR, 0x01,
-                 IOAPIC_DESTINATION_LOGICAL, IOAPIC_DELIVERY_FIXED);
+    if (!pci_irq_map_handler (&irq, e1000_irq_handler, 0x01,
+                              IOAPIC_DESTINATION_LOGICAL,
+                              IOAPIC_DELIVERY_FIXED))
+      goto abort_virt;
     irq_line = irq.gsi;
-  } else {
-#define IOAPIC_FLAGS 0x010000000000A800LL
-    /* assume irq_line is correct */
-    DLOG ("Falling back to PCI config space INT_LN=0x%x", irq_line);
-    IOAPIC_map_GSI (irq_line, E1000_VECTOR, IOAPIC_FLAGS);
   }
 
   DLOG ("Using IRQ line=%.02X pin=%X", irq_line, irq_pin);
-
-  /* Map IRQ to handler */
-  set_vector_handler (E1000_VECTOR, e1000_irq_handler);
 
 #ifdef EEPROM_MICROWIRE
   *((uint16 *) &hwaddr[0]) = eeprom_read (0);
@@ -881,8 +874,9 @@ e1000_init (void)
     goto abort_virt;
   }
 
-  e1000_bh_id = start_kernel_thread ((u32) e1000_bh_thread,
-                                     (u32) &e1000_bh_stack[1023]);
+  e1000_bh_id = create_kernel_thread_args ((u32) e1000_bh_thread,
+                                           (u32) &e1000_bh_stack[1023],
+                                           FALSE, 0);
   set_iovcpu (e1000_bh_id, IOVCPU_CLASS_NET);
 
   return TRUE;
@@ -896,6 +890,14 @@ e1000_init (void)
  abort:
   return FALSE;
 }
+
+#include "module/header.h"
+
+static const struct module_ops mod_ops = {
+  .init = e1000_init
+};
+
+DEF_MODULE (net___e1000, "e1000 network driver", &mod_ops, {"net___ethernet", "pci"});
 
 /*
  * Local Variables:

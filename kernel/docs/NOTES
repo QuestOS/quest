@@ -1,3 +1,108 @@
+Thursday 2010-12-09 md
+
+  Measured round-trip VM-ENTER/VM-EXIT at about 1500 cycles.
+
+Monday 2010-12-06 md
+
+  There's a bug somewhere that's preventing my old BIOS mode 013h
+  graphical demos from working inside of VMX/VM86.  This worked
+  originally on percy last year.  I tested "real" real-mode and the
+  graphics worked, so the problem is something to do with either my
+  virtualization code, or something else in the Quest bootup sequence.
+
+Friday 2010-12-02 md
+
+  Merged old VMX/VM86 code that creates hardware VT virtual machines
+  using VM86 to emulate real mode.
+
+Monday 2010-11-22 md
+
+  Scratched a long-standing itch by implementing a "module system" for
+  drivers and other components which can be loaded in any particular
+  order, with dependencies.
+
+Friday 2010-11-19 md
+
+  So it turns out that the LAPIC IDs on baldrick are not contiguously
+  numbered, which breaks a few assumptions.  I instituted a numbering
+  system accessible via a percpu variable, and that fixed that
+  problem.  The LAPIC ID numbering scheme for Xeon non-HT processors
+  fixes the least significant bit at 0.  In addition, the LAPIC ID
+  register disagrees with the CPUID initial LAPIC value and the ACPI
+  MADT entry.  I'm not sure how IPIs are managing to work, but if I
+  stick with the initial LAPIC value things seem to be ok.  According
+  to the manual 3A, the LAPIC ID 0x16 breaks down to "cluster ID 2,
+  processor 3" on this Xeon.
+
+Thursday 2010-11-18 md
+
+  I'm hesitant to finish implementing synchronous IPC because of the
+  various problems it has, especially on SMP.  What is the meaning of
+  sync. IPC across CPUs?  On a single CPU it is simple because you can
+  just switch threads back and forth.  With multiple CPUs then you
+  have to consider whether or not the thread is currently running on
+  the target CPU: do you wrest control away from some poor hapless
+  third thread if that is currently running?  What do you do with the
+  source CPU while the target CPU is processing your message?  There's
+  a lot of potential for inefficiency or unpredictable interference
+  from other threads.  Also sync. IPC has lots of disadvantages when
+  it comes to providing service to large numbers of client threads.
+  Asynchronous IPC scales better but has issues with buffer
+  management, and possible unpredictability.
+
+  Barrelfish implements async. IPC by using shared memory to exploit
+  cache coherency protocols.  This seems like the best way to go for
+  interprocessor communication.  Might need some kind of hybrid
+  sync/async communication depending on where the target is running.
+
+Wednesday 2010-11-17 md
+
+  Fixed up synchronous IPC call/replywait functions.  Debating further
+  designs.
+
+Tuesday 2010-11-16 md
+
+  Micro-benchmarked SYSENTER vs software INT.  SYSENTER takes ~128
+  cycles where software INT takes ~300 cycles.  Is that worth losing
+  two register parameters?
+
+  Back to measuring IPC.  Kernel thread to thread.  One thread sends 2
+  words to the other, then there is a response of 2 words.  Times in
+  cycles.
+
+  Call (REG): avg 342, stddev 25
+  Call (MEM): avg 366, stddev 33
+  Ret (REG): avg 361, stddev 24
+  Ret (MEM): avg 385, stddev 25
+
+  Seems to be a fairly consistent 24 cycle difference between using
+  two registers to pass two parameters, or writing (and reading) those
+  two parameters from memory in the TSS.  Still, that is just within
+  one standard deviation from the average, so it's not necessarily
+  that big a deal.
+
+  Discussion of Nehalem L1 cache leads me to believe that 8 of those
+  24 cycles come from the two memory references to retrieve the passed
+  parameters.  The remaining 16 cycles are due to "lookup_TSS (str
+  ())" in order to get the pointer to the current TSS.  That can
+  probably be eliminated or reduced with better book-keeping.
+
+Monday 2010-11-15 md
+
+  Non-root PCI buses show up in ACPI with an "ADR" field that is not
+  actually the bus number, but rather the device number of the
+  PCI-to-PCI bridge device.  Then you must read the bus number from
+  the PCI configuration space header of that bridge.  Now I can obtain
+  PCI routing information from ACPI alone.
+
+  Added fast_send/recv register-passing IPC mechanism.  Seems to take
+  about 400-600 cycles per message.  Investigating SYSENTER for fast
+  userspace invocation of the IPC mechanism.  The problem with
+  SYSENTER is that it does not save the user's EIP/ESP for you.  You
+  must find some way of passing them to the kernel.  Usually by
+  storing them in registers.  Which takes away two registers from
+  syscall/IPC purposes.
+
 Wednesday 2010-09-01 md
 
   Introduced UDP logging to help avoid overhead.  It seems to drop
