@@ -482,6 +482,9 @@ init (multiboot * pmb)
   for (i=0; i<256; i++)
     BITMAP_CLR (mm_table, i);
 
+  /* Reserve physical frame with GRUB multiboot structure */
+  BITMAP_CLR (mm_table, (u32) pmb >> 12);
+
 #if 0
   /* Test that mm_table is setup correct */
   for (i = 0; i < 2000; i++)
