@@ -1,3 +1,12 @@
+Wednesday 2011-01-19 md
+
+  Implement disjunctive dependencies and subtree dependencies for
+  module system.  For example, the VFS might depend on
+  {"storage___ata|netsetup"} and netsetup might depend on {"net___"}.
+  This ensures either ATA or networking is supported, and the network
+  is configured only after all available networking modules have been
+  loaded.
+
 Thursday 2010-12-09 md
 
   Measured round-trip VM-ENTER/VM-EXIT at about 1500 cycles.

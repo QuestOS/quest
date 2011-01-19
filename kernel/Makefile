@@ -38,7 +38,7 @@ OBJS =  boot/boot.o boot/init.o kernel.o module/loader.o \
 	drivers/net/ethernetif.o drivers/net/pcnet.o \
 	drivers/net/e1000.o drivers/net/e1000e.o \
 	drivers/net/bnx2.o drivers/net/r8169.o \
-	drivers/net/mac80211.o \
+	drivers/net/mac80211.o drivers/net/netsetup.o \
 	fs/fsys.o \
 	fs/ext2/fsys_ext2fs.o \
 	fs/iso9660/fsys_iso9660.o \
