@@ -548,9 +548,6 @@ init (multiboot * pmb)
   /* Load all modules, chasing dependencies */
   { extern bool module_load_all (void); module_load_all (); }
 
-  /* Enumerate the USB bus */
-  { extern bool usb_do_enumeration (void); usb_do_enumeration (); }
-
   /* hard-code the configuration for now */
   net_set_default ("en0");
   net_dhcp_start ("en0");

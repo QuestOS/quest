@@ -52,7 +52,7 @@ OBJS =  boot/boot.o boot/init.o kernel.o module/loader.o \
 	drivers/usb/ftdi.o drivers/usb/pl2303.o \
 	drivers/usb/rtl8187b.o \
 	drivers/usb/usb_tests.o \
-	drivers/usb/usb.o \
+	drivers/usb/usb.o drivers/usb/enumeration.o \
 	kdb/i386-stub.o
 
 CFILES = $(patsubst %.o,%.c,$(OBJS))
