@@ -23,6 +23,8 @@
 #include "util/debug.h"
 #include "sched/sched.h"
 
+#define QUEST_SCHED vcpu        /* Use the VCPU scheduler */
+
 //#define DEBUG_SCHED
 #ifdef DEBUG_SCHED
 #define DLOG(fmt,...) DLOG_PREFIX("sched",fmt,##__VA_ARGS__)
@@ -30,31 +32,15 @@
 #define DLOG(fmt,...) ;
 #endif
 
-uint16 runqueue[MAX_PRIO_QUEUES];
-uint16 waitqueue[MAX_PRIO_QUEUES];      /* For tasks having expired
-                                           their current quanta */
-static uint32 runq_bitmap[(MAX_PRIO_QUEUES + 31) / 32];
+/* ************************************************** */
+uint8 sched_enabled = 0;
 
-static int bitmap_find_first_set (uint32 *table, uint32 limit);
-
-#define preserve_segment(next)                                  \
-  {                                                             \
-    tss *tssp = (tss *)lookup_TSS (next);                       \
-    u16 sel;                                                    \
-    asm volatile ("movw %%"PER_CPU_SEG_STR", %0":"=r" (sel));   \
-    tssp->usFS = sel;                                           \
-  }
-
-#define switch_to(next) software_context_switch (next)
-
+/* These functions assume exclusive access to the queue. */
 extern void
 queue_append (uint16 * queue, uint16 selector)
 {
 
   quest_tss *tssp;
-
-  /* NB: This code assumes atomic execution, and therefore cannot be
-     called with interrupts enabled. */
 
   if (*queue) {
     if (*queue == selector)
@@ -76,26 +62,12 @@ queue_append (uint16 * queue, uint16 selector)
 
 }
 
-
-extern void
-runqueue_append (uint32 prio, uint16 selector)
-{
-  DLOG ("runqueue_append(%x, %x)", prio, selector);
-
-  queue_append (&runqueue[prio], selector);
-
-  BITMAP_SET (runq_bitmap, prio);
-}
-
 extern uint16
 queue_remove_head (uint16 * queue)
 {
 
   quest_tss *tssp;
   uint16 head;
-
-  /* NB: This code assumes atomic execution, and therefore cannot be
-     called with interrupts enabled. */
 
   if (!(head = *queue))
     return 0;
@@ -108,14 +80,6 @@ queue_remove_head (uint16 * queue)
 }
 
 extern void
-sprr_wakeup (uint16 selector)
-{
-  quest_tss *tssp;
-  tssp = lookup_TSS (selector);
-  runqueue_append (tssp->priority, selector);
-}
-
-extern void
 wakeup_queue (uint16 * q)
 {
   uint16 head;
@@ -124,144 +88,6 @@ wakeup_queue (uint16 * q)
     wakeup (head);
 }
 
-uint8 sched_enabled = 0;
-
-/* Pick from the highest priority non-empty queue */
-extern void
-sprr_schedule (void)
-{
-
-  uint16 next;
-  unsigned int prio;
-
-  if ((prio = bitmap_find_first_set (runq_bitmap, MAX_PRIO_QUEUES)) != -1) {    /* Got a task to execute */
-
-    next = queue_remove_head (&runqueue[prio]);
-    if (!runqueue[prio])
-      BITMAP_CLR (runq_bitmap, prio);
-
-#ifdef DEBUG_SCHED
-    DLOG ("CPU %x: switching to task: %x runqueue(%x):",
-          get_pcpu_id (), next, prio);
-    {                           /* print runqueue to com1 */
-      quest_tss *tssp;
-      int sel = runqueue[prio];
-      while (sel) {
-        tssp = lookup_TSS (sel);
-        logger_printf (" %x", sel);
-        sel = tssp->next;
-      }
-    }
-    com1_putc ('\n');
-#endif
-
-    if (next == str ()) {
-      /* no task switch required */
-      return;
-    }
-
-    switch_to (next);
-  } else {                      /* Replenish timeslices for expired
-                                   tasks */
-
-    /*
-     * If a task calls schedule() and is selected from the runqueue,
-     * then it must be switched out.  Go to IDLE task if nothing else.
-     */
-    uint8 phys_id = get_pcpu_id ();
-    uint16 idle_sel = idleTSS_selector[phys_id];
-
-    DLOG ("CPU %x: idling", phys_id);
-
-    /* Only switch tasks to IDLE if we are not already running IDLE. */
-    if (str () != idle_sel)
-      switch_to (idle_sel);
-  }
-}
-
-/* NB: If limit is not a multiple of the system word size then all bits in
-   table beyond limit must be set to zero */
-static int
-bitmap_find_first_set (uint32 *table, uint32 limit)
-{
-
-  int i;
-
-  for (i = 0; i < (limit >> 5); i++)
-    if (table[i])
-      return ffs (table[i]) + (i << 5);
-
-  return -1;
-}
-
-/* ************************************************** */
-#if QUEST_SCHED==mpq
-
-/* global queue (for unbound tasks) */
-
-static u16 mpq_global_runqueue = 0;
-
-/* per-cpu queues */
-
-DEF_PER_CPU (u16, mpq_runqueue);
-INIT_PER_CPU (mpq_runqueue) {
-  percpu_write (mpq_runqueue, 0);
-}
-DEF_PER_CPU (u16, mpq_idle_task);
-INIT_PER_CPU (mpq_idle_task) {
-  percpu_write (mpq_idle_task, 0);
-}
-
-extern void
-mpq_wakeup (uint16 selector)
-{
-#ifdef DEBUG_SCHED
-  //logger_printf ("runqueue_append(%x, %x)\n", prio, selector);
-#endif
-
-  quest_tss *tssp = lookup_TSS (selector);
-
-  if (tssp->cpu == 0xFF) {
-    queue_append (&mpq_global_runqueue, selector);
-  } else {
-    if (tssp->cpu != get_pcpu_id ()) {
-      queue_append (percpu_pointer (tssp->cpu, mpq_runqueue), selector);
-    } else {
-      u16 q = percpu_read (mpq_runqueue);
-      queue_append (&q, selector);
-      percpu_write (mpq_runqueue, q);
-    }
-  }
-}
-
-extern void
-mpq_schedule (void)
-{
-  u16 q = percpu_read (mpq_runqueue), next;
-  if (q) {
-    next = queue_remove_head (&q);
-    percpu_write (mpq_runqueue, q);
-    DLOG ("cpu %d running task 0x%x", (u32) get_pcpu_id (), next);
-  } else if (mpq_global_runqueue) {
-    next = queue_remove_head (&mpq_global_runqueue);
-    quest_tss *tssp = lookup_TSS (next);
-    tssp->cpu = get_pcpu_id ();
-    DLOG ("binding task 0x%x to cpu %d", next, tssp->cpu);
-  } else {
-    next = percpu_read (mpq_idle_task);
-  }
-  if (next == 0) {
-    /* workaround: mpq_idle_task was not initialized yet */
-    next = idleTSS_selector[get_pcpu_id ()];
-    percpu_write (mpq_idle_task, next);
-  }
-  if (str () == next)
-    return;
-  else
-    switch_to (next);
-}
-
-#endif
 /* ************************************************** */
 
 DEF_PER_CPU (u16, current_task);

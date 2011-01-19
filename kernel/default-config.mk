@@ -14,10 +14,3 @@ OPT = 0
 
 # Disable Intel Multiprocessor Specification parsing
 # CFG += -DNO_INTEL_MPS
-
-# Scheduler selection:
-#   sprr    Static Priority Round Robin
-#   mpq     Multiple Processor Queues
-#   vcpu    Virtual CPU
-#   vcpu_rr Virtual CPU Round-Robin
-CFG += -DQUEST_SCHED=sprr
