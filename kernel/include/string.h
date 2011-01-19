@@ -20,18 +20,4 @@
 
 #include "arch/i386.h"
 
-/* quick naive version */
-static inline int
-strncmp (char *s1, char *s2, int n)
-{
-  int i, ret=0;
-  for (i=0;i<n;i++) {
-    if (s1[i] == 0 || s2[i] == 0)
-      break;
-    if (s1[i] != s2[i]) ret++;
-  }
-  if (s1[i] != s2[i]) ret++;
-  return ret;
-}
-
 #endif
