@@ -51,7 +51,7 @@ typedef struct _ethernet_device {
   void *drvdata;
 } ethernet_device;
 
-void net_init (void);
+bool net_init (void);
 bool net_register_device (ethernet_device *);
 bool net_set_default (char *devname);
 bool net_dhcp_start (char *devname);

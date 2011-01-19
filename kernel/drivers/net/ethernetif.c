@@ -706,7 +706,7 @@ net_tmr_thread (void)
   }
 }
 
-void
+bool
 net_init(void)
 {
   lwip_init ();
@@ -728,6 +728,7 @@ net_init(void)
     tcp_accept (debug_pcb, debug_accept);
   }
 #endif
+  return TRUE;
 }
 
 static uint ethernet_device_count = 0;
