@@ -507,6 +507,17 @@ strcmp (const char *a, const char *b)
   return i;
 }
 
+static inline int
+strncmp (const char *a, const char *b, int n)
+{
+  int i = 0;
+  while (*a && *b && n-- > 0) {
+    i = *(a++) - *(b++);
+    if (i != 0) return i;
+  }
+  return i;
+}
+
 static inline uint64
 rdmsr (uint32 ecx)
 {
