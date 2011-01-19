@@ -49,21 +49,27 @@ typedef struct modsystem {
 
 static modsystem_t module_system;
 
-/* Find index of module in runtime table.  i, j are indices into the
- * name string provided. */
+static bool module_load_i (const int);
+
+/* Initialize a module by name, or a whole subtree of modules by
+ * prefix (indicated by trailing "___"). */
 static int
-module_find (const char *name, int i, int j)
+module_load_name (const char *name, int i, int j)
 {
+  bool subtree = FALSE, success = FALSE;
+  if (name[j-1] == '_' && name[j-2] == '_' && name[j-3] == '_')
+    subtree = TRUE;
   int n;
   for (n=0; n<module_system.cnt; n++) {
     const char *modname = module_system.mr[n].mod->name;
-    if (strlen (modname) == j - i && strncmp (modname, name + i, j - i) == 0)
-      return n;
+    if ((subtree || strlen (modname) == j - i) &&
+        strncmp (modname, name + i, j - i) == 0) {
+      success |= module_load_i (n);
+      if (!subtree) return success;
+    }
   }
-  return -1;
+  return success;
 }
-
-static bool module_load_i (const int);
 
 /* Initialize a single disjunction of modules by |-separated names.
  * Iff any succeeds, then return TRUE.  Try them all, regardless. */
@@ -75,7 +81,7 @@ module_load_disj (const char *names)
   for (i=0, j=0; names[j]; i=j+1) {
     j=i;
     while (names[j] && names[j]!='|') j++;
-    success |= module_load_i (module_find (names, i, j));
+    success |= module_load_name (names, i, j);
   }
   return success;
 }
