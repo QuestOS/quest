@@ -40,8 +40,6 @@ extern uint32 _kernelstart, _physicalkernelstart;
 /* initial C stack */
 uint32 stack[1024] __attribute__ ((aligned (0x1000)));
 
-extern void init_sound (void);
-
 /* Each CPU needs a TSS for the SS0, ESP0 fields */
 static uint16
 alloc_CPU_TSS (tss *tssp)
@@ -548,9 +546,6 @@ init (multiboot * pmb)
 
   /* Load all modules, chasing dependencies */
   { extern bool module_load_all (void); module_load_all (); }
-
-  /* Initialise soundcard, if one exists */
-  init_sound ();
 
 #if QUEST_SCHED==vcpu
   /* Initialize VCPU scheduler */
