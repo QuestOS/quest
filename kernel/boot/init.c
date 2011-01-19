@@ -547,11 +547,6 @@ init (multiboot * pmb)
   /* Load all modules, chasing dependencies */
   { extern bool module_load_all (void); module_load_all (); }
 
-#if QUEST_SCHED==vcpu
-  /* Initialize VCPU scheduler */
-  { extern void vcpu_init (void); vcpu_init (); }
-#endif
-
   /* count free pages for informational purposes */
   u32 *page_table = (u32 *) KERN_PGT;
   u32 free_pages = 0;

@@ -1110,7 +1110,7 @@ static vcpu_hooks *vcpu_hooks_table[] = {
   [IO_VCPU] = &io_vcpu_hooks
 };
 
-extern void
+extern bool
 vcpu_init (void)
 {
   uint eax, ecx;
@@ -1165,7 +1165,18 @@ vcpu_init (void)
                    type == IO_VCPU ? "IO " : "",
                    vcpu_i, vcpu->cpu, vcpu->C, vcpu->T, (C * 100) / T);
   }
+  return TRUE;
 }
+
+/* ************************************************** */
+
+#include "module/header.h"
+
+static const struct module_ops mod_ops = {
+  .init = vcpu_init
+};
+
+DEF_MODULE (sched___vcpu, "VCPU scheduler", &mod_ops, {});
 
 /*
  * Local Variables:
