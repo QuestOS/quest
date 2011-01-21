@@ -432,7 +432,19 @@ vcpu_dump_stats (void)
                  overhead,
                  sched >> 16, sched & 0xFF,
                  uhci_bps, atapi_bps);
+#define DUMP_CACHE_STATS
+#ifdef DUMP_CACHE_STATS
+  vcpu *queue = percpu_read (vcpu_queue);
+  vcpu **ptr = NULL;
 
+  if (queue) {
+    for (ptr = &queue; *ptr != NULL; ptr = &(*ptr)->next) {
+      logger_printf ("vcpu=%X pcpu=%d cache occupancy=%llX mpki=%llX\n type=%d",
+                     (uint32) *ptr, (*ptr)->cpu, (*ptr)->cache_occupancy,
+                     (*ptr)->mpki, (*ptr)->type);
+    }
+  }
+#endif
 #ifdef DUMP_STATS_VERBOSE
   extern u64 irq_response, irq_turnaround, irq_resp_max, irq_resp_min;
   extern u64 atapi_sector_read_time, atapi_sector_cpu_time;
@@ -662,10 +674,19 @@ vcpu_schedule (void)
         vcpu->runnable = FALSE;
       }
       next = vcpu->tr;
+
+      if (cur != vcpu) {
+        perfmon_vcpu_acnt_end (cur);
+      }
+
       percpu_write (vcpu_current, vcpu);
       percpu_write (vcpu_queue, queue);
       DLOG ("scheduling vcpu=%p with budget=0x%llX", vcpu, vcpu->b);
     } else {
+      if (cur) {
+        perfmon_vcpu_acnt_end (cur);
+      }
+
       percpu_write (vcpu_current, NULL);
     }
 
@@ -703,10 +724,12 @@ vcpu_schedule (void)
   if (!timer_set)
     LAPIC_start_timer (cpu_bus_freq / QUANTUM_HZ);
 
-  if (vcpu)
+  if (vcpu) {
     /* handle beginning-of-timeslice accounting */
     vcpu_acnt_begin_timeslice (vcpu);
-  else
+    if (cur != vcpu)
+      perfmon_vcpu_acnt_start (vcpu);
+  } else
     idle_time_acnt_begin ();
   if (next == 0) {
     /* no task selected, go idle */

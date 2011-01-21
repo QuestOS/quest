@@ -22,6 +22,7 @@
 #include "util/perfmon.h"
 #include "arch/i386-percpu.h"
 #include "mem/mem.h"
+#include "arch/i386-div64.h"
 
 #define DEBUG_PERFMON
 
@@ -43,19 +44,13 @@ static u8 bit_width, perfmon_version, num_pmcs=0;
 
 #define IA32_LEVEL_CACHES  0x5
 
-/* Percpu variables for previous cache miss and occupancy information */
-DEF_PER_CPU (u64, perfmon_prev_local_miss);
-INIT_PER_CPU (perfmon_prev_local_miss) {
-  percpu_write64 (perfmon_prev_local_miss, 0LL);
-}
-DEF_PER_CPU (u64, perfmon_prev_global_miss);
-INIT_PER_CPU (perfmon_prev_global_miss) {
-  percpu_write64 (perfmon_prev_global_miss, 0LL);
-}
-DEF_PER_CPU (u64, perfmon_prev_miss_occupancy);
-INIT_PER_CPU (perfmon_prev_miss_occupancy) {
-  percpu_write64 (perfmon_prev_miss_occupancy, 0LL);
-}
+/* --??-- For effeciency, PMC0, PMC1 and UNCORE_PMC0 are reserved */
+/* This should be replaced later with a PMC allocator system.     */
+
+/* Statically allocate 2 general PMC's and 1 UNCORE PMC for accounting */
+#define PERFMON_LM_PMC    0
+#define PERFMON_GM_PMC    0   /* UNCORE PC Counter needs to be enabled */
+#define PERFMON_IR_PMC    1
 
 static struct predefined_arch_perfevts {
   char *name;
@@ -208,59 +203,77 @@ void perfmon_get_cache_info (void)
 static void
 perfmon_get_misses (uint64 *local_miss, uint64 *global_miss)
 {
-  *local_miss = perfmon_pmc_read (0);
-  *global_miss = perfmon_uncore_pmc_read (0);
-}
-
-extern uint64
-perfmon_miss_occupancy (void)
-{
-  uint64 cur_occupancy = 0, prev_occupancy = 0, local_miss = 0, global_miss = 0;
-  uint64 prev_local_miss = 0, prev_global_miss = 0;
-  int i = 0;
-
-  /* Get current local and global last level cache miss info */
-  perfmon_get_misses (&local_miss, &global_miss);
-
-  prev_local_miss = percpu_read64 (perfmon_prev_local_miss);
-  prev_global_miss = percpu_read64 (perfmon_prev_global_miss);
-
-  percpu_write64 (perfmon_prev_local_miss, local_miss);
-  percpu_write64 (perfmon_prev_global_miss, global_miss);
-
-  local_miss -= prev_local_miss;
-  global_miss -= prev_global_miss;
-
-  prev_occupancy = percpu_read64 (perfmon_prev_miss_occupancy);
-
-  DLOG ("Local L3 miss difference: %d", local_miss);
-  DLOG ("Global L3 miss difference: %d", global_miss);
-  DLOG ("Previous miss based occupancy: %d", prev_occupancy);
-
-  /* i will be used to do the division, which will be implemented as right shift */
-  for (i = 0; (llc_lines >> i) > 0 && (llc_lines >> i) != 1; i++);
-  //DLOG ("Should shift right %d bits", i);
-
-  cur_occupancy = prev_occupancy + local_miss - (global_miss >> i) * prev_occupancy;
-  percpu_write64 (perfmon_prev_miss_occupancy, cur_occupancy);
-
-  return cur_occupancy;
+  *local_miss = perfmon_pmc_read (PERFMON_LM_PMC);
+  *global_miss = perfmon_uncore_pmc_read (PERFMON_GM_PMC);
 }
 
 extern void
-perfmon_percpu_reset (void)
+perfmon_pervcpu_reset (vcpu * vcpu)
 {
-  uint64 local_miss = 0, global_miss = 0;
+  uint64 local_miss = 0, global_miss = 0, instruction_retired = 0;
 
   /* Initialise percpu cache occupancy estimation variables */
   perfmon_get_misses (&local_miss, &global_miss);
+  instruction_retired = perfmon_pmc_read (PERFMON_IR_PMC);
 
-  DLOG ("Perfmon percpu reset");
-  DLOG ("Local miss: %d", local_miss);
-  DLOG ("Global miss: %d", global_miss);
-  percpu_write64 (perfmon_prev_local_miss, local_miss);
-  percpu_write64 (perfmon_prev_global_miss, global_miss);
-  percpu_write64 (perfmon_prev_miss_occupancy, 0LL);
+  vcpu->prev_local_miss = local_miss;
+  vcpu->prev_global_miss = global_miss;
+  vcpu->prev_inst_ret = instruction_retired;
+}
+
+extern void
+perfmon_vcpu_acnt_start (vcpu * vcpu)
+{
+  uint64 now;
+
+  if (vcpu && nehalem_perfmon_enabled) {
+    perfmon_pervcpu_reset (vcpu);
+    RDTSC (now);
+    vcpu->acnt_tsc = now;
+    //DLOG ("Per-VCPU accounting begins");
+  }
+}
+
+extern void
+perfmon_vcpu_acnt_end (vcpu * vcpu)
+{
+  uint64 cur_occupancy = 0, inst_ret = 0, local_miss = 0, global_miss = 0;
+  uint64 prev_local_miss = 0, prev_global_miss = 0, prev_occupancy = 0, prev_inst_ret = 0;
+  int i = 0;
+
+  if (vcpu && nehalem_perfmon_enabled) {
+    prev_occupancy = vcpu->cache_occupancy;
+
+    /* Get current local and global last level cache miss info */
+    perfmon_get_misses (&local_miss, &global_miss);
+    inst_ret = perfmon_pmc_read (PERFMON_IR_PMC);
+
+    prev_local_miss = vcpu->prev_local_miss;
+    prev_global_miss = vcpu->prev_global_miss;
+    prev_inst_ret = vcpu->prev_inst_ret;
+
+    local_miss -= prev_local_miss;
+    global_miss -= prev_global_miss;
+    inst_ret -= prev_inst_ret;
+
+#if 0
+    DLOG ("Local L3 miss difference: %d", local_miss);
+    DLOG ("Global L3 miss difference: %d", global_miss);
+    DLOG ("Local Instructions retired difference: %d", instruction_retired);
+    DLOG ("Previous miss based occupancy: %d", prev_occupancy);
+#endif
+
+    /* i will be used to do the division, which will be implemented as right shift */
+    for (i = 0; (llc_lines >> i) > 0 && (llc_lines >> i) != 1; i++);
+    //DLOG ("Should shift right %d bits", i);
+
+    cur_occupancy = prev_occupancy + local_miss - (global_miss >> i) * prev_occupancy;
+    vcpu->cache_occupancy = cur_occupancy;
+    vcpu->mpki = div64_64 (local_miss * 1000, inst_ret);
+    //DLOG ("vcpu:%X local miss:%llX instruction retired:%llX",
+    //      (u32) vcpu, local_miss, inst_ret);
+    //DLOG ("Per-VCPU accounting ends");
+  }
 }
 
 extern bool
@@ -326,6 +339,9 @@ perfmon_init (void)
   RDTSC (tsc);
   DLOG ("pmc0=0x%llX tsc=0x%llX", perfmon_pmc_read (0), tsc);
 
+  /* Monitoring number of Instructions Retired */
+  perfmon_pmc_config (PERFMON_IR_PMC, 0xC0, 0);
+
   /* If platform is Nehalem, enable uncore counter and set events */
   if (nehalem_perfmon_enabled) {
     perfmon_uncore_cntr_enable (0x0LL | UNCORE_EN_PC0 | UNCORE_EN_FC0);
@@ -334,7 +350,7 @@ perfmon_init (void)
     DLOG ("Selecting local and global cache miss events");
 
     /* Monitering local last level cache miss from off-core */
-    offcore_perfmon_pmc_config (0, 0, (uint64) 0x0 |
+    offcore_perfmon_pmc_config (PERFMON_LM_PMC, 0, (uint64) 0x0 |
         OFFCORE_DMND_DATA_RD |
         OFFCORE_DMND_IFETCH |
         OFFCORE_WB |
@@ -348,13 +364,10 @@ perfmon_init (void)
 
     /* Monitering global last level cache miss from uncore */
     /* 0x0A and 0x0F for UNC_L3_LINES_IN.ANY */
-    perfmon_uncore_pmc_config (0, 0x0A, 0x0F);
+    perfmon_uncore_pmc_config (PERFMON_GM_PMC, 0x0A, 0x0F);
     /* 0x09 and 0x03 for UNC_L3_MISS.ANY */
     //perfmon_uncore_pmc_config (0, 0x09, 0x03);
   }
-
-  /* Reset percpu perfmon variables */
-  perfmon_percpu_reset ();
 
   perfmon_enabled = TRUE;
 

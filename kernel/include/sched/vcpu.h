@@ -19,6 +19,7 @@
 #define _SCHED_VCPU_H_
 
 #include "kernel.h"
+#include "arch/i386-percpu.h"
 #include "util/cassert.h"
 
 #define VCPU_ALIGNMENT (LOCK_ALIGNMENT<<3)
@@ -106,6 +107,14 @@ typedef struct _vcpu
       u64 prev_usage;
       u64 prev_delta;
       u32 prev_count;
+
+      /* Cache accounting */
+      u64 acnt_tsc;
+      u64 cache_occupancy;
+      u64 mpki;
+      u64 prev_local_miss;
+      u64 prev_global_miss;
+      u64 prev_inst_ret;
     };
     u8 raw[VCPU_ALIGNMENT];     /* pad to VCPU_ALIGNMENT */
   };
@@ -121,6 +130,8 @@ extern void iovcpu_job_completion (void);
 extern uint lowest_priority_vcpu (void);
 extern uint select_iovcpu (iovcpu_class);
 extern void set_iovcpu (task_id, iovcpu_class);
+
+extern DEF_PER_CPU (vcpu*, vcpu_current);
 
 #endif
 

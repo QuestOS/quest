@@ -31,7 +31,7 @@
 #endif
 
 #define PIT_FREQ 1193181        /* in Hz */
-#define HZ 100
+#define HZ 500
 #define MAX_CPUS 8
 
 #include "kernel-defs.h"

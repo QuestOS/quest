@@ -19,6 +19,7 @@
 #define _PERFMON_H_
 
 #include "kernel.h"
+#include "sched/vcpu.h"
 
 /* Performance monitoring counter MSRs */
 #define IA32_PMC(x) (0xC1 + (x))
@@ -168,8 +169,9 @@ extern void offcore_perfmon_pmc_config (int, int, uint64);
 extern bool perfmon_enabled;
 extern bool nehalem_perfmon_enabled;
 extern bool westmere_perfmon_enabled;
-extern uint64 perfmon_miss_occupancy (void);
-extern void perfmon_percpu_reset (void);
+extern void perfmon_pervcpu_reset (vcpu*);
+extern void perfmon_vcpu_acnt_start (vcpu*);
+extern void perfmon_vcpu_acnt_end (vcpu*);
 
 #endif
 
