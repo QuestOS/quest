@@ -205,14 +205,14 @@ typedef union {
         uint avail:3;
       } PACKED;
     } flags;
-    frame_t frame:20;
+    frame_t frame:20;           /* frame physical address */
   } PACKED;
 } pgtbl_entry_t;
 
 typedef struct {
-  pgtbl_entry_t *table_va;
-  frame_t table_pa;
-  uint8 *starting_va;
+  pgtbl_entry_t *table_va;      /* table virtual address */
+  frame_t table_pa;             /* table physical address */
+  uint8 *starting_va;           /* first virtual address */
 } pgtbl_t;
 
 #define PGTBL_NUM_ENTRIES 0x400
@@ -261,7 +261,7 @@ typedef union {
         uint avail3:3;
       } PACKED;
     } flags;
-    frame_t table_pa:20;
+    frame_t table_pa:20;        /* page table physical address */
   } PACKED;
 
   /* 4 MiB page */
@@ -283,7 +283,7 @@ typedef union {
         uint reserved:9;
       } PACKED;
     } flags;
-    frame_t frame:10;
+    frame_t frame:10;           /* frame physical address */
   } PACKED;
 } pgdir_entry_t;
 

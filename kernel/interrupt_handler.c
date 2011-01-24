@@ -448,9 +448,7 @@ _fork (uint32 ebp, uint32 *esp)
 
   /* 
    * This ugly bit of assembly is designed to obtain the value of EIP
-   * and allow the `call 1f' to return twice -- first for the parent to
-   * obtain EIP, and the second time for the child when it begins running.
-   *
+   * in the parent and return from the `call 1f' in the child.
    */
 
   asm volatile ("call 1f\n"
