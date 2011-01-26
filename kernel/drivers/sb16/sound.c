@@ -63,7 +63,7 @@ sb_dsp_reset (uint16 base_address)
   // Write a 1 to the SB RESET port
   outb (1, base_address + SB_DSP_RESET);
 
-  // Wait for >= 3 microseconds 
+  // Wait for >= 3 microseconds
   for (i = 0; i < 6; i++)
     inb (base_address + SB_DSP_WRITE_BUFFER_STATUS);
 
@@ -415,8 +415,8 @@ sb_read_raw (char *pathname)
 }
 
 
-void
-init_sound (void)
+bool
+sb16_init (void)
 {
 
   int i;
@@ -445,7 +445,7 @@ init_sound (void)
 
   /* For now, just 4KB for buffer */
   dma_buffer_virt_base = (uint32) map_virtual_page (dma_buffer_phys_base | 3);
-  if (sb_dsp_detect_base_address (&dsp_base_address) != SB_OK) 
+  if (sb_dsp_detect_base_address (&dsp_base_address) != SB_OK)
     goto fail;
   sb_dsp_detect_irq_number (dsp_base_address, &dsp_irq_number);
   sb_dsp_detect_dma (dsp_base_address,
@@ -454,21 +454,32 @@ init_sound (void)
   sb_speaker_on ();
   sb_install_driver (11025, FALSE);
   com1_printf ("SB16 initialized.\n");
-  return;
+  return TRUE;
 
  fail:
   com1_printf ("SB16 not detected.\n");
   unmap_virtual_page ((void *)dma_buffer_virt_base);
   free_phys_frames (dma_buffer_phys_base, 0x10);
+  return FALSE;
 }
 
-/* 
+/* ************************************************** */
+
+#include "module/header.h"
+
+static const struct module_ops mod_ops = {
+  .init = sb16_init
+};
+
+DEF_MODULE (sound___sb16, "Sound Blaster 16 driver", &mod_ops, {"vfs"});
+
+/*
  * Local Variables:
  * indent-tabs-mode: nil
  * mode: C
  * c-file-style: "gnu"
  * c-basic-offset: 2
- * End: 
+ * End:
  */
 
 /* vi: set et sw=2 sts=2: */

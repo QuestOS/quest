@@ -1,3 +1,26 @@
+Monday 2011-01-24 md
+
+  I'm picking up my project to revamp the virtual memory system in
+  Quest.  I have some utility functions from the summer, though it
+  turns out they were missing a lot.  I've ripped out the virtual
+  memory manipulation found in _fork and changed it to use
+  clone_page_directory instead.  I found a bug in duplicate_TSS where
+  it happened to modify both the parent and the child stacks when
+  forking.  I've changed it to modify only the child's stack, doing a
+  physical address lookup using the child's page directory explicitly.
+  This bug did not crop up in practice because it would only overwrite
+  a variable on the stack in the parent, and that variable happened
+  not to be needed any longer.
+
+Wednesday 2011-01-19 md
+
+  Implement disjunctive dependencies and subtree dependencies for
+  module system.  For example, the VFS might depend on
+  {"storage___ata|netsetup"} and netsetup might depend on {"net___"}.
+  This ensures either ATA or networking is supported, and the network
+  is configured only after all available networking modules have been
+  loaded.
+
 Thursday 2010-12-09 md
 
   Measured round-trip VM-ENTER/VM-EXIT at about 1500 cycles.

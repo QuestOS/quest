@@ -49,35 +49,61 @@ typedef struct modsystem {
 
 static modsystem_t module_system;
 
-/* Find index of module in runtime table */
+static bool module_load_i (const int);
+
+/* Initialize a module by name, or a whole subtree of modules by
+ * prefix (indicated by trailing "___"). */
 static int
-module_find (const char *name)
+module_load_name (const char *name, int i, int j)
 {
-  int i;
-  for (i=0; i<module_system.cnt; i++) {
-    if (strcmp (module_system.mr[i].mod->name, name) == 0)
-      return i;
+  bool subtree = FALSE, success = FALSE;
+  if (name[j-1] == '_' && name[j-2] == '_' && name[j-3] == '_')
+    subtree = TRUE;
+  int n;
+  for (n=0; n<module_system.cnt; n++) {
+    const char *modname = module_system.mr[n].mod->name;
+    if ((subtree || strlen (modname) == j - i) &&
+        strncmp (modname, name + i, j - i) == 0) {
+      success |= module_load_i (n);
+      if (!subtree) return success;
+    }
   }
-  return -1;
+  return success;
 }
 
-/* Initialize a single module by name */
+/* Initialize a single disjunction of modules by |-separated names.
+ * Iff any succeeds, then return TRUE.  Try them all, regardless. */
 static bool
-module_load (const char *name)
+module_load_disj (const char *names)
 {
+  int i, j;
+  bool success = FALSE;
+  for (i=0, j=0; names[j]; i=j+1) {
+    j=i;
+    while (names[j] && names[j]!='|') j++;
+    success |= module_load_name (names, i, j);
+  }
+  return success;
+}
+
+/* Initialize a single module by index */
+static bool
+module_load_i (const int modi)
+{
+  int depi;
   modruntime_t *mr = module_system.mr;
-  int modi = module_find (name), depi;
+
   if (modi < 0) return FALSE;
   if (mr[modi].loaded) return TRUE;
   for (depi=0; depi<mr[modi].mod->num_dependencies; depi++)
-    if (!module_load (mr[modi].mod->dependencies[depi]))
+    if (!module_load_disj (mr[modi].mod->dependencies[depi]))
       return FALSE;
   if (mr[modi].mod->ops->init ()) {
     mr[modi].loaded = 1;
-    DLOG ("initialized module \"%s\"", name);
+    DLOG ("initialized module \"%s\"", mr[modi].mod->name);
     return TRUE;
   } else {
-    DLOG ("failed to initialize module \"%s\"", name);
+    DLOG ("failed to initialize module \"%s\"", mr[modi].mod->name);
     return FALSE;
   }
 }
@@ -110,7 +136,7 @@ module_load_all (void)
   }
 
   for (i=0; i<count; i++)
-    module_load (mr[i].mod->name);
+    module_load_i (i);
 
   return TRUE;
  abort_phys:

@@ -18,6 +18,7 @@
 #include"fs/filesys.h"
 #include"kernel.h"
 #include"util/screen.h"
+#include"util/printf.h"
 
 static int vfs_root_type = VFS_FSYS_NONE;
 
@@ -103,6 +104,62 @@ vfs_read (char *pathname, char *buf, int len)
     return -1;
   }
 }
+
+/* ************************************************** */
+
+bool
+vfs_init (void)
+{
+  extern u32 root_type, boot_device;
+  int i;
+  switch (root_type) {
+  case VFS_FSYS_EZEXT2:
+    if (boot_device == 0x8000FFFF && pata_drives[0].ata_type == ATA_TYPE_PATA) {
+      printf ("ROOT: HARD DISK DRIVE: EXT2\n");
+      /* Mount root filesystem */
+      if (!ext2fs_mount ())
+        panic ("Filesystem mount failed");
+      vfs_set_root (VFS_FSYS_EZEXT2, &pata_drives[0]);
+    } else {
+      printf ("ROOT: unable to find ext2 drive\n");
+    }
+    break;
+  case VFS_FSYS_EZUSB:
+  default:
+    printf ("ROOT: USB MASS STORAGE: VFAT\n");
+    vfat_mount ();
+    vfs_set_root (VFS_FSYS_EZUSB, NULL);
+    break;
+  case VFS_FSYS_EZISO:
+    for (i = 0; i < 4; i++) {
+      if (pata_drives[i].ata_type == ATA_TYPE_PATAPI) {
+        printf ("ROOT: CD-ROM: ISO-9660\n");
+        if (!eziso_mount (pata_drives[i].ata_bus, pata_drives[i].ata_drive))
+          panic ("Filesystem mount failed");
+        vfs_set_root (VFS_FSYS_EZISO, &pata_drives[i]);
+        break;
+      }
+    }
+    if (i == 4)
+      printf ("Unable to detect CD-ROM drive.\n");
+    break;
+  case VFS_FSYS_EZTFTP:
+    printf ("ROOT: TFTP\n");
+    if (!eztftp_mount ("en0"))
+      panic ("TFTP mount failed");
+    vfs_set_root (VFS_FSYS_EZTFTP, NULL);
+    break;
+  }
+  return TRUE;
+}
+
+#include "module/header.h"
+
+static const struct module_ops mod_ops = {
+  .init = vfs_init
+};
+
+DEF_MODULE (vfs, "virtual filesystem switch", &mod_ops, {"storage___ata|usbenumeration|netsetup"});
 
 /*
  * Local Variables:

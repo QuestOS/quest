@@ -173,7 +173,22 @@ duplicate_TSS (uint32 ebp,
 
   /* The child will begin running at the specified EIP */
   pTSS->initial_EIP = child_eip;
-  *((u32 *) child_esp) = pTSS->initial_EIP;
+
+  /* modify stack in child space */
+  linear_address_t esp_la; esp_la.raw = child_esp;
+  pgdir_t child_pgdir;
+  child_pgdir.dir_pa = child_directory;
+  child_pgdir.dir_va = map_virtual_page (child_directory | 3);
+  if (child_pgdir.dir_va == NULL)
+    panic ("child_pgdir: out of memory");
+  frame_t esp_frame = pgdir_get_frame (child_pgdir, (void *) (child_esp & (~0xFFF)));
+  u32 *esp_virt = map_virtual_page (esp_frame | 3);
+  if (esp_virt == NULL)
+    panic ("esp_virt: out of memory");
+  esp_virt[esp_la.offset >> 2] = pTSS->initial_EIP;
+  unmap_virtual_page (child_pgdir.dir_va);
+  unmap_virtual_page (esp_virt);
+
   pTSS->EFLAGS = child_eflags & 0xFFFFBFFF;   /* Disable NT flag */
   pTSS->ESP = child_esp;
   pTSS->EBP = child_ebp;
@@ -432,10 +447,6 @@ _fork (uint32 ebp, uint32 *esp)
   uint16 child_gdt_index;
   void *phys_addr;
   uint32 *virt_addr;
-  int i, j;
-  uint32 *child_directory, *child_page_table, *parent_page_table;
-  void *child_page, *parent_page;
-  uint32 tmp_dir, tmp_page, tmp_page_table;
   uint32 priority;
   uint32 eflags, eip, this_esp, this_ebp;
 
@@ -444,13 +455,9 @@ _fork (uint32 ebp, uint32 *esp)
 #endif
   lock_kernel ();
 
-  child_directory = map_virtual_page ((tmp_dir = alloc_phys_frame ()) | 3);
-
   /* 
    * This ugly bit of assembly is designed to obtain the value of EIP
-   * and allow the `call 1f' to return twice -- first for the parent to
-   * obtain EIP, and the second time for the child when it begins running.
-   *
+   * in the parent and return from the `call 1f' in the child.
    */
 
   asm volatile ("call 1f\n"
@@ -474,66 +481,29 @@ _fork (uint32 ebp, uint32 *esp)
                 "pushfl\n"
                 "pop %2\n":"=r" (this_ebp), "=r" (this_esp), "=r" (eflags):);
 
+  /* Create a new address space cloned from this one */
+
+  phys_addr = get_pdbr ();      /* Parent page dir base address */
+  virt_addr = map_virtual_page ((uint32) phys_addr | 3);        /* Temporary virtual address */
+
+  if (virt_addr == NULL)
+    panic ("_fork: virt_addr: out of memory");
+
+  pgdir_t parentpgd = { .dir_pa = (frame_t) phys_addr,
+                        .dir_va = (pgdir_entry_t *) virt_addr };
+
+  pgdir_t childpgd = clone_page_directory (parentpgd);
+  if (childpgd.dir_pa == -1)
+    panic ("_fork: clone_page_directory: failed");
+
+  unmap_virtual_page (parentpgd.dir_va);
+  unmap_virtual_page (childpgd.dir_va);
+
   /* Create a child task which is the same as this task except that it will
    * begin running at the program point after `call 1f' in the above inline asm. */
 
   child_gdt_index =
-    duplicate_TSS (ebp, esp, eip, this_ebp, this_esp, eflags, tmp_dir);
-
-  /* Allocate physical memory for new address space 
-   *
-   */
-  phys_addr = get_pdbr ();      /* Parent page dir base address */
-
-  virt_addr = map_virtual_page ((uint32) phys_addr | 3);        /* Temporary virtual address */
-
-  for (i = 0; i < 0x3FF; i++) { /* Walk user-level regions of pgd */
-
-    if (virt_addr[i] &&         /* Valid page table found, and */
-        !(virt_addr[i] & 0x80)) {       /* not 4MB page */
-      child_page_table =
-        map_virtual_page ((tmp_page_table = alloc_phys_frame ()) | 3);
-      parent_page_table = map_virtual_page ((virt_addr[i] & 0xFFFFF000) | 3);
-
-      /* Copy parent's page table mappings to child */
-      for (j = 0; j < 1024; j++) {
-        if (parent_page_table[j]) {     /* --??-- Assume non-zero means present */
-          child_page =
-            map_virtual_page ((tmp_page = alloc_phys_frame ()) | 3);
-          parent_page =
-            map_virtual_page ((parent_page_table[j] & 0xFFFFF000) | 3);
-
-          /* --??-- TODO: Copy-on-write style forking and support
-             for physical page frame sharing */
-          memcpy (child_page, parent_page, 0x1000);
-
-          child_page_table[j] = tmp_page | (parent_page_table[j] & 0xFFF);
-
-          unmap_virtual_page (child_page);
-          unmap_virtual_page (parent_page);
-        } else {
-          child_page_table[j] = 0;
-        }
-      }
-
-      /* Create page directory for child */
-      child_directory[i] = tmp_page_table | (virt_addr[i] & 0xFFF);
-
-      unmap_virtual_page (child_page_table);
-      unmap_virtual_page (parent_page_table);
-
-    } else {
-      child_directory[i] = 0;
-    }
-  }
-
-  /* Copy kernel code and APIC mappings into child's page directory */
-  child_directory[1023] = virt_addr[1023];
-  child_directory[1019] = virt_addr[1019];
-
-  unmap_virtual_page (virt_addr);
-
-  unmap_virtual_page (child_directory);
+    duplicate_TSS (ebp, esp, eip, this_ebp, this_esp, eflags, childpgd.dir_pa);
 
   /* Inherit priority from parent */
   priority = lookup_TSS (child_gdt_index)->priority =

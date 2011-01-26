@@ -38,7 +38,7 @@ OBJS =  boot/boot.o boot/init.o kernel.o module/loader.o \
 	drivers/net/ethernetif.o drivers/net/pcnet.o \
 	drivers/net/e1000.o drivers/net/e1000e.o \
 	drivers/net/bnx2.o drivers/net/r8169.o \
-	drivers/net/mac80211.o \
+	drivers/net/mac80211.o drivers/net/netsetup.o \
 	fs/fsys.o \
 	fs/ext2/fsys_ext2fs.o \
 	fs/iso9660/fsys_iso9660.o \
@@ -52,7 +52,7 @@ OBJS =  boot/boot.o boot/init.o kernel.o module/loader.o \
 	drivers/usb/ftdi.o drivers/usb/pl2303.o \
 	drivers/usb/rtl8187b.o \
 	drivers/usb/usb_tests.o \
-	drivers/usb/usb.o \
+	drivers/usb/usb.o drivers/usb/enumeration.o \
 	kdb/i386-stub.o
 
 CFILES = $(patsubst %.o,%.c,$(OBJS))

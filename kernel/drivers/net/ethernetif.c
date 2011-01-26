@@ -706,7 +706,7 @@ net_tmr_thread (void)
   }
 }
 
-void
+bool
 net_init(void)
 {
   lwip_init ();
@@ -715,10 +715,8 @@ net_init(void)
 
   net_tmr_pid = start_kernel_thread ((uint) net_tmr_thread,
                                      (uint) &net_tmr_stack[1023]);
-#if QUEST_SCHED==vcpu
   uint select_iovcpu (u32);
   lookup_TSS (net_tmr_pid)->cpu = select_iovcpu (0);
-#endif
 
 #ifdef GDBSTUB_TCP
   {
@@ -728,6 +726,7 @@ net_init(void)
     tcp_accept (debug_pcb, debug_accept);
   }
 #endif
+  return TRUE;
 }
 
 static uint ethernet_device_count = 0;

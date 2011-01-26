@@ -15,9 +15,32 @@
  *  along with this program.  If not, see <http://www.gnu.org/licenses/>.
  */
 
-#ifndef _STRING_H_
-#define _STRING_H_
+#include "kernel.h"
+#include "module/header.h"
+#include "drivers/net/ethernet.h"
 
-#include "arch/i386.h"
+/* hard-code the configuration for now */
+bool
+netsetup_init (void)
+{
+  net_set_default ("en0");
+  net_dhcp_start ("en0");
+  return TRUE;
+}
 
-#endif
+static const struct module_ops mod_ops = {
+  .init = netsetup_init
+};
+
+DEF_MODULE (netsetup, "Network configuration", &mod_ops, {"net___"});
+
+/*
+ * Local Variables:
+ * indent-tabs-mode: nil
+ * mode: C
+ * c-file-style: "gnu"
+ * c-basic-offset: 2
+ * End:
+ */
+
+/* vi: set et sw=2 sts=2: */

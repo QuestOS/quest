@@ -15,9 +15,30 @@
  *  along with this program.  If not, see <http://www.gnu.org/licenses/>.
  */
 
-#ifndef _STRING_H_
-#define _STRING_H_
+#include "kernel.h"
+#include "module/header.h"
 
-#include "arch/i386.h"
+/* Enumerate the USB bus */
+bool
+usbenumeration_init (void)
+{
+  extern bool usb_do_enumeration (void);
+  return usb_do_enumeration ();
+}
 
-#endif
+static const struct module_ops mod_ops = {
+  .init = usbenumeration_init
+};
+
+DEF_MODULE (usbenumeration, "USB enumeration", &mod_ops, {"usb___"});
+
+/*
+ * Local Variables:
+ * indent-tabs-mode: nil
+ * mode: C
+ * c-file-style: "gnu"
+ * c-basic-offset: 2
+ * End:
+ */
+
+/* vi: set et sw=2 sts=2: */

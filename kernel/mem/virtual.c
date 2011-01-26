@@ -19,7 +19,7 @@
 #include "kernel.h"
 #include "types.h"
 #include "mem/physical.h"
-
+#include "mem/virtual.h"
 
 extern uint32 _kernelstart;
 
@@ -184,39 +184,6 @@ get_phys_addr (void *virt_addr)
 
 /* ************************************************** */
 
-typedef uint frame_t;
-
-typedef union {
-  uint32 raw;
-  /* 4 kiB page */
-  struct {
-    union {
-      uint raw:12;
-      struct {
-        uint present:1;
-        uint writeable:1;
-        uint supervisor:1;
-        uint write_through:1;
-        uint cache_disabled:1;
-        uint accessed:1;
-        uint dirty:1;
-        uint attribute_index:1;
-        uint global_page:1;
-        uint avail:3;
-      } PACKED;
-    } flags;
-    frame_t frame:20;
-  } PACKED;
-} pgtbl_entry_t;
-
-typedef struct {
-  pgtbl_entry_t *table_va;
-  frame_t table_pa;
-  uint8 *starting_va;
-} pgtbl_t;
-
-#define PGTBL_NUM_ENTRIES 0x400
-
 void *
 map_virtual_page_pt (pgtbl_entry_t entry, pgtbl_t *tbl)
 {
@@ -241,56 +208,7 @@ map_virtual_page_pt (pgtbl_entry_t entry, pgtbl_t *tbl)
   return NULL;                  /* Invalid address */
 }
 
-typedef union {
-  uint32 raw;
-
-  /* 4 KiB page */
-  struct {
-    union {
-      uint32 raw:12;
-      struct {
-        uint present:1;
-        uint writeable:1;
-        uint supervisor:1;
-        uint write_through:1;
-        uint cache_disabled:1;
-        uint accessed:1;
-        uint avail1:1;
-        uint page_size:1;
-        uint global_page:1;     /* ignored */
-        uint avail3:3;
-      } PACKED;
-    } flags;
-    frame_t table_pa:20;
-  } PACKED;
-
-  /* 4 MiB page */
-  struct {
-    union {
-      uint32 raw:22;
-      struct {
-        uint present:1;
-        uint writeable:1;
-        uint supervisor:1;
-        uint write_through:1;
-        uint cache_disabled:1;
-        uint accessed:1;
-        uint dirty:1;
-        uint page_size:1;
-        uint global_page:1;
-        uint avail3:3;
-        uint attribute_index:1;
-        uint reserved:9;
-      } PACKED;
-    } flags;
-    frame_t frame:10;
-  } PACKED;
-} pgdir_entry_t;
-
-typedef pgdir_entry_t *pgdir_t;
-#define PGDIR_NUM_ENTRIES 0x400
-
-/* precondition: entry is valid
+/* precondition: entry is valid and dir has valid VA
  * postcondition: tbl->table_pa and starting_va are valid */
 bool
 map_pgdir_entry (/* in */ pgdir_t dir,
@@ -299,22 +217,23 @@ map_pgdir_entry (/* in */ pgdir_t dir,
                  /* out */ pgtbl_t *tbl)
 {
   uint i;
+  pgdir_entry_t *dir_va = dir.dir_va;
 
-  tbl->table_pa = entry.table_pa;
+  tbl->table_pa = FRAMENUM_TO_FRAME (entry.table_framenum);
   tbl->table_va = NULL;
 
   if (from_top) {
     for (i=PGDIR_NUM_ENTRIES; i>=0; i--) {
-      if (!dir[i].flags.present) { /* Free entry */
-        dir[i] = entry;
+      if (!dir_va[i].flags.present) { /* Free entry */
+        dir_va[i] = entry;
         tbl->starting_va = (uint8 *) (i << 22);
         return TRUE;
       }
     } 
   } else {
     for (i=0; i<PGDIR_NUM_ENTRIES; i++) {
-      if (!dir[i].flags.present) { /* Free entry */
-        dir[i] = entry;
+      if (!dir_va[i].flags.present) { /* Free entry */
+        dir_va[i] = entry;
         tbl->starting_va = (uint8 *) (i << 22);
         return TRUE;
       }
@@ -328,8 +247,58 @@ map_pgdir_entry (/* in */ pgdir_t dir,
 #define _prim_map_virtual_page map_virtual_page
 #define _prim_unmap_virtual_page unmap_virtual_page
 
+/* precondition: dir PA and VA are valid, va is aligned */
+/* postcondition: returned frame is aligned */
+/* failure: -1 */
+frame_t
+pgdir_get_frame (pgdir_t dir, void *va)
+{
+  linear_address_t la; la.raw = (u32) va;
+  pgdir_entry_t *entry = &dir.dir_va[la.pgdir_i];
 
+  if (!entry->flags.present)
+    goto abort;
+
+  if (entry->flags.page_size) {
+    /* big page */
+    return (frame_t) BIGFRAMENUM_TO_FRAME (entry->framenum);
+  } else {
+    /* regular page */
+    pgtbl_entry_t *table = _prim_map_virtual_page (FRAMENUM_TO_FRAME (entry->table_framenum) | 3);
+    if (table == NULL)
+      goto abort;
+    if (!table[la.pgtbl_i].flags.present) {
+      _prim_unmap_virtual_page (table);
+      goto abort;
+    } else {
+      frame_t frame = FRAMENUM_TO_FRAME (table[la.pgtbl_i].framenum);
+      _prim_unmap_virtual_page (table);
+      return frame;
+    }
+  }
+
+ abort:
+  return (frame_t) -1;
+}
+
+/* Obtains the physical address of a virtual address in the given
+ * page directory. */
+/* precondition: dir PA and VA are valid */
+/* failure: -1 */
+phys_addr_t
+pgdir_get_phys_addr (pgdir_t dir, void *va)
+{
+  linear_address_t la; la.raw = (u32) va;
+  frame_t frame = pgdir_get_frame (dir, (void *) (((u32) va) & (~(PAGE_SIZE-1))));
+  if (frame == -1)
+    return -1;
+  return frame + la.offset;
+}
+
+/* Clone the contents of a page table, copying data. */
+/* failure result is (-1, 0) */
 /* precondition: all of tbl is valid */
+/* postcondition: new physical and virtual address are valid in returned pgtbl */
 pgtbl_t
 clone_page_table (pgtbl_t tbl)
 {
@@ -348,19 +317,49 @@ clone_page_table (pgtbl_t tbl)
 
   for (i=0; i<PGTBL_NUM_ENTRIES; i++) {
     if (tbl.table_va[i].flags.present) {
-      new_tbl.table_va[i].raw = tbl.table_va[i].raw;
+      frame_t new_frame = alloc_phys_frame ();
+      frame_t old_frame = FRAMENUM_TO_FRAME (tbl.table_va[i].framenum);
+
+      /* temporarily map frames */
+      void *old_page_tmp = _prim_map_virtual_page (old_frame | 3);
+      if (old_page_tmp == NULL)
+        goto abort_tbl_va;
+      void *new_page_tmp = _prim_map_virtual_page (new_frame | 3);
+      if (new_page_tmp == NULL) {
+        _prim_unmap_virtual_page (old_page_tmp);
+        goto abort_tbl_va;
+      }
+
+      /* copy contents of old frame to new frame */
+      memcpy (new_page_tmp, old_page_tmp, PAGE_SIZE);
+
+      /* setup new page table entry */
+      new_tbl.table_va[i].flags.raw = tbl.table_va[i].flags.raw;
+      new_tbl.table_va[i].framenum = FRAME_TO_FRAMENUM (new_frame);
+
+      _prim_unmap_virtual_page (old_page_tmp);
+      _prim_unmap_virtual_page (new_page_tmp);
     }
   }
 
   return new_tbl;
 
+ abort_tbl_va:
+  _prim_unmap_virtual_page (new_tbl.table_va);
  abort_tbl_pa:
   free_phys_frame (new_tbl.table_pa);
  abort:
   new_tbl.table_pa = -1;
+  new_tbl.table_va = NULL;
   return new_tbl;
 }
 
+/* Clone an entire address space making copies of data where
+ * appropriate (e.g. userspace and kernel stack). */
+
+/* precondition: dir has valid VA, PA 
+ * postcondition: return has valid VA, PA
+ * failure result is (-1, 0) */
 pgdir_t
 clone_page_directory (pgdir_t dir)
 {
@@ -373,25 +372,29 @@ clone_page_directory (pgdir_t dir)
   if (new_pgd_pa == -1)
     goto abort;
 
-  new_dir = _prim_map_virtual_page (new_pgd_pa | 3);
-  if (new_dir == NULL)
+  new_dir.dir_pa = new_pgd_pa;
+  new_dir.dir_va = _prim_map_virtual_page (new_pgd_pa | 3);
+  if (new_dir.dir_va == NULL)
     goto abort_pgd_pa;
 
-  memset (new_dir, 0, PGDIR_NUM_ENTRIES * sizeof (pgdir_entry_t));
+  memset (new_dir.dir_va, 0, PGDIR_NUM_ENTRIES * sizeof (pgdir_entry_t));
 
   /* run through dir and make copies of tables */
   for (i=0; i<PGDIR_NUM_ENTRIES; i++) {
-    if (dir[i].flags.present) {
-      if (dir[i].flags.page_size) {
-        /* 4 MiB page */
-        new_dir[i].raw = dir[i].raw;
+    if (dir.dir_va[i].flags.present) {
+      if (i >= PGDIR_KERNEL_BEGIN && i != PGDIR_KERNEL_STACK) {
+        /* shared kernel-space */
+        new_dir.dir_va[i].raw = dir.dir_va[i].raw;
+      } else if (dir.dir_va[i].flags.page_size) {
+        /* clone 4 MiB page */
+        panic ("userspace 4 MiB pages not supported");
       } else {
-        /* Page table */
+        /* clone a page table */
         pgtbl_t tbl, new_tbl;
 
         /* setup a pgtbl struct with physical and virtual addresses of
          * the existing page table */
-        tbl.table_pa = dir[i].table_pa;
+        tbl.table_pa = FRAMENUM_TO_FRAME (dir.dir_va[i].table_framenum);
         tbl.table_va = _prim_map_virtual_page (tbl.table_pa | 3);
         if (tbl.table_va == NULL)
           goto abort_pgd_va;
@@ -400,14 +403,15 @@ clone_page_directory (pgdir_t dir)
         new_tbl = clone_page_table (tbl);
 
         _prim_unmap_virtual_page (tbl.table_va);
-        _prim_unmap_virtual_page (new_tbl.table_va);
 
         if (new_tbl.table_pa == -1)
           goto abort_pgd_va;
 
+        _prim_unmap_virtual_page (new_tbl.table_va);
+
         /* setup new directory entry with flags and new table address */
-        new_dir[i].flags = dir[i].flags;
-        new_dir[i].table_pa = new_tbl.table_pa;
+        new_dir.dir_va[i].flags = dir.dir_va[i].flags;
+        new_dir.dir_va[i].table_framenum = FRAME_TO_FRAMENUM (new_tbl.table_pa);
       }
     }
   }
@@ -415,11 +419,13 @@ clone_page_directory (pgdir_t dir)
   return new_dir;
 
  abort_pgd_va:
-  _prim_unmap_virtual_page (new_dir);
+  _prim_unmap_virtual_page (new_dir.dir_va);
  abort_pgd_pa:
   free_phys_frame (new_pgd_pa);
  abort:
-  return NULL;  
+  new_dir.dir_va = NULL;
+  new_dir.dir_pa = -1;
+  return new_dir;
 }
 
 
