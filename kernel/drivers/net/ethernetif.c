@@ -72,6 +72,7 @@
 #include "util/circular.h"
 #include "sched/sched.h"
 #include "module/header.h"
+#include "kernel.h"
 
 //#define DEBUG_NETIF
 
