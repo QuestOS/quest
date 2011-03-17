@@ -559,6 +559,7 @@ _exec (char *filename, char *argv[], uint32 *curr_stack)
   uint32 *tmp_page;
   int i, j, c;
   char command_args[80];
+  char filename_bak[256];
 
   if (!argv || !argv[0]) {
     BITMAP_SET (mm_table, phys_addr >> 12);
@@ -577,6 +578,13 @@ _exec (char *filename, char *argv[], uint32 *curr_stack)
      Right now, assume max size for prog name and arguments.
    */
   strncpy (command_args, argv[0], 80);
+
+  /*
+   * This is a bug fix. We have to backup the file name before
+   * erasing the old address space because it will be used later
+   * and will already be gone with the old stack at that time.
+   */
+  strncpy (filename_bak, filename, 256);
 
 #ifdef DEBUG_SYSCALL
   com1_printf ("_exec: vfs_dir\n");
@@ -635,7 +643,7 @@ _exec (char *filename, char *argv[], uint32 *curr_stack)
 #endif
   /* Read into virtual address corresponding to plPageDirectory[1021] */
   orig_filesize = filesize;
-  filesize = vfs_read (filename, (void *) pe, orig_filesize);
+  filesize = vfs_read (filename_bak, (void *) pe, orig_filesize);
   if (filesize != orig_filesize) {
     printf ("expected filesize=%d got filesize=%d\n", orig_filesize, filesize);
     panic ("File size mismatch on read");
