@@ -97,6 +97,66 @@ stacktrace_frame (uint esp, uint ebp)
   }
 }
 
+static char b64lookup[] = "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/";
+/* 11000000 22221111 33333322 */
+/* aabbccdd aabbccdd aabbccdd */
+/* 01234567 89012345 67890123 */
+union v8 {
+  struct {
+    u8 a:2;
+    u8 b:2;
+    u8 c:2;
+    u8 d:2;
+  };
+  struct {
+    u8 ab:4;
+    u8 cd:4;
+  };
+  struct {
+    u8 a:2;
+    u8 bcd:6;
+  };
+  struct {
+    u8 abc:6;
+    u8 d:2;
+  };
+} __attribute__((packed));
+
+#define OUT(c) logger_putc(c)
+void
+base64encode_dump (u8 *str, int n)
+{
+  int i;
+  for (i=0; i<n; i+=3) {
+    union v8 *p = (union v8 *)&str[i];
+    OUT (b64lookup[p[0].bcd]);
+    if (i+1 < n)
+      OUT (b64lookup[(p[0].a << 4) | (p[1].cd)]);
+    else {
+      OUT (b64lookup[p[0].a << 4]);
+      OUT ('=');
+      OUT ('=');
+      break;
+    }
+    if (i+2 < n)
+      OUT (b64lookup[(p[1].ab << 2) | p[2].d]);
+    else {
+      OUT (b64lookup[p[1].ab << 2]);
+      OUT ('=');
+      break;
+    }
+    OUT (b64lookup[p[2].abc]);
+  }
+}
+#undef OUT
+
+void
+dump_page (u8 *addr)
+{
+  logger_printf ("***dump 0x%p\n", addr);
+  base64encode_dump (addr, 0x1000);
+  logger_printf ("\n");
+}
 
 /*
  * Local Variables:
