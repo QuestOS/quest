@@ -171,7 +171,7 @@ $(foreach obj,$(ACPI_OBJS),$(eval $(call ACPI_template,$(obj))))
 
 netboot: quest.iso
 	mkdir -p $(TFTPDIR)/boot/grub
-	cp quest sysprogs/shell sysprogs/terminal_server $(TFTPDIR)/boot
+	cp quest sysprogs/shell $(TFTPDIR)/boot
 	cp netboot/grub.cfg $(TFTPDIR)/boot/grub
 	cp $(GRUB2)/grub2pxe $(TFTPDIR)
 	$(TAR) -C $(TFTPDIR)/boot/grub -jxf $(GRUB2)/mods.tar.bz2
