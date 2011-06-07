@@ -522,6 +522,144 @@ vmx_create_VM (virtual_machine *vm)
   return -1;
 }
 
+int
+vmx_create_pmode_VM (virtual_machine *vm, u32 rip0, u32 rsp0)
+{
+  void vmx_code16_entry (void);
+  uint32 phys_id = (uint32)LAPIC_get_physical_ID ();
+  uint32 *vmcs_virt;
+  uint32 cr, stack_frame, sel, base, limit, access;
+  descriptor ad;
+
+  vm->realmode = FALSE;
+  vm->launched = vm->loaded = FALSE;
+  vm->current_cpu = phys_id;
+  vm->guest_regs.eax = vm->guest_regs.ebx = vm->guest_regs.ecx =
+    vm->guest_regs.edx = vm->guest_regs.esi = vm->guest_regs.edi =
+    vm->guest_regs.ebp = 0;
+
+  /* Setup the Virtual Machine Control Section */
+  vm->vmcs_frame = alloc_phys_frame ();
+  vmcs_virt  = map_virtual_page (vm->vmcs_frame | 3);
+  vmcs_virt[0] = rdmsr (IA32_VMX_BASIC);
+  vmcs_virt[1] = 0;
+  unmap_virtual_page (vmcs_virt);
+
+  stack_frame = alloc_phys_frame ();
+  vm->guest_stack = map_virtual_page (stack_frame | 3);
+
+  vmclear (vm->vmcs_frame);
+
+  if (vmx_load_VM (vm) != 0)
+    goto abort_load_VM;
+
+  /* Setup Guest State */
+  asm volatile ("pushfl; pop %0":"=r" (cr));
+  vmwrite (cr, VMXENC_GUEST_RFLAGS);
+  asm volatile ("movl %%cr0, %0":"=r" (cr));
+  vmwrite (cr, VMXENC_GUEST_CR0);
+  asm volatile ("movl %%cr3, %0":"=r" (cr));
+  vmwrite (cr, VMXENC_GUEST_CR3);
+  asm volatile ("movl %%cr4, %0":"=r" (cr));
+  vmwrite (cr, VMXENC_GUEST_CR4);
+  vmwrite (0x0, VMXENC_GUEST_DR7);
+  logger_printf ("GUEST-STATE: FLAGS=0x%p CR0=0x%p CR3=0x%p CR4=0x%p\n",
+                 vmread (VMXENC_GUEST_RFLAGS),
+                 vmread (VMXENC_GUEST_CR0),
+                 vmread (VMXENC_GUEST_CR3),
+                 vmread (VMXENC_GUEST_CR4));
+
+#define ACCESS(ad)                              \
+  (( 0x01            << 0x00 ) |                \
+   ( ad.uType        << 0x00 ) |                \
+   ( ad.uDPL         << 0x05 ) |                \
+   ( ad.fPresent     << 0x07 ) |                \
+   ( ad.f            << 0x0C ) |                \
+   ( ad.f0           << 0x0D ) |                \
+   ( ad.fX           << 0x0E ) |                \
+   ( ad.fGranularity << 0x0F ))
+
+  /* Setup segment selector/base/limit/access entries */
+#define SETUPSEG(seg) do {                                              \
+    asm volatile ("movl %%" __stringify(seg) ", %0":"=r" (sel));        \
+    get_GDT_descriptor (sel, &ad);                                      \
+    base = (ad.pBase0 | (ad.pBase1 << 16) | (ad.pBase2 << 24));         \
+    limit = ad.uLimit0 | (ad.uLimit1 << 16);                            \
+    if (ad.fGranularity) { limit <<= 12; limit |= 0xFFF; }              \
+    access = ACCESS (ad);                                               \
+    vmwrite (sel, VMXENC_GUEST_##seg##_SEL);                            \
+    vmwrite (base, VMXENC_GUEST_##seg##_BASE);                          \
+    vmwrite (limit, VMXENC_GUEST_##seg##_LIMIT);                        \
+    vmwrite (access, VMXENC_GUEST_##seg##_ACCESS);                      \
+    logger_printf ("GUEST-STATE: %s=0x%.02X base=0x%p limit=0x%p access=0x%.02X\n", \
+                   __stringify(seg), sel, base, limit, access);         \
+  } while (0)
+
+  SETUPSEG (CS);
+  SETUPSEG (SS);
+  SETUPSEG (DS);
+  SETUPSEG (ES);
+  SETUPSEG (FS);
+  SETUPSEG (GS);
+
+  /* TR */
+  sel = hw_str ();
+  get_GDT_descriptor (sel, &ad);
+  base = (ad.pBase0 | (ad.pBase1 << 16) | (ad.pBase2 << 24));
+  limit = ad.uLimit0 | (ad.uLimit1 << 16);
+  if (ad.fGranularity) { limit <<= 12; limit |= 0xFFF; }
+  access = ACCESS (ad);
+  vmwrite (sel, VMXENC_GUEST_TR_SEL);
+  vmwrite (base, VMXENC_GUEST_TR_BASE);
+  vmwrite (limit, VMXENC_GUEST_TR_LIMIT);
+  vmwrite (access, VMXENC_GUEST_TR_ACCESS);
+  logger_printf ("GUEST-STATE: %s=0x%.02X base=0x%p limit=0x%p access=0x%.02X\n",
+                 "TR", sel, base, limit, access);
+
+#undef ACCESS
+
+  /* LDTR */
+  vmwrite (0, VMXENC_GUEST_LDTR_SEL);
+  vmwrite (0, VMXENC_GUEST_LDTR_BASE);
+  vmwrite (0, VMXENC_GUEST_LDTR_LIMIT);
+  vmwrite (0x10082, VMXENC_GUEST_LDTR_ACCESS);
+
+  /* GDTR */
+  vmwrite ((uint32) sgdtr (), VMXENC_GUEST_GDTR_BASE);
+  vmwrite (sgdtr_limit (), VMXENC_GUEST_GDTR_LIMIT);
+
+  /* IDTR */
+  vmwrite ((uint32) sidtr (), VMXENC_GUEST_IDTR_BASE);
+  vmwrite (sidtr_limit (), VMXENC_GUEST_IDTR_LIMIT);
+
+  /* RIP/RSP */
+  vmwrite ((uint32) rip0, VMXENC_GUEST_RIP);
+  vmwrite ((uint32) rsp0, VMXENC_GUEST_RSP);
+  logger_printf ("GUEST-STATE: RIP=0x%p RSP=0x%p\n", rip0, rsp0);
+
+  /* SYSENTER MSRs */
+  vmwrite (0, VMXENC_GUEST_IA32_SYSENTER_CS);
+  vmwrite (0, VMXENC_GUEST_IA32_SYSENTER_ESP);
+  vmwrite (0, VMXENC_GUEST_IA32_SYSENTER_EIP);
+
+  vmwrite64 (0xFFFFFFFFFFFFFFFFLL, VMXENC_VMCS_LINK_PTR);
+  vmwrite (0, VMXENC_GUEST_PENDING_DEBUG_EXCEPTIONS);
+  vmwrite (0, VMXENC_GUEST_ACTIVITY);
+  vmwrite (0, VMXENC_GUEST_INTERRUPTIBILITY);
+  vmwrite (~0, VMXENC_EXCEPTION_BITMAP);
+  //vmwrite (0, VMXENC_EXCEPTION_BITMAP); /* do not exit on exception (see manual about page faults) */
+  vmwrite (0, VMXENC_PAGE_FAULT_ERRCODE_MASK);
+  vmwrite (0, VMXENC_PAGE_FAULT_ERRCODE_MATCH);
+  vmwrite (0, VMXENC_CR0_GUEST_HOST_MASK); /* all bits "owned" by guest */
+  vmwrite (0, VMXENC_CR0_READ_SHADOW);
+
+  return 0;
+
+ abort_load_VM:
+  vmx_destroy_VM (vm);
+  return -1;
+}
+
 static u32 saved_esp;
 
 int
@@ -678,12 +816,48 @@ vmx_enter_VM (virtual_machine *vm)
     RDTSC (finish);
 
 #if DEBUG_VMX > 2
-    com1_printf ("VM-EXIT: %s\n  reason=%.8X qualif=%.8X\n  intinf=%.8X ercode=%.8X\n  inslen=%.8X insinf=%.8X\n  cycles=0x%llX\n",
-                 (reason < VMX_NUM_EXIT_REASONS ?
-                  vm_exit_reasons[reason] : "invalid exit-reason"),
-                 reason, qualif, intinf, ercode, inslen, insinf,
-                 finish - start);
+    logger_printf ("VM-EXIT: %s\n  reason=%.8X qualif=%.8X\n  intinf=%.8X ercode=%.8X\n  inslen=%.8X insinf=%.8X\n  cycles=0x%llX\n",
+                   (reason < VMX_NUM_EXIT_REASONS ?
+                    vm_exit_reasons[reason] : "invalid exit-reason"),
+                   reason, qualif, intinf, ercode, inslen, insinf,
+                   finish - start);
     vmx_vm_exit_reason ();
+    u32 rip = vmread (VMXENC_GUEST_RIP), rsp = vmread (VMXENC_GUEST_RSP);
+    logger_printf ("VM-EXIT: GUEST-STATE: RIP=0x%p RSP=0x%p\n", rip, rsp);
+    logger_printf ("VM-EXIT: GUEST-STATE: FLAGS=0x%p CR0=0x%p CR3=0x%p CR4=0x%p\n",
+                   vmread (VMXENC_GUEST_RFLAGS),
+                   vmread (VMXENC_GUEST_CR0),
+                   //vmread (VMXENC_GUEST_CR2),
+                   vmread (VMXENC_GUEST_CR3),
+                   vmread (VMXENC_GUEST_CR4));
+#define SHOWSEG(seg) do {                                               \
+      logger_printf ("VM-EXIT: GUEST-STATE: %s=0x%.02X base=0x%p limit=0x%p access=0x%p\n", \
+                     __stringify (seg),                                 \
+                     vmread (VMXENC_GUEST_##seg##_SEL),                 \
+                     vmread (VMXENC_GUEST_##seg##_BASE),                \
+                     vmread (VMXENC_GUEST_##seg##_LIMIT),               \
+                     vmread (VMXENC_GUEST_##seg##_ACCESS)               \
+                     );                                                 \
+    } while (0)
+#define SHOWDTR(seg) do {                                               \
+      logger_printf ("VM-EXIT: GUEST-STATE: %s base=0x%p limit=0x%p\n", \
+                     __stringify (seg),                                 \
+                     vmread (VMXENC_GUEST_##seg##_BASE),                \
+                     vmread (VMXENC_GUEST_##seg##_LIMIT)                \
+                     );                                                 \
+    } while (0)
+
+    SHOWSEG (CS);
+    SHOWSEG (SS);
+    SHOWSEG (DS);
+    SHOWSEG (ES);
+    SHOWSEG (FS);
+    SHOWSEG (GS);
+    SHOWSEG (TR);
+    SHOWSEG (LDTR);
+    SHOWDTR (GDTR);
+    SHOWDTR (IDTR);
+
 #endif
 
     if (vm->realmode && reason == 0x0 && (intinf & 0xFF) == 0x0D) {
@@ -694,10 +868,10 @@ vmx_enter_VM (virtual_machine *vm)
     } else {
       /* Not a vm86 related VM-EXIT */
 #if DEBUG_VMX > 1
-      com1_printf ("VM-EXIT: %s\n  reason=%.8X qualif=%.8X\n  intinf=%.8X ercode=%.8X\n  inslen=%.8X insinf=%.8X\n",
-                   (reason < VMX_NUM_EXIT_REASONS ?
-                    vm_exit_reasons[reason] : "invalid exit-reason"),
-                   reason, qualif, intinf, ercode, inslen, insinf);
+      logger_printf ("VM-EXIT: %s\n  reason=%.8X qualif=%.8X\n  intinf=%.8X ercode=%.8X\n  inslen=%.8X insinf=%.8X\n",
+                     (reason < VMX_NUM_EXIT_REASONS ?
+                      vm_exit_reasons[reason] : "invalid exit-reason"),
+                     reason, qualif, intinf, ercode, inslen, insinf);
       vmx_vm_exit_reason ();
 #endif
     }
@@ -709,6 +883,15 @@ vmx_enter_VM (virtual_machine *vm)
   return -1;
 }
 
+static u32 vmstack[1024] ALIGNED(0x1000);
+void
+test_pmode_vm (void)
+{
+  logger_printf ("INSIDE PMODE VM -- going into infinite loop\n");
+  for (;;);
+}
+
+extern void dump_page (u8 *);
 static bool
 vmx_init (void)
 {
@@ -724,24 +907,8 @@ vmx_init (void)
 
   vmx_processor_init ();
 
-  if (vmx_create_VM (&first_vm) != 0)
+  if (vmx_create_pmode_VM (&first_vm, (u32) &test_pmode_vm, (u32) &vmstack[1023]) != 0)
     goto vm_error;
-
-#if 0
-  /* read MBR from first drive */
-  if (pata_drives[0].ata_type == ATA_TYPE_PATA) {
-    ata_drive_read_sector (ATA_BUS_PRIMARY, ATA_DRIVE_MASTER, 0, (uint8 *)0x7c00);
-    vmwrite (0x7C00, VMXENC_GUEST_RIP);
-    first_vm.guest_regs.edx = 0x80;
-  }
-#else
-  /* default to "graphics demo" in vm86 mode */
-#endif
-
-  for (;;) {
-    if (vmx_enter_VM (&first_vm) != 0)
-      goto vm_error;
-  }
 
   if (vmx_enter_VM (&first_vm) != 0)
     goto vm_error;
