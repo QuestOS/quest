@@ -31,6 +31,7 @@ extern void logger_putc (char);
 void stacktrace_frame (uint esp, uint ebp);
 void stacktrace (void);
 
+extern void dump_page (u8 *);
 
 #endif
 
