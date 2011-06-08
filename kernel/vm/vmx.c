@@ -660,13 +660,11 @@ vmx_create_pmode_VM (virtual_machine *vm, u32 rip0, u32 rsp0)
   return -1;
 }
 
-static u32 saved_esp;
-
 int
 vmx_enter_VM (virtual_machine *vm)
 {
   uint32 phys_id = (uint32)LAPIC_get_physical_ID ();
-  uint32 cr, esp, eip, state = 0, flags;
+  uint32 cr, eip, state = 0, err;
   uint16 fs;
   u64 start, finish;
 
@@ -714,8 +712,7 @@ vmx_enter_VM (virtual_machine *vm)
    * HOST registers */
   asm volatile (/* save HOST registers on stack and ESP in VMCS */
                 "pusha\n"
-                "movl %%esp, %1\n"
-                "vmwrite %1, %3\n"
+                "vmwrite %%esp, %2\n"
                 /* Do trick to get current EIP and differentiate between the first
                  * and second time this code is invoked. */
                 "call 1f\n"
@@ -725,7 +722,7 @@ vmx_enter_VM (virtual_machine *vm)
                 "popa\n"        /* temporarily restore host registers */
                 "movl $8, %%ecx\n"
                 "lea -0x40(%%esp), %%esi\n"
-                "lea %2, %%edi\n"
+                "lea %1, %%edi\n"
                 "cld; rep movsd\n" /* save guest registers to memory */
                 "subl $0x20, %%esp\n"
                 "popa\n"        /* permanently restore host registers */
@@ -734,13 +731,12 @@ vmx_enter_VM (virtual_machine *vm)
                 "1:\n"
                 "pop %0\n"
                 "2:\n"
-                :"=r" (eip),"=r" (esp):"m" (vm->guest_regs),"r" (VMXENC_HOST_RSP));
+                :"=r" (eip):"m" (vm->guest_regs),"r" (VMXENC_HOST_RSP));
 
   /* VM-ENTER */
   if (eip) {
-    // printf ("Entering VM!\n");
+    DLOG ("Entering VM!");
     vmwrite (eip, VMXENC_HOST_RIP);
-    asm volatile ("movl %%esp, %0":"=m" (saved_esp));
     if (vm->launched) {
       asm volatile ("movl $1, %0\n"
                     "movl $2, %1\n"
@@ -764,10 +760,21 @@ vmx_enter_VM (virtual_machine *vm)
                     :"=m" (vm->launched), "=m"(state)
                     :"c" (8), "S" (&vm->guest_regs):"edi","cc","memory");
     }
-    asm volatile ("movl %0, %%esp\npopa"::"m" (saved_esp));
-    asm volatile ("pushfl\npop %0":"=r" (flags));
-    if (flags & (F_CF | F_ZF)) {
-      //if (vmx_get_error () != 0) {
+
+    /* Must check if CF=1 or ZF=1 before doing anything else.
+     * However, ESP is wiped out.  To restore stack requires a VMREAD.
+     * However that would clobber flags.  Therefore, we must check
+     * condition codes using "JBE" first.  Then we can restore stack,
+     * and also host registers. */
+
+    /* This may be unnecessary, should not reach this point except on error. */
+    asm volatile ("xorl %%edi, %%edi; jbe 1f; jmp 2f\n"
+                  "1: movl $1, %%edi\n"
+                  "2: vmread %1, %%esp; pushl %%edi; addl $4, %%esp\n"
+                  "popa\n"
+                  /* alt. could modify EDI on stack.. oh well. */
+                  "subl $0x24, %%esp\npopl %%edi\naddl $0x20, %%esp":"=D" (err):"r" (VMXENC_HOST_RSP));
+    if (err) {
 #if DEBUG_VMX > 1
       uint32 error = vmread (VMXENC_VM_INSTR_ERROR);
 #endif
@@ -778,15 +785,16 @@ vmx_enter_VM (virtual_machine *vm)
         vm->launched = FALSE;
 
 #if DEBUG_VMX > 1
-      com1_printf ("VM-ENTRY: error: %.8X (%s)\n  reason: %.8X qual: %.8X\n",
-                   error,
-                   (error < VMX_NUM_INSTR_ERRORS ? vm_instruction_errors[error] : "n/a"),
-                   reason,
-                   vmread (VMXENC_EXIT_QUAL));
+      logger_printf ("VM-ENTRY: %d error: %.8X (%s)\n  reason: %.8X qual: %.8X\n",
+                     err,
+                     error,
+                     (error < VMX_NUM_INSTR_ERRORS ? vm_instruction_errors[error] : "n/a"),
+                     reason,
+                     vmread (VMXENC_EXIT_QUAL));
 #endif
       if (reason & 0x80000000) {
 #if DEBUG_VMX > 0
-        com1_printf ("  VM-ENTRY failure, code: %d\n", reason & 0xFF);
+        logger_printf ("  VM-ENTRY failure, code: %d\n", reason & 0xFF);
 #endif
       }
       goto abort_vmentry;
