@@ -45,10 +45,12 @@ void vmx_detect (void);
 void vmx_global_init (void);
 void vmx_processor_init (void);
 int vmx_create_VM (virtual_machine *);
+int vmx_create_pmode_VM (virtual_machine *, u32, u32);
 int vmx_destroy_VM (virtual_machine *);
 int vmx_load_VM (virtual_machine *);
 int vmx_unload_VM (virtual_machine *);
-int vmx_enter_VM (virtual_machine *);
+int vmx_enter_pmode_VM (virtual_machine *);
+int vmx_start_VM (virtual_machine *);
 
 static inline int
 vmx_get_error (void)

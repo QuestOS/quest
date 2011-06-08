@@ -242,6 +242,7 @@ vmx_vm_exit_reason (void)
 
 static uint32 vmxon_frame[MAX_CPUS];
 uint32 vmx_vm86_pgt[1024] __attribute__ ((aligned(0x1000)));
+static u32 msr_bitmaps[1024] ALIGNED (0x1000);
 
 void
 vmx_global_init (void)
@@ -272,6 +273,9 @@ vmx_global_init (void)
 
   /* Initialize the real-mode emulator */
   vmx_vm86_global_init ();
+
+  /* clear MSR bitmaps */
+  memset (msr_bitmaps, 0, 0x1000);
 }
 
 void
@@ -522,6 +526,8 @@ vmx_create_VM (virtual_machine *vm)
   return -1;
 }
 
+//#define EXCEPTION_EXIT
+
 int
 vmx_create_pmode_VM (virtual_machine *vm, u32 rip0, u32 rsp0)
 {
@@ -646,8 +652,11 @@ vmx_create_pmode_VM (virtual_machine *vm, u32 rip0, u32 rsp0)
   vmwrite (0, VMXENC_GUEST_PENDING_DEBUG_EXCEPTIONS);
   vmwrite (0, VMXENC_GUEST_ACTIVITY);
   vmwrite (0, VMXENC_GUEST_INTERRUPTIBILITY);
+#ifdef EXCEPTION_EXIT
   vmwrite (~0, VMXENC_EXCEPTION_BITMAP);
-  //vmwrite (0, VMXENC_EXCEPTION_BITMAP); /* do not exit on exception (see manual about page faults) */
+#else
+  vmwrite (0, VMXENC_EXCEPTION_BITMAP); /* do not exit on exception (see manual about page faults) */
+#endif
   vmwrite (0, VMXENC_PAGE_FAULT_ERRCODE_MASK);
   vmwrite (0, VMXENC_PAGE_FAULT_ERRCODE_MATCH);
   vmwrite (0, VMXENC_CR0_GUEST_HOST_MASK); /* all bits "owned" by guest */
@@ -661,25 +670,30 @@ vmx_create_pmode_VM (virtual_machine *vm, u32 rip0, u32 rsp0)
 }
 
 int
-vmx_enter_VM (virtual_machine *vm)
+vmx_start_VM (virtual_machine *vm)
 {
   uint32 phys_id = (uint32)LAPIC_get_physical_ID ();
   uint32 cr, eip, state = 0, err;
   uint16 fs;
-  u64 start, finish;
+  u64 start, finish, proc_msr;
 
   if (!vm->loaded || vm->current_cpu != phys_id)
     goto not_loaded;
 
   /* Save Host State */
   vmwrite (rdmsr (IA32_VMX_PINBASED_CTLS), VMXENC_PINBASED_VM_EXEC_CTRLS);
-  vmwrite (rdmsr (IA32_VMX_PROCBASED_CTLS), VMXENC_PROCBASED_VM_EXEC_CTRLS);
+  proc_msr = rdmsr (IA32_VMX_PROCBASED_CTLS);
+  proc_msr &= ~((1 << 15) | (1 << 16) | (1 << 12) | (1 << 11)); /* allow CR3 load/store, RDTSC, RDPMC */
+  proc_msr |= (1 << 28);                                        /* use MSR bitmaps */
+  vmwrite (proc_msr, VMXENC_PROCBASED_VM_EXEC_CTRLS);
   vmwrite (0, VMXENC_CR3_TARGET_COUNT);
   vmwrite (rdmsr (IA32_VMX_EXIT_CTLS), VMXENC_VM_EXIT_CTRLS);
   vmwrite (0, VMXENC_VM_EXIT_MSR_STORE_COUNT);
   vmwrite (0, VMXENC_VM_EXIT_MSR_LOAD_COUNT);
   vmwrite (rdmsr (IA32_VMX_ENTRY_CTLS), VMXENC_VM_ENTRY_CTRLS);
   vmwrite (0, VMXENC_VM_ENTRY_MSR_LOAD_COUNT);
+  vmwrite (0, VMXENC_MSR_BITMAPS_HI);
+  vmwrite ((u32) get_phys_addr (msr_bitmaps), VMXENC_MSR_BITMAPS);
   asm volatile ("movl %%cr0, %0":"=r" (cr));
   vmwrite (cr, VMXENC_HOST_CR0);
   asm volatile ("movl %%cr3, %0":"=r" (cr));
@@ -735,7 +749,7 @@ vmx_enter_VM (virtual_machine *vm)
 
   /* VM-ENTER */
   if (eip) {
-    DLOG ("Entering VM!");
+    DLOG ("Entering VM! host EIP=0x%p", eip);
     vmwrite (eip, VMXENC_HOST_RIP);
     if (vm->launched) {
       asm volatile ("movl $1, %0\n"
@@ -873,6 +887,34 @@ vmx_enter_VM (virtual_machine *vm)
       if (vmx_vm86_handle_GPF (vm) == 0)
         /* continue guest */
         goto enter;
+    } else if (reason == 0x0A) {
+      /* CPUID -- unconditional VM-EXIT -- perform in monitor */
+      logger_printf ("VM: performing CPUID (0x%p, 0x%p) => ", vm->guest_regs.eax, vm->guest_regs.ecx);
+      cpuid (vm->guest_regs.eax, vm->guest_regs.ecx,
+             &vm->guest_regs.eax, &vm->guest_regs.ebx, &vm->guest_regs.ecx, &vm->guest_regs.edx);
+      logger_printf ("(0x%p, 0x%p, 0x%p, 0x%p)\n",
+                     vm->guest_regs.eax, vm->guest_regs.ebx,
+                     vm->guest_regs.ecx, vm->guest_regs.edx);
+      vmwrite (vmread (VMXENC_GUEST_RIP) + inslen, VMXENC_GUEST_RIP); /* skip instruction */
+      goto enter;               /* resume guest */
+    } else if (reason == 0x1F || reason == 0x20) {
+      /* RDMSR / WRMSR -- conditional on MSR bitmap -- else perform in monitor */
+      logger_printf ("VM: use MSR bitmaps=%d MSR_BITMAPS=0x%p bitmap[0x%X]=%d\n",
+                     !!(vmread (VMXENC_PROCBASED_VM_EXEC_CTRLS) & (1<<28)),
+                     vmread (VMXENC_MSR_BITMAPS),
+                     vm->guest_regs.ecx,
+                     !!(BITMAP_TST (msr_bitmaps, vm->guest_regs.ecx)));
+      if (reason == 0x1F) {
+        logger_printf ("VM: performing RDMSR (0x%p) => ", vm->guest_regs.ecx);
+        asm volatile ("rdmsr":"=d" (vm->guest_regs.edx), "=a" (vm->guest_regs.eax):"c" (vm->guest_regs.ecx));
+        logger_printf ("0x%p %p\n", vm->guest_regs.edx, vm->guest_regs.eax);
+      }
+      if (reason == 0x20) {
+        logger_printf ("VM: performing WRMSR (0x%p %p,0x%p)\n", vm->guest_regs.edx, vm->guest_regs.eax, vm->guest_regs.ecx);
+        asm volatile ("wrmsr"::"d" (vm->guest_regs.edx), "a" (vm->guest_regs.eax), "c" (vm->guest_regs.ecx));
+      }
+      vmwrite (vmread (VMXENC_GUEST_RIP) + inslen, VMXENC_GUEST_RIP); /* skip instruction */
+      goto enter;               /* resume guest */
     } else {
       /* Not a vm86 related VM-EXIT */
 #if DEBUG_VMX > 1
@@ -885,13 +927,62 @@ vmx_enter_VM (virtual_machine *vm)
     }
   }
 
+  DLOG ("start_VM: return 0 -- giving up on virtual machine");
+  panic ("stack is probably corrupt now");
+  /* control could be resumed where the VM failed.  maybe do this later. */
+
   return 0;
  abort_vmentry:
  not_loaded:
   return -1;
 }
 
-static u32 vmstack[1024] ALIGNED(0x1000);
+static u32 hyperstack[1024] ALIGNED(0x1000);
+
+/* start VM guest with state derived from host state */
+int
+vmx_enter_pmode_VM (virtual_machine *vm)
+{
+  u32 guest_eip = 0, esp, ebp;
+  asm volatile ("call 1f\n"
+                /* RESUME POINT */
+                "xorl %0, %0\n"
+                "jmp 2f\n"
+                "1: pop %0; movl %%esp, %1\n"
+                "2:":"=r" (guest_eip), "=r" (esp));
+  if (guest_eip == 0) {
+    /* inside VM  */
+    asm volatile ("movl %%esp, %0; movl %%ebp, %1":"=r" (esp), "=r" (ebp));
+    DLOG ("vmx_enter_pmode_VM: entry success ESP=0x%p EBP=0x%p", esp, ebp);
+    //dump_page ((u8 *) (esp & (~0xFFF)));
+    return 0;
+  }
+
+  /* save general registers for guest */
+  asm volatile ("pusha; movl %%esp, %%esi; movl $0x20, %%ecx; rep movsb; addl $0x20, %%esp"
+                ::"D" (&vm->guest_regs));
+
+  /* copy stack */
+  memcpy (hyperstack, (void *) (esp & (~0xFFF)), 0x1000);
+  /* change frame pointer in host to hypervisor stack */
+  asm volatile ("movl %%ebp, %0":"=r" (ebp));
+  ebp = (((u32) &hyperstack) & (~0xFFF)) | (ebp & 0xFFF);
+  asm volatile ("movl %0, %%ebp"::"r" (ebp));
+  /* switch host stack to hypervisor stack */
+  asm volatile ("movl %0, %%esp"::"r" (&hyperstack[(esp & 0xFFF) >> 2]));
+
+  /* hypervisor stack now in effect */
+
+  /* set guest to continue from resume point above */
+  vmwrite (guest_eip, VMXENC_GUEST_RIP);
+  /* guest takes over original stack */
+  vmwrite (esp, VMXENC_GUEST_RSP);
+
+  logger_printf ("vmx_enter_pmode_VM: GUEST-STATE: RIP=0x%p RSP=0x%p RBP=0x%p\n",
+                 vmread (VMXENC_GUEST_RIP), vmread (VMXENC_GUEST_RSP), vm->guest_regs.ebp);
+  return vmx_start_VM (vm);
+}
+
 void
 test_pmode_vm (void)
 {
@@ -899,12 +990,11 @@ test_pmode_vm (void)
   for (;;);
 }
 
-extern void dump_page (u8 *);
+static virtual_machine first_vm;
+
 static bool
 vmx_init (void)
 {
-  virtual_machine first_vm;
-
   vmx_detect ();
   if (!vmx_enabled) {
     DLOG ("VMX not enabled");
@@ -915,15 +1005,17 @@ vmx_init (void)
 
   vmx_processor_init ();
 
-  if (vmx_create_pmode_VM (&first_vm, (u32) &test_pmode_vm, (u32) &vmstack[1023]) != 0)
+  if (vmx_create_pmode_VM (&first_vm, (u32) &test_pmode_vm, (u32) &hyperstack[1023]) != 0)
     goto vm_error;
 
-  if (vmx_enter_VM (&first_vm) != 0)
+  if (vmx_enter_pmode_VM (&first_vm) != 0)
     goto vm_error;
 
+#if 0
   if (vmx_unload_VM (&first_vm) != 0)
     goto vm_error;
   vmx_destroy_VM (&first_vm);
+#endif
 
   return TRUE;
  vm_error:
