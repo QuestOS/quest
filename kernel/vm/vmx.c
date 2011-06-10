@@ -734,9 +734,9 @@ vmx_start_VM (virtual_machine *vm)
                 "pusha\n"       /* quickly snapshot guest registers to stack */
                 "addl $0x20, %%esp\n"
                 "popa\n"        /* temporarily restore host registers */
+                "lea %1, %%edi\n"
                 "movl $8, %%ecx\n"
                 "lea -0x40(%%esp), %%esi\n"
-                "lea %1, %%edi\n"
                 "cld; rep movsd\n" /* save guest registers to memory */
                 "subl $0x20, %%esp\n"
                 "popa\n"        /* permanently restore host registers */
