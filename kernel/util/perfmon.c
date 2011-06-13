@@ -188,10 +188,11 @@ void perfmon_get_cache_info (void)
       default:
         DLOG ("  Level %d  Unknown Cache", cache_info [i].cache_level);
     }
-    if (cache_info [i].fully_assoc)
+    if (cache_info [i].fully_assoc) {
       DLOG ("  Fully associative");
-    else
+    } else {
       DLOG ("  %d way associative", cache_info [i].associativity);
+    }
     DLOG ("  Line size: %d", cache_info [i].line_size);
     DLOG ("  Physical line partitions: %d", cache_info [i].line_part);
     DLOG ("  Number of sets: %d", cache_info [i].sets);
