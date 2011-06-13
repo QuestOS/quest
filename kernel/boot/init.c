@@ -411,6 +411,10 @@ init (multiboot * pmb)
     panic ("Model-specific registers not supported!\n");
   if (!cpuid_tsc_support ())
     panic ("Timestamp counter not supported!");
+  if (!cpuid_rdtscp_support ())
+    logger_printf ("RDTSCP NOT supported.\n");
+  else
+    logger_printf ("RDTSCP supported.\n");
   if (cpuid_invariant_tsc_support ()) {
      print ("Invariant TSC support detected\n");
      com1_printf ("Invariant TSC support detected\n");
