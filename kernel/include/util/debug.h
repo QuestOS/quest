@@ -33,6 +33,8 @@ void stacktrace (void);
 
 extern void dump_page (u8 *);
 
+extern void crash_debug (char *);
+
 #endif
 
 /* 

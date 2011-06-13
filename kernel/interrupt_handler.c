@@ -237,48 +237,36 @@ char *exception_messages[] = {
 };
 
 /* Generic CPU fault exception handler -- dumps some info to the
- * screen and serial port, then panics. */
+ * screen and serial port, then goes into debugger. */
 extern void
-handle_interrupt (uint32 fs_gs, uint32 ds_es, uint32 ulInt, uint32 ulCode)
+handle_interrupt (u32 edi, u32 esi, u32 ebp, u32 _esp, u32 ebx, u32 edx, u32 ecx, u32 eax,
+                  u32 fs_gs, u32 ds_es, u32 ulInt, u32 ulCode,
+                  u32 eip, u32 cs, u32 eflags, u32 esp, u32 ss)
 {
+  u32 cr0, cr2, cr3;
+  u16 tr, fs, ds;
 
-  uint32 eax, ebx, ecx, edx, esi, edi, eflags, eip, esp, ebp;
-  uint32 cr0, cr2, cr3;
-  uint16 tr, fs, cs, ds;
-
-  asm volatile ("movl %%eax, %0\n"
-                "movl %%ebx, %1\n"
-                "movl %%ecx, %2\n"
-                "movl %%edx, %3\n"
-                "movl %%esi, %4\n"
-                "movl %%edi, %5\n"
-                "movl (%%ebp), %%eax\n"
-                "movl %%eax, %6\n"
-                "movl 0x18(%%ebp),%%eax\n"
-                "movl %%eax, %7\n"
-                "movl 0x20(%%ebp),%%eax\n"
-                "movl %%eax, %8\n"
-                "movl 0x24(%%ebp),%%eax\n"
-                "movl %%eax, %9\n"
-                "movl %%cr0, %%eax\n"
-                "movl %%eax, %10\n"
+  asm volatile ("movl %%cr0, %%eax\n"
+                "movl %%eax, %0\n"
                 "movl %%cr2, %%eax\n"
-                "movl %%eax, %11\n"
+                "movl %%eax, %1\n"
                 "movl %%cr3, %%eax\n"
-                "movl %%eax, %12\n"
+                "movl %%eax, %2\n"
                 "xorl %%eax, %%eax\n"
                 "str  %%ax\n"
-                "movw %%ax, %13\n"
+                "movw %%ax, %3\n"
                 "movw %%fs, %%ax\n"
-                "movw %%ax, %14\n"
-                "movw %%cs, %%ax\n"
-                "movw %%ax, %15\n"
+                "movw %%ax, %4\n"
                 "movw %%ds, %%ax\n"
-                "movw %%ax, %16\n"
-                :"=m" (eax), "=m" (ebx), "=m" (ecx),
-                 "=m" (edx), "=m" (esi), "=m" (edi), "=m" (ebp), "=m" (eip),
-                 "=m" (eflags), "=m" (esp), "=m" (cr0), "=m" (cr2), "=m" (cr3),
-                 "=m" (tr), "=m" (fs), "=m" (cs), "=m" (ds):);
+                "movw %%ax, %5\n"
+                :"=m" (cr0), "=m" (cr2), "=m" (cr3),
+                 "=m" (tr), "=m" (fs), "=m" (ds):);
+
+  if ((cs & 0x3) == 0) {
+    /* same priv level: ESP and SS were not pushed onto stack by interrupt transfer */
+    asm volatile ("movl %%ss, %0":"=r" (ss));
+    esp = _esp;
+  }
 
   spinlock_lock (&screen_lock);
   _putchar ('I');
@@ -306,7 +294,7 @@ handle_interrupt (uint32 fs_gs, uint32 ds_es, uint32 ulInt, uint32 ulCode)
   _printf ("EDX=%.8X ESP=%.8X\n", edx, esp);
   _printf ("EFL=%.8X EIP=%.8X\n", eflags, eip);
   _printf ("CR0=%.8X CR2=%.8X\nCR3=%.8X TR=%.4X\n", cr0, cr2, cr3, tr);
-  _printf (" CS=%.4X  DS=%.4X  FS=%.4X\n", cs, ds, fs);
+  _printf (" CS=%.4X SS=%.4X DS=%.4X FS=%.4X\n", cs, ss, ds, fs);
   _printf ("CURRENT=0x%X\n", percpu_read (current_task));
   stacktrace_frame (esp, ebp);
 
@@ -321,7 +309,7 @@ handle_interrupt (uint32 fs_gs, uint32 ds_es, uint32 ulInt, uint32 ulCode)
 
   if (ulInt < 0x20)
     /* unhandled exception - die */
-    panic ("Unhandled exception");
+    crash_debug ("Unhandled exception");
 
   send_eoi ();
 }

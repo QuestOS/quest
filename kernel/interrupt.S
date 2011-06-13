@@ -90,7 +90,9 @@ interrupt0:
         pushl $0
         pushl $0
         SREGS_SAVE
-        call handle_interrupt
+        pushal
+	call handle_interrupt
+	popal
         REGS_RESTORE
         addl $8, %esp
         iret 
@@ -100,7 +102,9 @@ interrupt1:
         pushl $0
         pushl $1
         SREGS_SAVE
-        call handle_interrupt
+        pushal
+	call handle_interrupt
+	popal
         REGS_RESTORE
         addl $8, %esp
         iret 
@@ -109,7 +113,9 @@ interrupt2:
         pushl $0
         pushl $2
         SREGS_SAVE
-        call handle_interrupt
+        pushal
+	call handle_interrupt
+	popal
         REGS_RESTORE
         addl $8, %esp
         iret 
@@ -118,7 +124,9 @@ interrupt3:
         pushl $0
         pushl $3
         SREGS_SAVE
-        call handle_interrupt
+        pushal
+	call handle_interrupt
+	popal
         REGS_RESTORE
         addl $8, %esp
         iret 
@@ -127,7 +135,9 @@ interrupt4:
         pushl $0
         pushl $4
         SREGS_SAVE
-        call handle_interrupt
+        pushal
+	call handle_interrupt
+	popal
         REGS_RESTORE
         addl $8, %esp
         iret 
@@ -136,7 +146,9 @@ interrupt5:
         pushl $0
         pushl $5
         SREGS_SAVE
-        call handle_interrupt
+        pushal
+	call handle_interrupt
+	popal
         REGS_RESTORE
         addl $8, %esp
         iret 
@@ -146,7 +158,9 @@ interrupt6:
         pushl $0
         pushl $6
         SREGS_SAVE
-        call handle_interrupt
+        pushal
+	call handle_interrupt
+	popal
         REGS_RESTORE
         addl $8, %esp
         iret 
@@ -155,7 +169,9 @@ interrupt7:
         pushl $0
         pushl $7
         SREGS_SAVE
-        call handle_interrupt
+        pushal
+	call handle_interrupt
+	popal
         REGS_RESTORE
         addl $8, %esp
         iret 
@@ -163,7 +179,9 @@ interrupt7:
 interrupt8:
         pushl $8
         SREGS_SAVE
-        call handle_interrupt
+        pushal
+	call handle_interrupt
+	popal
         REGS_RESTORE
         addl $8, %esp
         iret 
@@ -172,7 +190,9 @@ interrupt9:
         pushl $0
         pushl $9
         SREGS_SAVE
-        call handle_interrupt
+        pushal
+	call handle_interrupt
+	popal
         REGS_RESTORE
         addl $8, %esp
         iret 
@@ -180,7 +200,9 @@ interrupt9:
 interrupta:
         pushl $0xA
         SREGS_SAVE
-        call handle_interrupt
+        pushal
+	call handle_interrupt
+	popal
         REGS_RESTORE
         addl $8, %esp
         iret 
@@ -188,7 +210,9 @@ interrupta:
 interruptb:
         pushl $0xB
         SREGS_SAVE
-        call handle_interrupt
+        pushal
+	call handle_interrupt
+	popal
         REGS_RESTORE
         addl $8, %esp
         iret 
@@ -196,7 +220,9 @@ interruptb:
 interruptc:
         pushl $0xC
         SREGS_SAVE
-        call handle_interrupt
+        pushal
+	call handle_interrupt
+	popal
         REGS_RESTORE
         addl $8, %esp
         iret 
@@ -204,7 +230,9 @@ interruptc:
 interruptd:
         pushl $0xD
         SREGS_SAVE
-        call handle_interrupt
+        pushal
+	call handle_interrupt
+	popal
         REGS_RESTORE
         addl $8, %esp
         iret 
@@ -212,7 +240,9 @@ interruptd:
 interrupte:
         pushl $0xE
         SREGS_SAVE
-        call handle_interrupt
+        pushal
+	call handle_interrupt
+	popal
         REGS_RESTORE
         addl $8, %esp
         iret 
@@ -221,7 +251,9 @@ interruptf:
         pushl $0
         pushl $0xF
         SREGS_SAVE
-        call handle_interrupt
+        pushal
+	call handle_interrupt
+	popal
         REGS_RESTORE
         addl $8, %esp
         iret
@@ -231,7 +263,9 @@ interrupt10:
         pushl $0
         pushl $0x10
         SREGS_SAVE
-        call handle_interrupt
+        pushal
+	call handle_interrupt
+	popal
         REGS_RESTORE
         addl $8, %esp
         iret
@@ -239,7 +273,9 @@ interrupt10:
 interrupt11:
         pushl $0x11
         SREGS_SAVE
-        call handle_interrupt
+        pushal
+	call handle_interrupt
+	popal
         REGS_RESTORE
         addl $8, %esp
         iret 
@@ -248,7 +284,9 @@ interrupt12:
         pushl $0
         pushl $0x12
         SREGS_SAVE
-        call handle_interrupt
+        pushal
+	call handle_interrupt
+	popal
         REGS_RESTORE
         addl $8, %esp
         iret 
@@ -257,7 +295,9 @@ interrupt13:
         pushl $0
         pushl $0x13
         SREGS_SAVE
-        call handle_interrupt
+        pushal
+	call handle_interrupt
+	popal
         REGS_RESTORE
         addl $8, %esp
         iret                    
@@ -466,7 +506,9 @@ interrupt:
         pushl $0
         pushl $0xFFFFFFFF
         SREGS_SAVE
-        call handle_interrupt
+        pushal
+	call handle_interrupt
+	popal
         REGS_RESTORE
         addl $8, %esp
         iret
@@ -500,7 +542,9 @@ interrupt##n:                  \
         pushl $0;              \
         pushl $0x##n;          \
         SREGS_SAVE;            \
-        call handle_interrupt; \
+        pushal
+	call handle_interrupt
+	popal; \
         REGS_RESTORE;          \
         addl $8, %esp;         \
         iret
