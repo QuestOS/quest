@@ -278,80 +278,6 @@ vmx_global_init (void)
   memset (msr_bitmaps, 0, 0x1000);
 }
 
-void
-vmx_processor_init (void)
-{
-  uint8 phys_id = get_pcpu_id ();
-  DLOG ("processor_init pcpu_id=%d", phys_id);
-  uint32 cr0, cr4;
-  uint32 *vmxon_virt;
-
-  if (!vmx_enabled)
-    return;
-
-  /* Set the NE bit to satisfy CR0_FIXED0 */
-  asm volatile ("movl %%cr0, %0\n"
-                "orl $0x20, %0\n"
-                "movl %0, %%cr0":"=r" (cr0));
-
-#if DEBUG_VMX > 1
-  com1_printf ("IA32_FEATURE_CONTROL: 0x%.8X\n", (uint32) rdmsr (IA32_FEATURE_CONTROL));
-  com1_printf ("IA32_VMX_BASIC: 0x%.16llX\n",
-               rdmsr (IA32_VMX_BASIC));
-  com1_printf ("IA32_VMX_CR0_FIXED0: 0x%.8X\n", (uint32) rdmsr (IA32_VMX_CR0_FIXED0));
-  com1_printf ("IA32_VMX_CR0_FIXED1: 0x%.8X\n", (uint32) rdmsr (IA32_VMX_CR0_FIXED1));
-  com1_printf ("IA32_VMX_CR4_FIXED0: 0x%.8X\n", (uint32) rdmsr (IA32_VMX_CR4_FIXED0));
-  com1_printf ("IA32_VMX_CR4_FIXED1: 0x%.8X\n", (uint32) rdmsr (IA32_VMX_CR4_FIXED1));
-
-  com1_printf ("IA32_VMX_PINBASED_CTLS: 0x%.16llX\n",
-               rdmsr (IA32_VMX_PINBASED_CTLS));
-  com1_printf ("IA32_VMX_TRUE_PINBASED_CTLS: 0x%.16llX\n",
-               rdmsr (IA32_VMX_TRUE_PINBASED_CTLS));
-  com1_printf ("IA32_VMX_PROCBASED_CTLS: 0x%.16llX\n",
-               rdmsr (IA32_VMX_PROCBASED_CTLS));
-  com1_printf ("IA32_VMX_TRUE_PROCBASED_CTLS: 0x%.16llX\n",
-               rdmsr (IA32_VMX_TRUE_PROCBASED_CTLS));
-  com1_printf ("IA32_VMX_PROCBASED_CTLS2: 0x%.16llX\n",
-               rdmsr (IA32_VMX_PROCBASED_CTLS2));
-
-  com1_printf ("IA32_VMX_EXIT_CTLS: 0x%.16llX\n",
-               rdmsr (IA32_VMX_EXIT_CTLS));
-  com1_printf ("IA32_VMX_ENTRY_CTLS: 0x%.16llX\n",
-               rdmsr (IA32_VMX_ENTRY_CTLS));
-  com1_printf ("IA32_VMX_TRUE_EXIT_CTLS: 0x%.16llX\n",
-               rdmsr (IA32_VMX_TRUE_EXIT_CTLS));
-  com1_printf ("IA32_VMX_TRUE_ENTRY_CTLS: 0x%.16llX\n",
-               rdmsr (IA32_VMX_TRUE_ENTRY_CTLS));
-  com1_printf ("IA32_VMX_MISC: 0x%.16llX\n",
-               rdmsr (IA32_VMX_MISC));
-#endif
-
-  /* Enable VMX */
-  asm volatile ("movl %%cr4, %0\n"
-                "orl $0x2000, %0\n"
-                "movl %0, %%cr4":"=r" (cr4));
-
-  /* Allocate a VMXON memory area */
-  vmxon_frame[phys_id] = alloc_phys_frame ();
-  vmxon_virt  = map_virtual_page (vmxon_frame[phys_id] | 3);
-  *vmxon_virt = rdmsr (IA32_VMX_BASIC);
-  unmap_virtual_page (vmxon_virt);
-
-  vmxon (vmxon_frame[phys_id]);
-
-  if (vmx_get_error () != 0) {
-#if DEBUG_VMX > 0
-    com1_printf ("VMXON error\n");
-#endif
-    goto abort_vmxon;
-  }
-
-  return;
-
- abort_vmxon:
-  free_phys_frame (vmxon_frame[phys_id]);
-}
-
 int
 vmx_load_VM (virtual_machine *vm)
 {
@@ -719,6 +645,9 @@ vmx_start_VM (virtual_machine *vm)
   vmwrite (rdmsr (IA32_SYSENTER_EIP), VMXENC_HOST_IA32_SYSENTER_EIP);
   vmwrite (vmread (VMXENC_GUEST_CS_ACCESS) | 0x1, VMXENC_GUEST_CS_ACCESS);
 
+  logger_printf ("vmx_start_VM: GUEST-STATE: RIP=0x%p RSP=0x%p RBP=0x%p\n",
+                 vmread (VMXENC_GUEST_RIP), vmread (VMXENC_GUEST_RSP), vm->guest_regs.ebp);
+
  enter:
   RDTSC (start);
 
@@ -937,13 +866,16 @@ vmx_start_VM (virtual_machine *vm)
   return -1;
 }
 
-static u32 hyperstack[1024] ALIGNED(0x1000);
-
 /* start VM guest with state derived from host state */
 int
 vmx_enter_pmode_VM (virtual_machine *vm)
 {
   u32 guest_eip = 0, esp, ebp;
+  u32 hyperstack_frame = alloc_phys_frame ();
+  if (hyperstack_frame == (u32) -1) return -1;
+  u32 *hyperstack = map_virtual_page (hyperstack_frame | 3);
+  if (hyperstack == 0) return -1;
+
   asm volatile ("call 1f\n"
                 /* RESUME POINT */
                 "xorl %0, %0\n"
@@ -959,7 +891,7 @@ vmx_enter_pmode_VM (virtual_machine *vm)
   }
 
   /* save general registers for guest */
-  asm volatile ("pusha; movl %%esp, %%esi; movl $0x20, %%ecx; rep movsb; addl $0x20, %%esp"
+  asm volatile ("pusha; movl %%esp, %%esi; movl $0x20, %%ecx; rep movsb; popa"
                 ::"D" (&vm->guest_regs));
 
   /* copy stack */
@@ -990,7 +922,96 @@ test_pmode_vm (void)
   for (;;);
 }
 
-static virtual_machine first_vm;
+static virtual_machine VMs[MAX_CPUS] ALIGNED (0x1000);
+static int num_VMs = 0;
+DEF_PER_CPU (virtual_machine *, cpu_vm);
+
+void
+vmx_processor_init (void)
+{
+  uint8 phys_id = get_pcpu_id ();
+  DLOG ("processor_init pcpu_id=%d", phys_id);
+  uint32 cr0, cr4;
+  uint32 *vmxon_virt;
+  virtual_machine *vm = &VMs[phys_id];
+
+  if (!vmx_enabled)
+    return;
+
+  /* Set the NE bit to satisfy CR0_FIXED0 */
+  asm volatile ("movl %%cr0, %0\n"
+                "orl $0x20, %0\n"
+                "movl %0, %%cr0":"=r" (cr0));
+
+#if DEBUG_VMX > 1
+  com1_printf ("IA32_FEATURE_CONTROL: 0x%.8X\n", (uint32) rdmsr (IA32_FEATURE_CONTROL));
+  com1_printf ("IA32_VMX_BASIC: 0x%.16llX\n",
+               rdmsr (IA32_VMX_BASIC));
+  com1_printf ("IA32_VMX_CR0_FIXED0: 0x%.8X\n", (uint32) rdmsr (IA32_VMX_CR0_FIXED0));
+  com1_printf ("IA32_VMX_CR0_FIXED1: 0x%.8X\n", (uint32) rdmsr (IA32_VMX_CR0_FIXED1));
+  com1_printf ("IA32_VMX_CR4_FIXED0: 0x%.8X\n", (uint32) rdmsr (IA32_VMX_CR4_FIXED0));
+  com1_printf ("IA32_VMX_CR4_FIXED1: 0x%.8X\n", (uint32) rdmsr (IA32_VMX_CR4_FIXED1));
+
+  com1_printf ("IA32_VMX_PINBASED_CTLS: 0x%.16llX\n",
+               rdmsr (IA32_VMX_PINBASED_CTLS));
+  com1_printf ("IA32_VMX_TRUE_PINBASED_CTLS: 0x%.16llX\n",
+               rdmsr (IA32_VMX_TRUE_PINBASED_CTLS));
+  com1_printf ("IA32_VMX_PROCBASED_CTLS: 0x%.16llX\n",
+               rdmsr (IA32_VMX_PROCBASED_CTLS));
+  com1_printf ("IA32_VMX_TRUE_PROCBASED_CTLS: 0x%.16llX\n",
+               rdmsr (IA32_VMX_TRUE_PROCBASED_CTLS));
+  com1_printf ("IA32_VMX_PROCBASED_CTLS2: 0x%.16llX\n",
+               rdmsr (IA32_VMX_PROCBASED_CTLS2));
+
+  com1_printf ("IA32_VMX_EXIT_CTLS: 0x%.16llX\n",
+               rdmsr (IA32_VMX_EXIT_CTLS));
+  com1_printf ("IA32_VMX_ENTRY_CTLS: 0x%.16llX\n",
+               rdmsr (IA32_VMX_ENTRY_CTLS));
+  com1_printf ("IA32_VMX_TRUE_EXIT_CTLS: 0x%.16llX\n",
+               rdmsr (IA32_VMX_TRUE_EXIT_CTLS));
+  com1_printf ("IA32_VMX_TRUE_ENTRY_CTLS: 0x%.16llX\n",
+               rdmsr (IA32_VMX_TRUE_ENTRY_CTLS));
+  com1_printf ("IA32_VMX_MISC: 0x%.16llX\n",
+               rdmsr (IA32_VMX_MISC));
+#endif
+
+  /* Enable VMX */
+  asm volatile ("movl %%cr4, %0\n"
+                "orl $0x2000, %0\n"
+                "movl %0, %%cr4":"=r" (cr4));
+
+  /* Allocate a VMXON memory area */
+  vmxon_frame[phys_id] = alloc_phys_frame ();
+  vmxon_virt  = map_virtual_page (vmxon_frame[phys_id] | 3);
+  *vmxon_virt = rdmsr (IA32_VMX_BASIC);
+  unmap_virtual_page (vmxon_virt);
+
+  vmxon (vmxon_frame[phys_id]);
+
+  if (vmx_get_error () != 0) {
+#if DEBUG_VMX > 0
+    com1_printf ("VMXON error\n");
+#endif
+    goto abort_vmxon;
+  }
+
+  percpu_write (cpu_vm, vm);
+
+  if (vmx_create_pmode_VM (vm, 0, 0) != 0)
+    goto vm_error;
+
+  if (vmx_enter_pmode_VM (vm) != 0)
+    goto vm_error;
+
+  num_VMs++;
+
+  return;
+
+ vm_error:
+  vmxoff ();
+ abort_vmxon:
+  free_phys_frame (vmxon_frame[phys_id]);
+}
 
 static bool
 vmx_init (void)
@@ -1004,12 +1025,6 @@ vmx_init (void)
   vmx_global_init ();
 
   vmx_processor_init ();
-
-  if (vmx_create_pmode_VM (&first_vm, (u32) &test_pmode_vm, (u32) &hyperstack[1023]) != 0)
-    goto vm_error;
-
-  if (vmx_enter_pmode_VM (&first_vm) != 0)
-    goto vm_error;
 
 #if 0
   if (vmx_unload_VM (&first_vm) != 0)
