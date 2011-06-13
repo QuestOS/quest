@@ -82,16 +82,21 @@ acpi_irq_handler (u8 vec)
   return 0;
 }
 
+void
+acpi_reboot (void)
+{
+  ACPI_STATUS AcpiHwWrite (UINT32 Value, ACPI_GENERIC_ADDRESS *Reg);
+  AcpiHwWrite (AcpiGbl_FADT.ResetValue, &AcpiGbl_FADT.ResetRegister);
+}
+
 static UINT32
 acpi_power_button (void *ctxt)
 {
-  ACPI_STATUS AcpiHwWrite (UINT32 Value, ACPI_GENERIC_ADDRESS *Reg);
-
   logger_printf ("ACPI: acpi_power_button\n");
   printf ("REBOOTING...\n");
   com1_printf ("REBOOTING...\n");
   tsc_delay_usec (100000);      /* avoid race between COM1 and Reboot */
-  AcpiHwWrite (AcpiGbl_FADT.ResetValue, &AcpiGbl_FADT.ResetRegister);
+  acpi_reboot ();
   asm volatile ("hlt");
   return 0;
 }
