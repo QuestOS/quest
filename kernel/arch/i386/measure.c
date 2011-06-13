@@ -20,18 +20,20 @@
 #include "kernel.h"
 #include "util/debug.h"
 
+#define ITER 10
+
 extern u32 tick;
 
 #define TIMING_ASM(var, insrs, edi)                                     \
-  asm volatile ("movl $1, %%eax\n"                                      \
-                "cpuid\n"                                               \
+  asm volatile ("xorl %%eax, %%eax\n"                                   \
+                "lldt %%ax\n"                                           \
                 "rdtsc\n"                                               \
                 "movl %%eax, %%esi\n"                                   \
                                                                         \
                 insrs                                                   \
                                                                         \
-                "movl $1, %%eax\n"                                      \
-                "cpuid\n"                                               \
+                "xorl %%eax, %%eax\n"                                   \
+                "lldt %%ax\n"                                           \
                 "rdtsc\n"                                               \
                 "subl %%esi, %%eax\n"                                   \
                 :"=a" (diff):"D" (edi): "ebx", "ecx", "edx", "esi")
@@ -39,20 +41,22 @@ extern u32 tick;
 void
 measure_LAPIC_read (void)
 {
-  u32 diff;
+  u32 diff, i;
   if ((tick & 0xFF) == 0) {
-    TIMING_ASM (diff,                             \
-                "movl 0xFEE00020, %%ecx\n"        \
-                "movl 0xFEE00020, %%ecx\n"        \
-                "movl 0xFEE00020, %%ecx\n"        \
-                "movl 0xFEE00020, %%ecx\n"        \
-                "movl 0xFEE00020, %%ecx\n"        \
-                "movl 0xFEE00020, %%ecx\n"        \
-                "movl 0xFEE00020, %%ecx\n"        \
-                "movl 0xFEE00020, %%ecx\n"        \
-                "movl 0xFEE00020, %%ecx\n"        \
-                "movl 0xFEE00020, %%ecx\n"        \
-                , 0);
+    for (i=0; i<ITER; i++){
+      TIMING_ASM (diff,                             \
+                  "movl 0xFEE00020, %%ecx\n"        \
+                  "movl 0xFEE00020, %%ecx\n"        \
+                  "movl 0xFEE00020, %%ecx\n"        \
+                  "movl 0xFEE00020, %%ecx\n"        \
+                  "movl 0xFEE00020, %%ecx\n"        \
+                  "movl 0xFEE00020, %%ecx\n"        \
+                  "movl 0xFEE00020, %%ecx\n"        \
+                  "movl 0xFEE00020, %%ecx\n"        \
+                  "movl 0xFEE00020, %%ecx\n"        \
+                  "movl 0xFEE00020, %%ecx\n"        \
+                  , 0);
+    }
     logger_printf ("measure_LAPIC_read: %u\n", diff);
   }
 }
@@ -151,22 +155,51 @@ measure_FS_read (void)
 void
 measure_FS_load (void)
 {
-  u32 diff;
+  u32 i, diff, fs;
   if ((tick & 0xFF) == 0) {
-    TIMING_ASM (diff,
-                "movw $0x10, %%dx\n"       \
-                "movw %%dx, %%fs\n" \
-                "movw %%dx, %%fs\n" \
-                "movw %%dx, %%fs\n" \
-                "movw %%dx, %%fs\n" \
-                "movw %%dx, %%fs\n" \
-                "movw %%dx, %%fs\n" \
-                "movw %%dx, %%fs\n" \
-                "movw %%dx, %%fs\n" \
-                "movw %%dx, %%fs\n" \
-                "movw %%dx, %%fs\n" \
-                , 0);
+    asm volatile ("movl %%fs, %0":"=r" (fs));
+    for (i=0; i<ITER; i++) {
+      TIMING_ASM (diff,
+                  "movw $0x10, %%dx\n"          \
+                  "movw %%dx, %%fs\n"           \
+                  "movw %%dx, %%fs\n"           \
+                  "movw %%dx, %%fs\n"           \
+                  "movw %%dx, %%fs\n"           \
+                  "movw %%dx, %%fs\n"           \
+                  "movw %%dx, %%fs\n"           \
+                  "movw %%dx, %%fs\n"           \
+                  "movw %%dx, %%fs\n"           \
+                  "movw %%dx, %%fs\n"           \
+                  "movw %%dx, %%fs\n"           \
+                  , 0);
+    }
+    asm volatile ("movl %0, %%fs"::"r" (fs));
     logger_printf ("measure_FS_load: %u\n", diff);
+  }
+}
+
+void
+measure_outport_overhead (void)
+{
+  u32 i, diff;
+  if ((tick & 0xFF) == 0) {
+    for (i=0; i<ITER; i++) {
+      TIMING_ASM (diff,
+                  "movw $0x8A00, %%ax\n"         \
+                  "movw $0x8A00, %%dx\n"         \
+                  "outw %%ax, (%%dx)\n"           \
+                  "outw %%ax, (%%dx)\n"           \
+                  "outw %%ax, (%%dx)\n"           \
+                  "outw %%ax, (%%dx)\n"           \
+                  "outw %%ax, (%%dx)\n"           \
+                  "outw %%ax, (%%dx)\n"           \
+                  "outw %%ax, (%%dx)\n"           \
+                  "outw %%ax, (%%dx)\n"           \
+                  "outw %%ax, (%%dx)\n"           \
+                  "outw %%ax, (%%dx)\n"           \
+                  , 0);
+    }
+    logger_printf ("measure_outport_overhead: %u\n", diff);
   }
 }
 
@@ -176,10 +209,22 @@ measure_timing_overhead (void)
   u32 diff;
   if ((tick & 0xFF) == 0) {
     TIMING_ASM (diff, , 0);
+    TIMING_ASM (diff, , 0);
+    TIMING_ASM (diff, , 0);
+    TIMING_ASM (diff, , 0);
+    TIMING_ASM (diff, , 0);
     logger_printf ("measure_timing_overhead: %u\n", diff);
   }
 }
 
+void
+measure_run (void)
+{
+  measure_timing_overhead ();
+  measure_LAPIC_read ();
+  measure_FS_load ();
+  measure_outport_overhead ();
+}
 
 /*
  * Local Variables:

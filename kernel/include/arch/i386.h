@@ -460,6 +460,9 @@ fls(uint32 x)
     var |= var##_lo;                                            \
   }
 
+/* serializing instruction, ring0 */
+#define SERIALIZE0 asm volatile ("lldt %%ax"::"a" (0));
+
 static inline void *
 memset (void *p, int ch, uint32 cb)
 {
