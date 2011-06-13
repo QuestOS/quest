@@ -88,6 +88,14 @@ cpuid_tsc_support (void)
 }
 
 bool
+cpuid_rdtscp_support (void)
+{
+  uint edx;
+  cpuid (0x80000001, 0, NULL, NULL, NULL, &edx);
+  return (edx & (1 << 27));
+}
+
+bool
 cpuid_invariant_tsc_support (void)
 {
   uint edx;
