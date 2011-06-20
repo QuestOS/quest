@@ -1043,8 +1043,9 @@ static const struct module_ops mod_ops = {
   .init = vmx_init
 };
 
-//DEF_MODULE (vm___vmx, "VMX hardware virtualization driver", &mod_ops, {});
-
+#ifdef USE_VMX
+DEF_MODULE (vm___vmx, "VMX hardware virtualization driver", &mod_ops, {});
+#endif
 
 /*
  * Local Variables:

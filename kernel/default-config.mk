@@ -14,3 +14,6 @@ OPT = 0
 
 # Disable Intel Multiprocessor Specification parsing
 # CFG += -DNO_INTEL_MPS
+
+# Use VMX-based virtual machines for isolation
+# CFG += -DUSE_VMX
