@@ -1,0 +1,137 @@
+\documentclass[twocolumn]{article}
+\usepackage{url}
+
+\newcommand\func[1]{{\path {#1}}}
+\newcommand\type[1]{{\path {#1}}}
+\newcommand\optn[1]{{\path {#1}}}
+\newcommand\defn[1]{{\path {#1}}}
+\newcommand\MSR[1]{{\path {#1}}}
+\newcommand\bit[2]{{\tt {#1}.{#2}}}
+\newcommand\inst[1]{{\tt {#1}}}
+\newcommand\reg[1]{{\tt {#1}}}
+
+\begin{document}
+
+\section{Introduction}
+The Quest kernel contains limited support for utilizing the primitives
+of Intel's hardware virtualization technology (VT) scheme, called VMX.
+The module is implemented in the \path{vm/vmx.c} file and is
+accompanied by a virtual-8086 monitor in \path{vm/vm86.c} for the
+emulation of real-mode code.  The specification for VMX is described
+in Intel's System Programmer's Manual 3B.  The instructions associated
+with VMX are described in Intel's Instruction Set Reference 2B.  Many
+of the definitions and constants introduced in those manuals are
+imported into Quest header files under the \path{include/vm/} folder.
+
+\subsection{Configuration}
+The VMX module may be enabled via the configuration option
+\optn{USE_VMX} in the \path{config.mk} file.
+
+\subsection{Design}
+
+\section{Initialization}
+\subsection{Enabling VMX}
+When enabled, the initialization of the VMX module takes place during
+normal module initialization.  Application Processors also perform
+per-CPU initialization of virtual machine code after the boot process
+has completed but prior to scheduler invocation.  The function
+\func{vmx_global_init} is called once, and \func{vmx_processor_init}
+is invoked once per CPU.  Each processor must perform hardware
+initialization in order to use VMX. VMX has certain stringent
+requirements on the state of the processor and is very strict about
+checking.  These requirements are meant to be obtained by reading a
+number of MSRs which describe the necessary and possible settings of
+various control registers.  Most implementations require \bit{CR0}{NE}
+be enabled, so that is done early on explicitly.  \bit{CR4}{VMX} is
+toggled to enable the use of VMX instructions.  A page must be
+designated and reserved as the \inst{VMXON} area.  After that basic
+bit of initialization is complete, the module goes directly into the
+initialization for the isolation mechanism that is being designed for
+Quest.
+
+\subsection{Creating a virtual machine}
+\subsection{Memory}
+The original VMX module created VMs that operated in real-mode at the
+beginning.  However, for the isolation mechanism, there is no need to
+ever enter real-mode.  In either case, a virtual machine control
+structure (VMCS) must be allocated and reserved for use by the
+processor.  A VMCS is a single page which is not intended to be
+accessed directly by software, with one exception: the first 64-bits
+must contain the zero-extended value of the MSR \MSR{IA32_VMX_BASIC}.
+The physical address of the VMCS may be used with the \inst{VMCLEAR}
+and \inst{VMPTRLD} instructions to prepare and load a VMCS into the
+processor.  Only a single VMCS may be loaded on a processor at a time.
+In order to move a VMCS from one processor to another, it is necessary
+to unload it and then load it onto the new processor.  Anytime a VMCS
+is freshly loaded onto a processor, the \inst{VMLAUNCH} instruction
+must be used in order to enter the VM.  The \inst{VMRESUME}
+instruction can only be used to re-enter an already-launched VM.
+
+In addition to the processor-specific information stored in the VMCS,
+Quest has its own \type{virtual_machine} structure.  This stores the
+physical address of the VMCS as well as some other useful state
+information, including: whether the VM is in real-mode, whether the VM
+has been ``launched,'' and the state of the general-purpose registers
+in the VM.
+
+\subsection{VMCS fields}
+Once all memory has been allocated and the VM is loaded onto the
+processor, it is possible to use the \inst{VMREAD} and \inst{VMWRITE}
+instructions to configure the various parameters of the virtual
+machine.  There are an extensive number of these parameters, and a
+full description can be found in the manual.  Roughly speaking, there
+are parameters for: host state, guest state, event injection, and
+VM-exit triggers.  All of the fields are given an index which can be
+used with \inst{VMREAD} and \inst{VMWRITE}.  In Quest these indices
+are defined by constants prefixed by \defn{VMXENC_}.  While many of
+the fields are 64-bit in size, we are only operating and emulating
+32-bit mode, therefore we only deal with the least significant bits of
+the fields.
+
+\subsection{Guest state}
+In Quest, we assume that the current state of the CPU is the starting
+point for the virtual machine.  Therefore, the code proceeds to read
+the various flag, control, and segment registers from the machine and
+write those values into the guest fields.  VMX also requires that
+certain ``hidden'' processor state be initialized in the VMCS guest
+fields.  This includes the base, limit, and access rights for segment
+selectors: things that are normally loaded from the GDT by the
+processor, but must be manually loaded into fields here.
+
+The general-purpose registers are not stored in the VMCS.  However,
+the registers \reg{RIP} and \reg{RSP} are stored and loaded from the
+VMCS.  In addition, the \inst{SYSENTER}-related MSRs are treated this
+way as well.  There is also some additional processor-internal state
+which is exposed via the \defn{ACTIVITY} and \defn{INTERRUPTIBILITY}
+fields.
+
+\subsection{Exit reasons}
+The VMCS can also be configured with flags that describe the
+conditions under which the virtual machine exits and returns to
+``root'' operation.  For example, there is a 32-bit \defn{EXCEPTION}
+bitmap indexed by exception number where a 1-setting indicates that
+the given exception should cause a VM exit.  The page fault exception
+also has a few other fields for more specific behavior.
+
+Similarly, there is a flag which controls whether external interrupts
+cause VM exits, and one for the NMI.  These are part of the
+``pin-based'' controls.  The ``processor-based'' controls are flags
+for whether certain aspects of processor behavior should cause VM
+exits.  For example, we disable VM exits for the access of \reg{CR3}
+as well as instructions \inst{RDTSC} and \inst{RDPMC}.  VM exits for
+MSR access can be controlled through the MSR-bitmap, which is also
+enabled here.  Some of these controls are actually configured in
+\func{vmx_start_vm}.
+
+\section{Entering a virtual machine}
+
+\subsection{The initial instruction pointer}
+
+\subsection{Preparing for eventual exit}
+
+\subsection{Starting the machine}
+
+\section{Hypervisor}
+
+
+\end{document}
