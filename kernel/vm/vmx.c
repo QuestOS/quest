@@ -857,7 +857,7 @@ vmx_start_VM (virtual_machine *vm)
   }
 
   DLOG ("start_VM: return 0 -- giving up on virtual machine");
-  panic ("stack is probably corrupt now");
+  crash_debug ("stack is probably corrupt now");
   /* control could be resumed where the VM failed.  maybe do this later. */
 
   return 0;
