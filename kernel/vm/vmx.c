@@ -27,6 +27,7 @@
 #include "sched/sched.h"
 
 #define DEBUG_VMX 3
+//#define VMX_EPT
 
 #if DEBUG_VMX > 0
 #define DLOG(fmt,...) DLOG_PREFIX("vmx",fmt,##__VA_ARGS__)
@@ -611,7 +612,27 @@ vmx_start_VM (virtual_machine *vm)
   proc_msr = rdmsr (IA32_VMX_PROCBASED_CTLS);
   proc_msr &= ~((1 << 15) | (1 << 16) | (1 << 12) | (1 << 11)); /* allow CR3 load/store, RDTSC, RDPMC */
   proc_msr |= (1 << 28);                                        /* use MSR bitmaps */
+  proc_msr |= (1 << 31);                                        /* secondary controls */
   vmwrite (proc_msr, VMXENC_PROCBASED_VM_EXEC_CTRLS);
+#ifdef VMX_EPT
+  vmwrite ((1 << 1)             /* EPT */
+           , VMXENC_PROCBASED_VM_EXEC_CTRLS2);
+  u32 pml4_frame = alloc_phys_frame ();
+  u32 pdpt_frame = alloc_phys_frame ();
+  logger_printf ("pml4_frame=0x%p pdpt_frame=0x%p\n", pml4_frame, pdpt_frame);
+  u64 *pml4 = map_virtual_page (pml4_frame | 3);
+  u64 *pdpt = map_virtual_page (pdpt_frame | 3);
+  memset (pml4, 0, 0x1000);
+  memset (pdpt, 0, 0x1000);
+  pml4[0] = pdpt_frame | 7;
+  pdpt[0] = (0 << 30) | (1 << 7) | (6 << 3) | 7;
+  vmwrite (pml4_frame | (3 << 3) | 6, VMXENC_EPT_PTR);
+  vmwrite (0, VMXENC_EPT_PTR_HI);
+  logger_printf ("VMXENC_EPT_PTR=0x%p pml4[0]=0x%llX pdpt[0]=0x%llX\n",
+                 vmread (VMXENC_EPT_PTR), pml4[0], pdpt[0]);
+  //unmap_virtual_page (pml4);
+  //unmap_virtual_page (pdpt);
+#endif
   vmwrite (0, VMXENC_CR3_TARGET_COUNT);
   vmwrite (rdmsr (IA32_VMX_EXIT_CTLS), VMXENC_VM_EXIT_CTRLS);
   vmwrite (0, VMXENC_VM_EXIT_MSR_STORE_COUNT);
@@ -767,10 +788,12 @@ vmx_start_VM (virtual_machine *vm)
     RDTSC (finish);
 
 #if DEBUG_VMX > 2
-    logger_printf ("VM-EXIT: %s\n  reason=%.8X qualif=%.8X\n  intinf=%.8X ercode=%.8X\n  inslen=%.8X insinf=%.8X\n  cycles=0x%llX\n",
+    logger_printf ("VM-EXIT: %s\n  reason=%.8X qualif=%.8X\n  intinf=%.8X ercode=%.8X\n  inslen=%.8X insinf=%.8X\n  guestphys=0x%llX guestlinear=0x%llX\n  cycles=0x%llX\n",
                    (reason < VMX_NUM_EXIT_REASONS ?
                     vm_exit_reasons[reason] : "invalid exit-reason"),
                    reason, qualif, intinf, ercode, inslen, insinf,
+                   (u64) vmread (VMXENC_GUEST_PHYS_ADDR),
+                   (u64) vmread (VMXENC_GUEST_LINEAR_ADDR),
                    finish - start);
     vmx_vm_exit_reason ();
     u32 rip = vmread (VMXENC_GUEST_RIP), rsp = vmread (VMXENC_GUEST_RSP);
@@ -844,6 +867,12 @@ vmx_start_VM (virtual_machine *vm)
       }
       vmwrite (vmread (VMXENC_GUEST_RIP) + inslen, VMXENC_GUEST_RIP); /* skip instruction */
       goto enter;               /* resume guest */
+#ifdef VMX_EPT
+    } else if (reason == 0x31) {
+      /* EPT misconfiguration */
+      logger_printf ("EPT misconfiguration:\n  VMXENC_EPT_PTR=0x%p pml4[0]=0x%llX pdpt[0]=0x%llX\n",
+                     vmread (VMXENC_EPT_PTR), pml4[0], pdpt[0]);
+#endif
     } else {
       /* Not a vm86 related VM-EXIT */
 #if DEBUG_VMX > 1
@@ -973,6 +1002,13 @@ vmx_processor_init (void)
                rdmsr (IA32_VMX_TRUE_ENTRY_CTLS));
   com1_printf ("IA32_VMX_MISC: 0x%.16llX\n",
                rdmsr (IA32_VMX_MISC));
+  u64 msr;
+  com1_printf ("IA32_VMX_EPT_VPID_CAP: 0x%.16llX\n",
+               msr=rdmsr (IA32_VMX_EPT_VPID_CAP));
+  com1_printf ("  %s%s%s\n",
+               msr & (1 << 6) ? "(page-walk=4) ":" ",
+               msr & (1 << 8) ? "(support-UC) ":" ",
+               msr & (1 << 14) ? "(support-WB) ":" ");
 #endif
 
   /* Enable VMX */
