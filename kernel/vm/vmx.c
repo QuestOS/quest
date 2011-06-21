@@ -24,6 +24,7 @@
 #include "util/printf.h"
 #include "smp/apic.h"
 #include "arch/i386.h"
+#include "arch/i386-mtrr.h"
 #include "sched/sched.h"
 
 #define DEBUG_VMX 3
@@ -617,15 +618,37 @@ vmx_start_VM (virtual_machine *vm)
 #ifdef VMX_EPT
   vmwrite ((1 << 1)             /* EPT */
            , VMXENC_PROCBASED_VM_EXEC_CTRLS2);
+  u32 i,j;
   u32 pml4_frame = alloc_phys_frame ();
   u32 pdpt_frame = alloc_phys_frame ();
+  u32 pd_frame;
   logger_printf ("pml4_frame=0x%p pdpt_frame=0x%p\n", pml4_frame, pdpt_frame);
   u64 *pml4 = map_virtual_page (pml4_frame | 3);
   u64 *pdpt = map_virtual_page (pdpt_frame | 3);
+  u64 *pd;
+  u8 memtype;
   memset (pml4, 0, 0x1000);
   memset (pdpt, 0, 0x1000);
   pml4[0] = pdpt_frame | 7;
-  pdpt[0] = (0 << 30) | (1 << 7) | (6 << 3) | 7;
+
+  for (i=0; i<4; i++) {
+    pd_frame = alloc_phys_frame ();
+    pd = map_virtual_page (pd_frame | 3);
+    if (i < 3)
+      memtype = 6;              /* WB */
+    else
+      memtype = 0;              /* UC */
+    for (j=0; j<512; j++) {
+      if (i == 0 && j == 0)
+        memtype = 0;
+      pd[j] = ((i << 30) + (j << 21)) | (1 << 7) | (memtype << 3) | 7;
+    }
+    logger_printf ("pd[0]=0x%llX\n", pd[0]);
+    unmap_virtual_page (pd);
+    pdpt[i] = pd_frame | (0 << 7) | 7;
+    logger_printf ("pdpt[%d]=0x%llX\n", i, pdpt[i]);
+  }
+
   vmwrite (pml4_frame | (3 << 3) | 6, VMXENC_EPT_PTR);
   vmwrite (0, VMXENC_EPT_PTR_HI);
   logger_printf ("VMXENC_EPT_PTR=0x%p pml4[0]=0x%llX pdpt[0]=0x%llX\n",
@@ -1005,10 +1028,20 @@ vmx_processor_init (void)
   u64 msr;
   com1_printf ("IA32_VMX_EPT_VPID_CAP: 0x%.16llX\n",
                msr=rdmsr (IA32_VMX_EPT_VPID_CAP));
-  com1_printf ("  %s%s%s\n",
+  com1_printf ("  %s%s%s%s%s\n",
                msr & (1 << 6) ? "(page-walk=4) ":" ",
                msr & (1 << 8) ? "(support-UC) ":" ",
-               msr & (1 << 14) ? "(support-WB) ":" ");
+               msr & (1 << 14) ? "(support-WB) ":" ",
+               msr & (1 << 16) ? "(2MB-pages) ":" ",
+               msr & (1 << 17) ? "(1GB-pages) ":" ");
+  com1_printf ("IA32_MTRRCAP: 0x%llX\n", rdmsr (IA32_MTRRCAP));
+  com1_printf ("IA32_MTRR_DEF_TYPE: 0x%llX\n", rdmsr (IA32_MTRR_DEF_TYPE));
+  u32 i;
+  for (i=0; i < ((u8) (rdmsr (IA32_MTRRCAP))); i++) {
+    com1_printf ("IA32_MTRR_PHYS_BASE(%d)=0x%llX\nIA32_MTRR_PHYS_MASK(%d)=0x%llX\n",
+                 i, rdmsr (IA32_MTRR_PHYS_BASE (i)),
+                 i, rdmsr (IA32_MTRR_PHYS_MASK (i)));
+  }
 #endif
 
   /* Enable VMX */
