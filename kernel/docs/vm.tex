@@ -8,7 +8,7 @@
 \newcommand\MSR[1]{{\path {#1}}}
 \newcommand\bit[2]{{\tt {#1}.{#2}}}
 \newcommand\inst[1]{{\tt {#1}}}
-\newcommand\reg[1]{{\tt {#1}}}
+\newcommand\reg[1]{{\tt {\%{#1}}}}
 
 \begin{document}
 
@@ -44,7 +44,7 @@ number of MSRs which describe the necessary and possible settings of
 various control registers.  Most implementations require \bit{CR0}{NE}
 be enabled, so that is done early on explicitly.  \bit{CR4}{VMX} is
 toggled to enable the use of VMX instructions.  A page must be
-designated and reserved as the \inst{VMXON} area.  After that basic
+designated and reserved as the \inst{vmxon} area.  After that basic
 bit of initialization is complete, the module goes directly into the
 initialization for the isolation mechanism that is being designed for
 Quest.
@@ -58,13 +58,13 @@ structure (VMCS) must be allocated and reserved for use by the
 processor.  A VMCS is a single page which is not intended to be
 accessed directly by software, with one exception: the first 64-bits
 must contain the zero-extended value of the MSR \MSR{IA32_VMX_BASIC}.
-The physical address of the VMCS may be used with the \inst{VMCLEAR}
-and \inst{VMPTRLD} instructions to prepare and load a VMCS into the
+The physical address of the VMCS may be used with the \inst{vmclear}
+and \inst{vmptrld} instructions to prepare and load a VMCS into the
 processor.  Only a single VMCS may be loaded on a processor at a time.
 In order to move a VMCS from one processor to another, it is necessary
 to unload it and then load it onto the new processor.  Anytime a VMCS
-is freshly loaded onto a processor, the \inst{VMLAUNCH} instruction
-must be used in order to enter the VM.  The \inst{VMRESUME}
+is freshly loaded onto a processor, the \inst{vmlaunch} instruction
+must be used in order to enter the VM.  The \inst{vmresume}
 instruction can only be used to re-enter an already-launched VM.
 
 In addition to the processor-specific information stored in the VMCS,
@@ -76,13 +76,13 @@ in the VM.
 
 \subsection{VMCS fields}
 Once all memory has been allocated and the VM is loaded onto the
-processor, it is possible to use the \inst{VMREAD} and \inst{VMWRITE}
+processor, it is possible to use the \inst{vmread} and \inst{vmwrite}
 instructions to configure the various parameters of the virtual
 machine.  There are an extensive number of these parameters, and a
 full description can be found in the manual.  Roughly speaking, there
 are parameters for: host state, guest state, event injection, and
 VM-exit triggers.  All of the fields are given an index which can be
-used with \inst{VMREAD} and \inst{VMWRITE}.  In Quest these indices
+used with \inst{vmread} and \inst{vmwrite}.  In Quest these indices
 are defined by constants prefixed by \defn{VMXENC_}.  While many of
 the fields are 64-bit in size, we are only operating and emulating
 32-bit mode, therefore we only deal with the least significant bits of
@@ -99,11 +99,11 @@ selectors: things that are normally loaded from the GDT by the
 processor, but must be manually loaded into fields here.
 
 The general-purpose registers are not stored in the VMCS.  However,
-the registers \reg{RIP} and \reg{RSP} are stored and loaded from the
-VMCS.  In addition, the \inst{SYSENTER}-related MSRs are treated this
-way as well.  There is also some additional processor-internal state
-which is exposed via the \defn{ACTIVITY} and \defn{INTERRUPTIBILITY}
-fields.
+the registers \reg{rip} (\reg{eip}) and \reg{rsp} (\reg{esp}) are
+stored and loaded from the VMCS.  In addition, the
+\inst{sysenter}-related MSRs are treated this way as well.  There is
+also some additional processor-internal state which is exposed via the
+\defn{ACTIVITY} and \defn{INTERRUPTIBILITY} fields.
 
 \subsection{Exit reasons}
 The VMCS can also be configured with flags that describe the
@@ -117,8 +117,8 @@ Similarly, there is a flag which controls whether external interrupts
 cause VM exits, and one for the NMI.  These are part of the
 ``pin-based'' controls.  The ``processor-based'' controls are flags
 for whether certain aspects of processor behavior should cause VM
-exits.  For example, we disable VM exits for the access of \reg{CR3}
-as well as instructions \inst{RDTSC} and \inst{RDPMC}.  VM exits for
+exits.  For example, we disable VM exits for the access of \reg{cr3}
+as well as instructions \inst{rdtsc} and \inst{rdpmc}.  VM exits for
 MSR access can be controlled through the MSR-bitmap, which is also
 enabled here.  Some of these controls are actually configured in
 \func{vmx_start_vm}.
@@ -126,12 +126,85 @@ enabled here.  Some of these controls are actually configured in
 \section{Entering a virtual machine}
 
 \subsection{The initial instruction pointer}
+The function \func{vmx_enter_pmode_VM} saves a value of \reg{eip} with
+a bit of inline assembly which \inst{call}s a label and pops the
+stored value of \reg{eip} off the stack.  The program point of the
+stored \reg{eip} corresponds to the point in the inline assembly after
+the return of the \inst{call}.  Therefore, when the VM is launched,
+this path of execution can be distinguished by clearing the register
+storing the value of \reg{eip}.  In addition to saving \reg{eip}, it
+is important to fork a stack at this point.  The VM will carry on
+using the original stack, but the hypervisor must copy the stack and
+have a separate one.  This ensures that there will be no interference
+between the two.  Since the VM will begin operation inside this
+function, the state of the stack up to this point is preserved; the
+hypervisor's stack is put into effect immediately by carefully
+assigning a new, functionally equivalent, value for \reg{esp} in the
+new stack.  The VM is prepared with its initial values of \reg{eip}
+and \reg{esp} before making the call to \func{vmx_start_VM}.
 
-\subsection{Preparing for eventual exit}
+\subsection{Entry and preparations for eventual exit}
+The function \func{vmx_start_VM} must prepare for VM entry by saving
+the state of the host currently.  This is a similar process to the
+preparation of guest state as described previously, except that there
+are fewer fields to fill.  General-purpose registers are not managed
+by VMX, therefore it is necessary to save host registers and restore
+guest registers.  The host registers are stored on the host stack
+using \inst{pusha}.  Again, we need to fork paths and save a value of
+\reg{eip} to store in the VMCS field \defn{HOST_RIP}.  The guest
+registers are loaded from memory by copying them onto the stack in
+such a way that \inst{popa} can restore them all at once; just prior
+to the usage of either \inst{vmlaunch} or \inst{vmresume}.
 
-\subsection{Starting the machine}
+\subsection{Entry failure}
+The specification defines a series of conditions that must be
+fulfilled for successful VM entry.  There are a number of failure
+modes depending on how far the process gets before aborting.  Late
+failures can lead to a full VM exit.  Early failures are different,
+the processor simply advances to the instruction following the
+\inst{vmlaunch} or \inst{vmresume} and sets the zero and/or carry flag
+according to various criteria.  However, the registers still contain
+the values for the guest.  Therefore, it is necessary to carefully
+restore the host registers -- especially \reg{esp} -- while also
+checking the flag values.  The usual tactic of using \inst{pushf} does
+not work: the value of \reg{esp} is available in the VMCS field
+\defn{HOST_RSP} but to use \inst{vmread} would clobber the flags.
+Therefore, the flags must be case-analyzed via branching, at which
+point the value of \reg{esp} can be restored; followed by the
+general-purpose registers which have been saved on the stack.  The
+exact cause of the failure can be pin-pointed through certain VMCS
+fields which contain error codes to be analyzed.
 
 \section{Hypervisor}
+\subsection{Handling VM exits}
+In the case of partially or totally successful VM entry, the machine
+enters a state that is designated as ``non-root operation.''  Upon VM
+exit, the machine transfers control to the value stored in the VMCS
+field \defn{HOST_RIP}, and switches to the stack value saved in
+\defn{HOST_RSP}.  Because guest general-purpose registers are not
+handled by VMX, the very first instruction we use is \inst{pusha} to
+snapshot them on the host stack.  In order to continue operation and
+save the guest registers into the \type{virtual_machine} structure, we
+must restore the host registers.  We know where they are on the stack
+-- adjacent to the snapshot of the guest registers.  Therefore, a
+quick trick suffices: add 32 to \reg{esp}, \inst{popa} the host
+registers, then load \reg{esp-64} into \reg{esi} and quickly copy the
+stack values into the structure (the pointer has already been stored
+into \reg{edi}).  The stack is then restored to the original point and
+the host registers are once again popped, to restore any that were
+clobbered by the operation thus far.
 
+Once again, a number of VMCS fields have been prepared with codes that
+explain the cause of the VM exit.  The hypervisor then case-analyzes
+those codes in order to determine how to proceed.  For example,
+\inst{cpuid} causes an unconditional VM exit.  Therefore, it is
+necessary for the hypervisor to emulate the instruction.  It
+manipulates the guest registers in the saved structure, and then
+re-enters the VM at the instruction following \inst{cpuid}.
+Similarly, when emulating real-mode, the use of virtual-8086 means
+that general-protection faults are, in fact, requests for intervention
+by the monitor.  Therefore, the function \func{vmx_vm86_handle_GPF} is
+invoked to analyze and emulate any instruction that requires such
+assistance.
 
 \end{document}
