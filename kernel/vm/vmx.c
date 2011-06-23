@@ -618,14 +618,16 @@ vmx_start_VM (virtual_machine *vm)
 #ifdef VMX_EPT
   vmwrite ((1 << 1)             /* EPT */
            , VMXENC_PROCBASED_VM_EXEC_CTRLS2);
-  u32 i,j;
+  u32 i,j,k;
   u32 pml4_frame = alloc_phys_frame ();
   u32 pdpt_frame = alloc_phys_frame ();
   u32 pd_frame;
+  u32 pt_frame;
   logger_printf ("pml4_frame=0x%p pdpt_frame=0x%p\n", pml4_frame, pdpt_frame);
   u64 *pml4 = map_virtual_page (pml4_frame | 3);
   u64 *pdpt = map_virtual_page (pdpt_frame | 3);
   u64 *pd;
+  u64 *pt;
   u8 memtype;
   memset (pml4, 0, 0x1000);
   memset (pdpt, 0, 0x1000);
@@ -634,14 +636,43 @@ vmx_start_VM (virtual_machine *vm)
   for (i=0; i<4; i++) {
     pd_frame = alloc_phys_frame ();
     pd = map_virtual_page (pd_frame | 3);
-    if (i < 3)
-      memtype = 6;              /* WB */
-    else
-      memtype = 0;              /* UC */
+
     for (j=0; j<512; j++) {
-      if (i == 0 && j == 0)
-        memtype = 0;
-      pd[j] = ((i << 30) + (j << 21)) | (1 << 7) | (memtype << 3) | 7;
+      if (i < 3) {
+        memtype = 6;
+      } else {
+        if (j < 128)
+          memtype = 6;
+        else
+          memtype = 0;
+      }
+      
+      /* First 1MB should be treated specially */
+      if (i == 0 && j == 0) {
+        pt_frame = alloc_phys_frame ();
+        pt = map_virtual_page (pt_frame | 3);
+
+        for (k = 0; k < 512; k++) {
+          if (k < 160) {
+            memtype = 6;
+          } else if (k >= 192 && k < 204) {
+            memtype = 5;
+          } else if (k >= 236 && k < 256) {
+            memtype = 5;
+          } else if (k >= 256) {
+            memtype = 6;
+          } else {
+            memtype = 0;
+          }
+
+          pt[k] = (k << 12) | (memtype << 3) | 7;
+        }
+
+        unmap_virtual_page (pt);
+        pd[j] = pt_frame | (0 << 7) | 7;
+      } else {
+        pd[j] = ((i << 30) + (j << 21)) | (1 << 7) | (memtype << 3) | 7;
+      }
     }
     logger_printf ("pd[0]=0x%llX\n", pd[0]);
     unmap_virtual_page (pd);
@@ -653,6 +684,7 @@ vmx_start_VM (virtual_machine *vm)
   vmwrite (0, VMXENC_EPT_PTR_HI);
   logger_printf ("VMXENC_EPT_PTR=0x%p pml4[0]=0x%llX pdpt[0]=0x%llX\n",
                  vmread (VMXENC_EPT_PTR), pml4[0], pdpt[0]);
+
   //unmap_virtual_page (pml4);
   //unmap_virtual_page (pdpt);
 #endif
@@ -1042,6 +1074,19 @@ vmx_processor_init (void)
                  i, rdmsr (IA32_MTRR_PHYS_BASE (i)),
                  i, rdmsr (IA32_MTRR_PHYS_MASK (i)));
   }
+
+  com1_printf ("IA32_MTRR_FIX64K_00000=0x%llX\n", rdmsr (IA32_MTRR_FIX64K_00000));
+  com1_printf ("IA32_MTRR_FIX16K_80000=0x%llX\n", rdmsr (IA32_MTRR_FIX16K_80000));
+  com1_printf ("IA32_MTRR_FIX16K_A0000=0x%llX\n", rdmsr (IA32_MTRR_FIX16K_A0000));
+  com1_printf ("IA32_MTRR_FIX4K_C0000=0x%llX\n", rdmsr (IA32_MTRR_FIX4K_C0000));
+  com1_printf ("IA32_MTRR_FIX4K_C8000=0x%llX\n", rdmsr (IA32_MTRR_FIX4K_C8000));
+  com1_printf ("IA32_MTRR_FIX4K_D0000=0x%llX\n", rdmsr (IA32_MTRR_FIX4K_D0000));
+  com1_printf ("IA32_MTRR_FIX4K_D8000=0x%llX\n", rdmsr (IA32_MTRR_FIX4K_D8000));
+  com1_printf ("IA32_MTRR_FIX4K_E0000=0x%llX\n", rdmsr (IA32_MTRR_FIX4K_E0000));
+  com1_printf ("IA32_MTRR_FIX4K_E8000=0x%llX\n", rdmsr (IA32_MTRR_FIX4K_E8000));
+  com1_printf ("IA32_MTRR_FIX4K_F0000=0x%llX\n", rdmsr (IA32_MTRR_FIX4K_F0000));
+  com1_printf ("IA32_MTRR_FIX4K_F8000=0x%llX\n", rdmsr (IA32_MTRR_FIX4K_F8000));
+
 #endif
 
   /* Enable VMX */
