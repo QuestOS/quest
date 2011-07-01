@@ -28,10 +28,11 @@ SECTIONS {
   /* Maps kernel in upper 4MB of virtual address space on 32-bit machines */
   . = 0xFFC00000;
   _kernelstart = .;
-  .text : AT ( _physicalkernelstart ) { *(.text) } : virtualtext
+  .text : AT ( _physicalkernelstart )
+             { *(EXCLUDE_FILE (drivers/usb/uhci_hcd.o) .text) } : virtualtext
   . = ALIGN(4);
   .rodata : AT ( ( LOADADDR(.text) + SIZEOF(.text) + 3 ) & 0xFFFFFFFC )
-    { *(.rodata*) } : virtualtext
+    { *(EXCLUDE_FILE (drivers/usb/uhci_hcd.o) .rodata*) } : virtualtext
 
   . = ALIGN(4);
   /* Insert a read-only null-terminated array of pointers to constructors */
@@ -45,12 +46,43 @@ SECTIONS {
   .moduleptrs : AT ( ( LOADADDR (.ctors) + SIZEOF (.ctors) + 3 ) & 0xFFFFFFFC )
                    { *(.module.ptrs); LONG(0) } : virtualtext
 
+  /* Place shared drivers code in separate pages for Quest virtual
+   * extension. We also have to exclude them in the kernel text and
+   * rodata sections above. */
+  . = ALIGN(0x1000);
+  _shared_driver = .;
+  _shared_driver_physical = (LOADADDR(.ctors) + SIZEOF(.ctors) + 0xFFF ) & 0xFFFFF000;
+  .sdtext : AT ( _shared_driver_physical )
+               { drivers/usb/uhci_hcd.o (.text) } : virtualtext
+  . = ALIGN(4);
+  .sdrodata : AT ( ( LOADADDR(.sdtext) + SIZEOF(.sdtext) + 3 ) & 0xFFFFFFFC )
+                 { drivers/usb/uhci_hcd.o (.rodata*) } : virtualtext
+  _shared_driver_end = ALIGN(0x1000);
+  _shared_driver_pages = (_shared_driver_end - _shared_driver) / 0x1000;
+
   . = ALIGN(0x1000);
    _kernel_readwrite = .;
-  .data : AT ( ( LOADADDR(.moduleptrs) + SIZEOF(.moduleptrs) + 0xFFF ) & 0xFFFFF000 )
-             { *(.data) } : virtualdata
+  .data : AT ( ( LOADADDR(.sdrodata) + SIZEOF(.sdrodata) + 0xFFF ) & 0xFFFFF000 )
+             { *(EXCLUDE_FILE (drivers/usb/uhci_hcd.o) .data) } : virtualdata
   .bss : AT ( LOADADDR(.data) + SIZEOF(.data) )
-            { *(.bss) *(COMMON) } : virtualdata
+            { *(EXCLUDE_FILE (drivers/usb/uhci_hcd.o) .bss)
+              *(EXCLUDE_FILE (drivers/usb/uhci_hcd.o) COMMON) } : virtualdata
+
+  /* Place shared drivers data in separate pages for Quest virtual
+   * extension. We also have to exclude them in the kernel readwrite
+   * sections above. */
+  . = ALIGN(0x1000);
+  _shared_driver_data = .;
+  _shared_driver_data_physical =
+      (LOADADDR(.bss) + SIZEOF(.bss) + 0xFFF ) & 0xFFFFF000;
+  .sddata : AT ( _shared_driver_data_physical )
+               { drivers/usb/uhci_hcd.o (.data) } : virtualdata
+  .sdbss : AT ( LOADADDR(.sddata) + SIZEOF(.sddata) )
+              { drivers/usb/uhci_hcd.o (.data)
+                drivers/usb/uhci_hcd.o (COMMON) } : virtualdata
+  _shared_driver_data_end = ALIGN(0x1000);
+  _shared_driver_data_pages = (_shared_driver_data_end - _shared_driver_data) / 0x1000;
+
   _kernelend = ALIGN(0x1000);
   _readwrite_pages = ( _kernelend - _kernel_readwrite ) / 0x1000;
   _readonly_pages = ( _kernel_readwrite - _kernelstart ) / 0x1000;
@@ -61,7 +93,7 @@ SECTIONS {
    * it is linked with virtual addresses starting at 0x8000.  The kernel
    * will setup the page-table mappings to support this. */
   . = 0x8000; _code16start = .; 
-  _code16physicalstart = ( LOADADDR(.bss) + SIZEOF(.bss) + 0xFFF ) & 0xFFFFF000;
+  _code16physicalstart = ( LOADADDR(.sdbss) + SIZEOF(.sdbss) + 0xFFF ) & 0xFFFFF000;
   .text16 : AT ( _code16physicalstart ) 
             { vm/code16.o (.text16) } : virtualtext16
   _code16end = ALIGN(0x1000);
