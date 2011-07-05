@@ -61,25 +61,25 @@ SECTIONS {
   _shared_driver_end = ALIGN(0x1000);
   _shared_driver_pages = (_shared_driver_end - _shared_driver) / 0x1000;
 
-  . = ALIGN(0x1000);
-   _kernel_readwrite = .;
-  .data : AT ( ( LOADADDR(.sdrodata) + SIZEOF(.sdrodata) + 0xFFF ) & 0xFFFFF000 )
-             { *( EXCLUDE_FILE (drivers/usb/uhci_hcd.o) .data) } : virtualdata
-
   /* Place shared drivers data in separate pages for Quest virtual
    * extension. We also have to exclude them in the kernel readwrite
    * sections above. */
   . = ALIGN(0x1000);
   _shared_driver_data = .;
   _shared_driver_data_physical =
-      (LOADADDR(.data) + SIZEOF(.data) + 0xFFF ) & 0xFFFFF000;
+      (LOADADDR(.sdrodata) + SIZEOF(.sdrodata) + 0xFFF ) & 0xFFFFF000;
   .sddata : AT ( _shared_driver_data_physical )
                { drivers/usb/uhci_hcd.o (.data) } : virtualdata
   _shared_driver_data_end = ALIGN(0x1000);
   _shared_driver_data_pages = (_shared_driver_data_end - _shared_driver_data) / 0x1000;
 
   . = ALIGN(0x1000);
-  .bss : AT ( ( LOADADDR(.sddata) + SIZEOF(.sddata) + 0xFFF ) & 0xFFFFF000 )
+   _kernel_readwrite = .;
+  .data : AT ( ( LOADADDR(.sddata) + SIZEOF(.sddata) + 0xFFF ) & 0xFFFFF000 )
+             { *( EXCLUDE_FILE (drivers/usb/uhci_hcd.o) .data) } : virtualdata
+
+  . = ALIGN(0x1000);
+  .bss : AT ( ( LOADADDR(.data) + SIZEOF(.data) + 0xFFF ) & 0xFFFFF000 )
             { *( EXCLUDE_FILE (drivers/usb/uhci_hcd.o) .bss COMMON)} : virtualdata
 
   /* Place shared drivers data in separate pages for Quest virtual
