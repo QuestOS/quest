@@ -51,7 +51,8 @@ SECTIONS {
    * rodata sections above. */
   . = ALIGN(0x1000);
   _shared_driver = .;
-  _shared_driver_physical = (LOADADDR(.ctors) + SIZEOF(.ctors) + 0xFFF ) & 0xFFFFF000;
+  _shared_driver_physical =
+      (LOADADDR(.moduleptrs) + SIZEOF(.moduleptrs) + 0xFFF ) & 0xFFFFF000;
   .sdtext : AT ( _shared_driver_physical )
                { drivers/usb/uhci_hcd.o (.text) } : virtualtext
   . = ALIGN(4);
@@ -63,10 +64,7 @@ SECTIONS {
   . = ALIGN(0x1000);
    _kernel_readwrite = .;
   .data : AT ( ( LOADADDR(.sdrodata) + SIZEOF(.sdrodata) + 0xFFF ) & 0xFFFFF000 )
-             { *(EXCLUDE_FILE (drivers/usb/uhci_hcd.o) .data) } : virtualdata
-  .bss : AT ( LOADADDR(.data) + SIZEOF(.data) )
-            { *(EXCLUDE_FILE (drivers/usb/uhci_hcd.o) .bss)
-              *(EXCLUDE_FILE (drivers/usb/uhci_hcd.o) COMMON) } : virtualdata
+             { *( EXCLUDE_FILE (drivers/usb/uhci_hcd.o) .data) } : virtualdata
 
   /* Place shared drivers data in separate pages for Quest virtual
    * extension. We also have to exclude them in the kernel readwrite
@@ -74,14 +72,27 @@ SECTIONS {
   . = ALIGN(0x1000);
   _shared_driver_data = .;
   _shared_driver_data_physical =
-      (LOADADDR(.bss) + SIZEOF(.bss) + 0xFFF ) & 0xFFFFF000;
+      (LOADADDR(.data) + SIZEOF(.data) + 0xFFF ) & 0xFFFFF000;
   .sddata : AT ( _shared_driver_data_physical )
                { drivers/usb/uhci_hcd.o (.data) } : virtualdata
-  .sdbss : AT ( LOADADDR(.sddata) + SIZEOF(.sddata) )
-              { drivers/usb/uhci_hcd.o (.data)
-                drivers/usb/uhci_hcd.o (COMMON) } : virtualdata
   _shared_driver_data_end = ALIGN(0x1000);
   _shared_driver_data_pages = (_shared_driver_data_end - _shared_driver_data) / 0x1000;
+
+  . = ALIGN(0x1000);
+  .bss : AT ( ( LOADADDR(.sddata) + SIZEOF(.sddata) + 0xFFF ) & 0xFFFFF000 )
+            { *( EXCLUDE_FILE (drivers/usb/uhci_hcd.o) .bss COMMON)} : virtualdata
+
+  /* Place shared drivers data in separate pages for Quest virtual
+   * extension. We also have to exclude them in the kernel readwrite
+   * sections above. */
+  . = ALIGN(0x1000);
+  _shared_driver_bss = .;
+  _shared_driver_bss_physical =
+      (LOADADDR(.bss) + SIZEOF(.bss) + 0xFFF ) & 0xFFFFF000;
+  .sdbss : AT ( _shared_driver_bss_physical )
+              { drivers/usb/uhci_hcd.o (.bss COMMON)} : virtualdata
+  _shared_driver_bss_end = ALIGN(0x1000);
+  _shared_driver_bss_pages = (_shared_driver_bss_end - _shared_driver_bss) / 0x1000;
 
   _kernelend = ALIGN(0x1000);
   _readwrite_pages = ( _kernelend - _kernel_readwrite ) / 0x1000;
