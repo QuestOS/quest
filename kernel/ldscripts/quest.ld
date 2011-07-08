@@ -29,10 +29,10 @@ SECTIONS {
   . = 0xFFC00000;
   _kernelstart = .;
   .text : AT ( _physicalkernelstart )
-             { *(EXCLUDE_FILE (drivers/usb/uhci_hcd.o) .text) } : virtualtext
+             { *(.text) } : virtualtext
   . = ALIGN(4);
   .rodata : AT ( ( LOADADDR(.text) + SIZEOF(.text) + 3 ) & 0xFFFFFFFC )
-    { *(EXCLUDE_FILE (drivers/usb/uhci_hcd.o) .rodata*) } : virtualtext
+    { *(.rodata*) } : virtualtext
 
   . = ALIGN(4);
   /* Insert a read-only null-terminated array of pointers to constructors */
@@ -46,28 +46,13 @@ SECTIONS {
   .moduleptrs : AT ( ( LOADADDR (.ctors) + SIZEOF (.ctors) + 3 ) & 0xFFFFFFFC )
                    { *(.module.ptrs); LONG(0) } : virtualtext
 
-  /* Place shared drivers code in separate pages for Quest virtual
-   * extension. We also have to exclude them in the kernel text and
-   * rodata sections above. */
-  . = ALIGN(0x1000);
-  _shared_driver = .;
-  _shared_driver_physical =
-      (LOADADDR(.moduleptrs) + SIZEOF(.moduleptrs) + 0xFFF ) & 0xFFFFF000;
-  .sdtext : AT ( _shared_driver_physical )
-               { drivers/usb/uhci_hcd.o (.text) } : virtualtext
-  . = ALIGN(4);
-  .sdrodata : AT ( ( LOADADDR(.sdtext) + SIZEOF(.sdtext) + 3 ) & 0xFFFFFFFC )
-                 { drivers/usb/uhci_hcd.o (.rodata*) } : virtualtext
-  _shared_driver_end = ALIGN(0x1000);
-  _shared_driver_pages = (_shared_driver_end - _shared_driver) / 0x1000;
-
   /* Place shared drivers data in separate pages for Quest virtual
    * extension. We also have to exclude them in the kernel readwrite
    * sections above. */
   . = ALIGN(0x1000);
   _shared_driver_data = .;
   _shared_driver_data_physical =
-      (LOADADDR(.sdrodata) + SIZEOF(.sdrodata) + 0xFFF ) & 0xFFFFF000;
+      (LOADADDR(.moduleptrs) + SIZEOF(.moduleptrs) + 0xFFF ) & 0xFFFFF000;
   .sddata : AT ( _shared_driver_data_physical )
                { drivers/usb/uhci_hcd.o (.data) } : virtualdata
   _shared_driver_data_end = ALIGN(0x1000);
