@@ -28,7 +28,8 @@
 #include "sched/sched.h"
 
 #define DEBUG_VMX 3
-//#define VMX_EPT
+#define VMX_EPT
+#define MAX_MTRR_VAR_REGS 256
 
 #if DEBUG_VMX > 0
 #define DLOG(fmt,...) DLOG_PREFIX("vmx",fmt,##__VA_ARGS__)
@@ -597,25 +598,11 @@ vmx_create_pmode_VM (virtual_machine *vm, u32 rip0, u32 rsp0)
   return -1;
 }
 
-int
-vmx_start_VM (virtual_machine *vm)
+static void
+vmx_init_ept (uint32 cpu)
 {
-  uint32 phys_id = (uint32)LAPIC_get_physical_ID ();
-  uint32 cr, eip, state = 0, err;
-  uint16 fs;
-  u64 start, finish, proc_msr;
+  logger_printf ("Initializing EPT data structures on CPU#%d...\n", cpu);
 
-  if (!vm->loaded || vm->current_cpu != phys_id)
-    goto not_loaded;
-
-  /* Save Host State */
-  vmwrite (rdmsr (IA32_VMX_PINBASED_CTLS), VMXENC_PINBASED_VM_EXEC_CTRLS);
-  proc_msr = rdmsr (IA32_VMX_PROCBASED_CTLS);
-  proc_msr &= ~((1 << 15) | (1 << 16) | (1 << 12) | (1 << 11)); /* allow CR3 load/store, RDTSC, RDPMC */
-  proc_msr |= (1 << 28);                                        /* use MSR bitmaps */
-  proc_msr |= (1 << 31);                                        /* secondary controls */
-  vmwrite (proc_msr, VMXENC_PROCBASED_VM_EXEC_CTRLS);
-#ifdef VMX_EPT
   vmwrite ((1 << 1)             /* EPT */
            , VMXENC_PROCBASED_VM_EXEC_CTRLS2);
   u32 i,j,k;
@@ -628,10 +615,52 @@ vmx_start_VM (virtual_machine *vm)
   u64 *pdpt = map_virtual_page (pdpt_frame | 3);
   u64 *pd;
   u64 *pt;
-  u8 memtype;
   memset (pml4, 0, 0x1000);
   memset (pdpt, 0, 0x1000);
   pml4[0] = pdpt_frame | 7;
+
+  u8 memtype;
+  u8 def_memtype;
+  u64 mtrr_cap = rdmsr (IA32_MTRRCAP);
+  u64 mtrr_def_type = rdmsr (IA32_MTRR_DEF_TYPE);
+  def_memtype = (u8) mtrr_def_type;
+  u8 num_var_reg = (u8) mtrr_cap;
+  bool fix_supported = (mtrr_cap << 8) & 0x01;
+  u32 var_regs_frame = alloc_phys_frame ();
+  /* Allocate 4K page for variable range bases and masks */
+  u64 *var_base = map_virtual_page (var_regs_frame | 3);
+  u64 *var_mask = &var_base[MAX_MTRR_VAR_REGS];
+
+  for (i=0; i < num_var_reg; i++) {
+    var_base[i] = rdmsr (IA32_MTRR_PHYS_BASE (i));
+    var_mask[i] = rdmsr (IA32_MTRR_PHYS_MASK (i));
+  }
+
+  u64 mtrr_fix64k = 0;
+  u64 mtrr_fix16k8 = 0;
+  u64 mtrr_fix16kA = 0;
+  u64 mtrr_fix4kC0 = 0;
+  u64 mtrr_fix4kC8 = 0;
+  u64 mtrr_fix4kD0 = 0;
+  u64 mtrr_fix4kD8 = 0;
+  u64 mtrr_fix4kE0 = 0;
+  u64 mtrr_fix4kE8 = 0;
+  u64 mtrr_fix4kF0 = 0;
+  u64 mtrr_fix4kF8 = 0;
+
+  if (fix_supported) {
+    mtrr_fix64k = rdmsr (IA32_MTRR_FIX64K_00000);
+    mtrr_fix16k8 = rdmsr (IA32_MTRR_FIX16K_80000);
+    mtrr_fix16kA = rdmsr (IA32_MTRR_FIX16K_A0000);
+    mtrr_fix4kC0 = rdmsr (IA32_MTRR_FIX4K_C0000);
+    mtrr_fix4kC8 = rdmsr (IA32_MTRR_FIX4K_C8000);
+    mtrr_fix4kD0 = rdmsr (IA32_MTRR_FIX4K_D0000);
+    mtrr_fix4kD8 = rdmsr (IA32_MTRR_FIX4K_D8000);
+    mtrr_fix4kE0 = rdmsr (IA32_MTRR_FIX4K_E0000);
+    mtrr_fix4kE8 = rdmsr (IA32_MTRR_FIX4K_E8000);
+    mtrr_fix4kF0 = rdmsr (IA32_MTRR_FIX4K_F0000);
+    mtrr_fix4kF8 = rdmsr (IA32_MTRR_FIX4K_F8000);
+  }
 
   for (i=0; i<4; i++) {
     pd_frame = alloc_phys_frame ();
@@ -685,9 +714,29 @@ vmx_start_VM (virtual_machine *vm)
   logger_printf ("VMXENC_EPT_PTR=0x%p pml4[0]=0x%llX pdpt[0]=0x%llX\n",
                  vmread (VMXENC_EPT_PTR), pml4[0], pdpt[0]);
 
-  //unmap_virtual_page (pml4);
-  //unmap_virtual_page (pdpt);
-#endif
+  unmap_virtual_page (var_base);
+  unmap_virtual_page (pml4);
+  unmap_virtual_page (pdpt);
+}
+
+int
+vmx_start_VM (virtual_machine *vm)
+{
+  uint32 phys_id = (uint32)LAPIC_get_physical_ID ();
+  uint32 cr, eip, state = 0, err;
+  uint16 fs;
+  u64 start, finish, proc_msr;
+
+  if (!vm->loaded || vm->current_cpu != phys_id)
+    goto not_loaded;
+
+  /* Save Host State */
+  vmwrite (rdmsr (IA32_VMX_PINBASED_CTLS), VMXENC_PINBASED_VM_EXEC_CTRLS);
+  proc_msr = rdmsr (IA32_VMX_PROCBASED_CTLS);
+  proc_msr &= ~((1 << 15) | (1 << 16) | (1 << 12) | (1 << 11)); /* allow CR3 load/store, RDTSC, RDPMC */
+  proc_msr |= (1 << 28);                                        /* use MSR bitmaps */
+  proc_msr |= (1 << 31);                                        /* secondary controls */
+  vmwrite (proc_msr, VMXENC_PROCBASED_VM_EXEC_CTRLS);
   vmwrite (0, VMXENC_CR3_TARGET_COUNT);
   vmwrite (rdmsr (IA32_VMX_EXIT_CTLS), VMXENC_VM_EXIT_CTRLS);
   vmwrite (0, VMXENC_VM_EXIT_MSR_STORE_COUNT);
@@ -720,6 +769,9 @@ vmx_start_VM (virtual_machine *vm)
   vmwrite (rdmsr (IA32_SYSENTER_ESP), VMXENC_HOST_IA32_SYSENTER_ESP);
   vmwrite (rdmsr (IA32_SYSENTER_EIP), VMXENC_HOST_IA32_SYSENTER_EIP);
   vmwrite (vmread (VMXENC_GUEST_CS_ACCESS) | 0x1, VMXENC_GUEST_CS_ACCESS);
+#ifdef VMX_EPT
+  vmx_init_ept (phys_id);
+#endif
 
   logger_printf ("vmx_start_VM: GUEST-STATE: RIP=0x%p RSP=0x%p RBP=0x%p\n",
                  vmread (VMXENC_GUEST_RIP), vmread (VMXENC_GUEST_RSP), vm->guest_regs.ebp);
@@ -925,8 +977,8 @@ vmx_start_VM (virtual_machine *vm)
 #ifdef VMX_EPT
     } else if (reason == 0x31) {
       /* EPT misconfiguration */
-      logger_printf ("EPT misconfiguration:\n  VMXENC_EPT_PTR=0x%p pml4[0]=0x%llX pdpt[0]=0x%llX\n",
-                     vmread (VMXENC_EPT_PTR), pml4[0], pdpt[0]);
+      logger_printf ("EPT misconfiguration:\n  VMXENC_EPT_PTR=0x%p\n",
+                     vmread (VMXENC_EPT_PTR));
 #endif
     } else {
       /* Not a vm86 related VM-EXIT */
