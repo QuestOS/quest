@@ -36,6 +36,8 @@
 #define IA32_MTRR_FIX4K_F0000   0x26E
 #define IA32_MTRR_FIX4K_F8000   0x26F
 
+#define MAX_MTRR_VAR_REGS 256
+
 #endif
 
 /*

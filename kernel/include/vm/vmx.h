@@ -21,6 +21,30 @@
 #include "vmx-defs.h"
 #include "smp/spinlock.h"
 
+#define IA32_FEATURE_CONTROL         0x003A
+#define IA32_SYSENTER_CS             0x0174
+#define IA32_SYSENTER_ESP            0x0175
+#define IA32_SYSENTER_EIP            0x0176
+
+/* See Intel System Programming Manual appendix G */
+#define IA32_VMX_BASIC               0x0480
+#define IA32_VMX_PINBASED_CTLS       0x0481
+#define IA32_VMX_PROCBASED_CTLS      0x0482
+#define IA32_VMX_EXIT_CTLS           0x0483
+#define IA32_VMX_ENTRY_CTLS          0x0484
+#define IA32_VMX_MISC                0x0485
+#define IA32_VMX_CR0_FIXED0          0x0486
+#define IA32_VMX_CR0_FIXED1          0x0487
+#define IA32_VMX_CR4_FIXED0          0x0488
+#define IA32_VMX_CR4_FIXED1          0x0489
+#define IA32_VMX_VMCS_ENUM           0x048A
+#define IA32_VMX_PROCBASED_CTLS2     0x048B
+#define IA32_VMX_EPT_VPID_CAP        0x048C
+#define IA32_VMX_TRUE_PINBASED_CTLS  0x048D
+#define IA32_VMX_TRUE_PROCBASED_CTLS 0x048E
+#define IA32_VMX_TRUE_EXIT_CTLS      0x048F
+#define IA32_VMX_TRUE_ENTRY_CTLS     0x0490
+
 typedef struct
 {
   /* Order based on PUSHA/POPA */

@@ -16,6 +16,7 @@
  */
 
 #include "vm/vmx.h"
+#include "vm/ept.h"
 #include "vm/vm86.h"
 #include "kernel.h"
 #include "mem/physical.h"
@@ -29,7 +30,6 @@
 
 #define DEBUG_VMX 3
 #define VMX_EPT
-#define MAX_MTRR_VAR_REGS 256
 
 #if DEBUG_VMX > 0
 #define DLOG(fmt,...) DLOG_PREFIX("vmx",fmt,##__VA_ARGS__)
@@ -38,30 +38,6 @@
 #endif
 
 #define com1_printf logger_printf
-
-#define IA32_FEATURE_CONTROL         0x003A
-#define IA32_SYSENTER_CS             0x0174
-#define IA32_SYSENTER_ESP            0x0175
-#define IA32_SYSENTER_EIP            0x0176
-
-/* See Intel System Programming Manual appendix G */
-#define IA32_VMX_BASIC               0x0480
-#define IA32_VMX_PINBASED_CTLS       0x0481
-#define IA32_VMX_PROCBASED_CTLS      0x0482
-#define IA32_VMX_EXIT_CTLS           0x0483
-#define IA32_VMX_ENTRY_CTLS          0x0484
-#define IA32_VMX_MISC                0x0485
-#define IA32_VMX_CR0_FIXED0          0x0486
-#define IA32_VMX_CR0_FIXED1          0x0487
-#define IA32_VMX_CR4_FIXED0          0x0488
-#define IA32_VMX_CR4_FIXED1          0x0489
-#define IA32_VMX_VMCS_ENUM           0x048A
-#define IA32_VMX_PROCBASED_CTLS2     0x048B
-#define IA32_VMX_EPT_VPID_CAP        0x048C
-#define IA32_VMX_TRUE_PINBASED_CTLS  0x048D
-#define IA32_VMX_TRUE_PROCBASED_CTLS 0x048E
-#define IA32_VMX_TRUE_EXIT_CTLS      0x048F
-#define IA32_VMX_TRUE_ENTRY_CTLS     0x0490
 
 #define VMX_NUM_INSTR_ERRORS 29
 #if DEBUG_VMX > 0
@@ -598,127 +574,6 @@ vmx_create_pmode_VM (virtual_machine *vm, u32 rip0, u32 rsp0)
   return -1;
 }
 
-static void
-vmx_init_ept (uint32 cpu)
-{
-  logger_printf ("Initializing EPT data structures on CPU#%d...\n", cpu);
-
-  vmwrite ((1 << 1)             /* EPT */
-           , VMXENC_PROCBASED_VM_EXEC_CTRLS2);
-  u32 i,j,k;
-  u32 pml4_frame = alloc_phys_frame ();
-  u32 pdpt_frame = alloc_phys_frame ();
-  u32 pd_frame;
-  u32 pt_frame;
-  logger_printf ("pml4_frame=0x%p pdpt_frame=0x%p\n", pml4_frame, pdpt_frame);
-  u64 *pml4 = map_virtual_page (pml4_frame | 3);
-  u64 *pdpt = map_virtual_page (pdpt_frame | 3);
-  u64 *pd;
-  u64 *pt;
-  memset (pml4, 0, 0x1000);
-  memset (pdpt, 0, 0x1000);
-  pml4[0] = pdpt_frame | 7;
-
-  u8 memtype;
-  u8 def_memtype;
-  u64 mtrr_cap = rdmsr (IA32_MTRRCAP);
-  u64 mtrr_def_type = rdmsr (IA32_MTRR_DEF_TYPE);
-  def_memtype = (u8) mtrr_def_type;
-  u8 num_var_reg = (u8) mtrr_cap;
-  bool fix_supported = (mtrr_cap << 8) & 0x01;
-  u32 var_regs_frame = alloc_phys_frame ();
-  /* Allocate 4K page for variable range bases and masks */
-  u64 *var_base = map_virtual_page (var_regs_frame | 3);
-  u64 *var_mask = &var_base[MAX_MTRR_VAR_REGS];
-
-  for (i=0; i < num_var_reg; i++) {
-    var_base[i] = rdmsr (IA32_MTRR_PHYS_BASE (i));
-    var_mask[i] = rdmsr (IA32_MTRR_PHYS_MASK (i));
-  }
-
-  u64 mtrr_fix64k = 0;
-  u64 mtrr_fix16k8 = 0;
-  u64 mtrr_fix16kA = 0;
-  u64 mtrr_fix4kC0 = 0;
-  u64 mtrr_fix4kC8 = 0;
-  u64 mtrr_fix4kD0 = 0;
-  u64 mtrr_fix4kD8 = 0;
-  u64 mtrr_fix4kE0 = 0;
-  u64 mtrr_fix4kE8 = 0;
-  u64 mtrr_fix4kF0 = 0;
-  u64 mtrr_fix4kF8 = 0;
-
-  if (fix_supported) {
-    mtrr_fix64k = rdmsr (IA32_MTRR_FIX64K_00000);
-    mtrr_fix16k8 = rdmsr (IA32_MTRR_FIX16K_80000);
-    mtrr_fix16kA = rdmsr (IA32_MTRR_FIX16K_A0000);
-    mtrr_fix4kC0 = rdmsr (IA32_MTRR_FIX4K_C0000);
-    mtrr_fix4kC8 = rdmsr (IA32_MTRR_FIX4K_C8000);
-    mtrr_fix4kD0 = rdmsr (IA32_MTRR_FIX4K_D0000);
-    mtrr_fix4kD8 = rdmsr (IA32_MTRR_FIX4K_D8000);
-    mtrr_fix4kE0 = rdmsr (IA32_MTRR_FIX4K_E0000);
-    mtrr_fix4kE8 = rdmsr (IA32_MTRR_FIX4K_E8000);
-    mtrr_fix4kF0 = rdmsr (IA32_MTRR_FIX4K_F0000);
-    mtrr_fix4kF8 = rdmsr (IA32_MTRR_FIX4K_F8000);
-  }
-
-  for (i=0; i<4; i++) {
-    pd_frame = alloc_phys_frame ();
-    pd = map_virtual_page (pd_frame | 3);
-
-    for (j=0; j<512; j++) {
-      if (i < 3) {
-        memtype = 6;
-      } else {
-        if (j < 128)
-          memtype = 6;
-        else
-          memtype = 0;
-      }
-      
-      /* First 1MB should be treated specially */
-      if (i == 0 && j == 0) {
-        pt_frame = alloc_phys_frame ();
-        pt = map_virtual_page (pt_frame | 3);
-
-        for (k = 0; k < 512; k++) {
-          if (k < 160) {
-            memtype = 6;
-          } else if (k >= 192 && k < 204) {
-            memtype = 5;
-          } else if (k >= 236 && k < 256) {
-            memtype = 5;
-          } else if (k >= 256) {
-            memtype = 6;
-          } else {
-            memtype = 0;
-          }
-
-          pt[k] = (k << 12) | (memtype << 3) | 7;
-        }
-
-        unmap_virtual_page (pt);
-        pd[j] = pt_frame | (0 << 7) | 7;
-      } else {
-        pd[j] = ((i << 30) + (j << 21)) | (1 << 7) | (memtype << 3) | 7;
-      }
-    }
-    logger_printf ("pd[0]=0x%llX\n", pd[0]);
-    unmap_virtual_page (pd);
-    pdpt[i] = pd_frame | (0 << 7) | 7;
-    logger_printf ("pdpt[%d]=0x%llX\n", i, pdpt[i]);
-  }
-
-  vmwrite (pml4_frame | (3 << 3) | 6, VMXENC_EPT_PTR);
-  vmwrite (0, VMXENC_EPT_PTR_HI);
-  logger_printf ("VMXENC_EPT_PTR=0x%p pml4[0]=0x%llX pdpt[0]=0x%llX\n",
-                 vmread (VMXENC_EPT_PTR), pml4[0], pdpt[0]);
-
-  unmap_virtual_page (var_base);
-  unmap_virtual_page (pml4);
-  unmap_virtual_page (pdpt);
-}
-
 int
 vmx_start_VM (virtual_machine *vm)
 {
@@ -1109,36 +964,6 @@ vmx_processor_init (void)
                rdmsr (IA32_VMX_TRUE_ENTRY_CTLS));
   com1_printf ("IA32_VMX_MISC: 0x%.16llX\n",
                rdmsr (IA32_VMX_MISC));
-  u64 msr;
-  com1_printf ("IA32_VMX_EPT_VPID_CAP: 0x%.16llX\n",
-               msr=rdmsr (IA32_VMX_EPT_VPID_CAP));
-  com1_printf ("  %s%s%s%s%s\n",
-               msr & (1 << 6) ? "(page-walk=4) ":" ",
-               msr & (1 << 8) ? "(support-UC) ":" ",
-               msr & (1 << 14) ? "(support-WB) ":" ",
-               msr & (1 << 16) ? "(2MB-pages) ":" ",
-               msr & (1 << 17) ? "(1GB-pages) ":" ");
-  com1_printf ("IA32_MTRRCAP: 0x%llX\n", rdmsr (IA32_MTRRCAP));
-  com1_printf ("IA32_MTRR_DEF_TYPE: 0x%llX\n", rdmsr (IA32_MTRR_DEF_TYPE));
-  u32 i;
-  for (i=0; i < ((u8) (rdmsr (IA32_MTRRCAP))); i++) {
-    com1_printf ("IA32_MTRR_PHYS_BASE(%d)=0x%llX\nIA32_MTRR_PHYS_MASK(%d)=0x%llX\n",
-                 i, rdmsr (IA32_MTRR_PHYS_BASE (i)),
-                 i, rdmsr (IA32_MTRR_PHYS_MASK (i)));
-  }
-
-  com1_printf ("IA32_MTRR_FIX64K_00000=0x%llX\n", rdmsr (IA32_MTRR_FIX64K_00000));
-  com1_printf ("IA32_MTRR_FIX16K_80000=0x%llX\n", rdmsr (IA32_MTRR_FIX16K_80000));
-  com1_printf ("IA32_MTRR_FIX16K_A0000=0x%llX\n", rdmsr (IA32_MTRR_FIX16K_A0000));
-  com1_printf ("IA32_MTRR_FIX4K_C0000=0x%llX\n", rdmsr (IA32_MTRR_FIX4K_C0000));
-  com1_printf ("IA32_MTRR_FIX4K_C8000=0x%llX\n", rdmsr (IA32_MTRR_FIX4K_C8000));
-  com1_printf ("IA32_MTRR_FIX4K_D0000=0x%llX\n", rdmsr (IA32_MTRR_FIX4K_D0000));
-  com1_printf ("IA32_MTRR_FIX4K_D8000=0x%llX\n", rdmsr (IA32_MTRR_FIX4K_D8000));
-  com1_printf ("IA32_MTRR_FIX4K_E0000=0x%llX\n", rdmsr (IA32_MTRR_FIX4K_E0000));
-  com1_printf ("IA32_MTRR_FIX4K_E8000=0x%llX\n", rdmsr (IA32_MTRR_FIX4K_E8000));
-  com1_printf ("IA32_MTRR_FIX4K_F0000=0x%llX\n", rdmsr (IA32_MTRR_FIX4K_F0000));
-  com1_printf ("IA32_MTRR_FIX4K_F8000=0x%llX\n", rdmsr (IA32_MTRR_FIX4K_F8000));
-
 #endif
 
   /* Enable VMX */
