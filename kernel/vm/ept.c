@@ -230,7 +230,7 @@ vmx_init_mem (uint32 cpu_id)
   logger_printf ("New phys_cr3=0x%x\n", phys_cr3);
 
   //spinlock_unlock (&vmx_init_lock);
-  //unlock_kernel ();
+  unlock_kernel ();
 
   asm volatile ("movl %0, %%cr3"::"r"(phys_cr3):);
 

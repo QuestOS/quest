@@ -517,6 +517,10 @@ init (multiboot * pmb)
   /* Setup per-CPU area for bootstrap CPU */
   percpu_per_cpu_init ();
 
+#ifdef USE_VMX
+  lock_kernel ();
+#endif
+
   /* Start up other processors, which may allocate pages for stacks */
   num_cpus = smp_init ();
   if (num_cpus > 1) {
@@ -567,6 +571,10 @@ init (multiboot * pmb)
 
   /* Start the schedulers */
   smp_enable_scheduling ();
+
+#ifdef USE_VMX
+  unlock_kernel ();
+#endif
 
 #ifdef ENABLE_GDBSTUB
   {
