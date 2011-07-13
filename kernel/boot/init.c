@@ -31,6 +31,7 @@
 #include "util/perfmon.h"
 #include "drivers/input/keyboard.h"
 #include "sched/sched.h"
+#include "vm/ept.h"
 
 extern descriptor idt[];
 
@@ -103,7 +104,11 @@ alloc_idle_TSS (int cpu_num)
 
   u32 *stk = map_virtual_page (alloc_phys_frame () | 3);
 
+#ifdef USE_VMX
+  pTSS->CR3 = (u32) (get_pdbr () + cpu_num * SANDBOX_KERN_OFFSET);
+#else
   pTSS->CR3 = (u32) get_pdbr ();
+#endif
   pTSS->initial_EIP = (u32) & idle_task;
   stk[1023] = pTSS->initial_EIP;
   pTSS->EFLAGS = F_1 | F_IOPL0;

@@ -148,12 +148,12 @@ vmx_init_mem (uint32 cpu_id)
   virt_kern_pgt_new = map_virtual_page (((virt_pgd[1023] & 0xFFFFF000) +
                                         physical_offset) | 3);
 
+#if 0
   logger_printf ("virt_pgd=0x%x\n", virt_pgd);
   logger_printf ("virt_pgd_new=0x%x\n", virt_pgd_new);
   logger_printf ("virt_kern_pgt=0x%x\n", virt_kern_pgt);
   logger_printf ("virt_kern_pgt_new=0x%x\n", virt_kern_pgt_new);
 
-#if 0
   for (i = 0; i < 0x400; i++) {
     logger_printf ("New PGD Entry %d: %x\n", i, virt_pgd_new[i]);
   }
