@@ -625,11 +625,13 @@ vmx_start_VM (virtual_machine *vm)
   vmwrite (rdmsr (IA32_SYSENTER_EIP), VMXENC_HOST_IA32_SYSENTER_EIP);
   vmwrite (vmread (VMXENC_GUEST_CS_ACCESS) | 0x1, VMXENC_GUEST_CS_ACCESS);
 #ifdef VMX_EPT
-  vmx_init_ept (phys_id);
+  vmx_init_mem (phys_id);
+  //vmx_init_ept (phys_id);
 #endif
 
-  logger_printf ("vmx_start_VM: GUEST-STATE: RIP=0x%p RSP=0x%p RBP=0x%p\n",
-                 vmread (VMXENC_GUEST_RIP), vmread (VMXENC_GUEST_RSP), vm->guest_regs.ebp);
+  logger_printf ("vmx_start_VM: GUEST-STATE: RIP=0x%p RSP=0x%p RBP=0x%p CR3=0x%p\n",
+                 vmread (VMXENC_GUEST_RIP), vmread (VMXENC_GUEST_RSP), vm->guest_regs.ebp,
+                 vmread (VMXENC_GUEST_CR3));
 
  enter:
   RDTSC (start);
@@ -750,13 +752,13 @@ vmx_start_VM (virtual_machine *vm)
     RDTSC (finish);
 
 #if DEBUG_VMX > 2
-    logger_printf ("VM-EXIT: %s\n  reason=%.8X qualif=%.8X\n  intinf=%.8X ercode=%.8X\n  inslen=%.8X insinf=%.8X\n  guestphys=0x%llX guestlinear=0x%llX\n  cycles=0x%llX\n",
+    logger_printf ("VM-EXIT: %s\n  reason=%.8X qualif=%.8X\n  intinf=%.8X ercode=%.8X\n  inslen=%.8X insinf=%.8X\n  guestphys=0x%llX guestlinear=0x%llX\n  cycles=0x%llX cpu=%d\n",
                    (reason < VMX_NUM_EXIT_REASONS ?
                     vm_exit_reasons[reason] : "invalid exit-reason"),
                    reason, qualif, intinf, ercode, inslen, insinf,
                    (u64) vmread (VMXENC_GUEST_PHYS_ADDR),
                    (u64) vmread (VMXENC_GUEST_LINEAR_ADDR),
-                   finish - start);
+                   finish - start, get_pcpu_id ());
     vmx_vm_exit_reason ();
     u32 rip = vmread (VMXENC_GUEST_RIP), rsp = vmread (VMXENC_GUEST_RSP);
     logger_printf ("VM-EXIT: GUEST-STATE: RIP=0x%p RSP=0x%p\n", rip, rsp);
@@ -847,7 +849,7 @@ vmx_start_VM (virtual_machine *vm)
     }
   }
 
-  DLOG ("start_VM: return 0 -- giving up on virtual machine");
+  DLOG ("start_VM: return 0 -- giving up on virtual machine (cpu#%d)", get_pcpu_id ());
   crash_debug ("stack is probably corrupt now");
   /* control could be resumed where the VM failed.  maybe do this later. */
 

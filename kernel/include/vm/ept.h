@@ -20,6 +20,12 @@
 
 #include <types.h>
 
+#define PHYS_PAGE_SIZE       4096
+#define APIC_VIRT_ADDR       0xFEC00000
+#define SANDBOX_KERN_OFFSET  0x400000
+#define SCREEN_PHYS          0x000B8000
+
+extern void vmx_init_mem (uint32);
 extern void vmx_init_ept (uint32);
 
 #endif

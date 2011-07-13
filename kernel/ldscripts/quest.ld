@@ -16,13 +16,14 @@ SECTIONS {
   _percpu_pages_plus_one = (_percpuend - _percpustart) / 0x1000 + 1;
 
   /* Bootstrap physical section, at virtual and physical address 0x100000 */
-  . = 0x100000 + SIZEOF_HEADERS;
+  _physicalbootstrapstart = 0x100000;
+  . = _physicalbootstrapstart + SIZEOF_HEADERS;
   .physicaltext : {   boot/boot.o (.text) } : physical
   .physicalrodata : { boot/boot.o (.rodata) } : physical
   .physicaldata : {   boot/boot.o (.data) } : physical
   .physicalbss : {    boot/boot.o (.bss COMMON) } : physical
   _physicalkernelstart = ALIGN(0x1000);
-  _bootstrap_pages = (_physicalkernelstart - 0x100000) / 0x1000;
+  _bootstrap_pages = (_physicalkernelstart - _physicalbootstrapstart) / 0x1000;
 
   /* Permanent virtual section, at virtual address 0xFFC00000 */
   /* Maps kernel in upper 4MB of virtual address space on 32-bit machines */
