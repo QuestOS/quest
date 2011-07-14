@@ -446,6 +446,11 @@ init (multiboot * pmb)
     }
   }
 
+#ifdef USE_VMX
+  mm_limit = 256 + (SANDBOX_KERN_OFFSET >> 12);
+  mm_begin = 0;
+#endif
+
   /*
    * Clear bitmap entries for kernel and bootstrap memory areas,
    * so as not to use them in dynamic memory allocation.

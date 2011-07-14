@@ -625,8 +625,9 @@ vmx_start_VM (virtual_machine *vm)
   vmwrite (rdmsr (IA32_SYSENTER_EIP), VMXENC_HOST_IA32_SYSENTER_EIP);
   vmwrite (vmread (VMXENC_GUEST_CS_ACCESS) | 0x1, VMXENC_GUEST_CS_ACCESS);
 #ifdef VMX_EPT
-  vmx_init_mem (phys_id);
-  //vmx_init_ept (phys_id);
+  u32 cpu = get_pcpu_id ();
+  vmx_init_mem (cpu);
+  vmx_init_ept (cpu);
 #endif
 
   logger_printf ("vmx_start_VM: GUEST-STATE: RIP=0x%p RSP=0x%p RBP=0x%p CR3=0x%p\n",

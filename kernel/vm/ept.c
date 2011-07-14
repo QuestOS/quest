@@ -36,30 +36,27 @@
 
 #define com1_printf logger_printf
 
-//static spinlock vmx_init_lock ALIGNED(LOCK_ALIGNMENT) = SPINLOCK_INIT;
-
 /* Function should be called one logical processor at a time */
 void
-vmx_init_mem (uint32 cpu_id)
+vmx_init_mem (uint32 phys_id)
 {
   extern uint32 _physicalbootstrapstart;
   extern uint32 _code16start, _code16_pages, _code16physicalstart;
 
   /* Original Quest Paging Data Structures */
-  u32 phys_cr3 = (uint32) get_pdbr ();
-  u32 *virt_kern_pgt, *vm86_pgt, *virt_pgd;
-  u32 phys_kern_pgt, bios_backup;
+  uint32 phys_cr3 = (uint32) get_pdbr ();
+  uint32 *virt_kern_pgt, *vm86_pgt, *virt_pgd;
+  uint32 phys_kern_pgt, bios_backup;
 
   /* New Paging Data Structures */
-  u32 *virt_pgd_new, *virt_kern_pgt_new;
+  uint32 *virt_pgd_new, *virt_kern_pgt_new;
 
-  u32 cr = 0;
-  u32 cpu = get_pcpu_id (); /* FIXME: Delete */
-  logger_printf ("-----------------get_pcpu_id = %d\n", cpu);
-  u32 physical_offset = SANDBOX_KERN_OFFSET * cpu;
+  uint32 cr = 0;
+  uint32 cpu = get_pcpu_id (); /* FIXME: Delete */
+  uint32 physical_offset = SANDBOX_KERN_OFFSET * cpu;
+  uint32 physical_page_count = 0;
+  uint32 *new_mm_table = 0, new_mm_begin = 0;
   int i;
-
-  //spinlock_lock (&vmx_init_lock);
 
 #if 0
   virt_pgd = map_virtual_page (phys_cr3 | 3);
@@ -80,7 +77,6 @@ vmx_init_mem (uint32 cpu_id)
   /* Do not relocate memory for first logical processor */
   if (cpu == 0) {
     logger_printf ("Logical Processor %d, skip relocation.\n", cpu);
-    //spinlock_unlock (&vmx_init_lock);
     return;
   }
 
@@ -131,14 +127,26 @@ vmx_init_mem (uint32 cpu_id)
                     : /* Nothing */
                     :"c" (cb), "D" (des_page), "S" (src_page)
                     :"memory","flags");
-      //memcpy (des_page, src_page, cb);
-      /* Update global physical memory bitmap */
+      /* 
+       * Update global physical memory bitmap. This is only for the
+       * original kernel. Physical memory subsystem will be configured
+       * later when we switch to the new kernel.
+       */
       BITMAP_CLR (mm_table, i + (SANDBOX_KERN_OFFSET >> 12) * cpu);
+      physical_page_count ++;
       //logger_printf ("Physical Page %d Copied\n", i);
     }
   }
 
-  logger_printf ("Physical Memory Relocated for cpu#%d\n", cpu);
+  logger_printf ("%d Physical Pages Relocated for cpu#%d\n", physical_page_count, cpu);
+
+  /* Fix physical memory bitmap for new kernel. Clear the pages for new kernel image. */
+  new_mm_table = map_virtual_page (((uint32) get_phys_addr (mm_table) + physical_offset) | 3);
+  new_mm_begin = ((uint32)(&_physicalbootstrapstart) + physical_offset) >> 12;
+  for (i = new_mm_begin; i < (new_mm_begin + physical_page_count); i++) {
+    BITMAP_CLR (new_mm_table, i);
+  }
+  unmap_virtual_page (new_mm_table);
 
   /* Change the page table mappings for relocation */
   virt_pgd = map_virtual_page (phys_cr3 | 3);
@@ -229,7 +237,10 @@ vmx_init_mem (uint32 cpu_id)
   phys_cr3 += physical_offset;
   logger_printf ("New phys_cr3=0x%x\n", phys_cr3);
 
-  //spinlock_unlock (&vmx_init_lock);
+  /* 
+   * Before switch to new kernel, unlock the kernel lock in old kernel.
+   * The kernel lock in new kernel will be unlocked in the idle task.
+   */
   unlock_kernel ();
 
   asm volatile ("movl %0, %%cr3"::"r"(phys_cr3):);
@@ -245,15 +256,19 @@ vmx_init_mem (uint32 cpu_id)
   logger_printf ("virt_kern_pgt_new=0x%x\n", virt_kern_pgt_new);
 #endif
 
-  //spinlock_unlock (&vmx_init_lock);
+  /* Modify the physical memory manager for the new kernel. */
+  mm_limit = 256 + ((SANDBOX_KERN_OFFSET * (cpu + 1)) >> 12);
+  mm_begin = 256 + (physical_offset >> 12);
+  logger_printf ("Physical Memory for CPU %d begins at 0x%x, ends at 0x%x\n",
+                 cpu, mm_begin << 12, mm_limit << 12);
 
   asm volatile ("movl %%cr3, %0":"=r" (cr));
   logger_printf ("Set Host and Guest CR3 to: 0x%x\n", cr);
   vmwrite (cr, VMXENC_HOST_CR3);
   vmwrite (cr, VMXENC_GUEST_CR3);
-
-  //while (1);
 }
+
+//#define EPT_DEBUG
 
 void
 vmx_init_ept (uint32 cpu)
@@ -270,6 +285,7 @@ vmx_init_ept (uint32 cpu)
   logger_printf ("pml4_frame=0x%p pdpt_frame=0x%p\n", pml4_frame, pdpt_frame);
   u64 *pml4 = map_virtual_page (pml4_frame | 3);
   u64 *pdpt = map_virtual_page (pdpt_frame | 3);
+  logger_printf ("pml4=0x%p pdpt=0x%p\n", pml4, pdpt);
   u64 *pd;
   u64 *pt;
   memset (pml4, 0, 0x1000);
@@ -288,6 +304,22 @@ vmx_init_ept (uint32 cpu)
   u64 *var_base = map_virtual_page (var_regs_frame | 3);
   u64 *var_mask = &var_base[MAX_MTRR_VAR_REGS];
 
+#if 0
+  /* Verify physical memory bitmap */
+  logger_printf ("mm_table=%x, mm_begin=%d, mm_limit=%d\n", (uint32) mm_table, mm_begin, mm_limit);
+  for (i = mm_begin; i < mm_limit; i++) {
+    if (!BITMAP_TST (mm_table, i)) {
+      logger_printf ("%d", 1);
+    } else {
+      logger_printf ("%d", 0);
+    }
+    if (((i - mm_begin + 1) % 128) == 0) {
+      logger_printf ("\n");
+    }
+  }
+#endif
+
+#ifdef EPT_DEBUG
   u64 msr;
   com1_printf ("IA32_VMX_EPT_VPID_CAP: 0x%.16llX\n",
                msr=rdmsr (IA32_VMX_EPT_VPID_CAP));
@@ -300,13 +332,16 @@ vmx_init_ept (uint32 cpu)
 
   com1_printf ("IA32_MTRRCAP: 0x%llX\n", mtrr_cap);
   com1_printf ("IA32_MTRR_DEF_TYPE: 0x%llX\n", mtrr_def_type);
+#endif
 
   for (i=0; i < num_var_reg; i++) {
     var_base[i] = rdmsr (IA32_MTRR_PHYS_BASE (i));
     var_mask[i] = rdmsr (IA32_MTRR_PHYS_MASK (i));
 
+#ifdef EPT_DEBUG
     com1_printf ("IA32_MTRR_PHYS_BASE(%d)=0x%llX\nIA32_MTRR_PHYS_MASK(%d)=0x%llX\n",
                  i, var_base[i], i, var_mask[i]);
+#endif
   }
 
   u64 mtrr_fix64k = 0;
@@ -334,6 +369,7 @@ vmx_init_ept (uint32 cpu)
     mtrr_fix4kF0 = rdmsr (IA32_MTRR_FIX4K_F0000);
     mtrr_fix4kF8 = rdmsr (IA32_MTRR_FIX4K_F8000);
 
+#ifdef EPT_DEBUG
     com1_printf ("IA32_MTRR_FIX64K_00000=0x%llX\n", mtrr_fix64k);
     com1_printf ("IA32_MTRR_FIX16K_80000=0x%llX\n", mtrr_fix16k8);
     com1_printf ("IA32_MTRR_FIX16K_A0000=0x%llX\n", mtrr_fix16kA);
@@ -345,11 +381,13 @@ vmx_init_ept (uint32 cpu)
     com1_printf ("IA32_MTRR_FIX4K_E8000=0x%llX\n", mtrr_fix4kE8);
     com1_printf ("IA32_MTRR_FIX4K_F0000=0x%llX\n", mtrr_fix4kF0);
     com1_printf ("IA32_MTRR_FIX4K_F8000=0x%llX\n", mtrr_fix4kF8);
+#endif
   }
 
   for (i=0; i<4; i++) {
     pd_frame = alloc_phys_frame ();
     pd = map_virtual_page (pd_frame | 3);
+    logger_printf ("pd_frame=0x%x, pd=0x%x\n", pd_frame, pd);
 
     for (j=0; j<512; j++) {
       if (i < 3) {
