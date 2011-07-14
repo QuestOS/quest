@@ -38,7 +38,7 @@
 
 /* Function should be called one logical processor at a time */
 void
-vmx_init_mem (uint32 phys_id)
+vmx_init_mem (uint32 cpu)
 {
   extern uint32 _physicalbootstrapstart;
   extern uint32 _code16start, _code16_pages, _code16physicalstart;
@@ -52,7 +52,6 @@ vmx_init_mem (uint32 phys_id)
   uint32 *virt_pgd_new, *virt_kern_pgt_new;
 
   uint32 cr = 0;
-  uint32 cpu = get_pcpu_id (); /* FIXME: Delete */
   uint32 physical_offset = SANDBOX_KERN_OFFSET * cpu;
   uint32 physical_page_count = 0;
   uint32 *new_mm_table = 0, new_mm_begin = 0;
