@@ -105,7 +105,7 @@ alloc_idle_TSS (int cpu_num)
   u32 *stk = map_virtual_page (alloc_phys_frame () | 3);
 
 #ifdef USE_VMX
-  pTSS->CR3 = (u32) (get_pdbr () + cpu_num * SANDBOX_KERN_OFFSET);
+  pTSS->CR3 = (u32) (((u32) get_pdbr ()) + cpu_num * SANDBOX_KERN_OFFSET);
 #else
   pTSS->CR3 = (u32) get_pdbr ();
 #endif

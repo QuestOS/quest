@@ -865,7 +865,7 @@ vmx_start_VM (virtual_machine *vm)
 int
 vmx_enter_pmode_VM (virtual_machine *vm)
 {
-  u32 guest_eip = 0, esp, ebp;
+  u32 guest_eip = 0, esp, ebp, cr3;
   u32 hyperstack_frame = alloc_phys_frame ();
   if (hyperstack_frame == (u32) -1) return -1;
   u32 *hyperstack = map_virtual_page (hyperstack_frame | 3);
@@ -880,7 +880,8 @@ vmx_enter_pmode_VM (virtual_machine *vm)
   if (guest_eip == 0) {
     /* inside VM  */
     asm volatile ("movl %%esp, %0; movl %%ebp, %1":"=r" (esp), "=r" (ebp));
-    DLOG ("vmx_enter_pmode_VM: entry success ESP=0x%p EBP=0x%p", esp, ebp);
+    asm volatile ("movl %%cr3, %0":"=r" (cr3));
+    DLOG ("vmx_enter_pmode_VM: entry success ESP=0x%p EBP=0x%p CR3=0x%p", esp, ebp, cr3);
     //dump_page ((u8 *) (esp & (~0xFFF)));
     return 0;
   }

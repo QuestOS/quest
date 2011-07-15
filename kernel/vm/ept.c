@@ -139,13 +139,17 @@ vmx_init_mem (uint32 cpu)
 
   logger_printf ("%d Physical Pages Relocated for cpu#%d\n", physical_page_count, cpu);
 
-  /* Fix physical memory bitmap for new kernel. Clear the pages for new kernel image. */
-  new_mm_table = map_virtual_page (((uint32) get_phys_addr (mm_table) + physical_offset) | 3);
+  /*
+   * Fix physical memory bitmap for new kernel. Clear the pages for new kernel image.
+   * Notice that the physical memory bitmap itself takes up 32 4KB physical pages.
+   */
+  new_mm_table = map_contiguous_virtual_pages (
+          ((uint32) get_phys_addr (mm_table) + physical_offset) | 3, 32);
   new_mm_begin = ((uint32)(&_physicalbootstrapstart) + physical_offset) >> 12;
   for (i = new_mm_begin; i < (new_mm_begin + physical_page_count); i++) {
     BITMAP_CLR (new_mm_table, i);
   }
-  unmap_virtual_page (new_mm_table);
+  unmap_virtual_pages (new_mm_table, 32);
 
   /* Change the page table mappings for relocation */
   virt_pgd = map_virtual_page (phys_cr3 | 3);
