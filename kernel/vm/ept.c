@@ -278,38 +278,52 @@ vmx_init_ept (uint32 cpu)
 {
   logger_printf ("Initializing EPT data structures on CPU#%d...\n", cpu);
 
-  vmwrite ((1 << 1)             /* EPT */
-           , VMXENC_PROCBASED_VM_EXEC_CTRLS2);
   u32 i,j,k;
-  u32 pml4_frame = alloc_phys_frame ();
-  u32 pdpt_frame = alloc_phys_frame ();
+  u32 pml4_frame;
+  u32 pdpt_frame;
   u32 pd_frame;
   u32 pt_frame;
-  logger_printf ("pml4_frame=0x%p pdpt_frame=0x%p\n", pml4_frame, pdpt_frame);
-  u64 *pml4 = map_virtual_page (pml4_frame | 3);
-  u64 *pdpt = map_virtual_page (pdpt_frame | 3);
-  logger_printf ("pml4=0x%p pdpt=0x%p\n", pml4, pdpt);
-  u64 *pd;
-  u64 *pt;
-  memset (pml4, 0, 0x1000);
-  memset (pdpt, 0, 0x1000);
-  pml4[0] = pdpt_frame | 7;
-
-  u8 memtype;
-  u8 def_memtype;
+  u64 *pml4, *pdpt, *pd, *pt;
+  u8 memtype, def_memtype;
   u64 mtrr_cap = rdmsr (IA32_MTRRCAP);
   u64 mtrr_def_type = rdmsr (IA32_MTRR_DEF_TYPE);
-  def_memtype = (u8) mtrr_def_type;
   u8 num_var_reg = (u8) mtrr_cap;
   bool fix_supported = (mtrr_cap >> 8) & 0x01;
-  u32 var_regs_frame = alloc_phys_frame ();
+  u32 var_regs_frame;
+  u64 *var_base, *var_mask;
+
+  def_memtype = (u8) mtrr_def_type;
+
+  vmwrite ((1 << 1)/* EPT */, VMXENC_PROCBASED_VM_EXEC_CTRLS2);
+
+  pml4_frame = alloc_phys_frame ();
+  pdpt_frame = alloc_phys_frame ();
   /* Allocate 4K page for variable range bases and masks */
-  u64 *var_base = map_virtual_page (var_regs_frame | 3);
-  u64 *var_mask = &var_base[MAX_MTRR_VAR_REGS];
+  var_regs_frame = alloc_phys_frame ();
+
+  if ((pml4_frame == -1) | (pdpt_frame == -1) | (var_regs_frame == -1)) {
+    panic ("Out of Physical RAM for EPT Configuration.");
+  }
+
+  logger_printf ("pml4_frame=0x%p pdpt_frame=0x%p\n", pml4_frame, pdpt_frame);
+
+  var_base = map_virtual_page (var_regs_frame | 3);
+  var_mask = &var_base[MAX_MTRR_VAR_REGS];
+
+  pml4 = map_virtual_page (pml4_frame | 3);
+  pdpt = map_virtual_page (pdpt_frame | 3);
+
+  logger_printf ("pml4=0x%p pdpt=0x%p\n", pml4, pdpt);
+
+  memset (pml4, 0, 0x1000);
+  memset (pdpt, 0, 0x1000);
+  /* PDPT references a maximum of 512GB memory. Grant all access. */
+  pml4[0] = pdpt_frame | 7;
 
 #if 0
   /* Verify physical memory bitmap */
-  logger_printf ("mm_table=%x, mm_begin=%d, mm_limit=%d\n", (uint32) mm_table, mm_begin, mm_limit);
+  logger_printf ("mm_table=%x, mm_begin=%d, mm_limit=%d\n",
+                 (uint32) mm_table, mm_begin, mm_limit);
   for (i = mm_begin; i < mm_limit; i++) {
     if (!BITMAP_TST (mm_table, i)) {
       logger_printf ("%d", 1);
@@ -387,9 +401,14 @@ vmx_init_ept (uint32 cpu)
 #endif
   }
 
+  /* Only 4 PDPTEs are needed for 4GB physical memory. */
   for (i=0; i<4; i++) {
     pd_frame = alloc_phys_frame ();
     pd = map_virtual_page (pd_frame | 3);
+
+    if (pd_frame == -1) {
+        panic ("Out of Physical RAM for EPT Configuration.");
+    }
     logger_printf ("pd_frame=0x%x, pd=0x%x\n", pd_frame, pd);
 
     for (j=0; j<512; j++) {
@@ -406,6 +425,10 @@ vmx_init_ept (uint32 cpu)
       if (i == 0 && j == 0) {
         pt_frame = alloc_phys_frame ();
         pt = map_virtual_page (pt_frame | 3);
+
+        if (pd_frame == -1) {
+            panic ("Out of Physical RAM for EPT Configuration.");
+        }
 
         for (k = 0; k < 512; k++) {
           if (k < 160) {
