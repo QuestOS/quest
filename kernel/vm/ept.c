@@ -111,8 +111,12 @@ vmx_init_mem (uint32 cpu)
   logger_printf ("Duplicating kernel from: 0x%x\n", &_physicalbootstrapstart);
   void *src_page, *des_page;
   uint32 cb = PHYS_PAGE_SIZE;
+  /*
+   * The EPT data structures are not copied because they are private to each
+   * sandbox kernel. And vmx_init_ept will do that later for each sandbox.
+   */
   for (i = (((uint32)(&_physicalbootstrapstart)) >> 12); i < (SANDBOX_KERN_OFFSET >> 12) +
-       (((uint32)(&_physicalbootstrapstart)) >> 12); i++) {
+       (((uint32)(&_physicalbootstrapstart)) >> 12) - (EPT_DATA_SIZE >> 12); i++) {
     if (!BITMAP_TST (mm_table, i)) {
       if (!BITMAP_TST (mm_table, i + (SANDBOX_KERN_OFFSET >> 12) * cpu)) {
         logger_printf ("Wiping out memory! CPU#%d\n", get_pcpu_id ());
@@ -273,16 +277,22 @@ vmx_init_mem (uint32 cpu)
 
 //#define EPT_DEBUG
 
+/*
+ * vmx_init_ept should be called after the current sandbox kernel
+ * switched to the new physical kernel image, namely, after calling
+ * vmx_init_mem.
+ */
 void
 vmx_init_ept (uint32 cpu)
 {
   logger_printf ("Initializing EPT data structures on CPU#%d...\n", cpu);
 
-  u32 i,j,k;
+  u32 i,j,k, index;
   u32 pml4_frame;
   u32 pdpt_frame;
   u32 pd_frame;
   u32 pt_frame;
+  u32 kernel_phys_start, kernel_phys_end;
   u64 *pml4, *pdpt, *pd, *pt;
   u8 memtype, def_memtype;
   u64 mtrr_cap = rdmsr (IA32_MTRRCAP);
@@ -296,8 +306,8 @@ vmx_init_ept (uint32 cpu)
 
   vmwrite ((1 << 1)/* EPT */, VMXENC_PROCBASED_VM_EXEC_CTRLS2);
 
-  pml4_frame = alloc_phys_frame ();
-  pdpt_frame = alloc_phys_frame ();
+  pml4_frame = alloc_phys_frame_high ();
+  pdpt_frame = alloc_phys_frame_high ();
   /* Allocate 4K page for variable range bases and masks */
   var_regs_frame = alloc_phys_frame ();
 
@@ -402,16 +412,23 @@ vmx_init_ept (uint32 cpu)
   }
 
   /* Only 4 PDPTEs are needed for 4GB physical memory. */
-  for (i=0; i<4; i++) {
-    pd_frame = alloc_phys_frame ();
+  for (i = 0; i < 4; i++) {
+    pd_frame = alloc_phys_frame_high ();
     pd = map_virtual_page (pd_frame | 3);
 
     if (pd_frame == -1) {
-        panic ("Out of Physical RAM for EPT Configuration.");
+      panic ("Out of Physical RAM for EPT Configuration.");
     }
     logger_printf ("pd_frame=0x%x, pd=0x%x\n", pd_frame, pd);
 
-    for (j=0; j<512; j++) {
+    memset (pd, 0, 0x1000);
+
+    /* --!!-- NOTICE
+     * The memory types are supposed to be set based on the
+     * registers we read above. For now, let's just set them
+     * manually.
+     */
+    for (j = 0; j < 512; j++) {
       if (i < 3) {
         memtype = 6;
       } else {
@@ -420,17 +437,24 @@ vmx_init_ept (uint32 cpu)
         else
           memtype = 0;
       }
-      
-      /* First 1MB should be treated specially */
+
+      pt_frame = alloc_phys_frame_high ();
+      pt = map_virtual_page (pt_frame | 3);
+
+      if (pt_frame == -1) {
+        panic ("Out of Physical RAM for EPT Configuration.");
+      }
+
+      memset (pt, 0, 0x1000);
+
+      /* First 2MB should be treated specially */
       if (i == 0 && j == 0) {
-        pt_frame = alloc_phys_frame ();
-        pt = map_virtual_page (pt_frame | 3);
-
-        if (pd_frame == -1) {
-            panic ("Out of Physical RAM for EPT Configuration.");
-        }
-
         for (k = 0; k < 512; k++) {
+          /* --!!-- NOTICE
+           * The memory types are supposed to be set based on the
+           * registers we read above. For now, let's just set them
+           * manually.
+           */
           if (k < 160) {
             memtype = 6;
           } else if (k >= 192 && k < 204) {
@@ -443,14 +467,51 @@ vmx_init_ept (uint32 cpu)
             memtype = 0;
           }
 
-          pt[k] = (k << 12) | (memtype << 3) | 7;
+          index = k * 0x1000;
+          kernel_phys_start = 0x100000 + SANDBOX_KERN_OFFSET * cpu;
+          /* EPT data structure is not mapped for any sandbox kernel */
+          kernel_phys_end = 0x100000 + SANDBOX_KERN_OFFSET * (cpu + 1) - EPT_DATA_SIZE;
+
+          if (k < 256) {
+            /* 1MB shared mapping for BIOS */
+            pt[k] = (k << 12) | (memtype << 3) | 7;
+          } else if ((index >= kernel_phys_start) && (index < kernel_phys_end)) {
+            /* Second mega byte only mapped for Bootstrap Processor */
+            pt[k] = (k << 12) | (memtype << 3) | 7;
+          }
         }
 
-        unmap_virtual_page (pt);
+        pd[j] = pt_frame | (0 << 7) | 7;
+      } else if (i < 2) {
+        /* --!!-- NOTICE
+         * The assumption here is: all the kernel images in total will not
+         * exceed 2GB boundary. If this is not true, we need to change the
+         * code a little bit here.
+         */
+        for (k = 0; k < 512; k++) {
+          index = i * 0x40000000 + j * 0x200000 + k * 0x1000;
+          kernel_phys_start = 0x100000 + SANDBOX_KERN_OFFSET * cpu;
+          /* EPT data structure is not mapped for any sandbox kernel */
+          kernel_phys_end = 0x100000 + SANDBOX_KERN_OFFSET * (cpu + 1) - EPT_DATA_SIZE;
+          if ((index >= kernel_phys_start) && (index < kernel_phys_end)) {
+            pt[k] = ((i << 30) + (j << 21) + (k << 12)) | (memtype << 3) | 7;
+          }
+        }
+
         pd[j] = pt_frame | (0 << 7) | 7;
       } else {
-        pd[j] = ((i << 30) + (j << 21)) | (1 << 7) | (memtype << 3) | 7;
+        /*
+         * Physical memory from 2G to 4G is shared for now.
+         * We will work on this area for user space later.
+         */
+        for (k = 0; k < 512; k++) {
+          pt[k] = ((i << 30) + (j << 21) + (k << 12)) | (memtype << 3) | 7;
+        }
+        pd[j] = pt_frame | (0 << 7) | 7;
+        //pd[j] = ((i << 30) + (j << 21)) | (1 << 7) | (memtype << 3) | 7;
       }
+
+      unmap_virtual_page (pt);
     }
     logger_printf ("pd[0]=0x%llX\n", pd[0]);
     unmap_virtual_page (pd);
@@ -466,5 +527,7 @@ vmx_init_ept (uint32 cpu)
   unmap_virtual_page (var_base);
   unmap_virtual_page (pml4);
   unmap_virtual_page (pdpt);
+  free_phys_frame (var_regs_frame);
 }
 
+/* vi: set et sw=2 sts=2: */

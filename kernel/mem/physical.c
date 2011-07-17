@@ -46,6 +46,25 @@ alloc_phys_frame (void)
   return -1;                    /* Error -- no free page? */
 }
 
+/*
+ * Allocate free physical page from high address.
+ */
+uint32
+alloc_phys_frame_high (void)
+{
+
+  int i;
+
+  for (i = mm_limit - 1; i >= mm_begin; i--) {
+    if (BITMAP_TST (mm_table, i)) {
+      BITMAP_CLR (mm_table, i);
+      return (i << 12);
+    }
+  }
+
+  return -1;
+}
+
 uint32
 alloc_phys_frames (uint32 count)
 {

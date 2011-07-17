@@ -22,8 +22,11 @@
 
 #define PHYS_PAGE_SIZE       4096
 #define APIC_VIRT_ADDR       0xFEC00000
+/* Physical memory offset between each sandbox kernel */
 #define SANDBOX_KERN_OFFSET  0x08000000
 #define SCREEN_PHYS          0x000B8000
+/* Size of EPT paging structure, 10MB for each kernel. */
+#define EPT_DATA_SIZE        0x00A00000
 
 extern void vmx_init_mem (uint32);
 extern void vmx_init_ept (uint32);
