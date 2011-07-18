@@ -17,6 +17,7 @@
 
 #include "vm/vmx.h"
 #include "vm/ept.h"
+#include "vm/shm.h"
 #include "vm/vm86.h"
 #include "kernel.h"
 #include "mem/physical.h"
@@ -75,7 +76,28 @@ vmx_init_mem (uint32 cpu)
 
   /* Do not relocate memory for first logical processor */
   if (cpu == 0) {
+    /* Initialize shared memory so that we can use the global lock */
+    shm_init (cpu);
     logger_printf ("Logical Processor %d, skip relocation.\n", cpu);
+
+#if 0
+    int c;
+    uint32 spage = shm_alloc_phys_frame ();
+    logger_printf ("Got shared page: 0x%x\n", spage);
+    uint32 *message = map_virtual_page (spage | 3);
+    char *s = "This is message from BSP!";
+    for (c = 0;;c++) {
+      if (s[c] == '\0') {
+        *(((char*)message) + c) = s[c];
+        break;
+      } else {
+        *(((char*)message) + c) = s[c];
+      }
+    }
+    logger_printf ("Message sent to other sandboxes! Content is: %s\n", message);
+    unmap_virtual_page (message);
+#endif
+
     return;
   }
 
@@ -261,6 +283,16 @@ vmx_init_mem (uint32 cpu)
   logger_printf ("virt_pgd_new=0x%x\n", virt_pgd_new);
   logger_printf ("virt_kern_pgt=0x%x\n", virt_kern_pgt);
   logger_printf ("virt_kern_pgt_new=0x%x\n", virt_kern_pgt_new);
+#endif
+
+  /* Initialize shared memory so that we can use the global lock */
+  shm_init (cpu);
+
+#if 0
+  char *m =
+    map_virtual_page ((PHYS_SHARED_MEM_HIGH - SHARED_MEM_SIZE) | 3);
+  logger_printf ("CPU %d Get message: %s\n", cpu, m);
+  unmap_virtual_page (m);
 #endif
 
   /* Modify the physical memory manager for the new kernel. */

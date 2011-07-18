@@ -19,10 +19,43 @@
 #define _SHM_H_
 
 #include <types.h>
+#include <kernel.h>
 
 #define PHYS_SHARED_MEM_HIGH    0xC0000000
+#define SHARED_MEM_SIZE         0x00400000
+/* SHARED_MEM_INDEX_MAX 32-bit integers bitmap for SHARED_MEM_SIZE of memory */
+#define SHARED_MEM_INDEX_MAX    (SHARED_MEM_SIZE >> 17)
+/* Last page in shared memory area reserved for meta info and locks, etc */
+#define SHARED_MEM_INFO_PAGE    (PHYS_SHARED_MEM_HIGH - 0x1000)
 
-extern void shm_init (void);
+typedef struct _shm_info {
+  uint32 magic;
+  spinlock shm_lock;
+  spinlock global_lock;
+  uint32 shm_table[SHARED_MEM_INDEX_MAX];
+  uint32 num_sandbox;
+} shm_info;
+
+/*
+ * Bitmap operations for physical shared memory bitmap.
+ */
+#define SHM_BITMAP_SET(table,index)                                                 \
+    ((table)[((index) - ((PHYS_SHARED_MEM_HIGH - SHARED_MEM_SIZE) >> 12))>>5] |=    \
+    (1 << (((index) - ((PHYS_SHARED_MEM_HIGH - SHARED_MEM_SIZE) >> 12)) & 31)))
+
+#define SHM_BITMAP_CLR(table,index)                                                 \
+    ((table)[((index) - ((PHYS_SHARED_MEM_HIGH - SHARED_MEM_SIZE) >> 12))>>5] &=    \
+    ~(1 << (((index) - ((PHYS_SHARED_MEM_HIGH - SHARED_MEM_SIZE) >> 12)) & 31)))
+
+#define SHM_BITMAP_TST(table,index)                                                 \
+    ((table)[((index) - ((PHYS_SHARED_MEM_HIGH - SHARED_MEM_SIZE) >> 12))>>5] &     \
+    (1 << (((index) - ((PHYS_SHARED_MEM_HIGH - SHARED_MEM_SIZE) >> 12)) & 31)))
+
+extern shm_info *shm;
+extern bool shm_initialized;
+extern void shm_init (uint32);
+extern uint32 shm_alloc_phys_frame (void);
+extern void shm_free_phys_frame (uint32);
 
 #endif
 
