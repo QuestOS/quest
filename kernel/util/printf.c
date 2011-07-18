@@ -24,6 +24,10 @@
 #include "lwip/udp.h"
 #include "util/debug.h"
 
+#ifdef USE_VMX
+#include "vm/shm.h"
+#endif
+
 static uint32 base10_u32_divisors[10] = {
   1000000000, 100000000, 10000000, 1000000, 100000, 10000, 1000, 100, 10, 1
 };
@@ -228,7 +232,15 @@ putc_fun (void *f, char c)
 void
 fun_vprintf (void putc (char), const char *fmt, va_list args)
 {
+#ifdef USE_VMX
+  if (shm_initialized) spinlock_lock (&(shm->global_lock));
+#endif
+
   closure_vprintf (putc_fun, (void *) putc, fmt, args);
+
+#ifdef USE_VMX
+  if (shm_initialized) spinlock_unlock (&(shm->global_lock));
+#endif
 }
 
 void
