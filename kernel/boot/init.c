@@ -565,6 +565,10 @@ init (multiboot * pmb)
   /* Load all modules, chasing dependencies */
   { extern bool module_load_all (void); module_load_all (); }
 
+#ifdef USE_VMX
+  unlock_kernel ();
+#endif
+
   /* count free pages for informational purposes */
   u32 *page_table = (u32 *) KERN_PGT;
   u32 free_pages = 0;
@@ -576,10 +580,6 @@ init (multiboot * pmb)
 
   /* Start the schedulers */
   smp_enable_scheduling ();
-
-#ifdef USE_VMX
-  unlock_kernel ();
-#endif
 
 #ifdef ENABLE_GDBSTUB
   {
