@@ -32,6 +32,7 @@
 
 static USB_DEVICE_INFO pl2303_dev;
 static uint8_t in_ept = 0, out_ept = 0;
+bool pl2303_initialized = FALSE;
 
 int usb_pl2303_write (unsigned char *, uint32_t);
 void usb_pl2303_putc (char);
@@ -189,7 +190,7 @@ static void
 test ()
 {
   DLOG ("PL2303 Test\n");
-#if 1
+#if 0
   char c = 0;
   while (c != 0xD) {
     c = usb_pl2303_getc ();
@@ -202,6 +203,7 @@ test ()
   usb_pl2303_putc ('e');
   usb_pl2303_putc ('s');
   usb_pl2303_putc ('t');
+  usb_pl2303_putc ('\n');
 #endif
 }
 
@@ -229,6 +231,8 @@ pl2303_probe (USB_DEVICE_INFO *dev, USB_CFG_DESC *cfg, USB_IF_DESC *ifd)
 
   test();
 
+  pl2303_initialized = TRUE;
+
   return TRUE;
 }
 
@@ -240,10 +244,9 @@ usb_pl2303_putc (char c)
 
   buf[0] = c;
 
-  if ((count = usb_pl2303_write (buf, 1)) != 1)
-    DLOG ("usb_pl2303_putc failed, %d bytes sent", count);
-  else
-    DLOG ("usb_pl2303_putc done, %d bytes sent", count);
+  if ((count = usb_pl2303_write (buf, 1)) != 1) {
+    _print ("PL2302 write failed\n");
+  }
 }
 
 int
@@ -253,8 +256,9 @@ usb_pl2303_write (unsigned char * buf, uint32_t len)
   int status = 0;
 
   if ((status = usb_bulk_transfer (&pl2303_dev, out_ept, (addr_t) buf,
-        len, 64, DIR_OUT, &act_len)))
-    DLOG ("Bulk write failed. Error Code: 0x%X", status);
+        len, 64, DIR_OUT, &act_len))) {
+    _print ("PL2302 bulk write failed\n");
+  }
   
   return act_len;
 }
@@ -266,7 +270,7 @@ usb_pl2303_getc (void)
   int act_len = 0;
 
   if ((act_len = usb_pl2303_read (buf, 1)) != 1) {
-    DLOG ("usb_ftdi_read () failed. %d bytes returned.", act_len);
+    _print ("PL2302 read failed\n");
     return '\0';
   }
 
@@ -280,8 +284,9 @@ usb_pl2303_read (unsigned char * buf, uint32_t len)
   int status = 0;
 
   if ((status = usb_bulk_transfer (&pl2303_dev, in_ept, (addr_t) buf,
-        len, 64, DIR_IN, &act_len)))
-    DLOG ("Bulk read failed. Error Code: 0x%X", status);
+        len, 64, DIR_IN, &act_len))) {
+    _print ("PL2302 bulk read failed\n");
+  }
 
   return act_len;
 }
