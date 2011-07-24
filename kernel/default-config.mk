@@ -17,3 +17,6 @@ OPT = 0
 
 # Use VMX-based virtual machines for isolation
 # CFG += -DUSE_VMX
+
+# Use PL2303 usb-serial converter for serial output
+#CFG += -DUSE_PL2303
