@@ -76,7 +76,6 @@ static task_id uhci_waitq = 0;  /* Tasks waiting for IRQ */
 #define DEPTH_FIRST 4
 #define LINK_MASK (~0xFL)
 
-
 /*
  * This is non-reentrant! Fortunately, we do not have concurrency yet:-)
  * This function returns the available Queue Head or Transfer Descriptor.
@@ -319,6 +318,19 @@ fixup_tds (u32 *p_tdp)
 {
   while (!(*p_tdp & TERMINATE) && *p_tdp) {
     UHCI_TD *t = TD_P2V (UHCI_TD *, (*p_tdp) & LINK_MASK);
+
+    /* Unfortunately, this is another workaround of the "workaround"
+     * above. It seems that the UHCI HC behaves differently on different
+     * machines. In some cases, the fixup_tds is not needed at all. And
+     * to make it worse, the pointer can be filled in with some weird
+     * data that causes page fault. So, here is the ugly code that makes
+     * sure the TD is actually a valid TD.
+     */
+    if (((uint32)t < (uint32)(&td[0])) ||
+        ((uint32)t > (uint32)(&td[TD_POOL_SIZE - 1]))) {
+      break;
+    }
+
     if (t->status == 0)
       *p_tdp = t->link_ptr & (~DEPTH_FIRST);
     else
@@ -380,7 +392,7 @@ check_tds (UHCI_QH *tx_qh, UHCI_TD *tx_tds, uint32 *act_len)
     fixup_tds (&tx_qh->qe_ptr);
 
     /* wait for IRQ if interrupts enabled */
-    if (mp_enabled) {
+    if (0/*mp_enabled*/) {
       DLOGV ("wait %d", status_count);
       queue_append (&uhci_waitq, str ());
       schedule ();
