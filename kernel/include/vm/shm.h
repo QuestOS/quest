@@ -21,6 +21,11 @@
 #include <types.h>
 #include <kernel.h>
 
+/* The number of allocatable locks for shared drivers */
+/* The number is counted in groups of 32 locks */
+#define DRV_LOCK_INDEX          0x1
+/* DRV_LOCK_INDEX * 32 is the actual # of locks */
+#define NUM_DRV_LOCKS           (DRV_LOCK_INDEX << 5)
 #define PHYS_SHARED_MEM_HIGH    0xC0000000
 #define SHARED_MEM_SIZE         0x00400000
 /* SHARED_MEM_INDEX_MAX 32-bit integers bitmap for SHARED_MEM_SIZE of memory */
@@ -33,6 +38,8 @@ typedef struct _shm_info {
   spinlock shm_lock;
   spinlock logger_lock;
   spinlock global_lock;
+  spinlock driver_lock[NUM_DRV_LOCKS];
+  uint32 driver_lock_table[DRV_LOCK_INDEX];
   uint32 shm_table[SHARED_MEM_INDEX_MAX];
   uint32 num_sandbox;
 } shm_info;
@@ -57,6 +64,8 @@ extern bool shm_initialized;
 extern void shm_init (uint32);
 extern uint32 shm_alloc_phys_frame (void);
 extern void shm_free_phys_frame (uint32);
+extern spinlock * shm_alloc_drv_lock (void);
+extern void shm_free_drv_lock (spinlock *);
 
 #endif
 

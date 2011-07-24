@@ -69,6 +69,12 @@ shm_init (uint32 cpu)
     spinlock_init (&(shm->shm_lock));
     spinlock_init (&(shm->logger_lock));
     spinlock_init (&(shm->global_lock));
+
+    for (i = 0; i < NUM_DRV_LOCKS; i++) {
+      spinlock_init (&(shm->driver_lock[i]));
+      BITMAP_SET (shm->driver_lock_table, i);
+    }
+
     /* Mark all the pages in shared area as available */
     for (i = shm_begin; i < shm_limit; i++) {
       SHM_BITMAP_SET (shm->shm_table, i);
@@ -91,6 +97,52 @@ shm_init (uint32 cpu)
   shm->num_sandbox++;
 }
 
+spinlock*
+shm_alloc_drv_lock (void)
+{
+  int i;
+
+  if (!shm_initialized) {
+    logger_printf ("shm_alloc_drv_lock: Shared memory is not initialized!\n");
+    return NULL;
+  } else {
+    spinlock_lock (&(shm->shm_lock));
+    for (i = 0; i < NUM_DRV_LOCKS; i++) {
+      if (BITMAP_TST (shm->driver_lock_table, i)) {
+        BITMAP_CLR (shm->driver_lock_table, i);
+        spinlock_unlock (&(shm->shm_lock));
+        return &(shm->driver_lock[i]);
+      }
+    }
+    spinlock_unlock (&(shm->shm_lock));
+  }
+
+  return NULL;
+}
+
+void
+shm_free_drv_lock (spinlock* lock)
+{
+  int i;
+
+  if (!shm_initialized) {
+    logger_printf ("shm_free_drv_lock: Shared memory is not initialized!\n");
+    return;
+  } else {
+    spinlock_lock (&(shm->shm_lock));
+    for (i = 0; i < NUM_DRV_LOCKS; i++) {
+      /* Compare the virtual address should be enough here */
+      if ((uint32)lock == (uint32)(&(shm->driver_lock[i]))) {
+        BITMAP_SET (shm->driver_lock_table, i);
+        spinlock_unlock (&(shm->shm_lock));
+        return;
+      }
+    }
+    spinlock_unlock (&(shm->shm_lock));
+    logger_printf ("shm_free_drv_lock: Lock not found!\n");
+  }
+}
+
 uint32
 shm_alloc_phys_frame (void)
 {
@@ -104,6 +156,7 @@ shm_alloc_phys_frame (void)
     for (i = shm_begin; i < shm_limit; i++)
       if (SHM_BITMAP_TST (shm->shm_table, i)) {
         SHM_BITMAP_CLR (shm->shm_table, i);
+        spinlock_unlock (&(shm->shm_lock));
         return (i << 12);
       }
     spinlock_unlock (&(shm->shm_lock));

@@ -626,7 +626,41 @@ vmx_start_VM (virtual_machine *vm)
   vmwrite (vmread (VMXENC_GUEST_CS_ACCESS) | 0x1, VMXENC_GUEST_CS_ACCESS);
 
   u32 cpu = get_pcpu_id ();
+
+  /* 
+   * vmx_init_mem will essentially do a VM fork. After this point
+   * we will be in a new sandbox kernel and with shared memory enabled.
+   */
   vmx_init_mem (cpu);
+
+#if 0
+#include "vm/shm.h"
+  /* Shared memory test */
+  uint32 frame1, frame2;
+  uint32 *vframe1, *vframe2;
+  spinlock *test_lock1, *test_lock2;
+  test_lock1 = shm_alloc_drv_lock ();
+  test_lock2 = shm_alloc_drv_lock ();
+  spinlock_lock (test_lock1);
+  spinlock_lock (test_lock2);
+  spinlock_unlock (test_lock1);
+  spinlock_unlock (test_lock2);
+  shm_free_drv_lock (test_lock1);
+  shm_free_drv_lock (test_lock2);
+
+  frame1 = shm_alloc_phys_frame ();
+  vframe1 = map_virtual_page (frame1 | 3);
+  frame2 = shm_alloc_phys_frame ();
+  vframe2 = map_virtual_page (frame2 | 3);
+  *vframe1 = 0xFFFFFFFF;
+  *vframe2 = 0xDEADBEEF;
+  logger_printf ("(0x%x, 0x%x)\n", *vframe1, *vframe2);
+  unmap_virtual_page (vframe1);
+  unmap_virtual_page (vframe2);
+  shm_free_phys_frame (frame1);
+  shm_free_phys_frame (frame2);
+#endif
+
 #ifdef VMX_EPT
   vmx_init_ept (cpu);
 #endif
