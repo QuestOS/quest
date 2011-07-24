@@ -67,6 +67,7 @@ shm_init (uint32 cpu)
   if (cpu == 0) {
     /* Initialize the shared global spin locks */
     spinlock_init (&(shm->shm_lock));
+    spinlock_init (&(shm->logger_lock));
     spinlock_init (&(shm->global_lock));
     /* Mark all the pages in shared area as available */
     for (i = shm_begin; i < shm_limit; i++) {

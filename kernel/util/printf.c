@@ -233,13 +233,13 @@ void
 fun_vprintf (void putc (char), const char *fmt, va_list args)
 {
 #ifdef USE_VMX
-  if (shm_initialized) spinlock_lock (&(shm->global_lock));
+  if (shm_initialized) spinlock_lock (&(shm->logger_lock));
 #endif
 
   closure_vprintf (putc_fun, (void *) putc, fmt, args);
 
 #ifdef USE_VMX
-  if (shm_initialized) spinlock_unlock (&(shm->global_lock));
+  if (shm_initialized) spinlock_unlock (&(shm->logger_lock));
 #endif
 }
 

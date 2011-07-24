@@ -31,6 +31,7 @@
 typedef struct _shm_info {
   uint32 magic;
   spinlock shm_lock;
+  spinlock logger_lock;
   spinlock global_lock;
   uint32 shm_table[SHARED_MEM_INDEX_MAX];
   uint32 num_sandbox;
