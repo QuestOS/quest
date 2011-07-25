@@ -47,6 +47,9 @@ SECTIONS {
   .moduleptrs : AT ( ( LOADADDR (.ctors) + SIZEOF (.ctors) + 3 ) & 0xFFFFFFFC )
                    { *(.module.ptrs); LONG(0) } : virtualtext
 
+  . = ALIGN(0x1000);
+   _kernel_readwrite = .;
+
   /* Place shared drivers data in separate pages for Quest virtual
    * extension. We also have to exclude them in the kernel readwrite
    * sections above. */
@@ -59,8 +62,6 @@ SECTIONS {
   _shared_driver_data_end = ALIGN(0x1000);
   _shared_driver_data_pages = (_shared_driver_data_end - _shared_driver_data) / 0x1000;
 
-  . = ALIGN(0x1000);
-   _kernel_readwrite = .;
   .data : AT ( ( LOADADDR(.sddata) + SIZEOF(.sddata) + 0xFFF ) & 0xFFFFF000 )
              { *( EXCLUDE_FILE (drivers/usb/uhci_hcd.o) .data) } : virtualdata
 

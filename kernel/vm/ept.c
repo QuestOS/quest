@@ -319,6 +319,11 @@ vmx_init_ept (uint32 cpu)
 {
   logger_printf ("Initializing EPT data structures on CPU#%d...\n", cpu);
 
+  extern uint32 _shared_driver_data_physical, _shared_driver_data_pages;
+  extern uint32 _shared_driver_bss_physical, _shared_driver_bss_pages;
+  extern uint32 _physicalbootstrapstart, _physicalkernelstart;
+  extern uint32 _readonly_pages, _bootstrap_pages;
+
   u32 i,j,k, index;
   u32 pml4_frame;
   u32 pdpt_frame;
@@ -500,20 +505,22 @@ vmx_init_ept (uint32 cpu)
           }
 
           index = k * 0x1000;
-          kernel_phys_start = 0x100000 + SANDBOX_KERN_OFFSET * cpu;
+          kernel_phys_start = (uint32) &_physicalbootstrapstart +
+                              SANDBOX_KERN_OFFSET * cpu;
           /* EPT data structure is not mapped for any sandbox kernel */
-          kernel_phys_end = 0x100000 + SANDBOX_KERN_OFFSET * (cpu + 1) - EPT_DATA_SIZE;
+          kernel_phys_end = (uint32) &_physicalbootstrapstart +
+                            SANDBOX_KERN_OFFSET * (cpu + 1) - EPT_DATA_SIZE;
 
           if (k < 256) {
             /* 1MB shared mapping for BIOS */
-            pt[k] = (k << 12) | (memtype << 3) | 7;
+            pt[k] = (k << 12) | (memtype << 3) | EPT_ALL_ACCESS;
           } else if ((index >= kernel_phys_start) && (index < kernel_phys_end)) {
             /* Second mega byte only mapped for Bootstrap Processor */
-            pt[k] = (k << 12) | (memtype << 3) | 7;
+            pt[k] = (k << 12) | (memtype << 3) | EPT_ALL_ACCESS;
           }
         }
 
-        pd[j] = pt_frame | (0 << 7) | 7;
+        pd[j] = pt_frame | (0 << 7) | EPT_ALL_ACCESS;
       } else if (i < 2) {
         /* --!!-- NOTICE
          * The assumption here is: all the kernel images in total will not
@@ -522,32 +529,34 @@ vmx_init_ept (uint32 cpu)
          */
         for (k = 0; k < 512; k++) {
           index = i * 0x40000000 + j * 0x200000 + k * 0x1000;
-          kernel_phys_start = 0x100000 + SANDBOX_KERN_OFFSET * cpu;
+          kernel_phys_start = (uint32) &_physicalbootstrapstart +
+                              SANDBOX_KERN_OFFSET * cpu;
           /* EPT data structure is not mapped for any sandbox kernel */
-          kernel_phys_end = 0x100000 + SANDBOX_KERN_OFFSET * (cpu + 1) - EPT_DATA_SIZE;
+          kernel_phys_end = (uint32) &_physicalbootstrapstart +
+                            SANDBOX_KERN_OFFSET * (cpu + 1) - EPT_DATA_SIZE;
           if ((index >= kernel_phys_start) && (index < kernel_phys_end)) {
-            pt[k] = ((i << 30) + (j << 21) + (k << 12)) | (memtype << 3) | 7;
+            pt[k] = ((i << 30) + (j << 21) + (k << 12)) | (memtype << 3) | EPT_ALL_ACCESS;
           }
         }
 
-        pd[j] = pt_frame | (0 << 7) | 7;
+        pd[j] = pt_frame | (0 << 7) | EPT_ALL_ACCESS;
       } else {
         /*
          * Physical memory from 2G to 4G is shared for now.
          * We will work on this area for user space later.
          */
         for (k = 0; k < 512; k++) {
-          pt[k] = ((i << 30) + (j << 21) + (k << 12)) | (memtype << 3) | 7;
+          pt[k] = ((i << 30) + (j << 21) + (k << 12)) | (memtype << 3) | EPT_ALL_ACCESS;
         }
-        pd[j] = pt_frame | (0 << 7) | 7;
-        //pd[j] = ((i << 30) + (j << 21)) | (1 << 7) | (memtype << 3) | 7;
+        pd[j] = pt_frame | (0 << 7) | EPT_ALL_ACCESS;
+        //pd[j] = ((i << 30) + (j << 21)) | (1 << 7) | (memtype << 3) | EPT_ALL_ACCESS;
       }
 
       unmap_virtual_page (pt);
     }
     logger_printf ("pd[0]=0x%llX\n", pd[0]);
     unmap_virtual_page (pd);
-    pdpt[i] = pd_frame | (0 << 7) | 7;
+    pdpt[i] = pd_frame | (0 << 7) | EPT_ALL_ACCESS;
     logger_printf ("pdpt[%d]=0x%llX\n", i, pdpt[i]);
   }
 

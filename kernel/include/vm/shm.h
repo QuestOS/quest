@@ -32,6 +32,7 @@
 #define SHARED_MEM_INDEX_MAX    (SHARED_MEM_SIZE >> 17)
 /* Last page in shared memory area reserved for meta info and locks, etc */
 #define SHARED_MEM_INFO_PAGE    (PHYS_SHARED_MEM_HIGH - 0x1000)
+#define SHM_MAGIC               0xCAFEBABE
 
 typedef struct _shm_info {
   uint32 magic;

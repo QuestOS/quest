@@ -82,13 +82,13 @@ shm_init (uint32 cpu)
     /* Mark the info page as occupied */
     SHM_BITMAP_CLR (shm->shm_table, SHARED_MEM_INFO_PAGE >> 12);
     /* Set the magic to notify others that this area is initialized */
-    shm->magic = 0xCAFEBABE;
+    shm->magic = SHM_MAGIC;
     shm->num_sandbox = 0;
     logger_printf ("Shared memory system initialized:\n");
     logger_printf ("  Total Allocatable Pages = %d\n", (SHARED_MEM_SIZE >> 12) - 1);
   }
 
-  if (shm->magic != 0xCAFEBABE) {
+  if (shm->magic != SHM_MAGIC) {
     logger_printf ("shm_info structure is not initialized.\n");
     return;
   }

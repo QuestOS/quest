@@ -39,8 +39,6 @@ void usb_pl2303_putc (char);
 int usb_pl2303_read (unsigned char *, uint32_t);
 char usb_pl2303_getc (void);
 
-static spinlock pl2303_lock ALIGNED(LOCK_ALIGNMENT) = SPINLOCK_INIT;
-
 /* Flow control setting */
 static int
 pl2303_set_control (USB_DEVICE_INFO * dev, uint8_t on)
@@ -247,13 +245,9 @@ usb_pl2303_putc (char c)
 
   buf[0] = c;
 
-  spinlock_lock (&pl2303_lock);
-
   if ((count = usb_pl2303_write (buf, 1)) != 1) {
     _print ("PL2302 write failed\n");
   }
-
-  spinlock_unlock (&pl2303_lock);
 }
 
 int
@@ -276,14 +270,10 @@ usb_pl2303_getc (void)
   unsigned char buf[3];
   int act_len = 0;
 
-  spinlock_lock (&pl2303_lock);
-
   if ((act_len = usb_pl2303_read (buf, 1)) != 1) {
     _print ("PL2302 read failed\n");
     return '\0';
   }
-
-  spinlock_unlock (&pl2303_lock);
 
   return buf[0];
 }

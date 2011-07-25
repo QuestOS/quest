@@ -28,6 +28,11 @@
 /* Size of EPT paging structure, 10MB for each kernel. */
 #define EPT_DATA_SIZE        0x00A00000
 
+#define EPT_READ_ACCESS      0x1
+#define EPT_WRITE_ACCESS     0x2
+#define EPT_EXEC_ACCESS      0x4
+#define EPT_ALL_ACCESS       0x7
+
 extern void vmx_init_mem (uint32);
 extern void vmx_init_ept (uint32);
 
