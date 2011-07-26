@@ -45,6 +45,8 @@
 #define IA32_VMX_TRUE_EXIT_CTLS      0x048F
 #define IA32_VMX_TRUE_ENTRY_CTLS     0x0490
 
+extern bool shared_driver_available;
+
 typedef struct
 {
   /* Order based on PUSHA/POPA */

@@ -285,6 +285,9 @@ vmx_init_mem (uint32 cpu)
   logger_printf ("virt_kern_pgt_new=0x%x\n", virt_kern_pgt_new);
 #endif
 
+  /* Disable shared driver before entering sandbox */
+  shared_driver_available = FALSE;
+
   /* Initialize shared memory so that we can use the global lock */
   shm_init (cpu);
 
@@ -322,7 +325,7 @@ vmx_init_ept (uint32 cpu)
   extern uint32 _shared_driver_data_physical, _shared_driver_data_pages;
   extern uint32 _shared_driver_bss_physical, _shared_driver_bss_pages;
   extern uint32 _physicalbootstrapstart, _physicalkernelstart;
-  extern uint32 _readonly_pages, _bootstrap_pages;
+  extern uint32 _readonly_pages;
 
   u32 i,j,k, index;
   u32 pml4_frame;
@@ -330,6 +333,9 @@ vmx_init_ept (uint32 cpu)
   u32 pd_frame;
   u32 pt_frame;
   u32 kernel_phys_start, kernel_phys_end;
+  u32 ro_phys_start, ro_phys_end;
+  u32 sddata_phys_start, sddata_phys_end;
+  u32 sdbss_phys_start, sdbss_phys_end;
   u64 *pml4, *pdpt, *pd, *pt;
   u8 memtype, def_memtype;
   u64 mtrr_cap = rdmsr (IA32_MTRRCAP);
@@ -448,6 +454,26 @@ vmx_init_ept (uint32 cpu)
 #endif
   }
 
+  kernel_phys_start = (uint32) &_physicalbootstrapstart +
+                      SANDBOX_KERN_OFFSET * cpu;
+  /* EPT data structure is not mapped for any sandbox kernel */
+  kernel_phys_end = (uint32) &_physicalbootstrapstart +
+                    SANDBOX_KERN_OFFSET * (cpu + 1) - EPT_DATA_SIZE;
+
+  ro_phys_start = (uint32) &_physicalkernelstart +
+                  SANDBOX_KERN_OFFSET * cpu;
+  ro_phys_end = ro_phys_start + ((uint32) &_readonly_pages) * 0x1000;
+
+  sddata_phys_start = (uint32) &_shared_driver_data_physical +
+                      SANDBOX_KERN_OFFSET * cpu;
+  sddata_phys_end = sddata_phys_start +
+                    ((uint32) &_shared_driver_data_pages) * 0x1000;
+
+  sdbss_phys_start = (uint32) &_shared_driver_bss_physical +
+                     SANDBOX_KERN_OFFSET * cpu;
+  sdbss_phys_end = sdbss_phys_start +
+                   ((uint32) &_shared_driver_bss_pages) * 0x1000;
+
   /* Only 4 PDPTEs are needed for 4GB physical memory. */
   for (i = 0; i < 4; i++) {
     pd_frame = alloc_phys_frame_high ();
@@ -505,18 +531,27 @@ vmx_init_ept (uint32 cpu)
           }
 
           index = k * 0x1000;
-          kernel_phys_start = (uint32) &_physicalbootstrapstart +
-                              SANDBOX_KERN_OFFSET * cpu;
-          /* EPT data structure is not mapped for any sandbox kernel */
-          kernel_phys_end = (uint32) &_physicalbootstrapstart +
-                            SANDBOX_KERN_OFFSET * (cpu + 1) - EPT_DATA_SIZE;
 
           if (k < 256) {
             /* 1MB shared mapping for BIOS */
             pt[k] = (k << 12) | (memtype << 3) | EPT_ALL_ACCESS;
           } else if ((index >= kernel_phys_start) && (index < kernel_phys_end)) {
             /* Second mega byte only mapped for Bootstrap Processor */
-            pt[k] = (k << 12) | (memtype << 3) | EPT_ALL_ACCESS;
+            if ((index >= ro_phys_start) && (index < ro_phys_end)) {
+              /* Kernel read-only pages */
+              pt[k] = (k << 12) | (memtype << 3) | (EPT_READ_ACCESS + EPT_EXEC_ACCESS);
+            } else if ((index >= sddata_phys_start) && (index < sddata_phys_end)) {
+              /* Shared driver data mapping */
+              pt[k] = ((uint32) &_shared_driver_data_physical +
+                       (index - sddata_phys_start)) | (memtype << 3) | EPT_ALL_ACCESS;
+            } else if ((index >= sdbss_phys_start) && (index < sdbss_phys_end)) {
+              /* Shared driver bss mapping */
+              pt[k] = ((uint32) &_shared_driver_bss_physical +
+                       (index - sdbss_phys_start)) | (memtype << 3) | EPT_ALL_ACCESS;
+            } else {
+              /* All other pages grant all access */
+              pt[k] = (k << 12) | (memtype << 3) | EPT_ALL_ACCESS;
+            }
           }
         }
 
@@ -529,13 +564,24 @@ vmx_init_ept (uint32 cpu)
          */
         for (k = 0; k < 512; k++) {
           index = i * 0x40000000 + j * 0x200000 + k * 0x1000;
-          kernel_phys_start = (uint32) &_physicalbootstrapstart +
-                              SANDBOX_KERN_OFFSET * cpu;
-          /* EPT data structure is not mapped for any sandbox kernel */
-          kernel_phys_end = (uint32) &_physicalbootstrapstart +
-                            SANDBOX_KERN_OFFSET * (cpu + 1) - EPT_DATA_SIZE;
+
           if ((index >= kernel_phys_start) && (index < kernel_phys_end)) {
-            pt[k] = ((i << 30) + (j << 21) + (k << 12)) | (memtype << 3) | EPT_ALL_ACCESS;
+            if ((index >= ro_phys_start) && (index < ro_phys_end)) {
+              /* Kernel read-only pages */
+              pt[k] = ((i << 30) + (j << 21) + (k << 12)) | (memtype << 3) |
+                      (EPT_READ_ACCESS + EPT_EXEC_ACCESS);
+            } else if ((index >= sddata_phys_start) && (index < sddata_phys_end)) {
+              /* Shared driver data mapping */
+              pt[k] = ((uint32) &_shared_driver_data_physical +
+                       (index - sddata_phys_start)) | (memtype << 3) | EPT_ALL_ACCESS;
+            } else if ((index >= sdbss_phys_start) && (index < sdbss_phys_end)) {
+              /* Shared driver bss mapping */
+              pt[k] = ((uint32) &_shared_driver_bss_physical +
+                       (index - sdbss_phys_start)) | (memtype << 3) | EPT_ALL_ACCESS;
+            } else {
+              /* All other pages grant all access */
+              pt[k] = ((i << 30) + (j << 21) + (k << 12)) | (memtype << 3) | EPT_ALL_ACCESS;
+            }
           }
         }
 

@@ -135,6 +135,7 @@ static char *vm_exit_reasons[] = {
 #endif
 
 bool vmx_enabled = FALSE;
+bool shared_driver_available = TRUE;
 
 void
 vmx_detect (void)
@@ -701,6 +702,8 @@ vmx_start_VM (virtual_machine *vm)
   if (eip) {
     DLOG ("Entering VM! host EIP=0x%p", eip);
     vmwrite (eip, VMXENC_HOST_RIP);
+    /* Allow shared driver access in sandboxes */
+    shared_driver_available = TRUE;
     if (vm->launched) {
       asm volatile ("movl $1, %0\n"
                     "movl $2, %1\n"
@@ -724,6 +727,8 @@ vmx_start_VM (virtual_machine *vm)
                     :"=m" (vm->launched), "=m"(state)
                     :"c" (8), "S" (&vm->guest_regs):"edi","cc","memory");
     }
+
+    shared_driver_available = FALSE;
 
     /* Must check if CF=1 or ZF=1 before doing anything else.
      * However, ESP is wiped out.  To restore stack requires a VMREAD.
@@ -775,6 +780,9 @@ vmx_start_VM (virtual_machine *vm)
     uint32 inslen = vmread (VMXENC_VM_EXIT_INSTR_LEN);
     uint32 insinf = vmread (VMXENC_VM_EXIT_INSTR_INFO);
 #endif
+
+    /* Cannot use shared driver in monitor */
+    shared_driver_available = FALSE;
 
     if (reason & (1 << 31)) {
       /* VM-exit was due to failure during checking of Guest state

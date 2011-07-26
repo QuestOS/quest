@@ -19,6 +19,7 @@
 #include "util/printf.h"
 #ifdef USE_PL2303
 #include "drivers/usb/pl2303.h"
+#include "vm/vmx.h"
 #endif
 
 #ifndef GDBSTUB_TCP
@@ -50,7 +51,7 @@ com1_putc (char c)
   while (!(inb (PORT1 + 5) & 0x20));    /* check line status register, empty transmitter bit */
   outb (c, PORT1);
 #ifdef USE_PL2303
-  if (pl2303_initialized) {
+  if (pl2303_initialized && shared_driver_available) {
     if (c == '\n') {
       usb_pl2303_putc ('\r');
     }
