@@ -20,3 +20,6 @@ OPT = 0
 
 # Use PL2303 usb-serial converter for serial output
 #CFG += -DUSE_PL2303
+
+# Share UHCI USB host controller driver
+#CFG += -DSHARED_UHCI
