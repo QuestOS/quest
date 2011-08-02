@@ -34,6 +34,8 @@
 #define SHARED_MEM_INFO_PAGE    (PHYS_SHARED_MEM_HIGH - 0x1000)
 #define SHM_MAGIC               0xCAFEBABE
 
+#define SHM_MAX_SCREEN          0x08
+
 typedef struct _shm_info {
   uint32 magic;
   spinlock shm_lock;
@@ -41,6 +43,8 @@ typedef struct _shm_info {
   spinlock global_lock;
   spinlock driver_lock[NUM_DRV_LOCKS];
   uint32 driver_lock_table[DRV_LOCK_INDEX];
+  char * screen[SHM_MAX_SCREEN];
+  uint32 cur_screen;
   uint32 shm_table[SHARED_MEM_INDEX_MAX];
   uint32 num_sandbox;
 } shm_info;
@@ -62,6 +66,9 @@ typedef struct _shm_info {
 
 extern shm_info *shm;
 extern bool shm_initialized;
+extern bool shm_screen_initialized;
+extern bool shm_screen_first;
+extern char * shm_screen;
 extern void shm_init (uint32);
 extern uint32 shm_alloc_phys_frame (void);
 extern void shm_free_phys_frame (uint32);

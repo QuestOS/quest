@@ -242,6 +242,18 @@ sched_setparam (int pid, const struct sched_param *p)
   return ret;
 }
 
+#ifdef USE_VMX
+static inline int
+switch_screen (int dir)
+{
+  int ret;
+
+  asm volatile ("int $0x3F\n":"=a" (ret):"a" (dir):CLOBBERS1);
+  
+  return ret;
+}
+#endif
+
 /* 
  * Local Variables:
  * indent-tabs-mode: nil

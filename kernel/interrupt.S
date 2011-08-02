@@ -80,6 +80,9 @@
         .globl syscalla
         .globl syscallb
         .globl syscallc
+#ifdef USE_VMX
+        .globl syscalld
+#endif
         .globl timer
         .globl soundcard
         
@@ -466,6 +469,18 @@ syscallc:
         popl  %ebx              /* preserve */
         
         SREGS_RESTORE   
+
+#ifdef USE_VMX
+/* switch_screen */
+syscalld:
+        SREGS_SAVE
+
+        pushl %eax
+        call _switch_screen
+        addl $4, %esp                   
+        
+        SREGS_RESTORE
+#endif
 
 /* IRQ0 - system timer */
 timer:  

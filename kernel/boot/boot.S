@@ -380,7 +380,12 @@ int_table:
         .long syscallc          /* sched_setparam -- not totally POSIX compliant */
         .long interrupt3d
         .long interrupt3e
+#ifdef USE_VMX
+        .long syscalld
+#else
         .long interrupt3f
+#endif
+
 #define INT(n)     .long interrupt##n
 INT(40)
 INT(41)

@@ -8,7 +8,7 @@ TAR = tar
 ATSCC = atscc 
 ATSOPT = atsopt
 CFLAGS = -m32 -march=i586 -fno-builtin -fno-stack-protector -fno-strict-aliasing -fno-delete-null-pointer-checks -nostdinc -g -Wall -Wno-attributes -O$(OPT) $(CFG) $(EXTRA_CFLAGS)
-CPPFLAGS = -D_QUEST -Wa,--32 -MMD -Iinclude -Iinclude/drivers/acpi -I. -I../libc/include 
+CPPFLAGS = $(CFG) -D_QUEST -Wa,--32 -MMD -Iinclude -Iinclude/drivers/acpi -I. -I../libc/include 
 ATSFLAGS = -IATS include -I. -Iinclude -Iinclude/drivers/acpi -I../libc/include -g -O$(OPT) -D_ATS_PRELUDE_NONE -D_ATS_DYNLOADFUN_NONE -D_ATS_STALOADFUN_NONE -DATS_TYPES_H -DATS_EXCEPTION_H -DATS_MEMORY_H -D_QUEST
 INDENT = indent
 INDENTFLAGS = -gnu -br -ce --no-tabs

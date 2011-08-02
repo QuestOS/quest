@@ -634,34 +634,6 @@ vmx_start_VM (virtual_machine *vm)
    */
   vmx_init_mem (cpu);
 
-#if 0
-#include "vm/shm.h"
-  /* Shared memory test */
-  uint32 frame1, frame2;
-  uint32 *vframe1, *vframe2;
-  spinlock *test_lock1, *test_lock2;
-  test_lock1 = shm_alloc_drv_lock ();
-  test_lock2 = shm_alloc_drv_lock ();
-  spinlock_lock (test_lock1);
-  spinlock_lock (test_lock2);
-  spinlock_unlock (test_lock1);
-  spinlock_unlock (test_lock2);
-  shm_free_drv_lock (test_lock1);
-  shm_free_drv_lock (test_lock2);
-
-  frame1 = shm_alloc_phys_frame ();
-  vframe1 = map_virtual_page (frame1 | 3);
-  frame2 = shm_alloc_phys_frame ();
-  vframe2 = map_virtual_page (frame2 | 3);
-  *vframe1 = 0xFFFFFFFF;
-  *vframe2 = 0xDEADBEEF;
-  logger_printf ("(0x%x, 0x%x)\n", *vframe1, *vframe2);
-  unmap_virtual_page (vframe1);
-  unmap_virtual_page (vframe2);
-  shm_free_phys_frame (frame1);
-  shm_free_phys_frame (frame2);
-#endif
-
 #ifdef VMX_EPT
   vmx_init_ept (cpu);
 #endif
@@ -925,6 +897,56 @@ vmx_enter_pmode_VM (virtual_machine *vm)
     asm volatile ("movl %%cr3, %0":"=r" (cr3));
     DLOG ("vmx_enter_pmode_VM: entry success ESP=0x%p EBP=0x%p CR3=0x%p", esp, ebp, cr3);
     //dump_page ((u8 *) (esp & (~0xFFF)));
+
+#if 1
+    uint32 cpu = get_pcpu_id ();
+    print ("Message Printed to screen:\n");
+    switch (cpu) {
+      case 0 :
+        print ("Welcome to SeQuest Sandbox 0!\n");
+        break;
+      case 1 :
+        print ("Welcome to SeQuest Sandbox 1!\n");
+        break;
+      case 2 :
+        print ("Welcome to SeQuest Sandbox 2!\n");
+        break;
+      case 3 :
+        print ("Welcome to SeQuest Sandbox 3!\n");
+        break;
+      default:
+        print ("Unknown Sandbox!\n");
+    }
+#endif
+
+#if 0
+#include "vm/shm.h"
+    /* Shared memory test */
+    uint32 frame1, frame2;
+    uint32 *vframe1, *vframe2;
+    spinlock *test_lock1, *test_lock2;
+    test_lock1 = shm_alloc_drv_lock ();
+    test_lock2 = shm_alloc_drv_lock ();
+    spinlock_lock (test_lock1);
+    spinlock_lock (test_lock2);
+    spinlock_unlock (test_lock1);
+    spinlock_unlock (test_lock2);
+    shm_free_drv_lock (test_lock1);
+    shm_free_drv_lock (test_lock2);
+
+    frame1 = shm_alloc_phys_frame ();
+    vframe1 = map_virtual_page (frame1 | 3);
+    frame2 = shm_alloc_phys_frame ();
+    vframe2 = map_virtual_page (frame2 | 3);
+    *vframe1 = 0xFFFFFFFF;
+    *vframe2 = 0xDEADBEEF;
+    logger_printf ("(0x%x, 0x%x)\n", *vframe1, *vframe2);
+    unmap_virtual_page (vframe1);
+    unmap_virtual_page (vframe2);
+    shm_free_phys_frame (frame1);
+    shm_free_phys_frame (frame2);
+#endif
+
     return 0;
   }
 

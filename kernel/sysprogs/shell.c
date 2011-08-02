@@ -38,6 +38,15 @@ scanline (char *line)
   int count = 0;
 
   while ((c = getchar ()) != '\n' && count < 80) {
+#ifdef USE_VMX
+    if (c == '.') {
+      switch_screen (1);
+      continue;
+    } else if (c == ',') {
+      switch_screen (0);
+      continue;
+    }
+#endif
     *line++ = c;
     count++;
     putchar (c);

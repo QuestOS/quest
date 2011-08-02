@@ -37,6 +37,9 @@
 #include "drivers/input/keyboard.h"
 #include "sched/sched.h"
 #include "sched/vcpu.h"
+#ifdef USE_VMX
+#include "vm/shm.h"
+#endif
 
 //#define DEBUG_SYSCALL
 //#define DEBUG_PIT
@@ -1164,6 +1167,41 @@ _sched_setparam (task_id pid, const struct sched_param *p)
   /* Destination task does not exist.  Return an error. */
   return -1;
 }
+
+#ifdef USE_VMX
+extern int
+_switch_screen (int dir)
+{
+  char * vscreen = NULL;
+
+  vscreen = map_virtual_page ((uint32) shm->screen[shm->cur_screen] | 3);
+  memcpy (vscreen, pchVideo, 0x1000);
+  unmap_virtual_page (vscreen);
+
+  if ((shm->cur_screen == 0) && dir == 0) {
+    spinlock_lock (&(shm->shm_lock));
+    shm->cur_screen = shm->num_sandbox - 1;
+    spinlock_unlock (&(shm->shm_lock));
+    logger_printf ("Switch to virtual output %d\n", shm->cur_screen);
+  } else if ((shm->cur_screen == (shm->num_sandbox - 1)) && dir == 1) {
+    spinlock_lock (&(shm->shm_lock));
+    shm->cur_screen = 0;
+    spinlock_unlock (&(shm->shm_lock));
+    logger_printf ("Switch to virtual output %d\n", shm->cur_screen);
+  } else {
+    spinlock_lock (&(shm->shm_lock));
+    (dir == 0) ? shm->cur_screen-- : shm->cur_screen++;
+    spinlock_unlock (&(shm->shm_lock));
+    logger_printf ("Switch to virtual output %d\n", shm->cur_screen);
+  }
+
+  vscreen = map_virtual_page ((uint32) shm->screen[shm->cur_screen] | 3);
+  memcpy (pchVideo, vscreen, 0x1000);
+  unmap_virtual_page (vscreen);
+
+  return 0;
+}
+#endif
 
 #if 0
 static void *tlb_shootdown_page = NULL;
