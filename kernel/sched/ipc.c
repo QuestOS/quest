@@ -157,7 +157,7 @@ static const struct module_ops mod_ops = {
   .init = ipc_init
 };
 
-DEF_MODULE (ipc, "IPC manager", &mod_ops, {});
+//DEF_MODULE (ipc, "IPC manager", &mod_ops, {});
 
 /*
  * Local Variables:

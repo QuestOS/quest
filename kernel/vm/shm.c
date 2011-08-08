@@ -68,6 +68,7 @@ shm_screen_init (uint32 cpu)
   logger_printf ("CPU %d: Virtual screen initialized.\n", cpu);
   shm_screen_initialized = TRUE;
   shm_screen_first = TRUE;
+  shm->cursor[cpu].x = shm->cursor[cpu].y = -1;
 }
 
 /*
@@ -123,16 +124,16 @@ shm_init (uint32 cpu)
     logger_printf ("  Total Allocatable Pages = %d\n", (SHARED_MEM_SIZE >> 12) - 1);
   }
 
+  spinlock_lock (&(shm->shm_lock));
+  shm->num_sandbox++;
+  spinlock_unlock (&(shm->shm_lock));
+
   if (shm->magic != SHM_MAGIC) {
     logger_printf ("shm_info structure is not initialized.\n");
     return;
   }
 
   shm_initialized = TRUE;
-
-  spinlock_lock (&(shm->shm_lock));
-  shm->num_sandbox++;
-  spinlock_unlock (&(shm->shm_lock));
 
   shm_screen_init (cpu);
 }

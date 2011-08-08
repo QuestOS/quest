@@ -31,7 +31,10 @@
 #include "util/perfmon.h"
 #include "drivers/input/keyboard.h"
 #include "sched/sched.h"
+#ifdef USE_VMX
 #include "vm/ept.h"
+#include "vm/shm.h"
+#endif
 
 extern descriptor idt[];
 
@@ -364,17 +367,20 @@ parse_root_type (char *cmdline)
 }
 
 u32 root_type, boot_device=0;
+#ifdef USE_VMX
+uint16 shell_tss = 0;
+#endif
 
 void
 init (multiboot * pmb)
 {
   int i, j, k, c, num_cpus;
-  uint16 tss[NR_MODS];
   memory_map_t *mmap;
   uint32 limit;
   Elf32_Phdr *pph;
   Elf32_Ehdr *pe;
   char brandstring[I386_CPUID_BRAND_STRING_LENGTH];
+  uint16 tss[NR_MODS];
 
   /* Initialize Bochs I/O debugging */
   outw (0x8A00, 0x8A00);
@@ -549,6 +555,13 @@ init (multiboot * pmb)
     tss[i] = load_module (pmb->mods_addr + i, i);
     lookup_TSS (tss[i])->priority = MIN_PRIO;
   }
+  
+#ifdef USE_VMX
+  /* Back up shell module for sandboxes */
+  shell_tss = load_module (pmb->mods_addr, NR_MODS - 1);
+  lookup_TSS (shell_tss)->priority = MIN_PRIO;
+  lookup_TSS (shell_tss)->EFLAGS = F_1 | F_IF | F_IOPL0;
+#endif
 
   /* Remove identity mapping of first 4MB */
   *((uint32 *)get_pdbr()) = 0;

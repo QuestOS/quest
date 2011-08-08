@@ -28,6 +28,11 @@
 #include "util/printf.h"
 #include "util/perfmon.h"
 #include "sched/sched.h"
+#ifdef USE_VMX
+#include "vm/ept.h"
+#include "vm/shm.h"
+#include "sched/vcpu.h"
+#endif
 
 //#define DEBUG_SMP 1
 
@@ -254,7 +259,12 @@ ap_init (void)
 
   /* Setup the LAPIC */
   LAPIC_init();
+#ifdef USE_VMX
+  /* In order to broadcast interrupts */
+  LAPIC_set_task_priority(0x00); /* task priority = 0x00 */
+#else
   LAPIC_set_task_priority(0x20); /* task priority = 0x20 */
+#endif
 
   phys_id = get_pcpu_id ();
 
@@ -285,6 +295,64 @@ ap_init (void)
   /* Initialize virtual machine per-processor infrastructure */
   { void vmx_processor_init (void); vmx_processor_init (); }
 
+#ifdef USE_VMX
+  /*
+   * For SeQuest, each sandbox kernel will have a shell running
+   * using the per-sandbox virtual screen buffer as output.
+   */
+  /* A hack! Fix the shell tss for sandboxes. */
+  print ("Sandbox ");
+  putx (phys_id);
+  print (" Loading Shell...\n");
+  extern uint16 shell_tss;
+  int mod_num = NR_MODS - 1;
+  quest_tss * usr_mod = lookup_TSS (shell_tss);
+  //quest_tss * usr_mod = (quest_tss *) ul_tss[mod_num];
+  uint32 * plPageDirectory = get_phys_addr (pg_dir[mod_num]);
+  uint32 * plPageTable = get_phys_addr (pg_table[mod_num]);
+  void * pStack = get_phys_addr (ul_stack[mod_num]);
+  int i = 0;
+  uint32 * vpdbr = map_virtual_page ((uint32) get_pdbr () | 3);
+
+  /* Populate ring 3 page directory with kernel mappings */
+  memcpy (&pg_dir[mod_num][1023], (void *) (((uint32) vpdbr) + 4092), 4);
+  /* LAPIC/IOAPIC mappings */
+  memcpy (&pg_dir[mod_num][1019], (void *) (((uint32) vpdbr) + 4076), 4);
+
+  unmap_virtual_page (vpdbr);
+
+  /* Populate ring 3 page directory with entries for its private address
+     space */
+  pg_dir[mod_num][0] = (uint32) plPageTable | 7;
+
+  pg_dir[mod_num][1022] = (uint32) get_phys_addr (kls_pg_table[mod_num]) | 3;
+  kls_pg_table[mod_num][0] = (uint32) get_phys_addr (kl_stack[mod_num]) | 3;
+
+  for (i = 0; i < 1024; i++) {
+    if (pg_table[mod_num][i]) {
+      if (((pg_table[mod_num][i] & 0xFFFFF000) >> 12) < 1024) {
+          pg_table[mod_num][i] =
+              ((pg_table[mod_num][i] & 0xFFFFF000) + SANDBOX_KERN_OFFSET * phys_id) |
+              (pg_table[mod_num][i] & 0xF);
+      }
+    }
+  }
+
+  pg_table[mod_num][1023] = (uint32) pStack | 7;
+
+  usr_mod->CR3 = (uint32) plPageDirectory;
+  usr_mod->ESP = 0x400000 - 100;
+  usr_mod->EBP = 0x400000 - 100;
+
+  ltr (shell_tss);
+  /* Reset scheduler */
+  vcpu_reset ();
+  /* We don't switch to idle task initially. So, unlock the kernel. */
+  unlock_kernel ();
+
+  /* task-switch to shell module */
+  asm volatile ("jmp _sw_init_user_task"::"D" (usr_mod));
+#else
   /* The IDLE task runs in kernelspace, therefore it is capable of
    * unlocking the kernel and manually enabling interrupts.  This
    * makes it safe to use lock_kernel() above.  */
@@ -299,6 +367,7 @@ ap_init (void)
   /* task-switch to IDLE task */
   asm volatile ("jmp _sw_init_task":
                 :"D" (lookup_TSS (idleTSS_selector[phys_id])));
+#endif
 
   /* never return */
 

@@ -322,34 +322,109 @@ user_putchar (int ch, int attribute)
 {
   static int x, y;
 
+#ifdef USE_VMX
+  uint32 cpu;
+  cpu = get_pcpu_id ();
+#endif
+
   if (ch == '\n') {
     x = 0;
     y++;
 
     if (y > 24) {
+#ifdef USE_VMX
+      if (shm_screen_initialized) {
+        if (shm->cur_screen == cpu) {
+          memcpy (pchVideo, pchVideo + 160, 24 * 160);
+          memset (pchVideo + (24 * 160), 0, 160);
+        }
+        memcpy (shm_screen, shm_screen + 160, 24 * 160);
+        memset (shm_screen + (24 * 160), 0, 160);
+        y = 24;
+        shm->cursor[cpu].x = x;
+        shm->cursor[cpu].y = y;
+      } else {
+        memcpy (pchVideo, pchVideo + 160, 24 * 160);
+        memset (pchVideo + (24 * 160), 0, 160);
+        y = 24;
+      }
+#else
       memcpy (pchVideo, pchVideo + 160, 24 * 160);
       memset (pchVideo + (24 * 160), 0, 160);
       y = 24;
+#endif
     }
     return (int) (unsigned char) ch;
   }
 
   if (y * 160 + x * 2 >= 0x1000) return ch;
 
+#ifdef USE_VMX
+  if (shm_screen_initialized) {
+    if (shm->cur_screen == cpu) {
+      pchVideo[y * 160 + x * 2] = ch;
+      pchVideo[y * 160 + x * 2 + 1] = attribute;
+    }
+    shm_screen[y * 160 + x * 2] = ch;
+    shm_screen[y * 160 + x * 2 + 1] = attribute;
+    x++;
+    shm->cursor[cpu].x = x;
+    shm->cursor[cpu].y = y;
+  } else {
+    pchVideo[y * 160 + x * 2] = ch;
+    pchVideo[y * 160 + x * 2 + 1] = attribute;
+    x++;
+  }
+#else
   pchVideo[y * 160 + x * 2] = ch;
   pchVideo[y * 160 + x * 2 + 1] = attribute;
   x++;
+#endif
 
   if (y * 160 + x * 2 >= 0x1000) return ch;
 
+#ifdef USE_VMX
+  if (shm_screen_initialized) {
+    if (shm->cur_screen == cpu) {
+      pchVideo[y * 160 + x * 2] = ' ';
+      pchVideo[y * 160 + x * 2 + 1] = attribute;
+      shm_screen[y * 160 + x * 2] = ' ';
+      shm_screen[y * 160 + x * 2 + 1] = attribute;
+    }
+    shm->cursor[cpu].x = x;
+    shm->cursor[cpu].y = y;
+  } else {
+    pchVideo[y * 160 + x * 2] = ' ';
+    pchVideo[y * 160 + x * 2 + 1] = attribute;
+  }
+#else
   pchVideo[y * 160 + x * 2] = ' ';
   pchVideo[y * 160 + x * 2 + 1] = attribute;
+#endif
 
+#ifdef USE_VMX
+  if (shm_screen_initialized) {
+    if (shm->cur_screen == cpu) {
+      /* Move cursor */
+      outb (0x0E, 0x3D4);           /* CRTC Cursor location high index */
+      outb ((y * 80 + x) >> 8, 0x3D5);      /* CRTC Cursor location high data */
+      outb (0x0F, 0x3D4);           /* CRTC Cursor location low index */
+      outb ((y * 80 + x) & 0xFF, 0x3D5);    /* CRTC Cursor location low data */
+    }
+  } else {
+    /* Move cursor */
+    outb (0x0E, 0x3D4);           /* CRTC Cursor location high index */
+    outb ((y * 80 + x) >> 8, 0x3D5);      /* CRTC Cursor location high data */
+    outb (0x0F, 0x3D4);           /* CRTC Cursor location low index */
+    outb ((y * 80 + x) & 0xFF, 0x3D5);    /* CRTC Cursor location low data */
+  }
+#else
   /* Move cursor */
   outb (0x0E, 0x3D4);           /* CRTC Cursor location high index */
   outb ((y * 80 + x) >> 8, 0x3D5);      /* CRTC Cursor location high data */
   outb (0x0F, 0x3D4);           /* CRTC Cursor location low index */
   outb ((y * 80 + x) & 0xFF, 0x3D5);    /* CRTC Cursor location low data */
+#endif
 
   return (int) (unsigned char) ch;
 }
@@ -365,24 +440,48 @@ splash_screen (void)
 {
   int _uname (char *);
   u32 _meminfo (u32, u32);
+#ifdef USE_VMX
+  u32 cpu = get_pcpu_id ();
+#else
   u32 free = _meminfo (0, 0);
+#endif
   char vers[80];
 
   _uname (vers);
 
+#ifdef USE_VMX
+  fun_printf (_user_putchar_attr_4,
+              "**** SeQuest kernel version: %s ***"
+              "  //--\\ //-- //---\\ \\\\  \\ //-- //--\\ \\\\---\\ \n",
+              vers);
+#else
   fun_printf (_user_putchar_attr_4,
               "**** Quest kernel version: %s *****"
               "   //---\\ \\\\  \\ //-- //--\\ \\\\---\\ \n",
               vers);
+#endif
 
+#ifdef USE_VMX
   fun_printf (_user_putchar_attr_4,
-              "* Copyright Boston University, 2010 *"
+              "* Copyright Boston University, 2011 *"
+              "  \\\\--\\ ||-- ||   | ||  | ||-- \\\\--\\   || \n");
+#else
+  fun_printf (_user_putchar_attr_4,
+              "* Copyright Boston University, 2011 *"
               "   ||   | ||  | ||-- \\\\--\\   || \n");
+#endif
 
+#ifdef USE_VMX
+  fun_printf (_user_putchar_attr_4,
+              "****** Current Output: 0x%.04X *******"
+              "  \\\\__/ \\\\__ \\\\__\\_  \\\\_/ \\\\__ \\\\__/   || \n",
+              cpu);
+#else
   fun_printf (_user_putchar_attr_4,
               "******** 0x%.08X bytes free ******"
               "   \\\\__\\_  \\\\_/ \\\\__ \\\\__/   || \n",
               free);
+#endif
 }
 
 /* Syscalls */
@@ -391,7 +490,23 @@ syscall_putchar (u32 eax, u32 ebx)
 {
   static bool first = TRUE;
 
+#ifdef USE_VMX
+  uint32 cpu;
+  cpu = get_pcpu_id ();
+  if (shm_screen_initialized) {
+    if ((shm->cursor[cpu].x == -1) &&
+        (shm->cursor[cpu].y == -1)) {
+          splash_screen ();
+          shm->cursor[cpu].x = shm->cursor[cpu].y = 0;
+          first = FALSE;
+        }
+  } else if (first) {
+    splash_screen ();
+    first = FALSE;
+  }
+#else
   if (first) { splash_screen (); first = FALSE; }
+#endif
   user_putchar (ebx, 7);
   return 0;
 }
@@ -947,6 +1062,9 @@ _interrupt3e (void)
   uint8 phys_id = get_pcpu_id ();
   send_eoi ();
   LAPIC_start_timer (cpu_bus_freq / QUANTUM_HZ); /* setup next tick */
+//  static int i = 0;
+//  if ((i++ % 1000000) == 0)
+//    putx (phys_id);
 
   lock_kernel ();
 
@@ -987,7 +1105,7 @@ _timer (void)
     /* check sleeping processes */
     process_sleepqueue ();
 
-#if 1
+#if 0
     extern void vcpu_dump_stats (void);
     if ((tick & 0x1FF) == 0)
       vcpu_dump_stats ();
@@ -1198,6 +1316,14 @@ _switch_screen (int dir)
   vscreen = map_virtual_page ((uint32) shm->screen[shm->cur_screen] | 3);
   memcpy (pchVideo, vscreen, 0x1000);
   unmap_virtual_page (vscreen);
+
+  /* Move cursor */
+  outb (0x0E, 0x3D4);                                   /* CRTC Cursor location high index */
+  outb ((shm->cursor[shm->cur_screen].y * 80 +
+         shm->cursor[shm->cur_screen].x) >> 8, 0x3D5);  /* CRTC Cursor location high data */
+  outb (0x0F, 0x3D4);                                   /* CRTC Cursor location low index */
+  outb ((shm->cursor[shm->cur_screen].y * 80 +
+         shm->cursor[shm->cur_screen].x) & 0xFF, 0x3D5);/* CRTC Cursor location low data */
 
   return 0;
 }

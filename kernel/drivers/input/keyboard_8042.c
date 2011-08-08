@@ -22,6 +22,9 @@
 #include "smp/apic.h"
 #include "util/circular.h"
 #include "util/printf.h"
+#ifdef USE_VMX
+#include "vm/shm.h"
+#endif
 
 /* Enable kernel debugging hotkeys */
 //#define DEBUG_KEYS
@@ -108,6 +111,15 @@ kbd_irq_handler (uint8 vec)
 {
   uint8 code;
   int i;
+
+#ifdef USE_VMX
+  uint32 cpu;
+  cpu = get_pcpu_id ();
+  if (shm_initialized && shm_screen_initialized &&
+      (shm->cur_screen != cpu)) {
+    return 0;
+  }
+#endif
 
   code = inb (KEYBOARD_DATA_PORT);
 

@@ -421,8 +421,8 @@ vcpu_dump_stats (void)
   u32 atapi_bps = atapi_sample_bps ();
   u64 now; RDTSC (now);
 
-  logger_printf ("vcpu_dump_stats n=%d t=0x%llX ms=0x%X\n",
-                 dump_count++, now, tsc_freq_msec);
+  logger_printf ("cpu %d vcpu_dump_stats n=%d t=0x%llX ms=0x%X\n",
+                 get_pcpu_id (), dump_count++, now, tsc_freq_msec);
 
   now -= vcpu_init_time;
   RDTSC (vcpu_init_time);
@@ -1190,6 +1190,27 @@ vcpu_init (void)
   }
   return TRUE;
 }
+
+#ifdef USE_VMX
+/* For sandbox to reset scheduler after vm fork. */
+void
+vcpu_reset (void)
+{
+  int i;
+  vcpu *vcpu;
+
+  vcpu_init ();
+
+  for (i = 0; i < NUM_VCPUS; i++) {
+    vcpu = vcpu_lookup (i);
+    vcpu->cpu = get_pcpu_id ();
+  }
+ 
+  percpu_write (vcpu_queue, NULL);
+  percpu_write (vcpu_current, NULL);
+  percpu_write (vcpu_idle_task, 0);
+}
+#endif
 
 /* ************************************************** */
 

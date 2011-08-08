@@ -36,6 +36,11 @@
 
 #define SHM_MAX_SCREEN          0x08
 
+typedef struct _cursor {
+  int x;
+  int y;
+} cursor_t;
+
 typedef struct _shm_info {
   uint32 magic;
   spinlock shm_lock;
@@ -43,7 +48,11 @@ typedef struct _shm_info {
   spinlock global_lock;
   spinlock driver_lock[NUM_DRV_LOCKS];
   uint32 driver_lock_table[DRV_LOCK_INDEX];
+  /* The physical address of virtual screen buffer */
   char * screen[SHM_MAX_SCREEN];
+  /* Keep track of shell cursor */
+  cursor_t cursor[SHM_MAX_SCREEN];
+  /* Current active output */
   uint32 cur_screen;
   uint32 shm_table[SHARED_MEM_INDEX_MAX];
   uint32 num_sandbox;
