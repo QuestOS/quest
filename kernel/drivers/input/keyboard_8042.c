@@ -133,7 +133,6 @@ kbd_irq_handler (uint8 vec)
     escape = code;
   else if (code & 0x80) {
     /* Release key */
-
     code &= (~0x80);          /* unset "release" bit */
 
     /* If a key is released, there should be a Press event in the

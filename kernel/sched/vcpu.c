@@ -1163,9 +1163,18 @@ vcpu_init (void)
     u32 T = init_params[vcpu_i].T;
     vcpu_type type = init_params[vcpu_i].type;
     vcpu = vcpu_lookup (vcpu_i);
+#ifdef USE_VMX
+    /* All VCPUs bind to current sandbox.
+     * Initialization function will be called after forking
+     * VM by each sandbox again.
+     */
+    cpu_i = get_pcpu_id ();
+    vcpu->cpu = cpu_i;
+#else
     vcpu->cpu = cpu_i++;
     if (cpu_i >= mp_num_cpus)
       cpu_i = 0;
+#endif
     vcpu->quantum = div_u64_u32_u32 (tsc_freq, QUANTUM_HZ);
     vcpu->C = C * tsc_unit_freq;
     vcpu->T = T * tsc_unit_freq;
@@ -1196,15 +1205,7 @@ vcpu_init (void)
 void
 vcpu_reset (void)
 {
-  int i;
-  vcpu *vcpu;
-
   vcpu_init ();
-
-  for (i = 0; i < NUM_VCPUS; i++) {
-    vcpu = vcpu_lookup (i);
-    vcpu->cpu = get_pcpu_id ();
-  }
  
   percpu_write (vcpu_queue, NULL);
   percpu_write (vcpu_current, NULL);
