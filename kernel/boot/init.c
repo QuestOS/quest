@@ -528,10 +528,6 @@ init (multiboot * pmb)
   /* Setup per-CPU area for bootstrap CPU */
   percpu_per_cpu_init ();
 
-#ifdef USE_VMX
-  lock_kernel ();
-#endif
-
   /* Start up other processors, which may allocate pages for stacks */
   num_cpus = smp_init ();
   if (num_cpus > 1) {
@@ -577,10 +573,6 @@ init (multiboot * pmb)
 
   /* Load all modules, chasing dependencies */
   { extern bool module_load_all (void); module_load_all (); }
-
-#ifdef USE_VMX
-  unlock_kernel ();
-#endif
 
   /* count free pages for informational purposes */
   u32 *page_table = (u32 *) KERN_PGT;
