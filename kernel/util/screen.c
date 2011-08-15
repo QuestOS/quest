@@ -51,7 +51,7 @@ _putchar (int ch)
   }
 
   if (shm_screen_initialized) {
-    if (shm->cur_screen == cpu) {
+    if (shm->virtual_display.cur_screen == cpu) {
       pchVideo[y * 160 + x * 2] = ch;
       pchVideo[y * 160 + x * 2 + 1] = 7;
     }

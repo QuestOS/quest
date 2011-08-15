@@ -56,8 +56,8 @@ shm_screen_init (uint32 cpu)
     return;
   }
 
-  shm->screen[cpu] = (char *) shm_alloc_phys_frame ();
-  shm_screen = map_virtual_page ((uint32) (shm->screen[cpu]) | 3);
+  shm->virtual_display.screen[cpu] = (char *) shm_alloc_phys_frame ();
+  shm_screen = map_virtual_page ((uint32) (shm->virtual_display.screen[cpu]) | 3);
   memset (shm_screen, 0, 0x1000);
 
   /* Backup screen buffer for Bootstrap Processor */
@@ -68,7 +68,8 @@ shm_screen_init (uint32 cpu)
   logger_printf ("CPU %d: Virtual screen initialized.\n", cpu);
   shm_screen_initialized = TRUE;
   shm_screen_first = TRUE;
-  shm->cursor[cpu].x = shm->cursor[cpu].y = -1;
+  shm->virtual_display.cursor[cpu].x = -1;
+  shm->virtual_display.cursor[cpu].y = -1;
 }
 
 /*
@@ -119,7 +120,7 @@ shm_init (uint32 cpu)
     /* Set the magic to notify others that this area is initialized */
     shm->magic = SHM_MAGIC;
     shm->num_sandbox = 0;
-    shm->cur_screen = 0;
+    shm->virtual_display.cur_screen = 0;
     logger_printf ("Shared memory system initialized:\n");
     logger_printf ("  Total Allocatable Pages = %d\n", (SHARED_MEM_SIZE >> 12) - 1);
   }

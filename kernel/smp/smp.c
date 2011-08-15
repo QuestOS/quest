@@ -330,7 +330,8 @@ ap_init (void)
 
   for (i = 0; i < 1024; i++) {
     if (pg_table[mod_num][i]) {
-      if (((pg_table[mod_num][i] & 0xFFFFF000) >> 12) < 1024) {
+      if (((pg_table[mod_num][i] & 0xFFFFF000) >> 12) <
+           ((SANDBOX_KERN_OFFSET >> 12) + 256 /* BIOS */)) {
           pg_table[mod_num][i] =
               ((pg_table[mod_num][i] & 0xFFFFF000) + SANDBOX_KERN_OFFSET * phys_id) |
               (pg_table[mod_num][i] & 0xF);

@@ -116,7 +116,7 @@ kbd_irq_handler (uint8 vec)
   uint32 cpu;
   cpu = get_pcpu_id ();
   if (shm_initialized && shm_screen_initialized &&
-      (shm->cur_screen != cpu)) {
+      (shm->virtual_display.cur_screen != cpu)) {
     return 0;
   }
 #endif

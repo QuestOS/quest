@@ -226,7 +226,8 @@ vmx_init_mem (uint32 cpu)
       }
 
       /* For the rest of the kernel, everything is shifted. */
-      if (((virt_kern_pgt[i] & 0xFFFFF000) >> 12) < 1024) {
+      if (((virt_kern_pgt[i] & 0xFFFFF000) >> 12) <
+           ((SANDBOX_KERN_OFFSET >> 12) + 256 /* BIOS */)) {
           virt_kern_pgt_new[i] = ((virt_kern_pgt[i] & 0xFFFFF000) + physical_offset) |
               (virt_kern_pgt[i] & 0xF);
       }

@@ -334,15 +334,15 @@ user_putchar (int ch, int attribute)
     if (y > 24) {
 #ifdef USE_VMX
       if (shm_screen_initialized) {
-        if (shm->cur_screen == cpu) {
+        if (shm->virtual_display.cur_screen == cpu) {
           memcpy (pchVideo, pchVideo + 160, 24 * 160);
           memset (pchVideo + (24 * 160), 0, 160);
         }
         memcpy (shm_screen, shm_screen + 160, 24 * 160);
         memset (shm_screen + (24 * 160), 0, 160);
         y = 24;
-        shm->cursor[cpu].x = x;
-        shm->cursor[cpu].y = y;
+        shm->virtual_display.cursor[cpu].x = x;
+        shm->virtual_display.cursor[cpu].y = y;
       } else {
         memcpy (pchVideo, pchVideo + 160, 24 * 160);
         memset (pchVideo + (24 * 160), 0, 160);
@@ -361,15 +361,15 @@ user_putchar (int ch, int attribute)
 
 #ifdef USE_VMX
   if (shm_screen_initialized) {
-    if (shm->cur_screen == cpu) {
+    if (shm->virtual_display.cur_screen == cpu) {
       pchVideo[y * 160 + x * 2] = ch;
       pchVideo[y * 160 + x * 2 + 1] = attribute;
     }
     shm_screen[y * 160 + x * 2] = ch;
     shm_screen[y * 160 + x * 2 + 1] = attribute;
     x++;
-    shm->cursor[cpu].x = x;
-    shm->cursor[cpu].y = y;
+    shm->virtual_display.cursor[cpu].x = x;
+    shm->virtual_display.cursor[cpu].y = y;
   } else {
     pchVideo[y * 160 + x * 2] = ch;
     pchVideo[y * 160 + x * 2 + 1] = attribute;
@@ -385,14 +385,14 @@ user_putchar (int ch, int attribute)
 
 #ifdef USE_VMX
   if (shm_screen_initialized) {
-    if (shm->cur_screen == cpu) {
+    if (shm->virtual_display.cur_screen == cpu) {
       pchVideo[y * 160 + x * 2] = ' ';
       pchVideo[y * 160 + x * 2 + 1] = attribute;
       shm_screen[y * 160 + x * 2] = ' ';
       shm_screen[y * 160 + x * 2 + 1] = attribute;
     }
-    shm->cursor[cpu].x = x;
-    shm->cursor[cpu].y = y;
+    shm->virtual_display.cursor[cpu].x = x;
+    shm->virtual_display.cursor[cpu].y = y;
   } else {
     pchVideo[y * 160 + x * 2] = ' ';
     pchVideo[y * 160 + x * 2 + 1] = attribute;
@@ -404,7 +404,7 @@ user_putchar (int ch, int attribute)
 
 #ifdef USE_VMX
   if (shm_screen_initialized) {
-    if (shm->cur_screen == cpu) {
+    if (shm->virtual_display.cur_screen == cpu) {
       /* Move cursor */
       outb (0x0E, 0x3D4);           /* CRTC Cursor location high index */
       outb ((y * 80 + x) >> 8, 0x3D5);      /* CRTC Cursor location high data */
@@ -494,10 +494,11 @@ syscall_putchar (u32 eax, u32 ebx)
   uint32 cpu;
   cpu = get_pcpu_id ();
   if (shm_screen_initialized) {
-    if ((shm->cursor[cpu].x == -1) &&
-        (shm->cursor[cpu].y == -1)) {
+    if ((shm->virtual_display.cursor[cpu].x == -1) &&
+        (shm->virtual_display.cursor[cpu].y == -1)) {
           splash_screen ();
-          shm->cursor[cpu].x = shm->cursor[cpu].y = 0;
+          shm->virtual_display.cursor[cpu].x = 0;
+          shm->virtual_display.cursor[cpu].y = 0;
           first = FALSE;
         }
   } else if (first) {
@@ -1291,39 +1292,47 @@ extern int
 _switch_screen (int dir)
 {
   char * vscreen = NULL;
+  int i;
 
-  vscreen = map_virtual_page ((uint32) shm->screen[shm->cur_screen] | 3);
+  vscreen = map_virtual_page (
+      (uint32) shm->virtual_display.screen[shm->virtual_display.cur_screen] | 3);
   memcpy (vscreen, pchVideo, 0x1000);
   unmap_virtual_page (vscreen);
 
-  if ((shm->cur_screen == 0) && dir == 0) {
+  if ((shm->virtual_display.cur_screen == 0) && dir == 0) {
     spinlock_lock (&(shm->shm_lock));
-    shm->cur_screen = shm->num_sandbox - 1;
+    shm->virtual_display.cur_screen = shm->num_sandbox - 1;
     spinlock_unlock (&(shm->shm_lock));
-    logger_printf ("Switch to virtual output %d\n", shm->cur_screen);
-  } else if ((shm->cur_screen == (shm->num_sandbox - 1)) && dir == 1) {
+    logger_printf ("Switch to virtual output %d\n",
+                   shm->virtual_display.cur_screen);
+  } else if ((shm->virtual_display.cur_screen == (shm->num_sandbox - 1)) && dir == 1) {
     spinlock_lock (&(shm->shm_lock));
-    shm->cur_screen = 0;
+    shm->virtual_display.cur_screen = 0;
     spinlock_unlock (&(shm->shm_lock));
-    logger_printf ("Switch to virtual output %d\n", shm->cur_screen);
+    logger_printf ("Switch to virtual output %d\n",
+                   shm->virtual_display.cur_screen);
   } else {
     spinlock_lock (&(shm->shm_lock));
-    (dir == 0) ? shm->cur_screen-- : shm->cur_screen++;
+    (dir == 0) ? shm->virtual_display.cur_screen-- :
+                 shm->virtual_display.cur_screen++;
     spinlock_unlock (&(shm->shm_lock));
-    logger_printf ("Switch to virtual output %d\n", shm->cur_screen);
+    logger_printf ("Switch to virtual output %d\n",
+                   shm->virtual_display.cur_screen);
   }
 
-  vscreen = map_virtual_page ((uint32) shm->screen[shm->cur_screen] | 3);
+  vscreen = map_virtual_page (
+      (uint32) shm->virtual_display.screen[shm->virtual_display.cur_screen] | 3);
   memcpy (pchVideo, vscreen, 0x1000);
   unmap_virtual_page (vscreen);
 
+  i = shm->virtual_display.cur_screen;
   /* Move cursor */
   outb (0x0E, 0x3D4);                                   /* CRTC Cursor location high index */
-  outb ((shm->cursor[shm->cur_screen].y * 80 +
-         shm->cursor[shm->cur_screen].x) >> 8, 0x3D5);  /* CRTC Cursor location high data */
+  outb ((shm->virtual_display.cursor[i].y * 80 +
+         shm->virtual_display.cursor[i].x) >> 8, 0x3D5);/* CRTC Cursor location high data */
   outb (0x0F, 0x3D4);                                   /* CRTC Cursor location low index */
-  outb ((shm->cursor[shm->cur_screen].y * 80 +
-         shm->cursor[shm->cur_screen].x) & 0xFF, 0x3D5);/* CRTC Cursor location low data */
+  outb ((shm->virtual_display.cursor[i].y * 80 +
+         shm->virtual_display.cursor[i].x) & 0xFF, 0x3D5);/* CRTC Cursor location low data */
 
   return 0;
 }
