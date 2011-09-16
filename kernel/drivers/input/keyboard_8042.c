@@ -24,6 +24,7 @@
 #include "util/printf.h"
 #ifdef USE_VMX
 #include "vm/shm.h"
+#include "vm/vmx.h"
 #endif
 
 /* Enable kernel debugging hotkeys */

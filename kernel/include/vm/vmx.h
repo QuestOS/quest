@@ -165,6 +165,12 @@ vmxoff (void)
   asm volatile ("vmxoff");
 }
 
+static inline void
+vm_exit (uint32 status)
+{
+  asm volatile ("cpuid"::"a" (0xFFFFFFFF), "c" (status));
+}
+
 
 #endif
 

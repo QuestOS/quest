@@ -24,6 +24,7 @@
 #include "mem/virtual.h"
 #include "mem/physical.h"
 #include "sched/sched.h"
+#include "vm/ept.h"
 
 static spinlock kernel_lock ALIGNED(LOCK_ALIGNMENT) = SPINLOCK_INIT;
 
@@ -203,7 +204,13 @@ create_kernel_thread_args (uint eip, uint esp, bool run, uint n, ...)
   task_id pid;
   uint32 eflags;
   extern u32 *pgd;              /* original page-global dir */
+#ifdef USE_VMX
+  int cpu = 0;
+  cpu = get_pcpu_id ();
+  void *page_dir = (void*) (((u32) &pgd) + SANDBOX_KERN_OFFSET * cpu);
+#else
   void *page_dir = &pgd;
+#endif
   uint *stack, i;
   va_list args;
 

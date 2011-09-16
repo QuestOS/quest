@@ -3483,6 +3483,15 @@ r8169_get_hwaddr (u8 addr[ETH_ADDR_LEN])
   return TRUE;
 }
 
+static void * ioa = NULL;
+
+extern void
+r8169_reset (void)
+{
+  void * ioaddr = ioa;
+  RTL_W8(ChipCmd, CmdReset);
+}
+
 extern bool
 r8169_init (void)
 {
@@ -3542,6 +3551,7 @@ r8169_init (void)
   }
 
   ioaddr = map_virtual_page (phys_addr | 3);
+  ioa = ioaddr;
 
   DLOG ("BAR%d phys=0x%p virt=0x%p", region, phys_addr, ioaddr);
 
@@ -3699,6 +3709,14 @@ r8169_init (void)
   unmap_virtual_page (ioaddr);
  abort:
   return FALSE;
+}
+
+extern void
+r8169_free () {
+  unmap_virtual_page (tp->mmio_addr);
+  pow2_free ((u8 *) tp->TxDescArray);
+  pow2_free ((u8 *) tp->RxDescArray);
+  pow2_free ((u8 *) tp);
 }
 
 static const struct module_ops mod_ops = {
