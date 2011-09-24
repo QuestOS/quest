@@ -438,6 +438,7 @@ DisplayOneDevice (ACPI_HANDLE ObjHandle, UINT32 Level, void *Context,
   ACPI_BUFFER Prt = { .Length = sizeof (prt_buf), .Pointer = prt_buf };
   ACPI_PCI_ROUTING_TABLE *prtd;
   uint32 addr=0;
+  uint32 fun = 0;
   bool pcibus=FALSE;
   u8 busnum;
 
@@ -461,6 +462,7 @@ DisplayOneDevice (ACPI_HANDLE ObjHandle, UINT32 Level, void *Context,
     if (Info->Valid & ACPI_VALID_ADR) {
       com1_printf (" ADR %.8X", Info->Address);
       addr = Info->Address >> 16;
+      fun = Info->Address & 0x7;
     }
     if (Info->Valid & ACPI_VALID_HID)
       com1_printf (" HID %s", Info->HardwareId.String);
@@ -533,9 +535,9 @@ DisplayOneDevice (ACPI_HANDLE ObjHandle, UINT32 Level, void *Context,
     /* Check if ObjHandle refers to a non-root PCI bus */
     if (READ (0, addr, 0, 0, dword) != 0xFFFFFFFF) {
       u8 hdrtype = READ (0, addr, 0, 0x0E, byte);
-      if (hdrtype == 1) {
+      if ((hdrtype & 0x7F) == 1) {
         /* PCI-to-PCI bridge headerType == 1 */
-        busnum = READ (0, addr, 0, 0x19, byte);
+        busnum = READ (0, addr, fun, 0x19, byte);
         com1_printf ("  bus=0x%.02X\n", busnum);
         pcibus = TRUE;
       }
