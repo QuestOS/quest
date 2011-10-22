@@ -26,23 +26,44 @@
 #define LOCK_ALIGNMENT_LOG2 7
 #define LOCK_ALIGNMENT (1<<LOCK_ALIGNMENT_LOG2)
 
+typedef struct { volatile int counter; } atomic_t;
+#define ATOMIC_T_INIT    {0}
+
 static inline uint32
-atomic_load_dword (uint32 * addr)
+atomic_load_dword (volatile uint32 * addr)
 {
   return *((volatile uint32 *) addr);
 }
 
 static inline void
-atomic_store_dword (uint32 * addr, uint32 x)
+atomic_store_dword (volatile uint32 * addr, uint32 x)
 {
   *((volatile uint32 *) addr) = x;
 }
 
 static inline uint32
-atomic_xchg_dword (uint32 * addr, uint32 x)
+atomic_xchg_dword (volatile uint32 * addr, uint32 x)
 {
   asm volatile ("xchgl %1,(%0)":"=r" (addr), "=ir" (x):"0" (addr), "1" (x));
   return x;
+}
+
+static inline void
+atomic_inc (atomic_t *v)
+{
+  asm volatile (
+      "lock incl %0"
+      :"=m" (v->counter)
+      :"m" (v->counter));
+}
+
+static inline void
+atomic_dec (atomic_t *v)
+{
+  asm volatile (
+      "lock decl %0"
+      :"=m" (v->counter)
+      :"m" (v->counter));
 }
 
 #endif
