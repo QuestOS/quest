@@ -37,8 +37,9 @@ OBJS =  boot/boot.o boot/init.o kernel.o module/loader.o \
 	drivers/pci/pci.o drivers/pci/pci_irq.o \
 	drivers/net/ethernetif.o drivers/net/pcnet.o \
 	drivers/net/e1000.o drivers/net/e1000e.o \
-	drivers/net/bnx2.o drivers/net/r8169.o \
+	drivers/net/bnx2.o \
 	drivers/net/mac80211.o drivers/net/netsetup.o \
+	drivers/net/demux.o \
 	fs/fsys.o \
 	fs/ext2/fsys_ext2fs.o \
 	fs/iso9660/fsys_iso9660.o \
@@ -64,6 +65,17 @@ MAPFILES = $(patsubst %.o,%.map,$(OBJS))
 ACPI_SRCS = $(shell ls drivers/acpica/*.c)
 ACPI_OBJS = $(patsubst %.c,%.o,$(ACPI_SRCS))
 ACPI_DEPS = $(patsubst %.c,%.d,$(ACPI_SRCS))
+
+##################################################
+
+SHARED_COMPS = shared.o
+
+SHARED_COMPS_CFILES = \
+  vm/spow2.c \
+  drivers/net/r8169.c
+
+SHARED_COMPS_OBJS = $(patsubst %.c,%.o,$(SHARED_COMPS_CFILES))
+SHARED_COMPS_DEPS = $(patsubst %.c,%.d,$(SHARED_COMPS_CFILES))
 
 ##################################################
 
@@ -114,7 +126,7 @@ LWIP_DEPS = $(patsubst %.c,%.d,$(LWIP_CFILES))
 
 all: $(PROGS)
 
-quest: $(OBJS) $(ACPI_OBJS) $(LWIP_OBJS)
+quest: $(OBJS) $(ACPI_OBJS) $(LWIP_OBJS) $(SHARED_COMPS)
 	rm -f quest
 	$(LD) -Map quest.map -T ldscripts/quest.ld -o $@ $^ 
 
@@ -160,7 +172,7 @@ clean:
 cleanacpi:
 	-rm -f $(ACPI_OBJS) $(ACPI_DEPS)
 
-cleanall: clean cleanacpi cleanlwip
+cleanall: clean cleanacpi cleanlwip cleanshared
 
 define ACPI_template
 $(1): $(patsubst %.o,%.c,$(1))
@@ -185,6 +197,15 @@ $(LIBLWIP): $(LWIP_OBJS)
 
 cleanlwip:
 	-rm -f $(LWIP_OBJS) $(LWIP_DEPS) $(LIBLWIP)
+
+##################################################
+# Shared System Components
+
+$(SHARED_COMPS): $(SHARED_COMPS_OBJS)
+	$(LD) -r $(SHARED_COMPS_OBJS) -o $@
+
+cleanshared:
+	-rm -f $(SHARED_COMPS_OBJS) $(SHARED_COMPS) $(SHARED_COMPS_DEPS)
 
 ##################################################
 
