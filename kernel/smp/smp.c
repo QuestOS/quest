@@ -31,6 +31,7 @@
 #ifdef USE_VMX
 #include "vm/ept.h"
 #include "vm/shm.h"
+#include "vm/vmx.h"
 #include "sched/vcpu.h"
 #endif
 
@@ -287,15 +288,26 @@ ap_init (void)
   lock_kernel ();
 
   /* Performance monitoring */
-  perfmon_init ();
+  //perfmon_init ();
 
   /* Load the per-CPU TSS for this AP */
   hw_ltr (cpuTSS_selector[phys_id]);
 
+#ifdef USE_VMX
   /* Initialize virtual machine per-processor infrastructure */
   { void vmx_processor_init (void); vmx_processor_init (); }
+  spinlock_lock (&(shm->global_lock));
 
-#ifdef USE_VMX
+  while (!shm->bsp_booted)
+    asm volatile ("pause");
+
+  { extern bool vcpu_init (void); vcpu_init (); }
+  { extern void net_init (void); net_init (); }
+  { extern bool r8169_register (void); r8169_register (); }
+  { extern bool netsetup_init (void); netsetup_init (); }
+  //{ extern bool ipc_recv_init (void); ipc_recv_init (); }
+  //{ extern bool msgt_init (void); msgt_init (); }
+
   /*
    * For SeQuest, each sandbox kernel will have a shell running
    * using the per-sandbox virtual screen buffer as output.
@@ -346,10 +358,9 @@ ap_init (void)
   usr_mod->EBP = 0x400000 - 100;
 
   ltr (shell_tss);
-  /* Reset scheduler */
-  vcpu_reset ();
   /* We don't switch to idle task initially. So, unlock the kernel. */
   unlock_kernel ();
+  spinlock_unlock (&(shm->global_lock));
 
   /* task-switch to shell module */
   asm volatile ("jmp _sw_init_user_task"::"D" (usr_mod));

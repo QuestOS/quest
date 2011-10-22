@@ -571,8 +571,28 @@ init (multiboot * pmb)
    * to utilize the dummy TSS without locking the kernel yet. */
   smp_secondary_init ();
 
+#ifdef USE_VMX
+  {extern bool vmx_init (void); vmx_init ();}
+#endif
+
+  { extern bool init_keyboard_8042 (void); init_keyboard_8042 (); }
+  { extern bool pci_init (void); pci_init (); }
+  { extern bool r8169_init (void); r8169_init (); }
+  { extern bool msgt_mem_init (void); msgt_mem_init (); }
+
+#ifdef USE_VMX
+  spinlock_lock (&(shm->global_lock));
+  print ("Waiting for VM-Forks...\n");
+  mp_enabled = 1;
+  while (shm->num_sandbox != num_cpus);
+  mp_enabled = 0;
+  print ("All sandboxes forked\n");
+#endif
+
   /* Load all modules, chasing dependencies */
   { extern bool module_load_all (void); module_load_all (); }
+  //{ extern bool ipc_send_init (void); ipc_send_init (); }
+  //{ extern bool msgt_init (void); msgt_init (); }
 
   /* count free pages for informational purposes */
   u32 *page_table = (u32 *) KERN_PGT;
@@ -594,6 +614,10 @@ init (multiboot * pmb)
     BREAKPOINT ();
 #endif
   }
+#endif
+
+#ifdef USE_VMX
+  spinlock_unlock (&(shm->global_lock));
 #endif
 
   /* The Shell module is in userspace and therefore interrupts will be

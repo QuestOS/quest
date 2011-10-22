@@ -1073,7 +1073,7 @@ vmx_processor_init (void)
   free_phys_frame (vmxon_frame[phys_id]);
 }
 
-static bool
+bool
 vmx_init (void)
 {
   vmx_detect ();

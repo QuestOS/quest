@@ -35,9 +35,33 @@
 #include "sched/vcpu.h"
 #include "sched/sched.h"
 #include "module/header.h"
+#include "drivers/net/demux.h"
+
+#ifdef USE_VMX
+
+#include "vm/shm.h"
+#include "vm/spow2.h"
+#include "vm/vmx.h"
+
+#define pow2_alloc shm_pow2_alloc
+#define pow2_free shm_pow2_free
+
+#endif
+
+static spinlock * r8169_tx_lock = NULL;
+static spinlock * r8169_rx_int_lock = NULL;
+static spinlock * r8169_tx_int_lock = NULL;
+uint32 r8169_master_sandbox = 0;
+atomic_t num_sharing = ATOMIC_T_INIT;
+struct rtl8169_private *tp = NULL;
+static bool r8169_initialized = FALSE;
+static pci_irq_t irq_backup;
+static void * global_ioa_backup = NULL;
 
 //#define DEBUG_R8169
-#define TX_TIMING
+//#define TX_TIMING
+
+#define MAX_NUM_SHARE    4
 
 #ifdef TX_TIMING
 #include "lwip/udp.h"
@@ -603,7 +627,7 @@ struct rtl8169_private {
   u32 msg_enable;
   int chipset;
   int mac_version;
-  u32 cur_rx; /* Index into the Rx descriptor buffer of next Rx pkt. */
+  u32 cur_rx[MAX_NUM_SHARE]; /* Index into the Rx descriptor buffer of next Rx pkt. */
   u32 cur_tx; /* Index into the Tx descriptor buffer of next Rx pkt. */
   u32 dirty_rx;
   u32 dirty_tx;
@@ -639,7 +663,7 @@ struct rtl8169_private {
   struct rtl8169_counters counters;
   u32 saved_wolopts;
   u8 mac_addr[MAC_ADDR_LEN];
-  ethernet_device ethdev;
+  ethernet_device ethdev[MAX_NUM_SHARE];
 };
 
 static void
@@ -1583,63 +1607,103 @@ static uint device_index;
 static pci_device pdev;
 
 static inline void rtl8169_mark_to_asic(struct RxDesc *desc, u32 rx_buf_sz);
+extern struct ip_addr ipaddr, netmask, gw;
 
 #define MIN(a,b) ((a) < (b) ? (a) : (b))
 static void
 rx_int (struct rtl8169_private *tp)
 {
-  uint cur_rx;
+  int i;
+  bool read = TRUE;
+  //uint cur_rx[MAX_NUM_SHARE];
+  uint32 cpu;
 
-  cur_rx = tp->cur_rx;
+  cpu = get_pcpu_id ();
+  //cur_rx[cpu] = tp->cur_rx[cpu];
   for (;;) {
-    uint entry = cur_rx & (NUM_RX_DESC - 1);
+    //uint entry = cur_rx[cpu] & (NUM_RX_DESC - 1);
+    uint entry = tp->cur_rx[cpu] & (NUM_RX_DESC - 1);
     struct RxDesc *desc = tp->RxDescArray + entry;
     u32 status;
 
     status = __le32_to_cpu (desc->opts1);
-    if (status & DescOwn)
+    if (status & DescOwn) {
       break;
-    else {
+    } else {
       struct sk_buff *skb = tp->Rx_skbuff[entry];
       int pkt_size = (status & 0x00001FFF) - 4;
-      DLOG ("RX: entry=%d size=%d", entry, pkt_size);
-      u8 *p = skb->data;
-      DLOG ("  %.02X %.02X %.02X %.02X %.02X %.02X",
-            p[0], p[1], p[2], p[3], p[4], p[5]);
-      p+=6;
-      DLOG ("  %.02X %.02X %.02X %.02X %.02X %.02X",
-            p[0], p[1], p[2], p[3], p[4], p[5]);
-      if (tp->ethdev.recv_func)
-        tp->ethdev.recv_func (&tp->ethdev, skb->data, pkt_size);
-      rtl8169_mark_to_asic(desc, tp->rx_buf_sz);
+      //DLOG ("RX: entry=%d size=%d", entry, pkt_size);
+      //u8 *p = skb->data;
+      //DLOG ("  %.02X %.02X %.02X %.02X %.02X %.02X",
+      //      p[0], p[1], p[2], p[3], p[4], p[5]);
+      //p+=6;
+      //DLOG ("  %.02X %.02X %.02X %.02X %.02X %.02X",
+      //      p[0], p[1], p[2], p[3], p[4], p[5]);
+      DLOG ("Driver(%d) : IP=0x%X, NM=0x%X, GW=0x%X", get_pcpu_id (),
+            ipaddr.addr, netmask.addr, gw.addr);
+      //if (!eth_frame_demux (skb->data, pkt_size, &ipaddr)) {
+      //  break;
+      //}
+      if (tp->ethdev[cpu].recv_func)
+        tp->ethdev[cpu].recv_func (&tp->ethdev[cpu], skb->data, pkt_size);
+
+#ifdef USE_VMX
+      spinlock_lock (r8169_rx_int_lock);
+#endif
+
+      for (i = 0; i < num_sharing.counter; i++) {
+        if ((cpu != i) && (tp->cur_rx[i] <= tp->cur_rx[cpu])) {
+          read = FALSE;
+          /* --??-- Hack! Let's handle this case later */
+          if ((tp->cur_rx[cpu] - tp->cur_rx[i]) >= 200)
+            com1_printf ("rx falling behind!\n");
+        }
+      }
+
+      if (read)
+        rtl8169_mark_to_asic(desc, tp->rx_buf_sz);
+      
+      tp->cur_rx[cpu]++;
+#ifdef USE_VMX
+      spinlock_unlock (r8169_rx_int_lock);
+#endif
     }
-    cur_rx++;
+    //cur_rx[cpu]++;
   }
-  tp->cur_rx = cur_rx;
+  //tp->cur_rx[cpu] = cur_rx[cpu];
 }
 
+uint32 free_skb_count = 0;
 static inline void free_skb (struct sk_buff *);
 static void
 tx_int (struct rtl8169_private *tp)
 {
   void __iomem *ioaddr = tp->mmio_addr;
   uint dirty_tx, tx_left;
+#ifdef USE_VMX
+  spinlock_lock (r8169_tx_int_lock);
+#endif
   dirty_tx = tp->dirty_tx;
   tx_left = tp->cur_tx - dirty_tx;
-  while (tx_left > 0) {
+  while (tx_left > 1) {
     uint entry = dirty_tx & (NUM_TX_DESC - 1);
     struct ring_info *tx_skb = tp->tx_skb + entry;
     struct TxDesc *desc = tp->TxDescArray + entry;
     u32 status;
 
     status = __le32_to_cpu(tp->TxDescArray[entry].opts1);
-    if (status & DescOwn)
+    if (status & DescOwn) {
+      com1_printf ("tx own\n");
+      if ((tp->cur_tx - dirty_tx) > 50)
+        com1_printf ("dirty behind\n");
       break;
+    }
 
     DLOG ("TX: entry %d sent %d bytes", entry, tx_skb->len);
     desc->opts1 = desc->opts2 = desc->addr = 0;
     tx_skb->len = 0;
     free_skb (tx_skb->skb);
+    free_skb_count++;
 
     dirty_tx++;
     tx_left--;
@@ -1655,14 +1719,19 @@ tx_int (struct rtl8169_private *tp)
     if (tp->cur_tx != dirty_tx)
       RTL_W8(TxPoll, NPQ);
   }
+#ifdef USE_VMX
+  spinlock_unlock (r8169_tx_int_lock);
+#endif
 }
 
-static u32 r8169_bh_stack[1024] ALIGNED (0x1000);
-static task_id r8169_bh_id = 0;
+static u32 r8169_bh_stack[MAX_NUM_SHARE][1024] ALIGNED (0x1000);
+static task_id r8169_bh_id[MAX_NUM_SHARE];
 static void
 r8169_bh_thread (void)
 {
-  logger_printf ("r8169: bh: hello from 0x%x\n", str ());
+  int cpu;
+  cpu = get_pcpu_id ();
+  logger_printf ("r8169: bh: hello from 0x%x, cpu=%d\n", str (), cpu);
   for (;;) {
     struct rtl8169_private *tp = pci_get_drvdata(&pdev);
     int handled = 0;
@@ -1671,8 +1740,8 @@ r8169_bh_thread (void)
 
     status = RTL_R16(IntrStatus);
 
-    while (status && status != 0xffff) {
-      DLOG ("IRQ status=0x%p", status);
+    //while (status && status != 0xffff) {
+      DLOG ("IRQ status=0x%p, cpu=%d", status, cpu);
       handled = 1;
 
       /* Handle all of the error cases first. These will reset
@@ -1683,34 +1752,39 @@ r8169_bh_thread (void)
       if (unlikely(status & RxFIFOOver)) {
         //netif_stop_queue(dev);
         //rtl8169_tx_timeout(&tp->ethdev);
+        com1_printf ("rx fifo overflow\n");
         break;
       }
 
       if (unlikely(status & SYSErr)) {
         //rtl8169_pcierr_interrupt(&tp->ethdev);
+        com1_printf ("System Error\n");
         break;
       }
 
-      if (status & LinkChg)
-        rtl8169_check_link_status(&tp->ethdev, tp, ioaddr);
+      //if (status & LinkChg)
+        rtl8169_check_link_status(&tp->ethdev[0], tp, ioaddr);
 
-      if (status & RxOK) {
+      //if (status & RxOK) {
+        DLOG ("rx_int");
         rx_int (tp);
-      }
+      //}
 
-      if (status & TxOK) {
+      //if (status & TxOK) {
+        DLOG ("tx_int");
         tx_int (tp);
-      }
+      //}
 
       /* We only get a new MSI interrupt when all active irq
        * sources on the chip have been acknowledged. So, ack
        * everything we've seen and check if new sources have become
        * active to avoid blocking all interrupts from the chip.
        */
+      status = RTL_R16(IntrStatus);
       RTL_W16(IntrStatus,
               (status & RxFIFOOver) ? (status | RxOverflow) : status);
-      status = RTL_R16(IntrStatus);
-    }
+      //status = RTL_R16(IntrStatus);
+    //}
 
     iovcpu_job_completion ();
   }
@@ -1720,9 +1794,13 @@ r8169_bh_thread (void)
 static u64 tx_start = 0, tx_finish;
 #endif
 
+unsigned int n_int = 0;
+
 static uint
 irq_handler (u8 vec)
 {
+  int cpu = get_pcpu_id ();
+
 #ifdef TX_TIMING
   /* assume tx_start != 0 means this is TX IRQ */
   if (tx_start > 0) {
@@ -1733,10 +1811,11 @@ irq_handler (u8 vec)
   }
 #endif
 
-  if (r8169_bh_id) {
+  if (cpu == 0) n_int++;
+  if (r8169_bh_id[cpu]) {
     extern vcpu *vcpu_lookup (int);
     /* hack: use VCPU2's period */
-    iovcpu_job_wakeup (r8169_bh_id, vcpu_lookup (2)->T);
+    iovcpu_job_wakeup (r8169_bh_id[cpu], vcpu_lookup (2)->T);
   }
 
   return 0;
@@ -3351,7 +3430,11 @@ static inline void rtl8169_mark_as_last_descriptor(struct RxDesc *desc)
 
 static void rtl8169_init_ring_indexes(struct rtl8169_private *tp)
 {
-  tp->dirty_tx = tp->dirty_rx = tp->cur_tx = tp->cur_rx = 0;
+  int i = 0;
+  tp->dirty_tx = tp->dirty_rx = tp->cur_tx = 0;
+  for (i = 0; i < MAX_NUM_SHARE; i++) {
+    tp->cur_rx[i] = 0;
+  }
 }
 
 static int rtl8169_init_ring(struct net_device *dev)
@@ -3395,18 +3478,22 @@ static void rtl_hw_start(struct net_device *dev)
   tp->hw_start(dev);
 }
 
-struct rtl8169_private *tp;
-
+uint32 alloc_skb_count = 0;
 static sint
 r8169_transmit (u8 *buffer, sint len)
 {
-  DLOG ("TX: buffer=0x%p len=%d", buffer, len);
+  DLOG ("TX: buffer=0x%p len=%d, cpu=%d", buffer, len, get_pcpu_id ());
   u8 *p = buffer;
   DLOG ("  %.02X %.02X %.02X %.02X %.02X %.02X",
         p[0], p[1], p[2], p[3], p[4], p[5]);
   p+=6;
   DLOG ("  %.02X %.02X %.02X %.02X %.02X %.02X",
         p[0], p[1], p[2], p[3], p[4], p[5]);
+
+#ifdef USE_VMX
+  spinlock_lock (r8169_tx_lock);
+#endif
+
   uint entry = tp->cur_tx % NUM_TX_DESC;
   struct TxDesc *txd = tp->TxDescArray + entry;
   void __iomem *ioaddr = tp->mmio_addr;
@@ -3414,15 +3501,20 @@ r8169_transmit (u8 *buffer, sint len)
   u32 status;
   u32 opts1;
 
-  if (le32_to_cpu (txd->opts1) & DescOwn)
+  if (le32_to_cpu (txd->opts1) & DescOwn) {
+    com1_printf ("TX ring overflow\n");
     goto abort;
-  if (len > MAX_FRAME_SIZE)
+  }
+  if (len > MAX_FRAME_SIZE) {
+    com1_printf ("TX frame too large\n");
     goto abort;
+  }
 
   opts1 = DescOwn | FirstFrag | LastFrag;
   tp->tx_skb[entry].len = len;
   struct sk_buff *skb = alloc_skb (len);
-  if (!skb) goto abort;
+  if (!skb) {com1_printf ("skb alloc failed!\n"); goto abort;}
+  alloc_skb_count++;
   memcpy (skb->data, buffer, len);
   tp->tx_skb[entry].skb = skb;
   mapping = (uint) get_phys_addr (skb->data);
@@ -3443,8 +3535,14 @@ r8169_transmit (u8 *buffer, sint len)
 
   RTL_W8 (TxPoll, NPQ); /* set polling bit */
 
+#ifdef USE_VMX
+  spinlock_unlock (r8169_tx_lock);
+#endif
   return len;
  abort:
+#ifdef USE_VMX
+  spinlock_unlock (r8169_tx_lock);
+#endif
   return -1;
 }
 
@@ -3483,13 +3581,26 @@ r8169_get_hwaddr (u8 addr[ETH_ADDR_LEN])
   return TRUE;
 }
 
-static void * ioa = NULL;
-
 extern void
 r8169_reset (void)
 {
-  void * ioaddr = ioa;
+  void * ioaddr = global_ioa_backup;
   RTL_W8(ChipCmd, CmdReset);
+}
+
+void
+r8169_route_irq (uint8 dest)
+{
+  u8 vector;
+  if (!pci_irq_map_handler (&irq_backup, irq_handler, dest,
+        IOAPIC_DESTINATION_LOGICAL,
+        IOAPIC_DELIVERY_FIXED)) {
+    DLOG ("Failed to map IRQ");
+    return;
+  }
+
+  IOAPIC_get_GSI_mapping (irq_backup.gsi, &vector, NULL);
+  DLOG ("Using vector=0x%X", vector);
 }
 
 extern bool
@@ -3513,6 +3624,8 @@ r8169_init (void)
     goto abort;
   }
 
+  memset (r8169_bh_id, 0, MAX_NUM_SHARE * sizeof (task_id));
+
   const struct rtl_cfg_info *cfg = &rtl_cfg_infos[compatible_ids[i].cfg];
   const unsigned int region = cfg->region;
   DLOG ("Found device_index=%d", device_index);
@@ -3535,6 +3648,15 @@ r8169_init (void)
   if (pci_irq_find (pdev.bus, pdev.slot, irq_pin, &irq)) {
     /* use PCI routing table */
     DLOG ("Found PCI routing entry irq.gsi=0x%x", irq.gsi);
+
+    /* 
+     * Level triggered mode causes trouble when the interrupt
+     * is broadcasted to all LAPICs. PCI-E should use edge mode
+     * anyway.
+     */
+    irq.trigger = TRIGGER_EDGE;
+    irq_backup = irq;
+
     if (!pci_irq_map_handler (&irq, irq_handler, 0x01,
                               IOAPIC_DESTINATION_LOGICAL,
                               IOAPIC_DELIVERY_FIXED)) {
@@ -3550,8 +3672,11 @@ r8169_init (void)
     goto abort;
   }
 
+  /* Set master sandbox to be the one doing the hardware initialization */
+  r8169_master_sandbox = get_pcpu_id ();
+
   ioaddr = map_virtual_page (phys_addr | 3);
-  ioa = ioaddr;
+  global_ioa_backup = ioaddr;
 
   DLOG ("BAR%d phys=0x%p virt=0x%p", region, phys_addr, ioaddr);
 
@@ -3646,21 +3771,25 @@ r8169_init (void)
   tp->napi_event = cfg->napi_event;
 
   /* Register network device with net subsystem */
-  tp->ethdev.recv_func = NULL;
-  tp->ethdev.send_func = r8169_transmit;
-  tp->ethdev.get_hwaddr_func = r8169_get_hwaddr;
-  tp->ethdev.poll_func = r8169_poll;
-  tp->ethdev.drvdata = tp;
+  /* Modified for SeQuest. We need a separate ethdev for each sandbox
+   * and share all the other things in driver private data structure */
+  for (i = 0; i < MAX_NUM_SHARE; i++) {
+    tp->ethdev[i].recv_func = NULL;
+    tp->ethdev[i].send_func = r8169_transmit;
+    tp->ethdev[i].get_hwaddr_func = r8169_get_hwaddr;
+    tp->ethdev[i].poll_func = r8169_poll;
+    tp->ethdev[i].drvdata = tp;
+  }
 
   tp->pci_dev = &pdev;
   pdev.drvdata = tp;
 
-  init_phy(&tp->ethdev, tp);
+  init_phy(&tp->ethdev[0], tp);
 
-  if (!net_register_device (&tp->ethdev)) {
-    DLOG ("registration failed");
-    goto abort_tp;
-  }
+  //if (!net_register_device (&tp->ethdev)) {
+  //  DLOG ("registration failed");
+  //  goto abort_tp;
+  //}
 
 #define ETH_FCS_LEN 4
 #define VLAN_ETH_HLEN 18
@@ -3678,20 +3807,44 @@ r8169_init (void)
     goto abort_rxdesc;
   tp->TxPhyAddr = (uint) get_phys_addr (tp->TxDescArray);
 
-  sint retval = rtl8169_init_ring(&tp->ethdev);
+  sint retval = rtl8169_init_ring(&tp->ethdev[0]);
   if (retval < 0)
     goto abort_txdesc;
 
-  rtl_hw_start(&tp->ethdev);
+  rtl_hw_start(&tp->ethdev[0]);
 
   //rtl8169_request_timer(dev);
 
-  rtl8169_check_link_status(&tp->ethdev, tp, tp->mmio_addr);
+  rtl8169_check_link_status(&tp->ethdev[0], tp, tp->mmio_addr);
 
-  r8169_bh_id = create_kernel_thread_args ((u32) r8169_bh_thread,
-                                           (u32) &r8169_bh_stack[1023],
-                                           FALSE, 0);
-  set_iovcpu (r8169_bh_id, IOVCPU_CLASS_NET);
+//  r8169_bh_id[0] = create_kernel_thread_args ((u32) r8169_bh_thread,
+//                                              (u32) &r8169_bh_stack[0][1023],
+//                                              FALSE, 0);
+//  set_iovcpu (r8169_bh_id[0], IOVCPU_CLASS_NET);
+
+#ifdef USE_VMX
+  r8169_initialized = TRUE;
+  r8169_tx_lock = shm_alloc_drv_lock ();
+  if (r8169_tx_lock == NULL) {
+    DLOG ("Driver lock allocation failed!\n");
+  } else {
+    spinlock_init (r8169_tx_lock);
+  }
+
+  r8169_rx_int_lock = shm_alloc_drv_lock ();
+  if (r8169_rx_int_lock == NULL) {
+    DLOG ("Driver lock allocation failed!\n");
+  } else {
+    spinlock_init (r8169_rx_int_lock);
+  }
+
+  r8169_tx_int_lock = shm_alloc_drv_lock ();
+  if (r8169_tx_int_lock == NULL) {
+    DLOG ("Driver lock allocation failed!\n");
+  } else {
+    spinlock_init (r8169_tx_int_lock);
+  }
+#endif
 
 #ifdef TX_TIMING
   timing_id =
@@ -3711,8 +3864,51 @@ r8169_init (void)
   return FALSE;
 }
 
+/*
+ * This is used by sandboxes that share this driver and did not
+ * initialize it themself.
+ */
+extern bool
+r8169_register (void)
+{
+  uint32 cpu;
+  cpu = get_pcpu_id ();
+  uint8 vector = 0;
+  uint64 flags = 0;
+
+  if (cpu >= MAX_NUM_SHARE) {
+    DLOG ("Too many sandboxes");
+    return FALSE;
+  }
+
+  if (!net_register_device (&tp->ethdev[cpu])) {
+    DLOG ("registration failed");
+    return FALSE;
+  }
+
+  if (IOAPIC_get_GSI_mapping (irq_backup.gsi, &vector, &flags) == -1) {
+    logger_printf ("r8169: Cannot get GSI mapping from IOAPIC\n");
+    return FALSE;
+  }
+
+  /* Ask IOAPIC for interrupt delivery to THIS sandbox (core) */
+  IOAPIC_map_GSI (irq_backup.gsi, vector, flags | (((uint64)(0x1 << cpu)) << 56));
+
+  atomic_inc (&num_sharing);
+  logger_printf ("r8169: %d sandboxes sharing this driver\n", num_sharing.counter);
+
+  r8169_bh_id[cpu] =
+      create_kernel_thread_args ((u32) r8169_bh_thread,
+                                 (u32) &r8169_bh_stack[cpu][1023],
+                                 FALSE, 0);
+  set_iovcpu (r8169_bh_id[cpu], IOVCPU_CLASS_NET);
+
+  return TRUE;
+}
+
 extern void
-r8169_free () {
+r8169_free ()
+{
   unmap_virtual_page (tp->mmio_addr);
   pow2_free ((u8 *) tp->TxDescArray);
   pow2_free ((u8 *) tp->RxDescArray);
@@ -3720,7 +3916,8 @@ r8169_free () {
 }
 
 static const struct module_ops mod_ops = {
-  .init = r8169_init
+  //.init = r8169_init
+  .init = r8169_register
 };
 
 DEF_MODULE (net___r8169, "r8169 network driver", &mod_ops, {"net___ethernet", "pci"});

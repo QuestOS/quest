@@ -155,9 +155,9 @@ duplicate_TSS (uint32 ebp,
   if (i == 256)
     panic ("No free selector for TSS");
 
-  logger_printf ("duplicate_TSS: pTSS=%p i=0x%x esp=%p ebp=%p\n",
-                 pTSS, i << 3,
-                 child_esp, child_ebp);
+  //logger_printf ("duplicate_TSS: pTSS=%p i=0x%x esp=%p ebp=%p\n",
+  //               pTSS, i << 3,
+  //               child_esp, child_ebp);
 
   /* See pp 6-7 in IA-32 vol 3 docs for meanings of these assignments */
   ad[i].uLimit0 = 0xFFF;        /* --??-- Right now, a page per TSS */
@@ -1135,6 +1135,9 @@ _timer (void)
     if (!mp_enabled)
       com1_printf ("timer: enabling scheduling\n");
     mp_enabled = 1;
+#ifdef USE_VMX
+    if (shm_initialized) shm->bsp_booted = TRUE;
+#endif
     begin_kernel_threads ();
   } else {
     begin_kernel_threads ();    /* has internal flag */
