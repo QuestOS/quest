@@ -262,7 +262,7 @@ static const struct module_ops mod_ops = {
   .init = init_keyboard_8042
 };
 
-DEF_MODULE (input___kb8042, "Keyboard (i8042) driver", &mod_ops, {});
+//DEF_MODULE (input___kb8042, "Keyboard (i8042) driver", &mod_ops, {});
 
 /*
  * Local Variables:
