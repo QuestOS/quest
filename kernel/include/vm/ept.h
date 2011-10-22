@@ -35,6 +35,7 @@
 
 extern void vmx_init_mem (uint32);
 extern void vmx_init_ept (uint32);
+extern uint32 get_host_phys_addr (uint32);
 
 #endif
 

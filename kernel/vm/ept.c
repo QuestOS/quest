@@ -29,6 +29,7 @@
 #include "arch/i386-mtrr.h"
 #include "sched/sched.h"
 
+#define DEBUG_EPT    1
 #if DEBUG_EPT > 0
 #define DLOG(fmt,...) DLOG_PREFIX("ept",fmt,##__VA_ARGS__)
 #else
@@ -78,7 +79,7 @@ vmx_init_mem (uint32 cpu)
   if (cpu == 0) {
     /* Initialize shared memory so that we can use the global lock */
     shm_init (cpu);
-    logger_printf ("Logical Processor %d, skip relocation.\n", cpu);
+    DLOG ("Logical Processor %d, skip relocation.", cpu);
 
 #if 0
     int c;
@@ -101,7 +102,7 @@ vmx_init_mem (uint32 cpu)
     return;
   }
 
-  logger_printf ("Memory Relocation for cpu %d\n", cpu);
+  DLOG ("Memory Relocation for cpu %d", cpu);
 
   /*
    * In order to rearrange the memory layout for different sandbox
@@ -129,8 +130,8 @@ vmx_init_mem (uint32 cpu)
   asm volatile ("wbinvd");
 
   /* Now begin memory relocation */
-  logger_printf ("Relocating kernel to 0x%x for cpu#%d\n", physical_offset, cpu);
-  logger_printf ("Duplicating kernel from: 0x%x\n", &_physicalbootstrapstart);
+  DLOG ("Relocating kernel to 0x%x for cpu#%d", physical_offset, cpu);
+  DLOG ("Duplicating kernel from: 0x%x", &_physicalbootstrapstart);
   void *src_page, *des_page;
   uint32 cb = PHYS_PAGE_SIZE;
   /*
@@ -141,7 +142,7 @@ vmx_init_mem (uint32 cpu)
        (((uint32)(&_physicalbootstrapstart)) >> 12) - (EPT_DATA_SIZE >> 12); i++) {
     if (!BITMAP_TST (mm_table, i)) {
       if (!BITMAP_TST (mm_table, i + (SANDBOX_KERN_OFFSET >> 12) * cpu)) {
-        logger_printf ("Wiping out memory! CPU#%d\n", get_pcpu_id ());
+        com1_printf ("Wiping out memory! CPU#%d\n", get_pcpu_id ());
         while (1);
       }
       /* Physical page allocated, relocate it */
@@ -163,7 +164,7 @@ vmx_init_mem (uint32 cpu)
     }
   }
 
-  logger_printf ("%d Physical Pages Relocated for cpu#%d\n", physical_page_count, cpu);
+  DLOG ("%d Physical Pages Relocated for cpu#%d", physical_page_count, cpu);
 
   /*
    * Fix physical memory bitmap for new kernel. Clear the pages for new kernel image.
@@ -211,7 +212,7 @@ vmx_init_mem (uint32 cpu)
 
   unmap_virtual_page (vm86_pgt);
 
-  logger_printf ("BIOS Mapping fixed for cpu#%d\n", cpu);
+  DLOG ("BIOS Mapping fixed for cpu#%d", cpu);
 
   /* Modify the mapping for kernel. APIC mapping should be fine. */
   for (i = 0; i < 1024; i++) {
@@ -247,7 +248,7 @@ vmx_init_mem (uint32 cpu)
   }
 #endif
 
-  logger_printf ("Kernel Mapping fixed for cpu#%d\n", cpu);
+  DLOG ("Kernel Mapping fixed for cpu#%d", cpu);
 
   /* Restore Paging Structures for Host */
   virt_pgd[0] = bios_backup;
@@ -256,16 +257,16 @@ vmx_init_mem (uint32 cpu)
   }
   flush_tlb_all ();
 
-  logger_printf ("Host Mapping Restored on cpu#%d\n", cpu);
+  DLOG ("Host Mapping Restored on cpu#%d", cpu);
 
   unmap_virtual_page (virt_pgd_new);
   unmap_virtual_page (virt_kern_pgt);
   unmap_virtual_page (virt_kern_pgt_new);
   unmap_virtual_page (virt_pgd);
 
-  logger_printf ("phys_cr3=0x%x\n", phys_cr3);
+  DLOG ("phys_cr3=0x%x", phys_cr3);
   phys_cr3 += physical_offset;
-  logger_printf ("New phys_cr3=0x%x\n", phys_cr3);
+  DLOG ("New phys_cr3=0x%x", phys_cr3);
 
   /* 
    * Before switch to new kernel, unlock the kernel lock in old kernel.
@@ -302,16 +303,16 @@ vmx_init_mem (uint32 cpu)
   /* Modify the physical memory manager for the new kernel. */
   mm_limit = 256 + ((SANDBOX_KERN_OFFSET * (cpu + 1)) >> 12);
   mm_begin = 256 + (physical_offset >> 12);
-  logger_printf ("Physical Memory for CPU %d begins at 0x%x, ends at 0x%x\n",
-                 cpu, mm_begin << 12, mm_limit << 12);
+  DLOG ("Physical Memory for CPU %d begins at 0x%x, ends at 0x%x",
+        cpu, mm_begin << 12, mm_limit << 12);
 
   asm volatile ("movl %%cr3, %0":"=r" (cr));
-  logger_printf ("Set Host and Guest CR3 to: 0x%x\n", cr);
+  DLOG ("Set Host and Guest CR3 to: 0x%x", cr);
   vmwrite (cr, VMXENC_HOST_CR3);
   vmwrite (cr, VMXENC_GUEST_CR3);
 }
 
-//#define EPT_DEBUG
+//#define MTRR_DEBUG
 
 /*
  * vmx_init_ept should be called after the current sandbox kernel
@@ -321,7 +322,7 @@ vmx_init_mem (uint32 cpu)
 void
 vmx_init_ept (uint32 cpu)
 {
-  logger_printf ("Initializing EPT data structures on CPU#%d...\n", cpu);
+  DLOG ("Initializing EPT data structures on CPU#%d...", cpu);
 
   extern uint32 _shared_driver_data_physical, _shared_driver_data_pages;
   extern uint32 _shared_driver_bss_physical, _shared_driver_bss_pages;
@@ -359,7 +360,7 @@ vmx_init_ept (uint32 cpu)
     panic ("Out of Physical RAM for EPT Configuration.");
   }
 
-  logger_printf ("pml4_frame=0x%p pdpt_frame=0x%p\n", pml4_frame, pdpt_frame);
+  DLOG ("pml4_frame=0x%p pdpt_frame=0x%p", pml4_frame, pdpt_frame);
 
   var_base = map_virtual_page (var_regs_frame | 3);
   var_mask = &var_base[MAX_MTRR_VAR_REGS];
@@ -367,7 +368,7 @@ vmx_init_ept (uint32 cpu)
   pml4 = map_virtual_page (pml4_frame | 3);
   pdpt = map_virtual_page (pdpt_frame | 3);
 
-  logger_printf ("pml4=0x%p pdpt=0x%p\n", pml4, pdpt);
+  DLOG ("pml4=0x%p pdpt=0x%p", pml4, pdpt);
 
   memset (pml4, 0, 0x1000);
   memset (pdpt, 0, 0x1000);
@@ -390,7 +391,7 @@ vmx_init_ept (uint32 cpu)
   }
 #endif
 
-#ifdef EPT_DEBUG
+#ifdef MTRR_DEBUG
   u64 msr;
   com1_printf ("IA32_VMX_EPT_VPID_CAP: 0x%.16llX\n",
                msr=rdmsr (IA32_VMX_EPT_VPID_CAP));
@@ -409,7 +410,7 @@ vmx_init_ept (uint32 cpu)
     var_base[i] = rdmsr (IA32_MTRR_PHYS_BASE (i));
     var_mask[i] = rdmsr (IA32_MTRR_PHYS_MASK (i));
 
-#ifdef EPT_DEBUG
+#ifdef MTRR_DEBUG
     com1_printf ("IA32_MTRR_PHYS_BASE(%d)=0x%llX\nIA32_MTRR_PHYS_MASK(%d)=0x%llX\n",
                  i, var_base[i], i, var_mask[i]);
 #endif
@@ -440,7 +441,7 @@ vmx_init_ept (uint32 cpu)
     mtrr_fix4kF0 = rdmsr (IA32_MTRR_FIX4K_F0000);
     mtrr_fix4kF8 = rdmsr (IA32_MTRR_FIX4K_F8000);
 
-#ifdef EPT_DEBUG
+#ifdef MTRR_DEBUG
     com1_printf ("IA32_MTRR_FIX64K_00000=0x%llX\n", mtrr_fix64k);
     com1_printf ("IA32_MTRR_FIX16K_80000=0x%llX\n", mtrr_fix16k8);
     com1_printf ("IA32_MTRR_FIX16K_A0000=0x%llX\n", mtrr_fix16kA);
@@ -483,7 +484,7 @@ vmx_init_ept (uint32 cpu)
     if (pd_frame == -1) {
       panic ("Out of Physical RAM for EPT Configuration.");
     }
-    logger_printf ("pd_frame=0x%x, pd=0x%x\n", pd_frame, pd);
+    DLOG ("pd_frame=0x%x, pd=0x%x", pd_frame, pd);
 
     memset (pd, 0, 0x1000);
 
@@ -601,21 +602,44 @@ vmx_init_ept (uint32 cpu)
 
       unmap_virtual_page (pt);
     }
-    logger_printf ("pd[0]=0x%llX\n", pd[0]);
+    DLOG ("pd[0]=0x%llX", pd[0]);
     unmap_virtual_page (pd);
     pdpt[i] = pd_frame | (0 << 7) | EPT_ALL_ACCESS;
-    logger_printf ("pdpt[%d]=0x%llX\n", i, pdpt[i]);
+    DLOG ("pdpt[%d]=0x%llX", i, pdpt[i]);
   }
 
   vmwrite (pml4_frame | (3 << 3) | 6, VMXENC_EPT_PTR);
   vmwrite (0, VMXENC_EPT_PTR_HI);
-  logger_printf ("VMXENC_EPT_PTR=0x%p pml4[0]=0x%llX pdpt[0]=0x%llX\n",
-                 vmread (VMXENC_EPT_PTR), pml4[0], pdpt[0]);
+  DLOG ("VMXENC_EPT_PTR=0x%p pml4[0]=0x%llX pdpt[0]=0x%llX",
+        vmread (VMXENC_EPT_PTR), pml4[0], pdpt[0]);
 
   unmap_virtual_page (var_base);
   unmap_virtual_page (pml4);
   unmap_virtual_page (pdpt);
   free_phys_frame (var_regs_frame);
+}
+
+/*
+ * Helper function to verify the EPT mapping of a given guest physical address.
+ * This works only for 32-bit address now.
+ */
+uint32
+get_host_phys_addr (uint32 guest_phys_addr)
+{
+  uint32 pml4_frame = vmread (VMXENC_EPT_PTR);
+  uint64 * pml4 = map_virtual_page ((pml4_frame & 0xFFFFF000) | 3);
+  uint64 * pdpt = map_virtual_page ((pml4[0] & 0xFFFFF000) | 3);
+  uint64 * pd = map_virtual_page ((pdpt[(guest_phys_addr >> 30) & 0x3] & 0xFFFFF000) | 3);
+  uint64 * pt = map_virtual_page ((pd[(guest_phys_addr >> 21) & 0x1FF] & 0xFFFFF000) | 3);
+  uint64 phys = pt[(guest_phys_addr >> 12) & 0x1FF] & 0xFFFFF000 +
+                (guest_phys_addr & 0x00000FFF);
+
+  unmap_virtual_page (pt);
+  unmap_virtual_page (pd);
+  unmap_virtual_page (pdpt);
+  unmap_virtual_page (pml4);
+
+  return (uint32) phys;
 }
 
 /* vi: set et sw=2 sts=2: */

@@ -18,14 +18,57 @@
 #include "kernel.h"
 #include "module/header.h"
 #include "drivers/net/ethernet.h"
+#include "sched/sched.h"
+
+#define STATIC_IP_ASSIGNMENT
+
+static u32 netsetup_stack[1024] ALIGNED (0x1000);
+static task_id netsetup_id = 0;
+
+static void netsetup_thread (void);
+
+#ifdef STATIC_IP_ASSIGNMENT
+  struct ip_addr ipaddr, netmask, gw;
+#endif
 
 /* hard-code the configuration for now */
 bool
 netsetup_init (void)
 {
   net_set_default ("en0");
-  net_dhcp_start ("en0");
+  netsetup_id =
+      start_kernel_thread ((u32) netsetup_thread,
+                           (u32) &netsetup_stack[1023]);
   return TRUE;
+}
+
+static void
+netsetup_thread (void)
+{
+  int cpu;
+  cpu = get_pcpu_id ();
+
+  logger_printf ("netsetup (%d): Network set up thread started\n", cpu);
+  for (;;) {
+#ifdef STATIC_IP_ASSIGNMENT
+    struct netif *netif = netif_find ("en0");
+    if (netif) {
+      IP4_ADDR(&ipaddr, 192, 168, 2, 11 + cpu);
+      //IP4_ADDR(&ipaddr, 192, 168, 2, 11);
+      IP4_ADDR(&netmask, 255, 255, 255, 0);
+      IP4_ADDR(&gw, 192, 168, 2, 1);
+      netif_set_addr (netif, &ipaddr, &netmask, &gw);
+      //net_static_config("en0", "192.168.2.11", "192.168.2.1", "255.255.255.0");
+      netif_set_up (netif);
+    } else {
+      logger_printf ("Cannot find interface\n");
+    }
+#else
+    net_dhcp_start ("en0");
+#endif
+    logger_printf ("netsetup (%d): Network set up thread exited\n", cpu);
+    exit_kernel_thread ();
+  }
 }
 
 static const struct module_ops mod_ops = {
