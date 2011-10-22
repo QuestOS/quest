@@ -17,12 +17,15 @@
 
 #include "vm/shm.h"
 #include "vm/ept.h"
+#include "vm/spow2.h"
 #include "kernel.h"
 #include "mem/virtual.h"
 #include "util/printf.h"
+#include "smp/apic.h"
 
+#define DEBUG_SHM    1
 #if DEBUG_SHM > 0
-#define DLOG(fmt,...) DLOG_PREFIX("ept",fmt,##__VA_ARGS__)
+#define DLOG(fmt,...) DLOG_PREFIX("shm",fmt,##__VA_ARGS__)
 #else
 #define DLOG(fmt,...) ;
 #endif
@@ -121,8 +124,9 @@ shm_init (uint32 cpu)
     shm->magic = SHM_MAGIC;
     shm->num_sandbox = 0;
     shm->virtual_display.cur_screen = 0;
-    logger_printf ("Shared memory system initialized:\n");
-    logger_printf ("  Total Allocatable Pages = %d\n", (SHARED_MEM_SIZE >> 12) - 1);
+    shm->bsp_booted = FALSE;
+    DLOG ("Shared memory system initialized:");
+    DLOG ("  Total Allocatable Pages = %d", (SHARED_MEM_SIZE >> 12) - 1);
   }
 
   spinlock_lock (&(shm->shm_lock));
@@ -137,6 +141,10 @@ shm_init (uint32 cpu)
   shm_initialized = TRUE;
 
   shm_screen_init (cpu);
+
+  if (cpu == 0) {
+    shm_pow2_init ();
+  }
 }
 
 spinlock*
@@ -207,6 +215,40 @@ shm_alloc_phys_frame (void)
   return -1;
 }
 
+uint32
+shm_alloc_phys_frames (uint32 count)
+{
+  int i, j;
+
+  if (!shm_initialized) {
+    logger_printf ("shm_alloc_phys_frames: Shared memory is not initialized!\n");
+    return -1;
+  } else {
+    spinlock_lock (&(shm->shm_lock));
+
+    for (i = shm_begin; i < shm_limit - count + 1; i++) {
+      for (j = 0; j < count; j++) {
+        if (!SHM_BITMAP_TST (shm->shm_table, i + j)) {      /* Is not free page? */
+          i = i + j;
+          goto keep_searching;
+        }
+      }
+      /* found window: */
+      for (j = 0; j < count; j++) {
+        SHM_BITMAP_CLR (shm->shm_table, i + j);
+      }
+      spinlock_unlock (&(shm->shm_lock));
+      return (i << 12);           /* physical byte address of free frames */
+      keep_searching:
+      ;
+    }
+
+    spinlock_unlock (&(shm->shm_lock));
+  }
+
+  return -1;
+}
+
 void
 shm_free_phys_frame (uint32 frame)
 {
@@ -216,6 +258,24 @@ shm_free_phys_frame (uint32 frame)
   } else {
     spinlock_lock (&(shm->shm_lock));
     SHM_BITMAP_SET (shm->shm_table, frame >> 12);
+    spinlock_unlock (&(shm->shm_lock));
+  }
+}
+
+void
+shm_free_phys_frames (uint32 frame, uint32 count)
+{
+  int i;
+
+  frame >>= 12;
+
+  if (!shm_initialized) {
+    logger_printf ("shm_free_phys_frames: Shared memory is not initialized!\n");
+    return;
+  } else {
+    spinlock_lock (&(shm->shm_lock));
+    for (i = 0; i < count; i++)
+      SHM_BITMAP_SET (shm->shm_table, frame + i);
     spinlock_unlock (&(shm->shm_lock));
   }
 }

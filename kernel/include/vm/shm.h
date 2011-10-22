@@ -60,6 +60,7 @@ typedef struct _shm_info {
   uint32 shm_table[SHARED_MEM_INDEX_MAX];
   display_t virtual_display;
   uint32 num_sandbox;
+  bool bsp_booted;
 } shm_info;
 
 /*
@@ -84,7 +85,9 @@ extern bool shm_screen_first;
 extern char * shm_screen;
 extern void shm_init (uint32);
 extern uint32 shm_alloc_phys_frame (void);
+extern uint32 shm_alloc_phys_frames (uint32);
 extern void shm_free_phys_frame (uint32);
+extern void shm_free_phys_frames (uint32, uint32);
 extern spinlock * shm_alloc_drv_lock (void);
 extern void shm_free_drv_lock (spinlock *);
 
