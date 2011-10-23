@@ -1104,7 +1104,7 @@ static const struct module_ops mod_ops = {
 };
 
 #ifdef USE_VMX
-DEF_MODULE (vm___vmx, "VMX hardware virtualization driver", &mod_ops, {});
+//DEF_MODULE (vm___vmx, "VMX hardware virtualization driver", &mod_ops, {});
 #endif
 
 /*
