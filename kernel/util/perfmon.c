@@ -266,6 +266,7 @@ perfmon_vcpu_acnt_end (vcpu * vcpu)
 
     /* i will be used to do the division, which will be implemented as right shift */
     for (i = 0; (llc_lines >> i) > 0 && (llc_lines >> i) != 1; i++);
+    //asm volatile ("bsrl %1,%0":"=r" (i):"r" (llc_lines));
     //DLOG ("Should shift right %d bits", i);
 
     cur_occupancy = prev_occupancy + local_miss - (global_miss >> i) * prev_occupancy;
@@ -418,7 +419,7 @@ static const struct module_ops mod_ops = {
   .init = perfmon_init
 };
 
-DEF_MODULE (perfmon, "Performance monitoring driver", &mod_ops, {});
+//DEF_MODULE (perfmon, "Performance monitoring driver", &mod_ops, {});
 
 /*
  * Local Variables:

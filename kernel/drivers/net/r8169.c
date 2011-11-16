@@ -1641,15 +1641,8 @@ rx_int (struct rtl8169_private *tp)
       //      p[0], p[1], p[2], p[3], p[4], p[5]);
       DLOG ("Driver(%d) : IP=0x%X, NM=0x%X, GW=0x%X", get_pcpu_id (),
             ipaddr.addr, netmask.addr, gw.addr);
-      //if (!eth_frame_demux (skb->data, pkt_size, &ipaddr)) {
-      //  break;
-      //}
       if (tp->ethdev[cpu].recv_func)
         tp->ethdev[cpu].recv_func (&tp->ethdev[cpu], skb->data, pkt_size);
-
-#ifdef USE_VMX
-      spinlock_lock (r8169_rx_int_lock);
-#endif
 
       for (i = 0; i < num_sharing.counter; i++) {
         if ((cpu != i) && (tp->cur_rx[i] <= tp->cur_rx[cpu])) {
@@ -1664,9 +1657,6 @@ rx_int (struct rtl8169_private *tp)
         rtl8169_mark_to_asic(desc, tp->rx_buf_sz);
       
       tp->cur_rx[cpu]++;
-#ifdef USE_VMX
-      spinlock_unlock (r8169_rx_int_lock);
-#endif
     }
     //cur_rx[cpu]++;
   }
@@ -1693,9 +1683,9 @@ tx_int (struct rtl8169_private *tp)
 
     status = __le32_to_cpu(tp->TxDescArray[entry].opts1);
     if (status & DescOwn) {
-      com1_printf ("tx own\n");
-      if ((tp->cur_tx - dirty_tx) > 50)
-        com1_printf ("dirty behind\n");
+      //com1_printf ("tx own\n");
+      //if ((tp->cur_tx - dirty_tx) > 50)
+      //  com1_printf ("dirty behind\n");
       break;
     }
 
@@ -1763,26 +1753,32 @@ r8169_bh_thread (void)
       }
 
       //if (status & LinkChg)
-        rtl8169_check_link_status(&tp->ethdev[0], tp, ioaddr);
+        //rtl8169_check_link_status(&tp->ethdev[0], tp, ioaddr);
 
       //if (status & RxOK) {
-        DLOG ("rx_int");
-        rx_int (tp);
+#ifdef USE_VMX
+      spinlock_lock (r8169_rx_int_lock);
+#endif
+      rx_int (tp);
+#ifdef USE_VMX
+      spinlock_unlock (r8169_rx_int_lock);
+#endif
       //}
 
-      //if (status & TxOK) {
-        DLOG ("tx_int");
+      if ((status & TxOK) && (cpu == r8169_master_sandbox)) {
         tx_int (tp);
-      //}
+      }
 
       /* We only get a new MSI interrupt when all active irq
        * sources on the chip have been acknowledged. So, ack
        * everything we've seen and check if new sources have become
        * active to avoid blocking all interrupts from the chip.
        */
-      status = RTL_R16(IntrStatus);
-      RTL_W16(IntrStatus,
-              (status & RxFIFOOver) ? (status | RxOverflow) : status);
+      if (cpu == r8169_master_sandbox) {
+        status = RTL_R16(IntrStatus);
+        RTL_W16(IntrStatus,
+            (status & RxFIFOOver) ? (status | RxOK | TxOK | RxOverflow) : status | RxOK | TxOK);
+      }
       //status = RTL_R16(IntrStatus);
     //}
 
@@ -1795,11 +1791,14 @@ static u64 tx_start = 0, tx_finish;
 #endif
 
 unsigned int n_int = 0;
+bool print_int = FALSE;
 
 static uint
 irq_handler (u8 vec)
 {
   int cpu = get_pcpu_id ();
+  if (print_int)
+    com1_printf ("r8169 interrupt!\n");
 
 #ifdef TX_TIMING
   /* assume tx_start != 0 means this is TX IRQ */

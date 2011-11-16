@@ -631,7 +631,7 @@ get_host_phys_addr (uint32 guest_phys_addr)
   uint64 * pdpt = map_virtual_page ((pml4[0] & 0xFFFFF000) | 3);
   uint64 * pd = map_virtual_page ((pdpt[(guest_phys_addr >> 30) & 0x3] & 0xFFFFF000) | 3);
   uint64 * pt = map_virtual_page ((pd[(guest_phys_addr >> 21) & 0x1FF] & 0xFFFFF000) | 3);
-  uint64 phys = pt[(guest_phys_addr >> 12) & 0x1FF] & 0xFFFFF000 +
+  uint64 phys = (pt[(guest_phys_addr >> 12) & 0x1FF] & 0xFFFFF000) +
                 (guest_phys_addr & 0x00000FFF);
 
   unmap_virtual_page (pt);

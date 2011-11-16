@@ -572,14 +572,24 @@ init (multiboot * pmb)
   smp_secondary_init ();
 
 #ifdef USE_VMX
-  {extern bool vmx_init (void); vmx_init ();}
+  { extern bool vmx_init (void); vmx_init (); }
 #endif
 
+  /* Shared component initialization in Quest-V */
   { extern bool init_keyboard_8042 (void); init_keyboard_8042 (); }
   { extern bool pci_init (void); pci_init (); }
   { extern bool r8169_init (void); r8169_init (); }
-  { extern bool msgt_mem_init (void); msgt_mem_init (); }
+  //{ extern bool msgt_mem_init (void); msgt_mem_init (); }
 
+/*
+ * --??-- In current boot-strap framework, all the things that need to
+ *  be shared across multiple kernels in Quest-V should be initialized
+ *  before this point. The private system components can still be
+ *  initialized by the module loader on BSP.
+ *
+ *  We will come up with some convenient module initialization framework
+ *  in the future.
+ */
 #ifdef USE_VMX
   spinlock_lock (&(shm->global_lock));
   print ("Waiting for VM-Forks...\n");
