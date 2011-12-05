@@ -35,7 +35,6 @@
 #include "sched/vcpu.h"
 #include "sched/sched.h"
 #include "module/header.h"
-#include "drivers/net/demux.h"
 
 #ifdef USE_VMX
 

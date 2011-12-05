@@ -274,7 +274,7 @@ vmx_init_mem (uint32 cpu)
    */
   unlock_kernel ();
 
-  asm volatile ("movl %0, %%cr3"::"r"(phys_cr3):);
+  asm volatile ("movl %0, %%cr3"::"r"(phys_cr3));
 
 #if 0
   uint32 *new_pgt = (uint32 *) KERN_PGT;
