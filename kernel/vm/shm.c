@@ -104,6 +104,7 @@ shm_init (uint32 cpu)
 
   /* Initialization done only once on Bootstrap Proc */
   if (cpu == 0) {
+    memset (shm, 0, 0x1000);
     /* Initialize the shared global spin locks */
     spinlock_init (&(shm->shm_lock));
     spinlock_init (&(shm->logger_lock));
@@ -212,6 +213,7 @@ shm_alloc_phys_frame (void)
     spinlock_unlock (&(shm->shm_lock));
   }
 
+  DLOG ("shm_alloc_phys_frame failed!");
   return -1;
 }
 
@@ -246,6 +248,7 @@ shm_alloc_phys_frames (uint32 count)
     spinlock_unlock (&(shm->shm_lock));
   }
 
+  DLOG ("shm_alloc_phys_frames failed!");
   return -1;
 }
 

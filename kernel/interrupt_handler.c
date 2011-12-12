@@ -1040,6 +1040,18 @@ uint32
 _time (void)
 {
 
+#if 0
+  static uint64 last = 0;
+  uint64 now;
+  RDTSC (now);
+  if (last) {
+    com1_printf ("Time (TSC counts): %llX\n", now - last);
+    last = 0;
+  } else {
+    last = now;
+  }
+#endif
+
   return tick;
 }
 

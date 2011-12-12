@@ -699,13 +699,15 @@ static uint32 net_tmr_stack[1024] ALIGNED (0x1000);
 static void
 net_tmr_thread (void)
 {
-  DLOG ("net_tmr_thread id=0x%x", str ());
+  DLOG ("net_tmr_thread id=0x%x, cpu=%d", str (), get_pcpu_id ());
   for (;;) {
     void net_tmr_process (void);
     net_tmr_process ();
     sched_usleep (NET_TMR_THREAD_WAIT_MSEC * 1000);
   }
 }
+
+static uint ethernet_device_count = 0;
 
 bool
 net_init(void)
@@ -718,6 +720,7 @@ net_init(void)
                                      (uint) &net_tmr_stack[1023]);
   uint select_iovcpu (u32);
   lookup_TSS (net_tmr_pid)->cpu = select_iovcpu (0);
+  ethernet_device_count = 0;
 
 #ifdef GDBSTUB_TCP
   {
@@ -730,8 +733,6 @@ net_init(void)
   return TRUE;
 }
 
-static uint ethernet_device_count = 0;
-
 bool
 net_register_device (ethernet_device *dev)
 {
@@ -743,20 +744,35 @@ net_register_device (ethernet_device *dev)
     return FALSE;
   }
 
-  dev->num = ethernet_device_count++;
+  static bool recover_flag = FALSE;
+  static struct netif * rtl_if = NULL;
+  if (!recover_flag)
+    dev->num = ethernet_device_count++;
+  else
+    dev->num = ethernet_device_count - 1;
   dev->recv_func = dispatch;
 
   DLOG ("net_register_device num=%d", dev->num);
 
   ethernetif->dev = dev;
 
-  if (netif_add (&dev->netif, IP_ADDR_ANY, IP_ADDR_ANY, IP_ADDR_ANY,
-                 (void *)ethernetif, ethernetif_init, ethernet_input) == NULL) {
+  if (recover_flag) {
+    netif_remove (rtl_if);
+  }
+
+  if ((rtl_if = netif_add (&dev->netif, IP_ADDR_ANY, IP_ADDR_ANY, IP_ADDR_ANY,
+                 (void *)ethernetif, ethernetif_init, ethernet_input)) == NULL) {
     ethernet_device_count--;
     mem_free (ethernetif);
     DLOG ("netif_add failed");
     return FALSE;
   }
+
+  /* --!!-- NOTICE
+   * This is a hack! We have to set the flag to true inorder to commence recovery.
+   * This should be done in some fault detection code.
+   */
+  //recover_flag = TRUE;
 
   return TRUE;
 }

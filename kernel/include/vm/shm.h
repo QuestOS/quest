@@ -26,7 +26,8 @@
 #define DRV_LOCK_INDEX          0x1
 /* DRV_LOCK_INDEX * 32 is the actual # of locks */
 #define NUM_DRV_LOCKS           (DRV_LOCK_INDEX << 5)
-#define PHYS_SHARED_MEM_HIGH    0xC0000000
+/* Change this to 0xC0000000 if possible. */
+#define PHYS_SHARED_MEM_HIGH    0xA0000000
 #define SHARED_MEM_SIZE         0x00400000
 /* SHARED_MEM_INDEX_MAX 32-bit integers bitmap for SHARED_MEM_SIZE of memory */
 #define SHARED_MEM_INDEX_MAX    (SHARED_MEM_SIZE >> 17)

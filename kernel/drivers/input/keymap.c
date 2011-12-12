@@ -39,7 +39,13 @@ keymap_getchar (void)
 
     shiftmod = ctrlmod = altmod = FALSE;  
     for (i=0; i<KEY_EVENT_MAX; i++) {
+      /* FIXME */
+      /* --!!-- Hack! Fix this for VMX later */
+#ifdef USE_VMX
+      if (e.keys[i].present && e.keys[i].release) {
+#else
       if (e.keys[i].present && e.keys[i].pressed) {
+#endif
         switch (e.keys[i].scancode) {
         case 0x2A:              /* LSHIFT */
         case 0x36:              /* RSHIFT */

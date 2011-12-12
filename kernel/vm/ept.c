@@ -29,7 +29,7 @@
 #include "arch/i386-mtrr.h"
 #include "sched/sched.h"
 
-#define DEBUG_EPT    1
+#define DEBUG_EPT    0
 #if DEBUG_EPT > 0
 #define DLOG(fmt,...) DLOG_PREFIX("ept",fmt,##__VA_ARGS__)
 #else
@@ -329,7 +329,7 @@ vmx_init_ept (uint32 cpu)
   extern uint32 _physicalbootstrapstart, _physicalkernelstart;
   extern uint32 _readonly_pages;
 
-  u32 i,j,k, index;
+  u32 i, j, k, m, index;
   u32 pml4_frame;
   u32 pdpt_frame;
   u32 pd_frame;
@@ -515,33 +515,95 @@ vmx_init_ept (uint32 cpu)
       /* First 2MB should be treated specially */
       if (i == 0 && j == 0) {
         for (k = 0; k < 512; k++) {
-          /* --!!-- NOTICE
-           * The memory types are supposed to be set based on the
-           * registers we read above. For now, let's just set them
-           * manually.
+          index = k * 0x1000;
+          memtype = def_memtype;
+
+          /*--!!-- NOTICE
+           * OK, this chunck of code to set memory type according to MTRRs is a
+           * real pain... It works on all the platforms we had in the lab. But
+           * double check this if the boot process is extremely slow, the system
+           * halts unpredictably or a ping round-trip time without kernel debug
+           * output exceeds 3ms.
            */
-          if (k < 160) {
-            memtype = 6;
-          } else if (k >= 192 && k < 204) {
-            memtype = 5;
-          } else if (k >= 236 && k < 256) {
-            memtype = 5;
-          } else if (k >= 256) {
-            memtype = 6;
-          } else {
-            memtype = 0;
+
+          /* 
+           * If fixed range MTRRs are supported. Memory type should be configured
+           * according to those registers. Otherwise, set it to default.
+           * Only the first MB is covered by fixed range MTRRs. 
+           */
+          if (fix_supported && (k < 256)) {
+            int sub_range = 0;
+            uint32 sub_index = 0;
+            /* 512 KB IA32_MTRR_FIX64K */
+            if (k < 128) {
+              sub_index = k * 0x1000;
+              sub_range = index >> 16;
+              memtype = (mtrr_fix64k >> (sub_range * 8)) & 0xFF;
+            } else if (k < 160) {
+              sub_index = (k - 128) * 0x1000;
+              sub_range = index >> 14;
+              memtype = (mtrr_fix16k8 >> (sub_range * 8)) & 0xFF;
+            } else if (k < 192) {
+              sub_index = (k - 160) * 0x1000;
+              sub_range = index >> 14;
+              memtype = (mtrr_fix16kA >> (sub_range * 8)) & 0xFF;
+            } else if (k < 200) {
+              sub_index = (k - 192) * 0x1000;
+              sub_range = index >> 12;
+              memtype = (mtrr_fix4kC0 >> (sub_range * 8)) & 0xFF;
+            } else if (k < 208) {
+              sub_index = (k - 200) * 0x1000;
+              sub_range = index >> 12;
+              memtype = (mtrr_fix4kC8 >> (sub_range * 8)) & 0xFF;
+            } else if (k < 216) {
+              sub_index = (k - 208) * 0x1000;
+              sub_range = index >> 12;
+              memtype = (mtrr_fix4kD0 >> (sub_range * 8)) & 0xFF;
+            } else if (k < 224) {
+              sub_index = (k - 216) * 0x1000;
+              sub_range = index >> 12;
+              memtype = (mtrr_fix4kD8 >> (sub_range * 8)) & 0xFF;
+            } else if (k < 232) {
+              sub_index = (k - 224) * 0x1000;
+              sub_range = index >> 12;
+              memtype = (mtrr_fix4kE0 >> (sub_range * 8)) & 0xFF;
+            } else if (k < 240) {
+              sub_index = (k - 232) * 0x1000;
+              sub_range = index >> 12;
+              memtype = (mtrr_fix4kE8 >> (sub_range * 8)) & 0xFF;
+            } else if (k < 248) {
+              sub_index = (k - 240) * 0x1000;
+              sub_range = index >> 12;
+              memtype = (mtrr_fix4kF0 >> (sub_range * 8)) & 0xFF;
+            } else {
+              sub_index = (k - 248) * 0x1000;
+              sub_range = index >> 12;
+              memtype = (mtrr_fix4kF8 >> (sub_range * 8)) & 0xFF;
+            }
           }
 
-          index = k * 0x1000;
+          /* 1 MB to 2 MB, we need to read variable range MTRRs */
+          if (k >= 256) {
+            /* Find the memory type */
+            for (m=0; m < num_var_reg; m++) {
+              /* Is the MTRR pair valid? */
+              if (var_mask[m] & 0x800) {
+                if ((index & (var_mask[m] & 0xFFFFF000)) ==
+                    ((var_base[m] & 0xFFFFF000) & (var_mask[m] & 0xFFFFF000))) {
+                  memtype = (var_base[m] & 0xFF);
+                }
+              }
+            }
+          }
 
           if (k < 256) {
             /* 1MB shared mapping for BIOS */
-            pt[k] = (k << 12) | (memtype << 3) | EPT_ALL_ACCESS;
+            pt[k] = index | (memtype << 3) | EPT_ALL_ACCESS;
           } else if ((index >= kernel_phys_start) && (index < kernel_phys_end)) {
             /* Second mega byte only mapped for Bootstrap Processor */
             if ((index >= ro_phys_start) && (index < ro_phys_end)) {
               /* Kernel read-only pages */
-              pt[k] = (k << 12) | (memtype << 3) | (EPT_READ_ACCESS + EPT_EXEC_ACCESS);
+              pt[k] = index | (memtype << 3) | (EPT_READ_ACCESS + EPT_EXEC_ACCESS);
             } else if ((index >= sddata_phys_start) && (index < sddata_phys_end)) {
               /* Shared driver data mapping */
               pt[k] = ((uint32) &_shared_driver_data_physical +
@@ -565,13 +627,24 @@ vmx_init_ept (uint32 cpu)
          * code a little bit here.
          */
         for (k = 0; k < 512; k++) {
-          index = i * 0x40000000 + j * 0x200000 + k * 0x1000;
+          index = (i << 30) + (j << 21) + (k << 12);
+
+          memtype = def_memtype;
+          /* Find the memory type */
+          for (m=0; m < num_var_reg; m++) {
+            /* Is the MTRR pair valid? */
+            if (var_mask[m] & 0x800) {
+              if ((index & (var_mask[m] & 0xFFFFF000)) ==
+                  ((var_base[m] & 0xFFFFF000) & (var_mask[m] & 0xFFFFF000))) {
+                memtype = (var_base[m] & 0xFF);
+              }
+            }
+          }
 
           if ((index >= kernel_phys_start) && (index < kernel_phys_end)) {
             if ((index >= ro_phys_start) && (index < ro_phys_end)) {
               /* Kernel read-only pages */
-              pt[k] = ((i << 30) + (j << 21) + (k << 12)) | (memtype << 3) |
-                      (EPT_READ_ACCESS + EPT_EXEC_ACCESS);
+              pt[k] = index | (memtype << 3) | (EPT_READ_ACCESS + EPT_EXEC_ACCESS);
             } else if ((index >= sddata_phys_start) && (index < sddata_phys_end)) {
               /* Shared driver data mapping */
               pt[k] = ((uint32) &_shared_driver_data_physical +
@@ -582,7 +655,7 @@ vmx_init_ept (uint32 cpu)
                        (index - sdbss_phys_start)) | (memtype << 3) | EPT_ALL_ACCESS;
             } else {
               /* All other pages grant all access */
-              pt[k] = ((i << 30) + (j << 21) + (k << 12)) | (memtype << 3) | EPT_ALL_ACCESS;
+              pt[k] = index | (memtype << 3) | EPT_ALL_ACCESS;
             }
           }
         }
@@ -594,7 +667,21 @@ vmx_init_ept (uint32 cpu)
          * We will work on this area for user space later.
          */
         for (k = 0; k < 512; k++) {
-          pt[k] = ((i << 30) + (j << 21) + (k << 12)) | (memtype << 3) | EPT_ALL_ACCESS;
+          index = (i << 30) + (j << 21) + (k << 12);
+
+          memtype = def_memtype;
+          /* Find the memory type */
+          for (m=0; m < num_var_reg; m++) {
+            /* Is the MTRR pair valid? */
+            if (var_mask[m] & 0x800) {
+              if ((index & (var_mask[m] & 0xFFFFF000)) ==
+                  ((var_base[m] & 0xFFFFF000) & (var_mask[m] & 0xFFFFF000))) {
+                memtype = (var_base[m] & 0xFF);
+              }
+            }
+          }
+
+          pt[k] = index | (memtype << 3) | EPT_ALL_ACCESS;
         }
         pd[j] = pt_frame | (0 << 7) | EPT_ALL_ACCESS;
         //pd[j] = ((i << 30) + (j << 21)) | (1 << 7) | (memtype << 3) | EPT_ALL_ACCESS;

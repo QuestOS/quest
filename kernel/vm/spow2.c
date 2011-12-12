@@ -209,6 +209,7 @@ shm_pow2_alloc (uint32 size, uint8 ** ptr)
   *ptr = shm_pow2_get_free_block (index);
   shm_pow2_insert_used_table (*ptr, index);
   spinlock_unlock (shm_pow2_lock);
+  memset (*ptr, 0, size);
   return index;
 }
 
@@ -227,11 +228,22 @@ void
 shm_pow2_init (void)
 {
   int i;
+  uint32 phy_frame = 0;
+
   for (i = 0; i < SHM_POW2_TABLE_LEN; i++) {
-    shm_pow2_table[i] = map_virtual_page (shm_alloc_phys_frame () | 3);
+    phy_frame = shm_alloc_phys_frame ();
+    if (phy_frame == -1) {
+      panic ("spow2: physical memory allocation failed!");
+    }
+    shm_pow2_table[i] = map_virtual_page (phy_frame | 3);
     memset (shm_pow2_table[i], 0, 0x1000);
   }
-  shm_pow2_used_table = map_virtual_page (shm_alloc_phys_frame () | 3);
+
+  phy_frame = shm_alloc_phys_frame ();
+  if (phy_frame == -1) {
+    panic ("spow2: used table physical memory allocation failed!");
+  }
+  shm_pow2_used_table = map_virtual_page (phy_frame | 3);
   memset (shm_pow2_used_table, 0, 0x1000);
   shm_pow2_used_count = 0;
   shm_pow2_used_table_pages = 1;

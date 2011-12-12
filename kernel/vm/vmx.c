@@ -27,11 +27,12 @@
 #include "arch/i386.h"
 #include "arch/i386-mtrr.h"
 #include "sched/sched.h"
+#include "vm/shdr.h"
 
-#define DEBUG_VMX 3
+#define DEBUG_VMX 2
 #define VMX_EPT
 
-#if DEBUG_VMX > 0
+#if DEBUG_VMX > 2
 #define DLOG(fmt,...) DLOG_PREFIX("vmx",fmt,##__VA_ARGS__)
 #else
 #define DLOG(fmt,...) ;
@@ -575,6 +576,21 @@ vmx_create_pmode_VM (virtual_machine *vm, u32 rip0, u32 rsp0)
   return -1;
 }
 
+/*
+ * Processing intentional VM-Exit from Sandboxes.
+ */
+void
+vmx_process_exit (uint32 status)
+{
+  //logger_printf ("Sandbox%d: performing VM-Exit Status: 0x%X\n",
+  //    get_pcpu_id (), status);
+  //uint32 hphys = get_host_phys_addr (status);
+  //logger_printf ("Sandbox%d: Host Phys for 0x%X is 0x%X\n", get_pcpu_id (),
+  //               vm->guest_regs.ecx, hphys);
+
+  return;
+}
+
 int
 vmx_start_VM (virtual_machine *vm)
 {
@@ -588,16 +604,18 @@ vmx_start_VM (virtual_machine *vm)
 
   /* Save Host State */
   vmwrite (rdmsr (IA32_VMX_PINBASED_CTLS), VMXENC_PINBASED_VM_EXEC_CTRLS);
-  proc_msr = rdmsr (IA32_VMX_PROCBASED_CTLS);
+  proc_msr = rdmsr (IA32_VMX_PROCBASED_CTLS) | rdmsr (IA32_VMX_TRUE_PROCBASED_CTLS);
   proc_msr &= ~((1 << 15) | (1 << 16) | (1 << 12) | (1 << 11)); /* allow CR3 load/store, RDTSC, RDPMC */
   proc_msr |= (1 << 28);                                        /* use MSR bitmaps */
   proc_msr |= (1 << 31);                                        /* secondary controls */
   vmwrite (proc_msr, VMXENC_PROCBASED_VM_EXEC_CTRLS);
+  vmwrite (0, VMXENC_PROCBASED_VM_EXEC_CTRLS2);
   vmwrite (0, VMXENC_CR3_TARGET_COUNT);
   vmwrite (rdmsr (IA32_VMX_EXIT_CTLS), VMXENC_VM_EXIT_CTRLS);
   vmwrite (0, VMXENC_VM_EXIT_MSR_STORE_COUNT);
   vmwrite (0, VMXENC_VM_EXIT_MSR_LOAD_COUNT);
-  vmwrite (rdmsr (IA32_VMX_ENTRY_CTLS), VMXENC_VM_ENTRY_CTRLS);
+  /* Do not load debug controls. We have to check the capability regs before doing this. */
+  vmwrite (rdmsr (IA32_VMX_ENTRY_CTLS) & (~(1 << 2)), VMXENC_VM_ENTRY_CTRLS);
   vmwrite (0, VMXENC_VM_ENTRY_MSR_LOAD_COUNT);
   vmwrite (0, VMXENC_MSR_BITMAPS_HI);
   vmwrite ((u32) get_phys_addr (msr_bitmaps), VMXENC_MSR_BITMAPS);
@@ -641,6 +659,92 @@ vmx_start_VM (virtual_machine *vm)
   logger_printf ("vmx_start_VM: GUEST-STATE: RIP=0x%p RSP=0x%p RBP=0x%p CR3=0x%p\n",
                  vmread (VMXENC_GUEST_RIP), vmread (VMXENC_GUEST_RSP), vm->guest_regs.ebp,
                  vmread (VMXENC_GUEST_CR3));
+
+//#define VMX_DUMP_GUEST_STATE
+//#define VMX_DUMP_CONTROLS
+
+#ifdef VMX_DUMP_CONTROLS
+  logger_printf ("-------------------\n");
+  logger_printf ("|VMX CONTROLS DUMP|\n");
+  logger_printf ("-------------------\n");
+  logger_printf ("VMXENC_PINBASED_VM_EXEC_CTRLS=0x%X\n", vmread (VMXENC_PINBASED_VM_EXEC_CTRLS));
+  logger_printf ("VMXENC_PROCBASED_VM_EXEC_CTRLS=0x%X\n", vmread (VMXENC_PROCBASED_VM_EXEC_CTRLS));
+  logger_printf ("VMXENC_PROCBASED_VM_EXEC_CTRLS2=0x%X\n", vmread (VMXENC_PROCBASED_VM_EXEC_CTRLS2));
+  logger_printf ("VMXENC_CR3_TARGET_COUNT=0x%X\n", vmread (VMXENC_CR3_TARGET_COUNT));
+  logger_printf ("VMXENC_VM_EXIT_CTRLS=0x%X\n", vmread (VMXENC_VM_EXIT_CTRLS));
+  logger_printf ("VMXENC_VM_EXIT_MSR_STORE_COUNT=0x%X\n", vmread (VMXENC_VM_EXIT_MSR_STORE_COUNT));
+  logger_printf ("VMXENC_VM_EXIT_MSR_LOAD_COUNT=0x%X\n", vmread (VMXENC_VM_EXIT_MSR_LOAD_COUNT));
+  logger_printf ("VMXENC_VM_ENTRY_CTRLS=0x%X\n", vmread (VMXENC_VM_ENTRY_CTRLS));
+  logger_printf ("VMXENC_VM_ENTRY_MSR_LOAD_COUNT=0x%X\n", vmread (VMXENC_VM_ENTRY_MSR_LOAD_COUNT));
+  logger_printf ("------------------------\n");
+  logger_printf ("|VMX CONTROLS DUMP DONE|\n");
+  logger_printf ("------------------------\n");
+#endif
+
+#ifdef VMX_DUMP_GUEST_STATE
+  logger_printf ("----------------------\n");
+  logger_printf ("|VMX GUEST STATE DUMP|\n");
+  logger_printf ("----------------------\n");
+  logger_printf ("VMXENC_GUEST_RFLAGS=0x%X\n", vmread (VMXENC_GUEST_RFLAGS));
+  logger_printf ("VMXENC_GUEST_CR0=0x%X\n", vmread (VMXENC_GUEST_CR0));
+  logger_printf ("VMXENC_GUEST_CR3=0x%X\n", vmread (VMXENC_GUEST_CR3));
+  logger_printf ("VMXENC_GUEST_CR4=0x%X\n", vmread (VMXENC_GUEST_CR4));
+  logger_printf ("VMXENC_GUEST_DR7=0x%X\n", vmread (VMXENC_GUEST_DR7));
+  logger_printf ("VMXENC_GUEST_CS_SEL=0x%X\n", vmread (VMXENC_GUEST_CS_SEL));
+  logger_printf ("VMXENC_GUEST_CS_BASE=0x%X\n", vmread (VMXENC_GUEST_CS_BASE));
+  logger_printf ("VMXENC_GUEST_CS_LIMIT=0x%X\n", vmread (VMXENC_GUEST_CS_LIMIT));
+  logger_printf ("VMXENC_GUEST_CS_ACCESS=0x%X\n", vmread (VMXENC_GUEST_CS_ACCESS));
+  logger_printf ("VMXENC_GUEST_SS_SEL=0x%X\n", vmread (VMXENC_GUEST_SS_SEL));
+  logger_printf ("VMXENC_GUEST_SS_BASE=0x%X\n", vmread (VMXENC_GUEST_SS_BASE));
+  logger_printf ("VMXENC_GUEST_SS_LIMIT=0x%X\n", vmread (VMXENC_GUEST_SS_LIMIT));
+  logger_printf ("VMXENC_GUEST_SS_ACCESS=0x%X\n", vmread (VMXENC_GUEST_SS_ACCESS));
+  logger_printf ("VMXENC_GUEST_DS_SEL=0x%X\n", vmread (VMXENC_GUEST_DS_SEL));
+  logger_printf ("VMXENC_GUEST_DS_BASE=0x%X\n", vmread (VMXENC_GUEST_DS_BASE));
+  logger_printf ("VMXENC_GUEST_DS_LIMIT=0x%X\n", vmread (VMXENC_GUEST_DS_LIMIT));
+  logger_printf ("VMXENC_GUEST_DS_ACCESS=0x%X\n", vmread (VMXENC_GUEST_DS_ACCESS));
+  logger_printf ("VMXENC_GUEST_ES_SEL=0x%X\n", vmread (VMXENC_GUEST_ES_SEL));
+  logger_printf ("VMXENC_GUEST_ES_BASE=0x%X\n", vmread (VMXENC_GUEST_ES_BASE));
+  logger_printf ("VMXENC_GUEST_ES_LIMIT=0x%X\n", vmread (VMXENC_GUEST_ES_LIMIT));
+  logger_printf ("VMXENC_GUEST_ES_ACCESS=0x%X\n", vmread (VMXENC_GUEST_ES_ACCESS));
+  logger_printf ("VMXENC_GUEST_FS_SEL=0x%X\n", vmread (VMXENC_GUEST_FS_SEL));
+  logger_printf ("VMXENC_GUEST_FS_BASE=0x%X\n", vmread (VMXENC_GUEST_FS_BASE));
+  logger_printf ("VMXENC_GUEST_FS_LIMIT=0x%X\n", vmread (VMXENC_GUEST_FS_LIMIT));
+  logger_printf ("VMXENC_GUEST_FS_ACCESS=0x%X\n", vmread (VMXENC_GUEST_FS_ACCESS));
+  logger_printf ("VMXENC_GUEST_GS_SEL=0x%X\n", vmread (VMXENC_GUEST_GS_SEL));
+  logger_printf ("VMXENC_GUEST_GS_BASE=0x%X\n", vmread (VMXENC_GUEST_GS_BASE));
+  logger_printf ("VMXENC_GUEST_GS_LIMIT=0x%X\n", vmread (VMXENC_GUEST_GS_LIMIT));
+  logger_printf ("VMXENC_GUEST_GS_ACCESS=0x%X\n", vmread (VMXENC_GUEST_GS_ACCESS));
+  logger_printf ("VMXENC_GUEST_TR_SEL=0x%X\n", vmread (VMXENC_GUEST_TR_SEL));
+  logger_printf ("VMXENC_GUEST_TR_BASE=0x%X\n", vmread (VMXENC_GUEST_TR_BASE));
+  logger_printf ("VMXENC_GUEST_TR_LIMIT=0x%X\n", vmread (VMXENC_GUEST_TR_LIMIT));
+  logger_printf ("VMXENC_GUEST_TR_ACCESS=0x%X\n", vmread (VMXENC_GUEST_TR_ACCESS));
+  logger_printf ("VMXENC_GUEST_LDTR_SEL=0x%X\n", vmread (VMXENC_GUEST_LDTR_SEL));
+  logger_printf ("VMXENC_GUEST_LDTR_BASE=0x%X\n", vmread (VMXENC_GUEST_LDTR_BASE));
+  logger_printf ("VMXENC_GUEST_LDTR_LIMIT=0x%X\n", vmread (VMXENC_GUEST_LDTR_LIMIT));
+  logger_printf ("VMXENC_GUEST_LDTR_ACCESS=0x%X\n", vmread (VMXENC_GUEST_LDTR_ACCESS));
+  logger_printf ("VMXENC_GUEST_GDTR_BASE=0x%X\n", vmread (VMXENC_GUEST_GDTR_BASE));
+  logger_printf ("VMXENC_GUEST_GDTR_LIMIT=0x%X\n", vmread (VMXENC_GUEST_GDTR_LIMIT));
+  logger_printf ("VMXENC_GUEST_IDTR_BASE=0x%X\n", vmread (VMXENC_GUEST_IDTR_BASE));
+  logger_printf ("VMXENC_GUEST_IDTR_LIMIT=0x%X\n", vmread (VMXENC_GUEST_IDTR_LIMIT));
+  logger_printf ("VMXENC_GUEST_RIP=0x%X\n", vmread (VMXENC_GUEST_RIP));
+  logger_printf ("VMXENC_GUEST_RSP=0x%X\n", vmread (VMXENC_GUEST_RSP));
+  logger_printf ("VMXENC_GUEST_IA32_SYSENTER_CS=0x%X\n", vmread (VMXENC_GUEST_IA32_SYSENTER_CS));
+  logger_printf ("VMXENC_GUEST_IA32_SYSENTER_ESP=0x%X\n", vmread (VMXENC_GUEST_IA32_SYSENTER_ESP));
+  logger_printf ("VMXENC_GUEST_IA32_SYSENTER_EIP=0x%X\n", vmread (VMXENC_GUEST_IA32_SYSENTER_EIP));
+  logger_printf ("VMXENC_VMCS_LINK_PTR_HIGH=0x%X\n", vmread (VMXENC_VMCS_LINK_PTR));
+  logger_printf ("VMXENC_VMCS_LINK_PTR_LOW=0x%X\n", vmread (VMXENC_VMCS_LINK_PTR + 1));
+  logger_printf ("VMXENC_GUEST_PENDING_DEBUG_EXCEPTIONS=0x%X\n", vmread (VMXENC_GUEST_PENDING_DEBUG_EXCEPTIONS));
+  logger_printf ("VMXENC_GUEST_ACTIVITY=0x%X\n", vmread (VMXENC_GUEST_ACTIVITY));
+  logger_printf ("VMXENC_GUEST_INTERRUPTIBILITY=0x%X\n", vmread (VMXENC_GUEST_INTERRUPTIBILITY));
+  logger_printf ("VMXENC_EXCEPTION_BITMAP=0x%X\n", vmread (VMXENC_EXCEPTION_BITMAP));
+  logger_printf ("VMXENC_PAGE_FAULT_ERRCODE_MASK=0x%X\n", vmread (VMXENC_PAGE_FAULT_ERRCODE_MASK));
+  logger_printf ("VMXENC_PAGE_FAULT_ERRCODE_MATCH=0x%X\n", vmread (VMXENC_PAGE_FAULT_ERRCODE_MATCH));
+  logger_printf ("VMXENC_CR0_GUEST_HOST_MASK=0x%X\n", vmread (VMXENC_CR0_GUEST_HOST_MASK));
+  logger_printf ("VMXENC_CR0_READ_SHADOW=0x%X\n", vmread (VMXENC_CR0_READ_SHADOW));
+  logger_printf ("---------------------------\n");
+  logger_printf ("|VMX GUEST STATE DUMP DONE|\n");
+  logger_printf ("---------------------------\n");
+#endif
 
  enter:
   RDTSC (start);
@@ -714,7 +818,9 @@ vmx_start_VM (virtual_machine *vm)
                   "2: vmread %1, %%esp; pushl %%edi; addl $4, %%esp\n"
                   "popa\n"
                   /* alt. could modify EDI on stack.. oh well. */
-                  "subl $0x24, %%esp\npopl %%edi\naddl $0x20, %%esp":"=D" (err):"r" (VMXENC_HOST_RSP));
+                  "subl $0x24, %%esp\npopl %%edi\naddl $0x20, %%esp"
+                  :"=D" (err)
+                  :"r" (VMXENC_HOST_RSP));
     if (err) {
 #if DEBUG_VMX > 1
       uint32 error = vmread (VMXENC_VM_INSTR_ERROR);
@@ -751,6 +857,8 @@ vmx_start_VM (virtual_machine *vm)
     uint32 ercode = vmread (VMXENC_VM_EXIT_INTERRUPT_ERRCODE);
     uint32 inslen = vmread (VMXENC_VM_EXIT_INSTR_LEN);
     uint32 insinf = vmread (VMXENC_VM_EXIT_INSTR_INFO);
+    uint32 exit_eflags = 0;
+    asm volatile ("pushfl; pop %0\n":"=r" (exit_eflags):);
 #endif
 
     /* Cannot use shared driver in monitor */
@@ -820,8 +928,15 @@ vmx_start_VM (virtual_machine *vm)
         /* continue guest */
         goto enter;
     } else if (reason == 0x0A) {
+      /* We use CPUID as a way of intentional VM-Exit in Guest too */
+      if (vm->guest_regs.eax == 0xFFFFFFFF) {
+        vmx_process_exit (vm->guest_regs.ecx);
+        vmwrite (vmread (VMXENC_GUEST_RIP) + inslen, VMXENC_GUEST_RIP); /* skip instruction */
+        goto enter;
+      }
       /* CPUID -- unconditional VM-EXIT -- perform in monitor */
-      logger_printf ("VM: performing CPUID (0x%p, 0x%p) => ", vm->guest_regs.eax, vm->guest_regs.ecx);
+      logger_printf ("VM: performing CPUID (0x%p, 0x%p) => ",
+                     vm->guest_regs.eax, vm->guest_regs.ecx);
       cpuid (vm->guest_regs.eax, vm->guest_regs.ecx,
              &vm->guest_regs.eax, &vm->guest_regs.ebx, &vm->guest_regs.ecx, &vm->guest_regs.edx);
       logger_printf ("(0x%p, 0x%p, 0x%p, 0x%p)\n",
@@ -838,11 +953,14 @@ vmx_start_VM (virtual_machine *vm)
                      !!(BITMAP_TST (msr_bitmaps, vm->guest_regs.ecx)));
       if (reason == 0x1F) {
         logger_printf ("VM: performing RDMSR (0x%p) => ", vm->guest_regs.ecx);
-        asm volatile ("rdmsr":"=d" (vm->guest_regs.edx), "=a" (vm->guest_regs.eax):"c" (vm->guest_regs.ecx));
+        asm volatile ("rdmsr"
+                      :"=d" (vm->guest_regs.edx), "=a" (vm->guest_regs.eax)
+                      :"c" (vm->guest_regs.ecx));
         logger_printf ("0x%p %p\n", vm->guest_regs.edx, vm->guest_regs.eax);
       }
       if (reason == 0x20) {
-        logger_printf ("VM: performing WRMSR (0x%p %p,0x%p)\n", vm->guest_regs.edx, vm->guest_regs.eax, vm->guest_regs.ecx);
+        logger_printf ("VM: performing WRMSR (0x%p %p,0x%p)\n",
+                        vm->guest_regs.edx, vm->guest_regs.eax, vm->guest_regs.ecx);
         asm volatile ("wrmsr"::"d" (vm->guest_regs.edx), "a" (vm->guest_regs.eax), "c" (vm->guest_regs.ecx));
       }
       vmwrite (vmread (VMXENC_GUEST_RIP) + inslen, VMXENC_GUEST_RIP); /* skip instruction */
@@ -860,6 +978,7 @@ vmx_start_VM (virtual_machine *vm)
                      (reason < VMX_NUM_EXIT_REASONS ?
                       vm_exit_reasons[reason] : "invalid exit-reason"),
                      reason, qualif, intinf, ercode, inslen, insinf);
+      logger_printf ("VM-EXIT: EFLAGS=0x%.8X\n", exit_eflags);
       vmx_vm_exit_reason ();
 #endif
     }

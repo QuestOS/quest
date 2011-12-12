@@ -775,7 +775,7 @@ vcpu_wakeup (task_id task)
       if (next_vcpu_binding >= NUM_VCPUS)
         next_vcpu_binding = 0;
     } while (vcpu_lookup (tssp->cpu)->type != MAIN_VCPU);
-    com1_printf ("vcpu: task 0x%x now bound to vcpu=%d\n", task, tssp->cpu);
+    //com1_printf ("vcpu: task 0x%x now bound to vcpu=%d\n", task, tssp->cpu);
   }
 
   vcpu *v = vcpu_lookup (tssp->cpu);
