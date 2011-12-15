@@ -305,6 +305,7 @@ ap_init (void)
   { extern void net_init (void); net_init (); }
   { extern bool r8169_register (void); r8169_register (); }
   { extern bool netsetup_init (void); netsetup_init (); }
+  { extern bool vfs_init (void); vfs_init (); }
   //{ extern bool ipc_recv_init (void); ipc_recv_init (); }
   //{ extern bool msgt_init (void); msgt_init (); }
 
@@ -313,9 +314,9 @@ ap_init (void)
    * using the per-sandbox virtual screen buffer as output.
    */
   /* A hack! Fix the shell tss for sandboxes. */
-  print ("Sandbox ");
-  putx (phys_id);
-  print (" Loading Shell...\n");
+  //print ("Sandbox ");
+  //putx (phys_id);
+  //print (" Loading Shell...\n");
   extern uint16 shell_tss;
   int mod_num = NR_MODS - 1;
   quest_tss * usr_mod = lookup_TSS (shell_tss);
