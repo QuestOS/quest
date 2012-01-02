@@ -97,4 +97,8 @@ SECTIONS {
             { vm/code16.o (.text16) } : virtualtext16
   _code16end = ALIGN(0x1000);
   _code16_pages = ( _code16end - _code16start ) / 0x1000;
+
+  . = ALIGN(0x1000);
+  .eh_frame (NOLOAD) : AT ( _code16end )
+                       { *(.eh_frame) } : NONE
 }

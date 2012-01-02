@@ -125,9 +125,9 @@ typedef union {
         uint attribute_index:1;
         uint reserved:9;
       };
-    } flags;
+    } flags_4k;
     struct {
-      uint __align:22;
+      uint __align_4k:22;
       framenum_t framenum:10;   /* 4 MiB frame number */
     };
   };

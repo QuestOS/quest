@@ -126,12 +126,12 @@ union v8 {
     u8 cd:4;
   };
   struct {
-    u8 a:2;
+    u8 _a_:2;
     u8 bcd:6;
   };
   struct {
     u8 abc:6;
-    u8 d:2;
+    u8 _d_:2;
   };
 } __attribute__((packed));
 

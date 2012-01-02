@@ -1075,9 +1075,6 @@ _interrupt3e (void)
   uint8 phys_id = get_pcpu_id ();
   send_eoi ();
   LAPIC_start_timer (cpu_bus_freq / QUANTUM_HZ); /* setup next tick */
-//  static int i = 0;
-//  if ((i++ % 1000000) == 0)
-//    putx (phys_id);
 
   lock_kernel ();
 
