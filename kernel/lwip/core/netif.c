@@ -317,8 +317,8 @@ netif_set_ipaddr(struct netif *netif, struct ip_addr *ipaddr)
     ip4_addr3(&netif->ip_addr),
     ip4_addr4(&netif->ip_addr)));
 
-  com1_printf("netif: IP address of interface %c%c set to %"U16_F".%"U16_F".%"U16_F".%"U16_F"\n",
-    netif->name[0], netif->name[1],
+  com1_printf("netif: IP address of interface %c%c%d set to %"U16_F".%"U16_F".%"U16_F".%"U16_F"\n",
+    netif->name[0], netif->name[1], netif->num,
     ip4_addr1(&netif->ip_addr),
     ip4_addr2(&netif->ip_addr),
     ip4_addr3(&netif->ip_addr),

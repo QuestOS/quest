@@ -50,6 +50,7 @@
 static spinlock * r8169_tx_lock = NULL;
 static spinlock * r8169_rx_int_lock = NULL;
 static spinlock * r8169_tx_int_lock = NULL;
+static spinlock * r8169_reg_lock = NULL;
 uint32 r8169_master_sandbox = 0;
 atomic_t num_sharing = ATOMIC_T_INIT;
 struct rtl8169_private *tp = NULL;
@@ -1627,6 +1628,11 @@ rx_int (struct rtl8169_private *tp)
 
     status = __le32_to_cpu (desc->opts1);
     if (status & DescOwn) {
+      DLOG ("Driver(%d) : DescOwn", get_pcpu_id ());
+      for (i = 0; i < MAX_NUM_SHARE; i++) {
+        if (tp->cur_rx[cpu] < tp->cur_rx[i])
+          tp->cur_rx[cpu] = tp->cur_rx[i];
+      }
       break;
     } else {
       struct sk_buff *skb = tp->Rx_skbuff[entry];
@@ -3824,23 +3830,30 @@ r8169_init (void)
   r8169_initialized = TRUE;
   r8169_tx_lock = shm_alloc_drv_lock ();
   if (r8169_tx_lock == NULL) {
-    DLOG ("Driver lock allocation failed!\n");
+    logger_printf ("Driver lock allocation failed!\n");
   } else {
     spinlock_init (r8169_tx_lock);
   }
 
   r8169_rx_int_lock = shm_alloc_drv_lock ();
   if (r8169_rx_int_lock == NULL) {
-    DLOG ("Driver lock allocation failed!\n");
+    logger_printf ("Driver lock allocation failed!\n");
   } else {
     spinlock_init (r8169_rx_int_lock);
   }
 
   r8169_tx_int_lock = shm_alloc_drv_lock ();
   if (r8169_tx_int_lock == NULL) {
-    DLOG ("Driver lock allocation failed!\n");
+    logger_printf ("Driver lock allocation failed!\n");
   } else {
     spinlock_init (r8169_tx_int_lock);
+  }
+
+  r8169_reg_lock = shm_alloc_drv_lock ();
+  if (r8169_reg_lock == NULL) {
+    logger_printf ("Driver lock allocation failed!\n");
+  } else {
+    spinlock_init (r8169_reg_lock);
   }
 #endif
 
@@ -3879,6 +3892,10 @@ r8169_register (void)
     return FALSE;
   }
 
+#ifdef USE_VMX
+  spinlock_lock (r8169_reg_lock);
+#endif
+
   if (!net_register_device (&tp->ethdev[cpu])) {
     DLOG ("registration failed");
     return FALSE;
@@ -3900,6 +3917,10 @@ r8169_register (void)
                                  (u32) &r8169_bh_stack[cpu][1023],
                                  FALSE, 0);
   set_iovcpu (r8169_bh_id[cpu], IOVCPU_CLASS_NET);
+
+#ifdef USE_VMX
+  spinlock_unlock (r8169_reg_lock);
+#endif
 
   return TRUE;
 }
