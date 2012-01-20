@@ -216,8 +216,7 @@ create_kernel_thread_args (uint eip, uint esp, bool run, uint n, ...)
 
   asm volatile ("pushfl\n" "pop %0\n":"=r" (eflags):);
 
-  esp -= sizeof (void *) * (n + 1);
-  stack = (uint *) esp;
+  stack = (uint *) (esp - sizeof (void *) * (n + 1));
 
   /* place arguments on the stack (i386-specific) */
   va_start (args, n);
@@ -226,6 +225,7 @@ create_kernel_thread_args (uint eip, uint esp, bool run, uint n, ...)
   va_end (args);
 
   stack[0] = (uint) exit_kernel_thread; /* set return address */
+  esp -= sizeof (void *) * (n + 2);
 
   /* start kernel thread */
   pid = duplicate_TSS (0, NULL,

@@ -23,9 +23,11 @@
 #define STATIC_IP_ASSIGNMENT
 
 static u32 netsetup_stack[1024] ALIGNED (0x1000);
+static u32 netsetup_custom_stack[1024] ALIGNED (0x1000);
 static task_id netsetup_id = 0;
 
 static void netsetup_thread (void);
+static void netsetup_custom_thread (struct ip_addr, struct ip_addr, struct ip_addr, int num);
 
 #ifdef STATIC_IP_ASSIGNMENT
   struct ip_addr ipaddr, netmask, gw;
@@ -40,6 +42,47 @@ netsetup_init (void)
       start_kernel_thread ((u32) netsetup_thread,
                            (u32) &netsetup_stack[1023]);
   return TRUE;
+}
+
+bool
+netsetup_custom_init (struct ip_addr ip,
+                      struct ip_addr nm,
+                      struct ip_addr gw,
+                      int num)
+{
+  netsetup_id =
+      create_kernel_thread_args ((u32) netsetup_custom_thread,
+                                 (u32) &netsetup_custom_stack[1023],
+                                 TRUE, 4, ip, nm, gw, num);
+  return TRUE;
+}
+
+static void
+netsetup_custom_thread (struct ip_addr ip,
+                        struct ip_addr nm,
+                        struct ip_addr gw,
+                        int num)
+{
+  int cpu;
+  char ifn[4];
+  cpu = get_pcpu_id ();
+  ifn[0] = 'e';
+  ifn[1] = 'n';
+  ifn[2] = '0' + (char) num; /* Let's restrict num to 0 .. 9 */
+  ifn[3] = '\0';
+
+  logger_printf ("netsetup (%d): Configuring interface (%s) ...\n", cpu, ifn);
+  for (;;) {
+    struct netif *netif = netif_find (ifn);
+    if (netif) {
+      netif_set_addr (netif, &ip, &nm, &gw);
+      netif_set_up (netif);
+    } else {
+      logger_printf ("Cannot find interface\n");
+    }
+    logger_printf ("netsetup (%d): %s configured.\n", cpu, ifn);
+    exit_kernel_thread ();
+  }
 }
 
 static void
