@@ -237,7 +237,7 @@ disable_ehci (void)
   unsigned long eecp = 0;
   uint32_t va_ubase = 0;
   uint32_t opregs = 0;
-  uint32_t config_flag = 0;
+  //uint32_t config_flag = 0;
   uint8_t hcbiossem = 0;
 
   DLOG ("EHCI: Routing all ports to companion controllers...");
@@ -273,7 +273,7 @@ disable_ehci (void)
   DLOG ("Quest got ownership of EHCI!");
 
   opregs = va_ubase + *(char *) va_ubase;
-  config_flag = *((uint32_t *) ((char *) opregs + 0x40));
+  //config_flag = *((uint32_t *) ((char *) opregs + 0x40));
 
   /* Clear bit 0 of CONFIGFLAG to route all ports */
   *((uint32_t *) ((char *) opregs + 0x40)) = 0x0;
@@ -868,7 +868,8 @@ uhci_init (void)
 
   if (pci_irq_find (bus, dev, irq_pin, &irq)) {
     /* use PCI routing table */
-    DLOG ("Found PCI routing entry irq.gsi=0x%x", irq.gsi);
+    DLOG ("Found PCI routing entry irq.gsi=0x%x, irq.trigger=0x%x", irq.gsi, irq.trigger);
+    //irq.trigger = TRIGGER_EDGE;
     if (!pci_irq_map_handler (&irq, uhci_irq_handler, 0x01,
                               IOAPIC_DESTINATION_LOGICAL,
                               IOAPIC_DELIVERY_FIXED)) {
