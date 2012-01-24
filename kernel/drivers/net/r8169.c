@@ -3827,7 +3827,6 @@ r8169_init (void)
 //  set_iovcpu (r8169_bh_id[0], IOVCPU_CLASS_NET);
 
 #ifdef USE_VMX
-  r8169_initialized = TRUE;
   r8169_tx_lock = shm_alloc_drv_lock ();
   if (r8169_tx_lock == NULL) {
     logger_printf ("Driver lock allocation failed!\n");
@@ -3862,6 +3861,8 @@ r8169_init (void)
     start_kernel_thread ((u32) timing_thread, (u32) &timing_stack[1023]);
 #endif
 
+  r8169_initialized = TRUE;
+
   return TRUE;
  abort_txdesc:
   pow2_free ((u8 *) tp->TxDescArray);
@@ -3889,6 +3890,10 @@ r8169_register (void)
 
   if (cpu >= MAX_NUM_SHARE) {
     DLOG ("Too many sandboxes");
+    return FALSE;
+  }
+
+  if (!r8169_initialized) {
     return FALSE;
   }
 
