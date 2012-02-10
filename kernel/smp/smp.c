@@ -282,6 +282,9 @@ ap_init (void)
   /* Load the per-CPU TSS for this AP */
   hw_ltr (cpuTSS_selector[phys_id]);
 
+  /* Initialize virtual machine per-processor infrastructure */
+  { void vmx_processor_init (void); vmx_processor_init (); }
+
   /* The IDLE task runs in kernelspace, therefore it is capable of
    * unlocking the kernel and manually enabling interrupts.  This
    * makes it safe to use lock_kernel() above.  */

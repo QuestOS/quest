@@ -15,35 +15,24 @@
  *  along with this program.  If not, see <http://www.gnu.org/licenses/>.
  */
 
-#ifndef _DEBUG_H_
-#define _DEBUG_H_
+#ifndef __I386_MTRR_H__
+#define __I386_MTRR_H__
+#include"types.h"
 
-extern void com1_putc (char);
-extern void com1_puts (char *);
-extern void com1_putx (uint32);
-
-void logger_printf (const char *fmt, ...);
-#define DLOG_PREFIX(pre,fmt,...) logger_printf (pre": "fmt"\n", ##__VA_ARGS__)
-
-extern bool logger_init (void);
-extern void logger_putc (char);
-
-void stacktrace_frame (uint esp, uint ebp);
-void stacktrace (void);
-
-extern void dump_page (u8 *);
-
-extern void crash_debug (char *);
+#define IA32_MTRRCAP 0xFE
+#define IA32_MTRR_DEF_TYPE 0x2FF
+#define IA32_MTRR_PHYS_BASE(n) ((0x200) + (n << 1))
+#define IA32_MTRR_PHYS_MASK(n) ((0x201) + (n << 1))
 
 #endif
 
-/* 
+/*
  * Local Variables:
  * indent-tabs-mode: nil
  * mode: C
  * c-file-style: "gnu"
  * c-basic-offset: 2
- * End: 
+ * End:
  */
 
 /* vi: set et sw=2 sts=2: */

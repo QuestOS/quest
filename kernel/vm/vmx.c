@@ -24,9 +24,11 @@
 #include "util/printf.h"
 #include "smp/apic.h"
 #include "arch/i386.h"
+#include "arch/i386-mtrr.h"
 #include "sched/sched.h"
 
 #define DEBUG_VMX 3
+//#define VMX_EPT
 
 #if DEBUG_VMX > 0
 #define DLOG(fmt,...) DLOG_PREFIX("vmx",fmt,##__VA_ARGS__)
@@ -242,6 +244,7 @@ vmx_vm_exit_reason (void)
 
 static uint32 vmxon_frame[MAX_CPUS];
 uint32 vmx_vm86_pgt[1024] __attribute__ ((aligned(0x1000)));
+static u32 msr_bitmaps[1024] ALIGNED (0x1000);
 
 void
 vmx_global_init (void)
@@ -272,80 +275,9 @@ vmx_global_init (void)
 
   /* Initialize the real-mode emulator */
   vmx_vm86_global_init ();
-}
 
-void
-vmx_processor_init (void)
-{
-  uint8 phys_id = get_pcpu_id ();
-  DLOG ("processor_init pcpu_id=%d", phys_id);
-  uint32 cr0, cr4;
-  uint32 *vmxon_virt;
-
-  if (!vmx_enabled)
-    return;
-
-  /* Set the NE bit to satisfy CR0_FIXED0 */
-  asm volatile ("movl %%cr0, %0\n"
-                "orl $0x20, %0\n"
-                "movl %0, %%cr0":"=r" (cr0));
-
-#if DEBUG_VMX > 1
-  com1_printf ("IA32_FEATURE_CONTROL: 0x%.8X\n", (uint32) rdmsr (IA32_FEATURE_CONTROL));
-  com1_printf ("IA32_VMX_BASIC: 0x%.16llX\n",
-               rdmsr (IA32_VMX_BASIC));
-  com1_printf ("IA32_VMX_CR0_FIXED0: 0x%.8X\n", (uint32) rdmsr (IA32_VMX_CR0_FIXED0));
-  com1_printf ("IA32_VMX_CR0_FIXED1: 0x%.8X\n", (uint32) rdmsr (IA32_VMX_CR0_FIXED1));
-  com1_printf ("IA32_VMX_CR4_FIXED0: 0x%.8X\n", (uint32) rdmsr (IA32_VMX_CR4_FIXED0));
-  com1_printf ("IA32_VMX_CR4_FIXED1: 0x%.8X\n", (uint32) rdmsr (IA32_VMX_CR4_FIXED1));
-
-  com1_printf ("IA32_VMX_PINBASED_CTLS: 0x%.16llX\n",
-               rdmsr (IA32_VMX_PINBASED_CTLS));
-  com1_printf ("IA32_VMX_TRUE_PINBASED_CTLS: 0x%.16llX\n",
-               rdmsr (IA32_VMX_TRUE_PINBASED_CTLS));
-  com1_printf ("IA32_VMX_PROCBASED_CTLS: 0x%.16llX\n",
-               rdmsr (IA32_VMX_PROCBASED_CTLS));
-  com1_printf ("IA32_VMX_TRUE_PROCBASED_CTLS: 0x%.16llX\n",
-               rdmsr (IA32_VMX_TRUE_PROCBASED_CTLS));
-  com1_printf ("IA32_VMX_PROCBASED_CTLS2: 0x%.16llX\n",
-               rdmsr (IA32_VMX_PROCBASED_CTLS2));
-
-  com1_printf ("IA32_VMX_EXIT_CTLS: 0x%.16llX\n",
-               rdmsr (IA32_VMX_EXIT_CTLS));
-  com1_printf ("IA32_VMX_ENTRY_CTLS: 0x%.16llX\n",
-               rdmsr (IA32_VMX_ENTRY_CTLS));
-  com1_printf ("IA32_VMX_TRUE_EXIT_CTLS: 0x%.16llX\n",
-               rdmsr (IA32_VMX_TRUE_EXIT_CTLS));
-  com1_printf ("IA32_VMX_TRUE_ENTRY_CTLS: 0x%.16llX\n",
-               rdmsr (IA32_VMX_TRUE_ENTRY_CTLS));
-  com1_printf ("IA32_VMX_MISC: 0x%.16llX\n",
-               rdmsr (IA32_VMX_MISC));
-#endif
-
-  /* Enable VMX */
-  asm volatile ("movl %%cr4, %0\n"
-                "orl $0x2000, %0\n"
-                "movl %0, %%cr4":"=r" (cr4));
-
-  /* Allocate a VMXON memory area */
-  vmxon_frame[phys_id] = alloc_phys_frame ();
-  vmxon_virt  = map_virtual_page (vmxon_frame[phys_id] | 3);
-  *vmxon_virt = rdmsr (IA32_VMX_BASIC);
-  unmap_virtual_page (vmxon_virt);
-
-  vmxon (vmxon_frame[phys_id]);
-
-  if (vmx_get_error () != 0) {
-#if DEBUG_VMX > 0
-    com1_printf ("VMXON error\n");
-#endif
-    goto abort_vmxon;
-  }
-
-  return;
-
- abort_vmxon:
-  free_phys_frame (vmxon_frame[phys_id]);
+  /* clear MSR bitmaps */
+  memset (msr_bitmaps, 0, 0x1000);
 }
 
 int
@@ -522,28 +454,216 @@ vmx_create_VM (virtual_machine *vm)
   return -1;
 }
 
-static u32 saved_esp;
+//#define EXCEPTION_EXIT
 
 int
-vmx_enter_VM (virtual_machine *vm)
+vmx_create_pmode_VM (virtual_machine *vm, u32 rip0, u32 rsp0)
+{
+  void vmx_code16_entry (void);
+  uint32 phys_id = (uint32)LAPIC_get_physical_ID ();
+  uint32 *vmcs_virt;
+  uint32 cr, stack_frame, sel, base, limit, access;
+  descriptor ad;
+
+  vm->realmode = FALSE;
+  vm->launched = vm->loaded = FALSE;
+  vm->current_cpu = phys_id;
+  vm->guest_regs.eax = vm->guest_regs.ebx = vm->guest_regs.ecx =
+    vm->guest_regs.edx = vm->guest_regs.esi = vm->guest_regs.edi =
+    vm->guest_regs.ebp = 0;
+
+  /* Setup the Virtual Machine Control Section */
+  vm->vmcs_frame = alloc_phys_frame ();
+  vmcs_virt  = map_virtual_page (vm->vmcs_frame | 3);
+  vmcs_virt[0] = rdmsr (IA32_VMX_BASIC);
+  vmcs_virt[1] = 0;
+  unmap_virtual_page (vmcs_virt);
+
+  stack_frame = alloc_phys_frame ();
+  vm->guest_stack = map_virtual_page (stack_frame | 3);
+
+  vmclear (vm->vmcs_frame);
+
+  if (vmx_load_VM (vm) != 0)
+    goto abort_load_VM;
+
+  /* Setup Guest State */
+  asm volatile ("pushfl; pop %0":"=r" (cr));
+  vmwrite (cr, VMXENC_GUEST_RFLAGS);
+  asm volatile ("movl %%cr0, %0":"=r" (cr));
+  vmwrite (cr, VMXENC_GUEST_CR0);
+  asm volatile ("movl %%cr3, %0":"=r" (cr));
+  vmwrite (cr, VMXENC_GUEST_CR3);
+  asm volatile ("movl %%cr4, %0":"=r" (cr));
+  vmwrite (cr, VMXENC_GUEST_CR4);
+  vmwrite (0x0, VMXENC_GUEST_DR7);
+  logger_printf ("GUEST-STATE: FLAGS=0x%p CR0=0x%p CR3=0x%p CR4=0x%p\n",
+                 vmread (VMXENC_GUEST_RFLAGS),
+                 vmread (VMXENC_GUEST_CR0),
+                 vmread (VMXENC_GUEST_CR3),
+                 vmread (VMXENC_GUEST_CR4));
+
+#define ACCESS(ad)                              \
+  (( 0x01            << 0x00 ) |                \
+   ( ad.uType        << 0x00 ) |                \
+   ( ad.uDPL         << 0x05 ) |                \
+   ( ad.fPresent     << 0x07 ) |                \
+   ( ad.f            << 0x0C ) |                \
+   ( ad.f0           << 0x0D ) |                \
+   ( ad.fX           << 0x0E ) |                \
+   ( ad.fGranularity << 0x0F ))
+
+  /* Setup segment selector/base/limit/access entries */
+#define SETUPSEG(seg) do {                                              \
+    asm volatile ("movl %%" __stringify(seg) ", %0":"=r" (sel));        \
+    get_GDT_descriptor (sel, &ad);                                      \
+    base = (ad.pBase0 | (ad.pBase1 << 16) | (ad.pBase2 << 24));         \
+    limit = ad.uLimit0 | (ad.uLimit1 << 16);                            \
+    if (ad.fGranularity) { limit <<= 12; limit |= 0xFFF; }              \
+    access = ACCESS (ad);                                               \
+    vmwrite (sel, VMXENC_GUEST_##seg##_SEL);                            \
+    vmwrite (base, VMXENC_GUEST_##seg##_BASE);                          \
+    vmwrite (limit, VMXENC_GUEST_##seg##_LIMIT);                        \
+    vmwrite (access, VMXENC_GUEST_##seg##_ACCESS);                      \
+    logger_printf ("GUEST-STATE: %s=0x%.02X base=0x%p limit=0x%p access=0x%.02X\n", \
+                   __stringify(seg), sel, base, limit, access);         \
+  } while (0)
+
+  SETUPSEG (CS);
+  SETUPSEG (SS);
+  SETUPSEG (DS);
+  SETUPSEG (ES);
+  SETUPSEG (FS);
+  SETUPSEG (GS);
+
+  /* TR */
+  sel = hw_str ();
+  get_GDT_descriptor (sel, &ad);
+  base = (ad.pBase0 | (ad.pBase1 << 16) | (ad.pBase2 << 24));
+  limit = ad.uLimit0 | (ad.uLimit1 << 16);
+  if (ad.fGranularity) { limit <<= 12; limit |= 0xFFF; }
+  access = ACCESS (ad);
+  vmwrite (sel, VMXENC_GUEST_TR_SEL);
+  vmwrite (base, VMXENC_GUEST_TR_BASE);
+  vmwrite (limit, VMXENC_GUEST_TR_LIMIT);
+  vmwrite (access, VMXENC_GUEST_TR_ACCESS);
+  logger_printf ("GUEST-STATE: %s=0x%.02X base=0x%p limit=0x%p access=0x%.02X\n",
+                 "TR", sel, base, limit, access);
+
+#undef ACCESS
+
+  /* LDTR */
+  vmwrite (0, VMXENC_GUEST_LDTR_SEL);
+  vmwrite (0, VMXENC_GUEST_LDTR_BASE);
+  vmwrite (0, VMXENC_GUEST_LDTR_LIMIT);
+  vmwrite (0x10082, VMXENC_GUEST_LDTR_ACCESS);
+
+  /* GDTR */
+  vmwrite ((uint32) sgdtr (), VMXENC_GUEST_GDTR_BASE);
+  vmwrite (sgdtr_limit (), VMXENC_GUEST_GDTR_LIMIT);
+
+  /* IDTR */
+  vmwrite ((uint32) sidtr (), VMXENC_GUEST_IDTR_BASE);
+  vmwrite (sidtr_limit (), VMXENC_GUEST_IDTR_LIMIT);
+
+  /* RIP/RSP */
+  vmwrite ((uint32) rip0, VMXENC_GUEST_RIP);
+  vmwrite ((uint32) rsp0, VMXENC_GUEST_RSP);
+  logger_printf ("GUEST-STATE: RIP=0x%p RSP=0x%p\n", rip0, rsp0);
+
+  /* SYSENTER MSRs */
+  vmwrite (0, VMXENC_GUEST_IA32_SYSENTER_CS);
+  vmwrite (0, VMXENC_GUEST_IA32_SYSENTER_ESP);
+  vmwrite (0, VMXENC_GUEST_IA32_SYSENTER_EIP);
+
+  vmwrite64 (0xFFFFFFFFFFFFFFFFLL, VMXENC_VMCS_LINK_PTR);
+  vmwrite (0, VMXENC_GUEST_PENDING_DEBUG_EXCEPTIONS);
+  vmwrite (0, VMXENC_GUEST_ACTIVITY);
+  vmwrite (0, VMXENC_GUEST_INTERRUPTIBILITY);
+#ifdef EXCEPTION_EXIT
+  vmwrite (~0, VMXENC_EXCEPTION_BITMAP);
+#else
+  vmwrite (0, VMXENC_EXCEPTION_BITMAP); /* do not exit on exception (see manual about page faults) */
+#endif
+  vmwrite (0, VMXENC_PAGE_FAULT_ERRCODE_MASK);
+  vmwrite (0, VMXENC_PAGE_FAULT_ERRCODE_MATCH);
+  vmwrite (0, VMXENC_CR0_GUEST_HOST_MASK); /* all bits "owned" by guest */
+  vmwrite (0, VMXENC_CR0_READ_SHADOW);
+
+  return 0;
+
+ abort_load_VM:
+  vmx_destroy_VM (vm);
+  return -1;
+}
+
+int
+vmx_start_VM (virtual_machine *vm)
 {
   uint32 phys_id = (uint32)LAPIC_get_physical_ID ();
-  uint32 cr, esp, eip, state = 0, flags;
+  uint32 cr, eip, state = 0, err;
   uint16 fs;
-  u64 start, finish;
+  u64 start, finish, proc_msr;
 
   if (!vm->loaded || vm->current_cpu != phys_id)
     goto not_loaded;
 
   /* Save Host State */
   vmwrite (rdmsr (IA32_VMX_PINBASED_CTLS), VMXENC_PINBASED_VM_EXEC_CTRLS);
-  vmwrite (rdmsr (IA32_VMX_PROCBASED_CTLS), VMXENC_PROCBASED_VM_EXEC_CTRLS);
+  proc_msr = rdmsr (IA32_VMX_PROCBASED_CTLS);
+  proc_msr &= ~((1 << 15) | (1 << 16) | (1 << 12) | (1 << 11)); /* allow CR3 load/store, RDTSC, RDPMC */
+  proc_msr |= (1 << 28);                                        /* use MSR bitmaps */
+  proc_msr |= (1 << 31);                                        /* secondary controls */
+  vmwrite (proc_msr, VMXENC_PROCBASED_VM_EXEC_CTRLS);
+#ifdef VMX_EPT
+  vmwrite ((1 << 1)             /* EPT */
+           , VMXENC_PROCBASED_VM_EXEC_CTRLS2);
+  u32 i,j;
+  u32 pml4_frame = alloc_phys_frame ();
+  u32 pdpt_frame = alloc_phys_frame ();
+  u32 pd_frame;
+  logger_printf ("pml4_frame=0x%p pdpt_frame=0x%p\n", pml4_frame, pdpt_frame);
+  u64 *pml4 = map_virtual_page (pml4_frame | 3);
+  u64 *pdpt = map_virtual_page (pdpt_frame | 3);
+  u64 *pd;
+  u8 memtype;
+  memset (pml4, 0, 0x1000);
+  memset (pdpt, 0, 0x1000);
+  pml4[0] = pdpt_frame | 7;
+
+  for (i=0; i<4; i++) {
+    pd_frame = alloc_phys_frame ();
+    pd = map_virtual_page (pd_frame | 3);
+    if (i < 3)
+      memtype = 6;              /* WB */
+    else
+      memtype = 0;              /* UC */
+    for (j=0; j<512; j++) {
+      if (i == 0 && j == 0)
+        memtype = 0;
+      pd[j] = ((i << 30) + (j << 21)) | (1 << 7) | (memtype << 3) | 7;
+    }
+    logger_printf ("pd[0]=0x%llX\n", pd[0]);
+    unmap_virtual_page (pd);
+    pdpt[i] = pd_frame | (0 << 7) | 7;
+    logger_printf ("pdpt[%d]=0x%llX\n", i, pdpt[i]);
+  }
+
+  vmwrite (pml4_frame | (3 << 3) | 6, VMXENC_EPT_PTR);
+  vmwrite (0, VMXENC_EPT_PTR_HI);
+  logger_printf ("VMXENC_EPT_PTR=0x%p pml4[0]=0x%llX pdpt[0]=0x%llX\n",
+                 vmread (VMXENC_EPT_PTR), pml4[0], pdpt[0]);
+  //unmap_virtual_page (pml4);
+  //unmap_virtual_page (pdpt);
+#endif
   vmwrite (0, VMXENC_CR3_TARGET_COUNT);
   vmwrite (rdmsr (IA32_VMX_EXIT_CTLS), VMXENC_VM_EXIT_CTRLS);
   vmwrite (0, VMXENC_VM_EXIT_MSR_STORE_COUNT);
   vmwrite (0, VMXENC_VM_EXIT_MSR_LOAD_COUNT);
   vmwrite (rdmsr (IA32_VMX_ENTRY_CTLS), VMXENC_VM_ENTRY_CTRLS);
   vmwrite (0, VMXENC_VM_ENTRY_MSR_LOAD_COUNT);
+  vmwrite (0, VMXENC_MSR_BITMAPS_HI);
+  vmwrite ((u32) get_phys_addr (msr_bitmaps), VMXENC_MSR_BITMAPS);
   asm volatile ("movl %%cr0, %0":"=r" (cr));
   vmwrite (cr, VMXENC_HOST_CR0);
   asm volatile ("movl %%cr3, %0":"=r" (cr));
@@ -569,6 +689,9 @@ vmx_enter_VM (virtual_machine *vm)
   vmwrite (rdmsr (IA32_SYSENTER_EIP), VMXENC_HOST_IA32_SYSENTER_EIP);
   vmwrite (vmread (VMXENC_GUEST_CS_ACCESS) | 0x1, VMXENC_GUEST_CS_ACCESS);
 
+  logger_printf ("vmx_start_VM: GUEST-STATE: RIP=0x%p RSP=0x%p RBP=0x%p\n",
+                 vmread (VMXENC_GUEST_RIP), vmread (VMXENC_GUEST_RSP), vm->guest_regs.ebp);
+
  enter:
   RDTSC (start);
 
@@ -576,8 +699,7 @@ vmx_enter_VM (virtual_machine *vm)
    * HOST registers */
   asm volatile (/* save HOST registers on stack and ESP in VMCS */
                 "pusha\n"
-                "movl %%esp, %1\n"
-                "vmwrite %1, %3\n"
+                "vmwrite %%esp, %2\n"
                 /* Do trick to get current EIP and differentiate between the first
                  * and second time this code is invoked. */
                 "call 1f\n"
@@ -585,9 +707,9 @@ vmx_enter_VM (virtual_machine *vm)
                 "pusha\n"       /* quickly snapshot guest registers to stack */
                 "addl $0x20, %%esp\n"
                 "popa\n"        /* temporarily restore host registers */
+                "lea %1, %%edi\n"
                 "movl $8, %%ecx\n"
                 "lea -0x40(%%esp), %%esi\n"
-                "lea %2, %%edi\n"
                 "cld; rep movsd\n" /* save guest registers to memory */
                 "subl $0x20, %%esp\n"
                 "popa\n"        /* permanently restore host registers */
@@ -596,13 +718,12 @@ vmx_enter_VM (virtual_machine *vm)
                 "1:\n"
                 "pop %0\n"
                 "2:\n"
-                :"=r" (eip),"=r" (esp):"m" (vm->guest_regs),"r" (VMXENC_HOST_RSP));
+                :"=r" (eip):"m" (vm->guest_regs),"r" (VMXENC_HOST_RSP));
 
   /* VM-ENTER */
   if (eip) {
-    // printf ("Entering VM!\n");
+    DLOG ("Entering VM! host EIP=0x%p", eip);
     vmwrite (eip, VMXENC_HOST_RIP);
-    asm volatile ("movl %%esp, %0":"=m" (saved_esp));
     if (vm->launched) {
       asm volatile ("movl $1, %0\n"
                     "movl $2, %1\n"
@@ -626,10 +747,21 @@ vmx_enter_VM (virtual_machine *vm)
                     :"=m" (vm->launched), "=m"(state)
                     :"c" (8), "S" (&vm->guest_regs):"edi","cc","memory");
     }
-    asm volatile ("movl %0, %%esp\npopa"::"m" (saved_esp));
-    asm volatile ("pushfl\npop %0":"=r" (flags));
-    if (flags & (F_CF | F_ZF)) {
-      //if (vmx_get_error () != 0) {
+
+    /* Must check if CF=1 or ZF=1 before doing anything else.
+     * However, ESP is wiped out.  To restore stack requires a VMREAD.
+     * However that would clobber flags.  Therefore, we must check
+     * condition codes using "JBE" first.  Then we can restore stack,
+     * and also host registers. */
+
+    /* This may be unnecessary, should not reach this point except on error. */
+    asm volatile ("xorl %%edi, %%edi; jbe 1f; jmp 2f\n"
+                  "1: movl $1, %%edi\n"
+                  "2: vmread %1, %%esp; pushl %%edi; addl $4, %%esp\n"
+                  "popa\n"
+                  /* alt. could modify EDI on stack.. oh well. */
+                  "subl $0x24, %%esp\npopl %%edi\naddl $0x20, %%esp":"=D" (err):"r" (VMXENC_HOST_RSP));
+    if (err) {
 #if DEBUG_VMX > 1
       uint32 error = vmread (VMXENC_VM_INSTR_ERROR);
 #endif
@@ -640,15 +772,16 @@ vmx_enter_VM (virtual_machine *vm)
         vm->launched = FALSE;
 
 #if DEBUG_VMX > 1
-      com1_printf ("VM-ENTRY: error: %.8X (%s)\n  reason: %.8X qual: %.8X\n",
-                   error,
-                   (error < VMX_NUM_INSTR_ERRORS ? vm_instruction_errors[error] : "n/a"),
-                   reason,
-                   vmread (VMXENC_EXIT_QUAL));
+      logger_printf ("VM-ENTRY: %d error: %.8X (%s)\n  reason: %.8X qual: %.8X\n",
+                     err,
+                     error,
+                     (error < VMX_NUM_INSTR_ERRORS ? vm_instruction_errors[error] : "n/a"),
+                     reason,
+                     vmread (VMXENC_EXIT_QUAL));
 #endif
       if (reason & 0x80000000) {
 #if DEBUG_VMX > 0
-        com1_printf ("  VM-ENTRY failure, code: %d\n", reason & 0xFF);
+        logger_printf ("  VM-ENTRY failure, code: %d\n", reason & 0xFF);
 #endif
       }
       goto abort_vmentry;
@@ -678,12 +811,50 @@ vmx_enter_VM (virtual_machine *vm)
     RDTSC (finish);
 
 #if DEBUG_VMX > 2
-    com1_printf ("VM-EXIT: %s\n  reason=%.8X qualif=%.8X\n  intinf=%.8X ercode=%.8X\n  inslen=%.8X insinf=%.8X\n  cycles=0x%llX\n",
-                 (reason < VMX_NUM_EXIT_REASONS ?
-                  vm_exit_reasons[reason] : "invalid exit-reason"),
-                 reason, qualif, intinf, ercode, inslen, insinf,
-                 finish - start);
+    logger_printf ("VM-EXIT: %s\n  reason=%.8X qualif=%.8X\n  intinf=%.8X ercode=%.8X\n  inslen=%.8X insinf=%.8X\n  guestphys=0x%llX guestlinear=0x%llX\n  cycles=0x%llX\n",
+                   (reason < VMX_NUM_EXIT_REASONS ?
+                    vm_exit_reasons[reason] : "invalid exit-reason"),
+                   reason, qualif, intinf, ercode, inslen, insinf,
+                   (u64) vmread (VMXENC_GUEST_PHYS_ADDR),
+                   (u64) vmread (VMXENC_GUEST_LINEAR_ADDR),
+                   finish - start);
     vmx_vm_exit_reason ();
+    u32 rip = vmread (VMXENC_GUEST_RIP), rsp = vmread (VMXENC_GUEST_RSP);
+    logger_printf ("VM-EXIT: GUEST-STATE: RIP=0x%p RSP=0x%p\n", rip, rsp);
+    logger_printf ("VM-EXIT: GUEST-STATE: FLAGS=0x%p CR0=0x%p CR3=0x%p CR4=0x%p\n",
+                   vmread (VMXENC_GUEST_RFLAGS),
+                   vmread (VMXENC_GUEST_CR0),
+                   //vmread (VMXENC_GUEST_CR2),
+                   vmread (VMXENC_GUEST_CR3),
+                   vmread (VMXENC_GUEST_CR4));
+#define SHOWSEG(seg) do {                                               \
+      logger_printf ("VM-EXIT: GUEST-STATE: %s=0x%.02X base=0x%p limit=0x%p access=0x%p\n", \
+                     __stringify (seg),                                 \
+                     vmread (VMXENC_GUEST_##seg##_SEL),                 \
+                     vmread (VMXENC_GUEST_##seg##_BASE),                \
+                     vmread (VMXENC_GUEST_##seg##_LIMIT),               \
+                     vmread (VMXENC_GUEST_##seg##_ACCESS)               \
+                     );                                                 \
+    } while (0)
+#define SHOWDTR(seg) do {                                               \
+      logger_printf ("VM-EXIT: GUEST-STATE: %s base=0x%p limit=0x%p\n", \
+                     __stringify (seg),                                 \
+                     vmread (VMXENC_GUEST_##seg##_BASE),                \
+                     vmread (VMXENC_GUEST_##seg##_LIMIT)                \
+                     );                                                 \
+    } while (0)
+
+    SHOWSEG (CS);
+    SHOWSEG (SS);
+    SHOWSEG (DS);
+    SHOWSEG (ES);
+    SHOWSEG (FS);
+    SHOWSEG (GS);
+    SHOWSEG (TR);
+    SHOWSEG (LDTR);
+    SHOWDTR (GDTR);
+    SHOWDTR (IDTR);
+
 #endif
 
     if (vm->realmode && reason == 0x0 && (intinf & 0xFF) == 0x0D) {
@@ -691,17 +862,55 @@ vmx_enter_VM (virtual_machine *vm)
       if (vmx_vm86_handle_GPF (vm) == 0)
         /* continue guest */
         goto enter;
+    } else if (reason == 0x0A) {
+      /* CPUID -- unconditional VM-EXIT -- perform in monitor */
+      logger_printf ("VM: performing CPUID (0x%p, 0x%p) => ", vm->guest_regs.eax, vm->guest_regs.ecx);
+      cpuid (vm->guest_regs.eax, vm->guest_regs.ecx,
+             &vm->guest_regs.eax, &vm->guest_regs.ebx, &vm->guest_regs.ecx, &vm->guest_regs.edx);
+      logger_printf ("(0x%p, 0x%p, 0x%p, 0x%p)\n",
+                     vm->guest_regs.eax, vm->guest_regs.ebx,
+                     vm->guest_regs.ecx, vm->guest_regs.edx);
+      vmwrite (vmread (VMXENC_GUEST_RIP) + inslen, VMXENC_GUEST_RIP); /* skip instruction */
+      goto enter;               /* resume guest */
+    } else if (reason == 0x1F || reason == 0x20) {
+      /* RDMSR / WRMSR -- conditional on MSR bitmap -- else perform in monitor */
+      logger_printf ("VM: use MSR bitmaps=%d MSR_BITMAPS=0x%p bitmap[0x%X]=%d\n",
+                     !!(vmread (VMXENC_PROCBASED_VM_EXEC_CTRLS) & (1<<28)),
+                     vmread (VMXENC_MSR_BITMAPS),
+                     vm->guest_regs.ecx,
+                     !!(BITMAP_TST (msr_bitmaps, vm->guest_regs.ecx)));
+      if (reason == 0x1F) {
+        logger_printf ("VM: performing RDMSR (0x%p) => ", vm->guest_regs.ecx);
+        asm volatile ("rdmsr":"=d" (vm->guest_regs.edx), "=a" (vm->guest_regs.eax):"c" (vm->guest_regs.ecx));
+        logger_printf ("0x%p %p\n", vm->guest_regs.edx, vm->guest_regs.eax);
+      }
+      if (reason == 0x20) {
+        logger_printf ("VM: performing WRMSR (0x%p %p,0x%p)\n", vm->guest_regs.edx, vm->guest_regs.eax, vm->guest_regs.ecx);
+        asm volatile ("wrmsr"::"d" (vm->guest_regs.edx), "a" (vm->guest_regs.eax), "c" (vm->guest_regs.ecx));
+      }
+      vmwrite (vmread (VMXENC_GUEST_RIP) + inslen, VMXENC_GUEST_RIP); /* skip instruction */
+      goto enter;               /* resume guest */
+#ifdef VMX_EPT
+    } else if (reason == 0x31) {
+      /* EPT misconfiguration */
+      logger_printf ("EPT misconfiguration:\n  VMXENC_EPT_PTR=0x%p pml4[0]=0x%llX pdpt[0]=0x%llX\n",
+                     vmread (VMXENC_EPT_PTR), pml4[0], pdpt[0]);
+#endif
     } else {
       /* Not a vm86 related VM-EXIT */
 #if DEBUG_VMX > 1
-      com1_printf ("VM-EXIT: %s\n  reason=%.8X qualif=%.8X\n  intinf=%.8X ercode=%.8X\n  inslen=%.8X insinf=%.8X\n",
-                   (reason < VMX_NUM_EXIT_REASONS ?
-                    vm_exit_reasons[reason] : "invalid exit-reason"),
-                   reason, qualif, intinf, ercode, inslen, insinf);
+      logger_printf ("VM-EXIT: %s\n  reason=%.8X qualif=%.8X\n  intinf=%.8X ercode=%.8X\n  inslen=%.8X insinf=%.8X\n",
+                     (reason < VMX_NUM_EXIT_REASONS ?
+                      vm_exit_reasons[reason] : "invalid exit-reason"),
+                     reason, qualif, intinf, ercode, inslen, insinf);
       vmx_vm_exit_reason ();
 #endif
     }
   }
+
+  DLOG ("start_VM: return 0 -- giving up on virtual machine");
+  crash_debug ("stack is probably corrupt now");
+  /* control could be resumed where the VM failed.  maybe do this later. */
 
   return 0;
  abort_vmentry:
@@ -709,11 +918,173 @@ vmx_enter_VM (virtual_machine *vm)
   return -1;
 }
 
+/* start VM guest with state derived from host state */
+int
+vmx_enter_pmode_VM (virtual_machine *vm)
+{
+  u32 guest_eip = 0, esp, ebp;
+  u32 hyperstack_frame = alloc_phys_frame ();
+  if (hyperstack_frame == (u32) -1) return -1;
+  u32 *hyperstack = map_virtual_page (hyperstack_frame | 3);
+  if (hyperstack == 0) return -1;
+
+  asm volatile ("call 1f\n"
+                /* RESUME POINT */
+                "xorl %0, %0\n"
+                "jmp 2f\n"
+                "1: pop %0; movl %%esp, %1\n"
+                "2:":"=r" (guest_eip), "=r" (esp));
+  if (guest_eip == 0) {
+    /* inside VM  */
+    asm volatile ("movl %%esp, %0; movl %%ebp, %1":"=r" (esp), "=r" (ebp));
+    DLOG ("vmx_enter_pmode_VM: entry success ESP=0x%p EBP=0x%p", esp, ebp);
+    //dump_page ((u8 *) (esp & (~0xFFF)));
+    return 0;
+  }
+
+  /* save general registers for guest */
+  asm volatile ("pusha; movl %%esp, %%esi; movl $0x20, %%ecx; rep movsb; popa"
+                ::"D" (&vm->guest_regs));
+
+  /* copy stack */
+  memcpy (hyperstack, (void *) (esp & (~0xFFF)), 0x1000);
+  /* change frame pointer in host to hypervisor stack */
+  asm volatile ("movl %%ebp, %0":"=r" (ebp));
+  ebp = (((u32) &hyperstack) & (~0xFFF)) | (ebp & 0xFFF);
+  asm volatile ("movl %0, %%ebp"::"r" (ebp));
+  /* switch host stack to hypervisor stack */
+  asm volatile ("movl %0, %%esp"::"r" (&hyperstack[(esp & 0xFFF) >> 2]));
+
+  /* hypervisor stack now in effect */
+
+  /* set guest to continue from resume point above */
+  vmwrite (guest_eip, VMXENC_GUEST_RIP);
+  /* guest takes over original stack */
+  vmwrite (esp, VMXENC_GUEST_RSP);
+
+  logger_printf ("vmx_enter_pmode_VM: GUEST-STATE: RIP=0x%p RSP=0x%p RBP=0x%p\n",
+                 vmread (VMXENC_GUEST_RIP), vmread (VMXENC_GUEST_RSP), vm->guest_regs.ebp);
+  return vmx_start_VM (vm);
+}
+
+void
+test_pmode_vm (void)
+{
+  logger_printf ("INSIDE PMODE VM -- going into infinite loop\n");
+  for (;;);
+}
+
+static virtual_machine VMs[MAX_CPUS] ALIGNED (0x1000);
+static int num_VMs = 0;
+DEF_PER_CPU (virtual_machine *, cpu_vm);
+
+void
+vmx_processor_init (void)
+{
+  uint8 phys_id = get_pcpu_id ();
+  DLOG ("processor_init pcpu_id=%d", phys_id);
+  uint32 cr0, cr4;
+  uint32 *vmxon_virt;
+  virtual_machine *vm = &VMs[phys_id];
+
+  if (!vmx_enabled)
+    return;
+
+  /* Set the NE bit to satisfy CR0_FIXED0 */
+  asm volatile ("movl %%cr0, %0\n"
+                "orl $0x20, %0\n"
+                "movl %0, %%cr0":"=r" (cr0));
+
+#if DEBUG_VMX > 1
+  com1_printf ("IA32_FEATURE_CONTROL: 0x%.8X\n", (uint32) rdmsr (IA32_FEATURE_CONTROL));
+  com1_printf ("IA32_VMX_BASIC: 0x%.16llX\n",
+               rdmsr (IA32_VMX_BASIC));
+  com1_printf ("IA32_VMX_CR0_FIXED0: 0x%.8X\n", (uint32) rdmsr (IA32_VMX_CR0_FIXED0));
+  com1_printf ("IA32_VMX_CR0_FIXED1: 0x%.8X\n", (uint32) rdmsr (IA32_VMX_CR0_FIXED1));
+  com1_printf ("IA32_VMX_CR4_FIXED0: 0x%.8X\n", (uint32) rdmsr (IA32_VMX_CR4_FIXED0));
+  com1_printf ("IA32_VMX_CR4_FIXED1: 0x%.8X\n", (uint32) rdmsr (IA32_VMX_CR4_FIXED1));
+
+  com1_printf ("IA32_VMX_PINBASED_CTLS: 0x%.16llX\n",
+               rdmsr (IA32_VMX_PINBASED_CTLS));
+  com1_printf ("IA32_VMX_TRUE_PINBASED_CTLS: 0x%.16llX\n",
+               rdmsr (IA32_VMX_TRUE_PINBASED_CTLS));
+  com1_printf ("IA32_VMX_PROCBASED_CTLS: 0x%.16llX\n",
+               rdmsr (IA32_VMX_PROCBASED_CTLS));
+  com1_printf ("IA32_VMX_TRUE_PROCBASED_CTLS: 0x%.16llX\n",
+               rdmsr (IA32_VMX_TRUE_PROCBASED_CTLS));
+  com1_printf ("IA32_VMX_PROCBASED_CTLS2: 0x%.16llX\n",
+               rdmsr (IA32_VMX_PROCBASED_CTLS2));
+
+  com1_printf ("IA32_VMX_EXIT_CTLS: 0x%.16llX\n",
+               rdmsr (IA32_VMX_EXIT_CTLS));
+  com1_printf ("IA32_VMX_ENTRY_CTLS: 0x%.16llX\n",
+               rdmsr (IA32_VMX_ENTRY_CTLS));
+  com1_printf ("IA32_VMX_TRUE_EXIT_CTLS: 0x%.16llX\n",
+               rdmsr (IA32_VMX_TRUE_EXIT_CTLS));
+  com1_printf ("IA32_VMX_TRUE_ENTRY_CTLS: 0x%.16llX\n",
+               rdmsr (IA32_VMX_TRUE_ENTRY_CTLS));
+  com1_printf ("IA32_VMX_MISC: 0x%.16llX\n",
+               rdmsr (IA32_VMX_MISC));
+  u64 msr;
+  com1_printf ("IA32_VMX_EPT_VPID_CAP: 0x%.16llX\n",
+               msr=rdmsr (IA32_VMX_EPT_VPID_CAP));
+  com1_printf ("  %s%s%s%s%s\n",
+               msr & (1 << 6) ? "(page-walk=4) ":" ",
+               msr & (1 << 8) ? "(support-UC) ":" ",
+               msr & (1 << 14) ? "(support-WB) ":" ",
+               msr & (1 << 16) ? "(2MB-pages) ":" ",
+               msr & (1 << 17) ? "(1GB-pages) ":" ");
+  com1_printf ("IA32_MTRRCAP: 0x%llX\n", rdmsr (IA32_MTRRCAP));
+  com1_printf ("IA32_MTRR_DEF_TYPE: 0x%llX\n", rdmsr (IA32_MTRR_DEF_TYPE));
+  u32 i;
+  for (i=0; i < ((u8) (rdmsr (IA32_MTRRCAP))); i++) {
+    com1_printf ("IA32_MTRR_PHYS_BASE(%d)=0x%llX\nIA32_MTRR_PHYS_MASK(%d)=0x%llX\n",
+                 i, rdmsr (IA32_MTRR_PHYS_BASE (i)),
+                 i, rdmsr (IA32_MTRR_PHYS_MASK (i)));
+  }
+#endif
+
+  /* Enable VMX */
+  asm volatile ("movl %%cr4, %0\n"
+                "orl $0x2000, %0\n"
+                "movl %0, %%cr4":"=r" (cr4));
+
+  /* Allocate a VMXON memory area */
+  vmxon_frame[phys_id] = alloc_phys_frame ();
+  vmxon_virt  = map_virtual_page (vmxon_frame[phys_id] | 3);
+  *vmxon_virt = rdmsr (IA32_VMX_BASIC);
+  unmap_virtual_page (vmxon_virt);
+
+  vmxon (vmxon_frame[phys_id]);
+
+  if (vmx_get_error () != 0) {
+#if DEBUG_VMX > 0
+    com1_printf ("VMXON error\n");
+#endif
+    goto abort_vmxon;
+  }
+
+  percpu_write (cpu_vm, vm);
+
+  if (vmx_create_pmode_VM (vm, 0, 0) != 0)
+    goto vm_error;
+
+  if (vmx_enter_pmode_VM (vm) != 0)
+    goto vm_error;
+
+  num_VMs++;
+
+  return;
+
+ vm_error:
+  vmxoff ();
+ abort_vmxon:
+  free_phys_frame (vmxon_frame[phys_id]);
+}
+
 static bool
 vmx_init (void)
 {
-  virtual_machine first_vm;
-
   vmx_detect ();
   if (!vmx_enabled) {
     DLOG ("VMX not enabled");
@@ -724,31 +1095,11 @@ vmx_init (void)
 
   vmx_processor_init ();
 
-  if (vmx_create_VM (&first_vm) != 0)
-    goto vm_error;
-
 #if 0
-  /* read MBR from first drive */
-  if (pata_drives[0].ata_type == ATA_TYPE_PATA) {
-    ata_drive_read_sector (ATA_BUS_PRIMARY, ATA_DRIVE_MASTER, 0, (uint8 *)0x7c00);
-    vmwrite (0x7C00, VMXENC_GUEST_RIP);
-    first_vm.guest_regs.edx = 0x80;
-  }
-#else
-  /* default to "graphics demo" in vm86 mode */
-#endif
-
-  for (;;) {
-    if (vmx_enter_VM (&first_vm) != 0)
-      goto vm_error;
-  }
-
-  if (vmx_enter_VM (&first_vm) != 0)
-    goto vm_error;
-
   if (vmx_unload_VM (&first_vm) != 0)
     goto vm_error;
   vmx_destroy_VM (&first_vm);
+#endif
 
   return TRUE;
  vm_error:
@@ -761,8 +1112,9 @@ static const struct module_ops mod_ops = {
   .init = vmx_init
 };
 
-//DEF_MODULE (vm___vmx, "VMX hardware virtualization driver", &mod_ops, {});
-
+#ifdef USE_VMX
+DEF_MODULE (vm___vmx, "VMX hardware virtualization driver", &mod_ops, {});
+#endif
 
 /*
  * Local Variables:

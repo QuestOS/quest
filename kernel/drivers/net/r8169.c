@@ -37,6 +37,11 @@
 #include "module/header.h"
 
 //#define DEBUG_R8169
+#define TX_TIMING
+
+#ifdef TX_TIMING
+#include "lwip/udp.h"
+#endif
 
 #ifdef DEBUG_R8169
 #define DLOG(fmt,...) DLOG_PREFIX("r8169",fmt,##__VA_ARGS__)
@@ -1711,9 +1716,23 @@ r8169_bh_thread (void)
   }
 }
 
+#ifdef TX_TIMING
+static u64 tx_start = 0, tx_finish;
+#endif
+
 static uint
 irq_handler (u8 vec)
 {
+#ifdef TX_TIMING
+  /* assume tx_start != 0 means this is TX IRQ */
+  if (tx_start > 0) {
+    SERIALIZE0;
+    RDTSC (tx_finish);
+    logger_printf ("r8169: TX: IRQ received: diff=0x%llX\n", tx_finish - tx_start);
+    tx_start = 0;
+  }
+#endif
+
   if (r8169_bh_id) {
     extern vcpu *vcpu_lookup (int);
     /* hack: use VCPU2's period */
@@ -3410,6 +3429,12 @@ r8169_transmit (u8 *buffer, sint len)
   txd->addr = __cpu_to_le64 (mapping);
   status = opts1 | len | (RingEnd * !((entry + 1) % NUM_TX_DESC));
   DLOG ("  cur_tx=%d mapping=0x%p status=0x%p", tp->cur_tx, mapping, status);
+
+#ifdef TX_TIMING
+  SERIALIZE0;
+  RDTSC (tx_start);
+#endif
+
   /* xmit */
   txd->opts2 = 0;
   txd->opts1 = __cpu_to_le32 (status);
@@ -3422,6 +3447,25 @@ r8169_transmit (u8 *buffer, sint len)
  abort:
   return -1;
 }
+
+#ifdef TX_TIMING
+static u32 timing_stack[1024] ALIGNED (0x1000);
+static task_id timing_id;
+static void timing_thread (void) {
+  struct udp_pcb *pcb = udp_new ();
+  struct pbuf *p = pbuf_alloc (PBUF_TRANSPORT, 4, PBUF_RAM);
+  struct ip_addr ip;
+  struct in_addr inaddr;
+  inet_aton ("192.168.2.123", &inaddr); /* made up address */
+  ip.addr = inaddr.s_addr;
+  pbuf_take (p, "TEST", 4);
+  logger_printf ("r8169: timing_thread: id=0x%x\n", timing_id);
+  for (;;) {
+    sched_usleep (1000000);
+    udp_sendto (pcb, p, &ip, 7890);
+  }
+}
+#endif
 
 static void
 r8169_poll (void)
@@ -3638,6 +3682,11 @@ r8169_init (void)
                                            (u32) &r8169_bh_stack[1023],
                                            FALSE, 0);
   set_iovcpu (r8169_bh_id, IOVCPU_CLASS_NET);
+
+#ifdef TX_TIMING
+  timing_id =
+    start_kernel_thread ((u32) timing_thread, (u32) &timing_stack[1023]);
+#endif
 
   return TRUE;
  abort_txdesc:
