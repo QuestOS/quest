@@ -46,7 +46,10 @@ mcs9922_init (void)
 {
   uint device_index, port_num;
 
-  pci_find_device (MCS9922_VID, MCS9922_DID, 0xFF, 0xFF, 0, &device_index);
+  if (!pci_find_device (MCS9922_VID, MCS9922_DID, 0xFF, 0xFF, 0, &device_index)) {
+    return FALSE;
+  }
+
   if (device_index == (uint)(~0)) {
     DLOG ("Unable to detect compatible device.");
     return FALSE;
