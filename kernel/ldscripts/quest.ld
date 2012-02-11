@@ -29,27 +29,29 @@ SECTIONS {
   . = 0xFFC00000;
   _kernelstart = .;
   .text : AT ( _physicalkernelstart ) { *(.text) } : virtualtext
-  . = ALIGN(4);
-  .rodata : AT ( ( LOADADDR(.text) + SIZEOF(.text) + 3 ) & 0xFFFFFFFC )
+  . = ALIGN(32);
+  .rodata : AT ( ( LOADADDR(.text) + SIZEOF(.text) + 31 ) & 0xFFFFFFE0 )
     { *(.rodata*) } : virtualtext
 
-  . = ALIGN(4);
+  . = ALIGN(32);
   /* Insert a read-only null-terminated array of pointers to constructors */
   _percpu_ctor_list = .;
-  .ctors : AT ( ( LOADADDR (.rodata) + SIZEOF (.rodata) + 3 ) & 0xFFFFFFFC )
+  .ctors : AT ( ( LOADADDR (.rodata) + SIZEOF (.rodata) + 31 ) & 0xFFFFFFE0 )
               { *(.percpu.ctor); LONG(0) } : virtualtext
 
-  . = ALIGN(4);
+  . = ALIGN(32);
   /* Insert a read-only null-terminated array of pointers to modules */
   _module_ptr_list = .;
-  .moduleptrs : AT ( ( LOADADDR (.ctors) + SIZEOF (.ctors) + 3 ) & 0xFFFFFFFC )
+  .moduleptrs : AT ( ( LOADADDR (.ctors) + SIZEOF (.ctors) + 31 ) & 0xFFFFFFE0 )
                    { *(.module.ptrs); LONG(0) } : virtualtext
 
   . = ALIGN(0x1000);
    _kernel_readwrite = .;
   .data : AT ( ( LOADADDR(.moduleptrs) + SIZEOF(.moduleptrs) + 0xFFF ) & 0xFFFFF000 )
              { *(.data) } : virtualdata
-  .bss : AT ( LOADADDR(.data) + SIZEOF(.data) )
+
+  . = ALIGN(0x1000);
+  .bss : AT ( ( LOADADDR(.data) + SIZEOF(.data) + 0xFFF ) & 0xFFFFF000 )
             { *(.bss) *(COMMON) } : virtualdata
   _kernelend = ALIGN(0x1000);
   _readwrite_pages = ( _kernelend - _kernel_readwrite ) / 0x1000;
@@ -66,4 +68,8 @@ SECTIONS {
             { vm/code16.o (.text16) } : virtualtext16
   _code16end = ALIGN(0x1000);
   _code16_pages = ( _code16end - _code16start ) / 0x1000;
+
+  . = ALIGN(0x1000);
+  .eh_frame (NOLOAD) : AT ( _code16end )
+                       { *(.eh_frame) } : NONE
 }
