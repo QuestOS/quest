@@ -63,7 +63,7 @@
 #ifndef __ASSEMBLER__
 #include "arch/i386.h"
 #include "smp/spinlock.h"
-#include "smp/semaphore.h"
+#include "sched/proc.h"
 
 struct sched_param
 {
@@ -76,49 +76,9 @@ struct sched_param
   int k;                        /* window of requests  */
 };
 
-#define NUM_M 32
-
-/* A Quest TSS is a software-only construct, a.k.a Thread Control
- * Block (TCB). */
-typedef struct _quest_tss
-{
-  u32 ESP;
-  u32 EBP;
-  /* The initial instruction pointer is written both to here and the
-   * kernel stack.  In the case of the initial user-space application,
-   * this field is used to load the first IRET into user-space.  In
-   * all other cases, the kernel stack contains the EIP to resume
-   * operation. */
-  u32 initial_EIP;
-  u32 CR3;
-  u32 EFLAGS;
-  struct _semaphore Msem;
-  u32 M[NUM_M];
-
-  uint16 next;                  /* selector for next TSS in corresponding queue
-                                   (beit the runqueue for the CPU or a waitqueue for
-                                   a resource; 0 if task is at end of queue. If a
-                                   task is runnable 'next' refers to a TSS selector
-                                   on the runqueue; if a task is waiting on a
-                                   resource, 'next' refers to a TSS selector on the
-                                   corresponding waitqueue; for all other cases,
-                                   'next' is irrelevant */
-  uint16 waitqueue;             /* queue of other tasks waiting for this
-                                   one -- either attempting to send IPC to it,
-                                   or waiting for it to exit */
-  bool busy;                    /* mutex for server: when busy, clients must add themselves to
-                                   waitqueue above */
-  uint32 priority;
-  uint64 time;                  /* A field for time values associated
-                                   with task, for example, to be used
-                                   by waitqueue managers. */
-  u16 cpu;                      /* [V]CPU binding */
-} quest_tss;
-
 extern char *kernel_version;
 extern uint16 runqueue[];       /* TSS of next runnable task; 0 if none */
 
-extern quest_tss *lookup_TSS (uint16 selector);
 extern void *lookup_GDT_selector (uint16 selector);
 extern void get_GDT_descriptor (uint16, descriptor *);
 
@@ -146,16 +106,6 @@ void stacktrace (void);
 
 void tsc_delay_usec (uint32 usec);
 
-uint16 duplicate_TSS (uint32 ebp,
-                      uint32 *esp,
-                      uint32 child_eip,
-                      uint32 child_ebp,
-                      uint32 child_esp,
-                      uint32 child_eflags,
-                      uint32 child_directory);
-
-typedef uint16 task_id;
-
 task_id start_kernel_thread (uint eip, uint esp);
 task_id create_kernel_thread_args (uint eip, uint esp, bool run, uint n, ...);
 void exit_kernel_thread (void);
@@ -182,7 +132,7 @@ extern quest_tss idleTSS[MAX_CPUS];
 
 extern tss cpuTSS[MAX_CPUS];
 
-extern uint16 idleTSS_selector[MAX_CPUS];
+extern task_id idleTSS_selector[MAX_CPUS];
 
 extern uint16 cpuTSS_selector[MAX_CPUS];
 

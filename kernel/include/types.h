@@ -56,6 +56,8 @@ typedef uint64 uint64_t, u64, __le64;
 
 typedef void *addr_t;
 
+typedef uint32 task_id;
+
 #endif // [#ifndef __ASSEMBLER__]
 
 #endif

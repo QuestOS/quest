@@ -37,7 +37,7 @@ uint8 sched_enabled = 0;
 
 /* These functions assume exclusive access to the queue. */
 extern void
-queue_append (uint16 * queue, uint16 selector)
+queue_append (task_id * queue, task_id selector)
 {
 
   quest_tss *tssp;
@@ -62,12 +62,12 @@ queue_append (uint16 * queue, uint16 selector)
 
 }
 
-extern uint16
-queue_remove_head (uint16 * queue)
+extern task_id
+queue_remove_head (task_id * queue)
 {
 
   quest_tss *tssp;
-  uint16 head;
+  task_id head;
 
   if (!(head = *queue))
     return 0;
@@ -80,9 +80,9 @@ queue_remove_head (uint16 * queue)
 }
 
 extern void
-wakeup_queue (uint16 * q)
+wakeup_queue (task_id * q)
 {
-  uint16 head;
+  task_id head;
 
   while ((head = queue_remove_head (q)))
     wakeup (head);
@@ -90,7 +90,7 @@ wakeup_queue (uint16 * q)
 
 /* ************************************************** */
 
-DEF_PER_CPU (u16, current_task);
+DEF_PER_CPU (task_id, current_task);
 INIT_PER_CPU (current_task) {
   percpu_write (current_task, 0);
 }
@@ -103,8 +103,8 @@ INIT_PER_CPU (current_task) {
 #define W __glue(QUEST_SCHED,_wakeup)
 extern void S (void);
 void (*schedule) (void) = S;
-extern void W (uint16);
-void (*wakeup) (uint16) = W;
+extern void W (task_id);
+void (*wakeup) (task_id) = W;
 
 /*
  * Local Variables:

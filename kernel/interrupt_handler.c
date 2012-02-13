@@ -117,93 +117,6 @@ find_unused_vector (u8 min_prio)
   return (vector_handlers[i] == default_vector_handler ? i : 0);
 }
 
-/* Duplicate parent TSS -- used with fork */
-uint16
-duplicate_TSS (uint32 ebp,
-               uint32 *esp,
-               uint32 child_eip,
-               uint32 child_ebp,
-               uint32 child_esp,
-               uint32 child_eflags, 
-               uint32 child_directory)
-{
-
-  int i;
-  descriptor *ad = (descriptor *) KERN_GDT;
-  quest_tss *pTSS;
-  uint32 pa;
-
-  pa = alloc_phys_frame (); /* --??-- For now, whole page per tss */
-  /* --??-- Error checking in the future */
-
-  /* Establish space for a new TSS: +3 declares present and r/w */
-
-  /* Note, we rely on page being initialised to 0 since EAX contains
-   * return value for child
-   */
-
-  pTSS = map_virtual_page (pa + 3);
-
-  /* Clear virtual page before use. */
-  memset (pTSS, 0, 4096);
-
-  /* Search 2KB GDT for first free entry */
-  for (i = 1; i < 256; i++)
-    if (!(ad[i].fPresent))
-      break;
-
-  if (i == 256)
-    panic ("No free selector for TSS");
-
-  //logger_printf ("duplicate_TSS: pTSS=%p i=0x%x esp=%p ebp=%p\n",
-  //               pTSS, i << 3,
-  //               child_esp, child_ebp);
-
-  /* See pp 6-7 in IA-32 vol 3 docs for meanings of these assignments */
-  ad[i].uLimit0 = 0xFFF;        /* --??-- Right now, a page per TSS */
-  ad[i].uLimit1 = 0;
-  ad[i].pBase0 = (u32) pTSS & 0xFFFF;
-  ad[i].pBase1 = ((u32) pTSS >> 16) & 0xFF;
-  ad[i].pBase2 = (u32) pTSS >> 24;
-  ad[i].uType = 0x09;           /* 32-bit tss */
-  ad[i].uDPL = 0;               /* Only let kernel perform task-switching */
-  ad[i].fPresent = 1;
-  ad[i].f0 = 0;
-  ad[i].fX = 0;
-  ad[i].fGranularity = 0;       /* Set granularity of tss in bytes */
-
-  pTSS->CR3 = (u32) child_directory;
-
-  /* The child will begin running at the specified EIP */
-  pTSS->initial_EIP = child_eip;
-
-  /* modify stack in child space */
-  linear_address_t esp_la; esp_la.raw = child_esp;
-  pgdir_t child_pgdir;
-  child_pgdir.dir_pa = child_directory;
-  child_pgdir.dir_va = map_virtual_page (child_directory | 3);
-  if (child_pgdir.dir_va == NULL)
-    panic ("child_pgdir: out of memory");
-  frame_t esp_frame = pgdir_get_frame (child_pgdir, (void *) (child_esp & (~0xFFF)));
-  u32 *esp_virt = map_virtual_page (esp_frame | 3);
-  if (esp_virt == NULL)
-    panic ("esp_virt: out of memory");
-  esp_virt[esp_la.offset >> 2] = pTSS->initial_EIP;
-  unmap_virtual_page (child_pgdir.dir_va);
-  unmap_virtual_page (esp_virt);
-
-  pTSS->EFLAGS = child_eflags & 0xFFFFBFFF;   /* Disable NT flag */
-  pTSS->ESP = child_esp;
-  pTSS->EBP = child_ebp;
-
-  semaphore_init (&pTSS->Msem, 1, 0);
-
-  pTSS->cpu = 0xFF;
-
-  /* Return the index into the GDT for the segment */
-  return i << 3;
-}
-
 char *exception_messages[] = {
   "Division Error",
   "Debug",
@@ -551,7 +464,7 @@ task_id
 _fork (uint32 ebp, uint32 *esp)
 {
 
-  uint16 child_gdt_index;
+  task_id child_tid;
   void *phys_addr;
   uint32 *virt_addr;
   uint32 priority;
@@ -609,20 +522,20 @@ _fork (uint32 ebp, uint32 *esp)
   /* Create a child task which is the same as this task except that it will
    * begin running at the program point after `call 1f' in the above inline asm. */
 
-  child_gdt_index =
+  child_tid =
     duplicate_TSS (ebp, esp, eip, this_ebp, this_esp, eflags, childpgd.dir_pa);
 
   /* Inherit priority from parent */
-  priority = lookup_TSS (child_gdt_index)->priority =
+  priority = lookup_TSS (child_tid)->priority =
     lookup_TSS (str ())->priority;
 
-  wakeup (child_gdt_index);
+  wakeup (child_tid);
 
   /* --??-- Duplicate any other parent resources as necessary */
 
   unlock_kernel ();
 
-  return child_gdt_index;       /* Use this index for child ID for now */
+  return child_tid;       /* Use this index for child ID for now */
 }
 
 
@@ -1175,10 +1088,8 @@ __exit (int status)
   uint32 *tmp_page;
   int i, j;
   task_id tss;
-  descriptor *ad = (descriptor *) KERN_GDT;
-  uint32 *kern_page_table = (uint32 *) KERN_PGT;
   quest_tss *ptss;
-  int waiter;
+  task_id waiter;
 
   lock_kernel ();
 
@@ -1229,13 +1140,9 @@ __exit (int status)
   while ((waiter = queue_remove_head (&ptss->waitqueue)))
     wakeup (waiter);
 
-  BITMAP_SET (mm_table,
-              kern_page_table[((uint32) ptss >> 12) & 0x3FF] >> 12);
-
-  /* Remove tss descriptor entry in GDT */
-  memset (ad + (tss >> 3), 0, sizeof (descriptor));
-
-  unmap_virtual_page (ptss);
+  /* Remove quest_tss */
+  tss_remove (tss);
+  free_quest_tss (ptss);
 
   schedule ();
   /* never return */

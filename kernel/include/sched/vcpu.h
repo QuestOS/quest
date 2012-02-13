@@ -70,8 +70,8 @@ typedef struct _vcpu
       struct _vcpu *next;       /* next vcpu in a queue */
       bool runnable, running;
       u16 cpu;                  /* cpu affinity for vcpu */
-      u16 tr;                   /* task register */
-      u16 runqueue;             /* per-VCPU runqueue */
+      task_id tr;               /* task register */
+      task_id runqueue;         /* per-VCPU runqueue */
       u32 quantum;              /* internal VCPU scheduling quantum */
       u64 next_schedule;        /* when to trigger internal schedule */
       u64 prev_tsc;             /* when started running */

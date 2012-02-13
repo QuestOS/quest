@@ -28,7 +28,7 @@ struct _circular
   sint32 (*insert)(struct _circular *, void *, uint32);
   sint32 (*remove)(struct _circular *, void *, uint32);
   spinlock lock;
-  uint16 ins_waitq, rem_waitq;
+  task_id ins_waitq, rem_waitq;
 };
 
 typedef struct _circular circular;

@@ -31,9 +31,11 @@
 #include "util/perfmon.h"
 #include "drivers/input/keyboard.h"
 #include "sched/sched.h"
+#include "sched/proc.h"
 #ifdef USE_VMX
 #include "vm/ept.h"
 #include "vm/shm.h"
+#include "drivers/net/ethernet.h"
 #endif
 
 extern descriptor idt[];
@@ -77,104 +79,9 @@ alloc_CPU_TSS (tss *tssp)
   return i << 3;
 
 }
-static uint16
-alloc_idle_TSS (int cpu_num)
-{
-  int i;
-  descriptor *ad = (descriptor *)KERN_GDT;
-  quest_tss *pTSS = (quest_tss *) (&idleTSS[cpu_num]);
-  void idle_task (void);
-
-  /* Search 2KB GDT for first free entry */
-  for (i = 1; i < 256; i++)
-    if (!(ad[i].fPresent))
-      break;
-
-  if (i == 256)
-    panic ("No free selector for TSS");
-
-  ad[i].uLimit0 = sizeof (idleTSS[cpu_num]) - 1;
-  ad[i].uLimit1 = 0;
-  ad[i].pBase0 = (u32) pTSS & 0xFFFF;
-  ad[i].pBase1 = ((u32) pTSS >> 16) & 0xFF;
-  ad[i].pBase2 = (u32) pTSS >> 24;
-  ad[i].uType = 0x09;           /* 32-bit tss */
-  ad[i].uDPL = 0;               /* Only let kernel perform task-switching */
-  ad[i].fPresent = 1;
-  ad[i].f0 = 0;
-  ad[i].fX = 0;
-  ad[i].fGranularity = 0;       /* Set granularity of tss in bytes */
-
-  u32 *stk = map_virtual_page (alloc_phys_frame () | 3);
-
-#ifdef USE_VMX
-  pTSS->CR3 = (u32) (((u32) get_pdbr ()) + cpu_num * SANDBOX_KERN_OFFSET);
-#else
-  pTSS->CR3 = (u32) get_pdbr ();
-#endif
-  pTSS->initial_EIP = (u32) & idle_task;
-  stk[1023] = pTSS->initial_EIP;
-  pTSS->EFLAGS = F_1 | F_IOPL0;
-
-  pTSS->ESP = (u32) &stk[1023];
-  pTSS->EBP = pTSS->ESP;
-
-  /* Return the index into the GDT for the segment */
-  return i << 3;
-}
-
-
-
-/* Allocate a basic TSS */
-static uint16
-alloc_TSS (void *pPageDirectory, void *pEntry, int mod_num)
-{
-
-  int i;
-  descriptor *ad = (idt + 256); /* Get address of GDT from IDT address */
-  quest_tss *pTSS = (quest_tss *) ul_tss[mod_num];
-
-  /* Search 2KB GDT for first free entry */
-  for (i = 1; i < 256; i++)
-    if (!(ad[i].fPresent))
-      break;
-
-  if (i == 256)
-    panic ("No free selector for TSS");
-
-  ad[i].uLimit0 = sizeof (ul_tss[mod_num]) - 1;
-  ad[i].uLimit1 = 0;
-  ad[i].pBase0 = (u32) pTSS & 0xFFFF;
-  ad[i].pBase1 = ((u32) pTSS >> 16) & 0xFF;
-  ad[i].pBase2 = (u32) pTSS >> 24;
-  ad[i].uType = 0x09;           /* 32-bit tss */
-  ad[i].uDPL = 0;               /* Only let kernel perform task-switching */
-  ad[i].fPresent = 1;
-  ad[i].f0 = 0;
-  ad[i].fX = 0;
-  ad[i].fGranularity = 0;       /* Set granularity of tss in bytes */
-
-  pTSS->CR3 = (u32) pPageDirectory;
-  pTSS->initial_EIP = (u32) pEntry;
-
-  if (mod_num != 1)
-    pTSS->EFLAGS = F_1 | F_IF | F_IOPL0;
-  else
-    pTSS->EFLAGS = F_1 | F_IF | F_IOPL;       /* Give terminal server access to
-                                               * screen memory */
-
-  pTSS->ESP = 0x400000 - 100;
-  pTSS->EBP = 0x400000 - 100;
-
-  semaphore_init (&pTSS->Msem, 1, 0);
-
-  /* Return the index into the GDT for the segment */
-  return i << 3;
-}
-
 
 /* Create an address space for boot modules */
-static uint16
+static task_id
 load_module (multiboot_module * pmm, int mod_num)
 {
 
@@ -268,12 +175,12 @@ load_module (multiboot_module * pmm, int mod_num)
   unmap_virtual_page (stack_virt_addr);
   unmap_virtual_pages (pe, page_count);
 
-  u16 pid = alloc_TSS (plPageDirectory, pEntry, mod_num);
-  com1_printf ("module %d loaded: task_id=0x%x\n", mod_num, pid);
+  task_id tid = alloc_TSS (plPageDirectory, pEntry, mod_num);
+  com1_printf ("module %d loaded: task_id=0x%x\n", mod_num, tid);
 #if QUEST_SCHED==vcpu
-  lookup_TSS (pid)->cpu = 0;
+  lookup_TSS (tid)->cpu = 0;
 #endif
-  return pid;
+  return tid;
 }
 
 
@@ -368,7 +275,7 @@ parse_root_type (char *cmdline)
 
 u32 root_type, boot_device=0;
 #ifdef USE_VMX
-uint16 shell_tss = 0;
+task_id shell_tss = 0;
 #endif
 
 void

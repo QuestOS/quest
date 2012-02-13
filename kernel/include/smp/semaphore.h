@@ -24,7 +24,7 @@ struct _semaphore
 {
   int s, max;
   spinlock lock;
-  u16 waitqueue;
+  task_id waitqueue;
 };
 typedef struct _semaphore semaphore;
 

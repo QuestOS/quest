@@ -48,7 +48,7 @@ uint32 kls_pg_table[NR_MODS][1024] ALIGNED (0x1000);
 
 /* Each CPU gets an IDLE task -- something to do when nothing else */
 quest_tss idleTSS[MAX_CPUS];
-uint16 idleTSS_selector[MAX_CPUS];
+task_id idleTSS_selector[MAX_CPUS];
 
 /* Each CPU gets a CPU TSS for sw task switching */
 tss cpuTSS[MAX_CPUS];
@@ -77,19 +77,6 @@ void
 unlock_kernel (void)
 {
   spinlock_unlock (&kernel_lock);
-}
-
-/* Retrieve the pointer to the TSS structure for the task by
- * reconstructing it from the GDT descriptor entry. */
-extern quest_tss *
-lookup_TSS (uint16 selector)
-{
-
-  descriptor *ad = (descriptor *) KERN_GDT;
-
-  return (quest_tss *) (ad[selector >> 3].pBase0 |
-                        (ad[selector >> 3].pBase1 << 16) |
-                        (ad[selector >> 3].pBase2 << 24));
 }
 
 extern void *
@@ -264,23 +251,21 @@ exit_kernel_thread (void)
 {
   uint8 LAPIC_get_physical_ID (void);
   quest_tss *tss;
-  uint tss_frame;
+  task_id tid;
   task_id waiter;
 
   for (;;)
     sched_usleep (1000000);
 
-  tss = lookup_TSS (str ());
-  tss_frame = (uint) get_phys_addr (tss);
+  tid = str ();
+  tss = lookup_TSS (tid);
 
   /* All tasks waiting for us now belong on the runqueue. */
   while ((waiter = queue_remove_head (&tss->waitqueue)))
     wakeup (waiter);
 
-  /* clean up TSS memory */
-  memset (tss, 0, sizeof (quest_tss));
-  unmap_virtual_page (tss);
-  free_phys_frame (tss_frame);
+  tss_remove (tid);
+  free_quest_tss (tss);
 
   /* clear current task */
   ltr (0);
