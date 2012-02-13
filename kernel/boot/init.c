@@ -510,6 +510,14 @@ init (multiboot * pmb)
   { extern bool module_load_all (void); module_load_all (); }
   //{ extern bool ipc_send_init (void); ipc_send_init (); }
   //{ extern bool msgt_init (void); msgt_init (); }
+  //{
+  //  extern bool netsetup_custom_init (struct ip_addr, struct ip_addr, struct ip_addr, int);
+  //  struct ip_addr ipaddr, netmask, gw;
+  //  IP4_ADDR(&ipaddr, 192, 168, 2, 20);
+  //  IP4_ADDR(&netmask, 255, 255, 255, 0);
+  //  IP4_ADDR(&gw, 192, 168, 2, 1);
+  //  netsetup_custom_init (ipaddr, netmask, gw, 1);
+  //}
 
   /* count free pages for informational purposes */
   u32 *page_table = (u32 *) KERN_PGT;
