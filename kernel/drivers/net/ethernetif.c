@@ -425,6 +425,47 @@ echo_init (void)
 
 /* ************************************************** */
 
+/* Demo UDP echo server on port UDP_SERVER_PORT */
+
+#define UDP_SERVER_PORT  538
+
+static void
+udp_echo_recv (void * arg,
+               struct udp_pcb * upcb,
+               struct pbuf * p,
+               struct ip_addr * ipaddr,
+               u16_t port)
+{
+  err_t err;
+  struct ip_addr addr;
+  
+  logger_printf ("udp echo server got packet from : %s:%d\n",
+                 inet_ntoa (* ((struct in_addr *) ipaddr)), port);
+  logger_printf ("Buffer Chain Total: %d, Buffer Length: %d\n", p->tot_len, p->len);
+
+  memcpy (&addr, ipaddr, sizeof (struct ip_addr));
+  err = udp_sendto (upcb, p, &addr, port);
+
+  if (err != ERR_OK)
+    logger_printf ("UDP packet sent failed\n");
+  else
+    logger_printf ("UDP packet sent to: %s:%d\n",
+                   inet_ntoa (* ((struct in_addr *) &addr)), port);
+
+  return;
+}
+
+
+static void
+udp_echo_init (void)
+{
+  struct udp_pcb * udp_echo_pcb = udp_new ();
+  udp_bind (udp_echo_pcb, IP_ADDR_ANY, UDP_SERVER_PORT);
+  udp_recv (udp_echo_pcb, udp_echo_recv, NULL);
+}
+
+/* ************************************************** */
+
 /* Demo HTTP server on port 80 */
 
 #define KHTTPD_CPU 2
@@ -715,6 +756,7 @@ net_init(void)
   lwip_init ();
   echo_init ();
   khttpd_init ();
+  udp_echo_init ();
 
   net_tmr_pid = start_kernel_thread ((uint) net_tmr_thread,
                                      (uint) &net_tmr_stack[1023]);
