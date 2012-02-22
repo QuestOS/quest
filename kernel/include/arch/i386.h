@@ -52,7 +52,8 @@
 #define PTE_AVAIL2 0x800
 #define PTE_FRAME 0xFFFFF000    /* page frame address */
 
-#define PORT1 0x03F8            /* COM1 */
+//#define PORT1 0x03F8            /* COM1 */
+#define PORT1 0xDE00            /* COM1 */
 
 #define PIC1_BASE_IRQ 0x20
 #define PIC2_BASE_IRQ 0x28

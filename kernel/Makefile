@@ -15,7 +15,7 @@ INDENTFLAGS = -gnu -br -ce --no-tabs
 
 ##################################################
 
-MNT_POINT=/mnt/quest
+MNT_POINT=/tftp
 PROGS = quest \
 	sysprogs/shell sysprogs/spinner sysprogs/iotest sysprogs/ipctest \
 	tests/exec tests/race tests/test1 tests/test2 \
@@ -137,9 +137,16 @@ quest: $(OBJS) $(ACPI_OBJS) $(LWIP_OBJS) $(SHARED_COMPS)
 %.o: %.dats
 	$(ATSCC) $(ATSFLAGS) -fno-builtin -m32 -o $@ -c $^
 
+on:
+	quest_turn_on
+
+off: 
+	quest_turn_off
+
 install: $(PROGS)
 	cp $(PROGS) welcome.raw $(MNT_POINT)/boot
 	sync
+	quest_turn_on
 
 vmware: install quest.iso
 	qemu-img convert c.img -O vmdk c-img.vmdk
