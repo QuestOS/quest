@@ -1,0 +1,3 @@
+nettest_sctp.o: nettest_sctp.c ../config.h
+
+../config.h:
