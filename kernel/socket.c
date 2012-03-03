@@ -634,17 +634,19 @@ sys_call_sendto (int sockfd, const void *buf, int nbytes, uint32 addr, uint16 po
   return nbytes;
 }
 
+static udp_recv_buf_t udpb = {.buf = NULL, .bytes_read = 0};
+static tcp_recv_buf_t tcpb = {.buf = NULL, .bytes_read = 0};
+
 static int
 sys_call_recv (int sockfd, void *buf, int nbytes, void *addr, void *len)
 {
   quest_tss * tss;
   fd_table_entry_t fd_ent;
   task_id cur = percpu_read (current_task);
-  udp_recv_buf_t udpb;
-  tcp_recv_buf_t tcpb;
   int nbytes_recvd = 0;
   struct pbuf *q = NULL;
   char *b = buf;
+  int buf_index = 0;
 
   if (!cur) {
     logger_printf ("No current task\n");
@@ -663,55 +665,102 @@ sys_call_recv (int sockfd, void *buf, int nbytes, void *addr, void *len)
   switch (fd_ent.type) {
     case FD_TYPE_UDP :
       DLOG ("sys_call_recv: Receiving UDP data from socket %d", sockfd);
-      lock_kernel ();
-      circular_remove (&udp_recv_buf_circ, &udpb);
-      unlock_kernel ();
+      if (udpb.buf == NULL) {
+        lock_kernel ();
+        circular_remove (&udp_recv_buf_circ, &udpb);
+        unlock_kernel ();
+      }
+
       q = udpb.buf;
-      DLOG ("Total length: %d, length: %d", q->tot_len, q->len);
-      DLOG ("User buffer length: %d", nbytes);
-      while (q) {
-        if ((nbytes_recvd + q->len) > nbytes) {
-          DLOG ("UDP Receive buffer overflow");
-          memcpy (b, q->payload, nbytes - nbytes_recvd);
+      DLOG ("Data available, Total length: %d, length: %d, User buffer length: %d",
+            q->tot_len, q->len, nbytes);
+      DLOG ("Buffer read: %d", udpb.bytes_read);
+      /* Calculate index */
+      buf_index = udpb.bytes_read;
+      while (buf_index >= q->len) {
+        if (q->next) {
+          buf_index -= q->len;
+          q = q->next;
+        } else {
+          DLOG ("Received length greater than pbuf total");
           pbuf_free (udpb.buf);
+          udpb.buf = NULL;
+          udpb.bytes_read = 0;
+          return -1;
+        }
+      }
+      /* Read from pbuf */
+      while (q) {
+        if ((nbytes_recvd + q->len - buf_index) > nbytes) {
+          DLOG ("UDP user buffer smaller than pbuf");
+          memcpy (b, ((uint8 *) q->payload) + buf_index, nbytes - nbytes_recvd);
+          udpb.bytes_read += (nbytes - nbytes_recvd);
           return nbytes;
         }
-        memcpy (b, q->payload, q->len);
-        b += q->len;
-        nbytes_recvd += q->len;
+        memcpy (b, ((uint8 *) q->payload) + buf_index, q->len - buf_index);
+        b += (q->len - buf_index);
+        nbytes_recvd += (q->len - buf_index);
         q = q->next;
+        buf_index = 0;
       }
       DLOG ("Bytes received: %d", nbytes_recvd);
-      memcpy (addr, &(udpb.addr), sizeof (struct sockaddr_in));
+      if (addr)
+        memcpy (addr, &(udpb.addr), sizeof (struct sockaddr_in));
       if (len)
         *((socklen_t *) len) = sizeof (struct sockaddr_in);
       pbuf_free (udpb.buf);
+      udpb.buf = NULL;
+      udpb.bytes_read = 0;
       break;
     case FD_TYPE_TCP :
       DLOG ("sys_call_recv: Receiving TCP data from socket %d", sockfd);
-      lock_kernel ();
-      circular_remove (&tcp_recv_buf_circ, &tcpb);
-      unlock_kernel ();
+      if (tcpb.buf == NULL) {
+        lock_kernel ();
+        circular_remove (&tcp_recv_buf_circ, &tcpb);
+        unlock_kernel ();
+      }
+
       q = tcpb.buf;
-      DLOG ("Total length: %d, length: %d", q->tot_len, q->len);
-      DLOG ("User buffer length: %d", nbytes);
-      while (q) {
-        if ((nbytes_recvd + q->len) > nbytes) {
-          DLOG ("TCP Receive buffer overflow");
-          memcpy (b, q->payload, nbytes - nbytes_recvd);
-          tcp_recved ((struct tcp_pcb *) fd_ent.entry, tcpb.buf->tot_len);
+      DLOG ("Data available, Total length: %d, length: %d, User buffer length: %d",
+            q->tot_len, q->len, nbytes);
+      DLOG ("Buffer read: %d", tcpb.bytes_read);
+      /* Calculate index */
+      buf_index = tcpb.bytes_read;
+      while (buf_index >= q->len) {
+        if (q->next) {
+          buf_index -= q->len;
+          q = q->next;
+        } else {
+          DLOG ("Received length greater than pbuf total");
           pbuf_free (tcpb.buf);
+          tcpb.buf = NULL;
+          tcpb.bytes_read = 0;
+          return -1;
+        }
+      }
+      /* Read from pbuf */
+      while (q) {
+        if ((nbytes_recvd + q->len - buf_index) > nbytes) {
+          DLOG ("UDP user buffer smaller than pbuf");
+          memcpy (b, ((uint8 *) q->payload) + buf_index, nbytes - nbytes_recvd);
+          tcpb.bytes_read += (nbytes - nbytes_recvd);
           return nbytes;
         }
-        memcpy (b, q->payload, q->len);
-        b += q->len;
-        nbytes_recvd += q->len;
+        memcpy (b, ((uint8 *) q->payload) + buf_index, q->len - buf_index);
+        b += (q->len - buf_index);
+        nbytes_recvd += (q->len - buf_index);
         q = q->next;
+        buf_index = 0;
       }
+      DLOG ("Bytes received: %d", nbytes_recvd);
+      if (addr)
+        memcpy (addr, &(tcpb.addr), sizeof (struct sockaddr_in));
       if (len)
         *((socklen_t *) len) = sizeof (struct sockaddr_in);
       tcp_recved ((struct tcp_pcb *) fd_ent.entry, tcpb.buf->tot_len);
       pbuf_free (tcpb.buf);
+      tcpb.buf = NULL;
+      tcpb.bytes_read = 0;
       break;
     default :
       logger_printf ("Socket type %d not supported in recv\n",
