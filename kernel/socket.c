@@ -741,7 +741,7 @@ sys_call_recv (int sockfd, void *buf, int nbytes, void *addr, void *len)
       /* Read from pbuf */
       while (q) {
         if ((nbytes_recvd + q->len - buf_index) > nbytes) {
-          DLOG ("UDP user buffer smaller than pbuf");
+          DLOG ("TCP user buffer smaller than pbuf");
           memcpy (b, ((uint8 *) q->payload) + buf_index, nbytes - nbytes_recvd);
           tcpb.bytes_read += (nbytes - nbytes_recvd);
           return nbytes;
