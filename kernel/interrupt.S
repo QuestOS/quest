@@ -80,6 +80,7 @@
         .globl syscalla
         .globl syscallb
         .globl syscallc
+        .globl interrupt3d
 #ifdef USE_VMX
         .globl syscalld
 #endif
@@ -470,6 +471,20 @@ syscallc:
         
         SREGS_RESTORE   
 
+/* Socket related syscalls */
+interrupt3d:
+        SREGS_SAVE
+
+        pushl %edi
+        pushl %esi
+        pushl %edx
+        pushl %ecx
+        pushl %ebx
+        call *_socket_syscall_table(, %eax, 4)
+        addl $20, %esp
+
+        SREGS_RESTORE
+
 #ifdef USE_VMX
 /* switch_screen */
 syscalld:
@@ -618,7 +633,6 @@ INT(39)
 INT(3a)
 INT(3b)
 INT(3c)
-INT(3d)
 INT(3f)
 
 INT(40)

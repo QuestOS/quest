@@ -51,6 +51,12 @@ circular_remove (circular *c, void *out_elt)
   return c->remove (c, out_elt, 0);
 }
 
+static inline sint32
+circular_remove_nowait (circular *c, void *out_elt)
+{
+  return c->remove (c, out_elt, CIRCULAR_FLAG_NOWAIT);
+}
+
 void circular_init (circular *c, void *buffer, sint32 num_elts, sint32 elt_size);
 
 #endif

@@ -32,7 +32,17 @@ typedef union
 } quest_id PACKED;
 CASSERT (sizeof (task_id) == sizeof (uint32), task_id);
 
-#define NUM_M 32
+#define NUM_M   32
+#define MAX_FD  128
+
+#define FD_TYPE_FILE    0
+#define FD_TYPE_UDP     1
+#define FD_TYPE_TCP     2
+
+typedef struct _fd_table_entry {
+  uint8 type;
+  void * entry;
+} fd_table_entry_t;
 
 /* A Quest TSS is a software-only construct, a.k.a Thread Control
  * Block (TCB). */
@@ -72,7 +82,21 @@ typedef struct _quest_tss
   struct _quest_tss * next_tss;
   struct _quest_tss * prev_tss;
   task_id tid;
+  fd_table_entry_t fd_table[MAX_FD];
 } quest_tss;
+
+static inline int
+find_fd (quest_tss *tss)
+{
+  int i;
+
+  for (i = 3; i < MAX_FD; i++) {
+    if (tss->fd_table[i].entry == NULL)
+      return i;
+  }
+
+  return -1;
+}
 
 extern quest_tss init_tss;
 

@@ -29,6 +29,8 @@ static task_id netsetup_id = 0;
 static void netsetup_thread (void);
 static void netsetup_custom_thread (struct ip_addr, struct ip_addr, struct ip_addr, int num);
 
+extern void socket_sys_call_init (void);
+
 #ifdef STATIC_IP_ASSIGNMENT
   struct ip_addr ipaddr, netmask, gw;
 #endif
@@ -38,6 +40,7 @@ bool
 netsetup_init (void)
 {
   net_set_default ("en0");
+  socket_sys_call_init ();
   netsetup_id =
       start_kernel_thread ((u32) netsetup_thread,
                            (u32) &netsetup_stack[1023]);
@@ -50,6 +53,7 @@ netsetup_custom_init (struct ip_addr ip,
                       struct ip_addr gw,
                       int num)
 {
+  socket_sys_call_init ();
   netsetup_id =
       create_kernel_thread_args ((u32) netsetup_custom_thread,
                                  (u32) &netsetup_custom_stack[1023],

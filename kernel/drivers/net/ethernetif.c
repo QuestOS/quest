@@ -754,9 +754,9 @@ bool
 net_init(void)
 {
   lwip_init ();
-  echo_init ();
-  khttpd_init ();
-  udp_echo_init ();
+  //echo_init ();
+  //khttpd_init ();
+  //udp_echo_init ();
 
   net_tmr_pid = start_kernel_thread ((uint) net_tmr_thread,
                                      (uint) &net_tmr_stack[1023]);

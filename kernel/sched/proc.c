@@ -98,6 +98,7 @@ alloc_quest_tss ()
   pa = alloc_phys_frame ();
   if (pa == -1) return NULL;
   pTSS = map_virtual_page (pa + 3);
+  memset (pTSS, 0, sizeof (quest_tss));
 
   return pTSS;
 }
