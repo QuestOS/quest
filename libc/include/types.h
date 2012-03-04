@@ -19,12 +19,19 @@
 #define _TYPES_H
 
 typedef int ssize_t;
-typedef int size_t;
 
+#ifndef _SIZE_T
+typedef int size_t;
+#define _SIZE_T 1
+#endif
+
+#ifndef _STDINT_
+#define _STDINT_
 typedef unsigned char uint8_t;
 typedef unsigned short int uint16_t;
 typedef unsigned long int uint32_t;
 typedef unsigned long long int uint64_t;
+#endif
 
 #endif
 
