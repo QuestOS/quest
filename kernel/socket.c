@@ -33,6 +33,7 @@
 #include "lwip/udp.h"
 #include "lwip/inet.h"
 #include "linux_socket.h"
+#include "select.h"
 
 #ifdef USE_VMX
 #include "vm/shm.h"
@@ -771,6 +772,120 @@ sys_call_recv (int sockfd, void *buf, int nbytes, void *addr, void *len)
   return nbytes_recvd;
 }
 
+static int
+sys_call_select (int maxfdp1, fd_set * readfds, fd_set * writefds,
+                 fd_set * exceptfds, struct timeval * tvptr)
+{
+  int i = 0, count = 0;
+  quest_tss * tss;
+  task_id cur = percpu_read (current_task);
+  fd_set read_ready;
+  bool ready = FALSE;
+  int wait_count = 0;
+
+  FD_ZERO (&read_ready);
+
+  lock_kernel ();
+
+  if (!cur) {
+    logger_printf ("No current task\n");
+    count = 0;
+    goto finish;
+  }
+
+  tss = lookup_TSS (cur);
+
+  if (tss == NULL) {
+    logger_printf ("Task 0x%x does not exist\n", cur);
+    count = 0;
+    goto finish;
+  }
+
+  /* If no sets specified, select becomes "sleep" */
+  if ((readfds == NULL) && (writefds == NULL)) {
+    sched_usleep (tvptr->tv_sec * 1000 + tvptr->tv_usec);
+    count = 0;
+    goto finish;
+  }
+
+check_readfds:
+
+  if (readfds) {
+    for (i = 0; i < maxfdp1; i++) {
+      if (FD_ISSET (i, readfds)) {
+        switch (tss->fd_table[i].type) {
+          case FD_TYPE_UDP :
+            if (udpb.buf) {
+              ready = TRUE;
+              read_ready[i] = 1;
+              count++;
+            } else if (circular_remove_nowait (&udp_recv_buf_circ, &udpb) != -1) {
+              ready = TRUE;
+              read_ready[i] = 1;
+              count++;
+            } else {
+              continue;
+            }
+            break;
+          case FD_TYPE_TCP :
+            if (tcpb.buf) {
+              ready = TRUE;
+              read_ready[i] = 1;
+              count++;
+            } else if (circular_remove_nowait (&tcp_recv_buf_circ, &tcpb) != -1) {
+              ready = TRUE;
+              read_ready[i] = 1;
+              count++;
+            } else {
+              continue;
+            }
+            break;
+          default:
+            DLOG ("File descriptor type unsupported in select");
+            goto finish;
+        }
+      }
+    }
+  }
+
+  /* I'm lazy, just sleep twice here... */
+  if (!ready && (wait_count < 2)) {
+    sched_usleep ((tvptr->tv_sec * 1000 + tvptr->tv_usec) >> 1);
+    wait_count++;
+    goto check_readfds;
+  } else {
+    /* Oops! Time out! */
+    count = 0;
+  }
+
+  /* Now, some read fds are ready. We can return since we ignore write fds for now. */
+  /* Replace old readfds with read_ready set */
+  memcpy (*readfds, read_ready, sizeof (read_ready));
+
+#ifdef DEBUG_SOCKET
+  /* Debug info */
+  DLOG ("Read sockets in readfds:");
+  for (i = 0; i < MAX_FD; i++) {
+    if (FD_ISSET (i, readfds)) {
+      logger_printf ("  Socket %d ready for read\n", i);
+    }
+  }
+#endif
+
+  /* For write, assume all ready */
+  if (writefds) {
+    for (i = 0; i < maxfdp1; i++) {
+      if (FD_ISSET (i, writefds)) {
+        count++;
+      }
+    }
+  }
+
+finish:
+  unlock_kernel ();
+  return count;
+}
+
 sys_call_ptr_t _socket_syscall_table [] ALIGNED (0x1000) = {
   (sys_call_ptr_t) sys_call_open_socket,    /* 0 */
   (sys_call_ptr_t) sys_call_close,          /* 1 */
@@ -781,7 +896,7 @@ sys_call_ptr_t _socket_syscall_table [] ALIGNED (0x1000) = {
   (sys_call_ptr_t) sys_call_write,          /* 6 */
   (sys_call_ptr_t) sys_call_sendto,         /* 7 */
   (sys_call_ptr_t) sys_call_recv,           /* 8 */
-  (sys_call_ptr_t) NULL,
+  (sys_call_ptr_t) sys_call_select,         /* 9 */
   (sys_call_ptr_t) NULL,
   (sys_call_ptr_t) NULL,
   (sys_call_ptr_t) NULL

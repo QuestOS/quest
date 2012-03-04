@@ -17,6 +17,7 @@
 
 #include "types.h"
 #include "sys/socket.h"
+#include "sys/select.h"
 #include "netinet/in.h"
 
 struct sched_param
@@ -356,6 +357,20 @@ socket_recv (int sockfd, void *buf, size_t nbytes, void *addr, void *addrlen)
   asm volatile ("int $0x3D\n"
                 :"=a" (ret)
                 :"a" (8), "b" (sockfd), "c" (buf), "d" (nbytes), "S" (addr), "D" (addrlen)
+                :"memory", "cc");
+
+  return ret;
+}
+
+static inline int
+socket_select (int maxfdp1, fd_set * readfds, fd_set * writefds,
+               fd_set * exceptfds, struct timeval * tvptr)
+{
+  int ret;
+
+  asm volatile ("int $0x3D\n"
+                :"=a" (ret)
+                :"a" (9), "b" (maxfdp1), "c" (readfds), "d" (writefds), "S" (exceptfds), "D" (tvptr)
                 :"memory", "cc");
 
   return ret;
