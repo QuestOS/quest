@@ -1,3 +1,0 @@
-nettest_xti.o: nettest_xti.c ../config.h
-
-../config.h:

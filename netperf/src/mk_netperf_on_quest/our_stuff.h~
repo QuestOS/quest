@@ -1,4 +1,0 @@
-#define BUFSIZ 8192
-
-
-typedef unsigned int socklen_t;

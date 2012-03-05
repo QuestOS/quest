@@ -1,3 +1,0 @@
-nettest_sdp.o: nettest_sdp.c ../config.h
-
-../config.h:
