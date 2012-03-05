@@ -139,12 +139,6 @@ quest: $(OBJS) $(ACPI_OBJS) $(LWIP_OBJS) $(SHARED_COMPS)
 %.o: %.dats
 	$(ATSCC) $(ATSFLAGS) -fno-builtin -m32 -o $@ -c $^
 
-on:
-	quest_turn_on
-
-off: 
-	quest_turn_off
-
 install: $(PROGS)
 	cp $(PROGS) welcome.raw $(MNT_POINT)/boot
 	sync

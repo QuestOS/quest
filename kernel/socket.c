@@ -808,6 +808,18 @@ sys_call_select (int maxfdp1, fd_set * readfds, fd_set * writefds,
     goto finish;
   }
 
+#ifdef DEBUG_SOCKET
+  /* Debug info */
+  DLOG ("Select called on readfds:");
+  logger_printf ("  ");
+  for (i = 0; i < MAX_FD; i++) {
+    if (FD_ISSET (i, readfds)) {
+      logger_printf ("%d ", i);
+    }
+  }
+  logger_printf ("\n");
+#endif
+
 check_readfds:
 
   if (readfds) {
@@ -904,6 +916,7 @@ sys_call_ptr_t _socket_syscall_table [] ALIGNED (0x1000) = {
 
 static bool socket_sys_call_initialized = FALSE;
 
+/* socket layer initialization is done in netsetup.c */
 void
 socket_sys_call_init ()
 {

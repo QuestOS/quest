@@ -546,7 +546,7 @@ char *strchr(const char *s, int c)
   size_t len = strlen(s);
 
   for(i = 0; i <= len; ++i) {
-    if(s[i] == c) return &s[i];
+    if(s[i] == c) return (char *)&s[i];
   }
 
   return NULL;
@@ -568,7 +568,7 @@ char *strstr(const char *s1, const char *s2)
       for(j = 1; j < needle_len; ++j) {
         if(s2[j] != s1[j+i]) break;
       }
-      if(j == needle_len) return &s1[i];
+      if(j == needle_len) return (char *)&s1[i];
     }
   }
 
