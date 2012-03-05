@@ -21,6 +21,8 @@
 
 
 #include "stdio.h"
+#include "string.h"
+#include "ctype.h"
 #include "stdlib.h"
 #include "buffer.h"
 #include "time.h"
@@ -395,6 +397,19 @@ char *strncpy( char *s1, const char *s2, int length ) {
 }
 
 
+extern char *strdup(const char *s) {
+  char* dup;
+  size_t len = strlen(s);
+  dup = malloc(len);
+
+  if(dup) {
+    memcpy(dup, s, len);
+  }
+  
+  return dup;
+}
+
+
 int strcmp(const char *s1, const char *s2) {
 
   for( ; *s1 == *s2; s1++, s2++ )
@@ -502,6 +517,65 @@ void _start ( int argc, char *argv[] ) {
   exit ( main( argc, argv ) );
 }
 
+
+/*
+ * Taken from http://bytes.com/topic/c/answers/223610-comparing-two-strcasecmp-stricmp-implementations
+ */
+int strcasecmp(const char *s1, const char *s2)
+{
+  unsigned char c1,c2;
+  do {
+    c1 = *s1++;
+    c2 = *s2++;
+    c1 = (unsigned char) tolower( (unsigned char) c1);
+    c2 = (unsigned char) tolower( (unsigned char) c2);
+  }
+  while((c1 == c2) && (c1 != '\0'));
+  return (int) c1-c2;
+}
+
+
+int tolower(int c)
+{
+  return ('A' <= c) && (c <= 'Z') ? 'a' + (c - 'A') : c;
+}
+
+char *strchr(const char *s, int c)
+{
+  unsigned int i;
+  size_t len = strlen(s);
+
+  for(i = 0; i <= len; ++i) {
+    if(s[i] == c) return &s[i];
+  }
+
+  return NULL;
+}
+
+// s1 = haystack, s2 = needle
+char *strstr(const char *s1, const char *s2)
+{
+  int i, j, diff;
+  size_t haystack_len, needle_len;
+
+  haystack_len = strlen(s1);
+  needle_len = strlen(s2);
+  char needle_start = s2[0];
+  diff = haystack_len - needle_len;
+  
+  for(i = 0; i < diff; ++i) {
+    if(needle_start == s1[i]) {
+      for(j = 1; j < needle_len; ++j) {
+        if(s2[j] != s1[j+i]) break;
+      }
+      if(j == needle_len) return &s1[i];
+    }
+  }
+
+  return NULL;
+}
+
+    
 /* 
  * Local Variables:
  * indent-tabs-mode: nil

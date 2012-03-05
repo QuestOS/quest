@@ -15,6 +15,9 @@
  *  along with this program.  If not, see <http://www.gnu.org/licenses/>.
  */
 
+#ifndef _SYSCALL_H_
+#define _SYSCALL_H_
+
 #include "types.h"
 #include "sys/socket.h"
 #include "sys/select.h"
@@ -386,6 +389,8 @@ switch_screen (int dir)
   
   return ret;
 }
+#endif
+
 #endif
 
 /* 
