@@ -15,6 +15,8 @@
  *  along with this program.  If not, see <http://www.gnu.org/licenses/>.
  */
 
+#ifndef _SYSCALL_H_
+#define _SYSCALL_H_
 
 
 struct sched_param
@@ -252,6 +254,8 @@ switch_screen (int dir)
   
   return ret;
 }
+#endif
+
 #endif
 
 /* 

@@ -15,6 +15,8 @@
  *  along with this program.  If not, see <http://www.gnu.org/licenses/>.
  */
 
+#ifndef _STRING_H_
+#define _STRING_H_
 
 #ifndef _SIZE_T
 typedef int size_t;
@@ -28,6 +30,14 @@ extern size_t strlen( const char *s );
 extern int memcmp( const void *s1, const void *s2, size_t n );
 extern char *strcpy(char *dest, const char *src);
 extern char *strncpy( char *s1, const char *s2, int length );
+extern char *strdup(const char *s);
+extern char *strchr(const char *s, int c);
+extern char *strstr(const char *s1, const char *s2);
+
+
+
+
+#endif
 
 /* 
  * Local Variables:

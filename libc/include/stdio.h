@@ -15,7 +15,14 @@
  *  along with this program.  If not, see <http://www.gnu.org/licenses/>.
  */
 
+#ifndef _STDIO_H_
+#define _STDIO_H_
+
 #include "syscall.h"
+
+#ifndef EOF
+#define EOF -1
+#endif
 
 #ifndef NULL
 #define NULL 0
@@ -44,6 +51,9 @@ extern size_t fread(void *ptr, size_t size, size_t nmemb, FILE *stream);
 extern size_t   fwrite(const  void  *ptr,  size_t  size,  size_t  nmemb,  FILE *stream);
 
 extern int puts( const char *s );
+
+
+#endif
 
 /* 
  * Local Variables:

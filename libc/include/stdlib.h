@@ -15,6 +15,9 @@
  *  along with this program.  If not, see <http://www.gnu.org/licenses/>.
  */
 
+#ifndef _STDLIB_H_
+#define _STDLIB_H_
+
 
 #ifndef _SIZE_T
 typedef int size_t;
@@ -29,7 +32,10 @@ extern void *realloc( void *ptr, size_t size );
 extern int atoi(const char *nptr);
 
 extern int rand( void );
+extern void srand(unsigned int seed);
 extern __attribute__((noreturn)) void exit( int status );
+
+#endif
 
 /* 
  * Local Variables:
