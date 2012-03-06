@@ -74,6 +74,18 @@ fork (void)
   return (unsigned short) retval;
 }
 
+static inline int
+get_time (void *tp)
+{
+  int ret;
+
+  asm volatile ("int $0x3D\n"
+                :"=a" (ret)
+                :"a" (10), "b" (tp), "c" (0), "d" (0), "S" (0), "D" (0)
+                :"memory", "cc");
+
+  return ret;
+}
 
 static inline void
 switch_to (unsigned pid)

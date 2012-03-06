@@ -17,6 +17,7 @@
 
 #include <sys/socket.h>
 #include <netinet/in.h>
+#include <netdb.h>
 #include "syscall.h"
 
 int
@@ -126,6 +127,25 @@ int
 getsockname (int sockfd, struct sockaddr *addr, socklen_t *alenp)
 {
   return 0;
+}
+
+int
+getaddrinfo (const char *host, const char *service,
+             const struct addrinfo *hint, struct addrinfo **res)
+{
+  return 0;
+}
+
+void
+freeaddrinfo (struct addrinfo *ai)
+{
+  return;
+}
+
+int
+gettimeofday (struct timeval *tp, void *tzp)
+{
+  return get_time (tp);
 }
 
 /*

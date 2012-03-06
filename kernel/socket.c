@@ -34,6 +34,7 @@
 #include "lwip/inet.h"
 #include "linux_socket.h"
 #include "select.h"
+#include "arch/i386-div64.h"
 
 #ifdef USE_VMX
 #include "vm/shm.h"
@@ -898,18 +899,48 @@ finish:
   return count;
 }
 
+extern uint64 tsc_freq;         /* timestamp counter frequency */
+static uint64 last_tsc = 0;
+static struct timeval last_tp = {0, 0};
+
+static int
+sys_call_get_time (struct timeval *tp)
+{
+  uint64 cur_tsc;
+  uint64 usec;
+  uint64 sec;
+
+  lock_kernel ();
+
+  RDTSC (cur_tsc);
+
+  usec = div64_64 (cur_tsc - last_tsc, tsc_freq);
+  usec = usec * 1000000LL;
+  sec = div64_64 (usec, 1000000LL);
+  usec = usec - sec * 1000000LL;
+
+  last_tp.tv_sec += (long int) sec;
+  last_tp.tv_usec += (long int) usec;
+
+  last_tsc = cur_tsc;
+  memcpy (tp, &last_tp, sizeof (struct timeval));
+  
+  unlock_kernel ();
+  return 0;
+}
+
 sys_call_ptr_t _socket_syscall_table [] ALIGNED (0x1000) = {
-  (sys_call_ptr_t) sys_call_open_socket,    /* 0 */
-  (sys_call_ptr_t) sys_call_close,          /* 1 */
-  (sys_call_ptr_t) sys_call_bind,           /* 2 */
-  (sys_call_ptr_t) sys_call_connect,        /* 3 */
-  (sys_call_ptr_t) sys_call_listen,         /* 4 */
-  (sys_call_ptr_t) sys_call_accept,         /* 5 */
-  (sys_call_ptr_t) sys_call_write,          /* 6 */
-  (sys_call_ptr_t) sys_call_sendto,         /* 7 */
-  (sys_call_ptr_t) sys_call_recv,           /* 8 */
-  (sys_call_ptr_t) sys_call_select,         /* 9 */
-  (sys_call_ptr_t) NULL,
+  (sys_call_ptr_t) sys_call_open_socket,    /* 00 */
+  (sys_call_ptr_t) sys_call_close,          /* 01 */
+  (sys_call_ptr_t) sys_call_bind,           /* 02 */
+  (sys_call_ptr_t) sys_call_connect,        /* 03 */
+  (sys_call_ptr_t) sys_call_listen,         /* 04 */
+  (sys_call_ptr_t) sys_call_accept,         /* 05 */
+  (sys_call_ptr_t) sys_call_write,          /* 06 */
+  (sys_call_ptr_t) sys_call_sendto,         /* 07 */
+  (sys_call_ptr_t) sys_call_recv,           /* 08 */
+  (sys_call_ptr_t) sys_call_select,         /* 09 */
+  (sys_call_ptr_t) sys_call_get_time,       /* 10 */
   (sys_call_ptr_t) NULL,
   (sys_call_ptr_t) NULL
 };
