@@ -21,9 +21,9 @@
 #include <linux/types.h>
 
 /* older ethtool.h includes want them without the leading underscores */
-typedef unsigned long long u64;
-typedef unsigned short     u16;
-typedef unsigned char       u8;
+//typedef unsigned long long u64;
+//typedef unsigned short     u16;
+//typedef unsigned char       u8;
 
 /* ostensibly at this point we should be covered for any ethtool.h? */
 #include <linux/ethtool.h>

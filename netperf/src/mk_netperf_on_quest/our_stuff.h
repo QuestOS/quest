@@ -83,18 +83,16 @@
 
 # define INET_ADDRSTRLEN 16
 
-typedef uint64 uint64_t;
 typedef long time_t;
 typedef long suseconds_t;
 typedef int scalar;
-typedef int size_t, ssize_t, __kernel_size_t;
+typedef int __kernel_size_t;
 typedef unsigned short ushort;
 typedef unsigned short u_short;
 typedef unsigned long u_long;
 typedef socklen_t netperf_socklen_t;
 typedef char* caddr_t;
 
-typedef short dev_t;
 typedef unsigned long ino_t;
 typedef unsigned short mode_t;
 typedef short nlink_t;
