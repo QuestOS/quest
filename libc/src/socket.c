@@ -133,12 +133,61 @@ int
 getaddrinfo (const char *host, const char *service,
              const struct addrinfo *hint, struct addrinfo **res)
 {
+  struct addrinfo *internal_addrinfo =
+    (struct addrinfo *) malloc (sizeof (struct addrinfo));
+  struct sockaddr_in *internal_sockaddr =
+    (struct sockaddr_in *) malloc (sizeof (struct sockaddr_in));
+
+  /* Assign ports... sort of... */
+  static unsigned short p = 12865;
+  unsigned int ip4_addr = 0;
+  internal_addrinfo->ai_family = AF_INET;
+  /* Local host or IP_ANY? Let's assume we have only one interface for each sandbox */
+  if ((strcmp (host, "localhost") == 0) || (strcmp (host, "0.0.0.0") == 0)) {
+    // TODO Make it return different addr for each sandbox
+    // For now, just static IP of SB0
+    inet_pton (AF_INET, "192.168.2.11", &ip4_addr);
+    internal_sockaddr->sin_family = AF_INET;
+    internal_sockaddr->sin_addr.s_addr = ip4_addr;
+    internal_sockaddr->sin_port = htons (p++);
+    internal_addrinfo->ai_addr = (struct sockaddr *)internal_sockaddr;
+  } else {
+    /* Remote host? OK, hack. */
+    inet_pton (AF_INET, "192.168.2.1", &ip4_addr);
+    internal_sockaddr->sin_family = AF_INET;
+    internal_sockaddr->sin_addr.s_addr = ip4_addr;
+    internal_sockaddr->sin_port = htons (12865);
+    internal_addrinfo->ai_addr = (struct sockaddr *)internal_sockaddr;
+  }
+
+  internal_addrinfo->ai_addrlen = sizeof (struct sockaddr_in);
+  internal_addrinfo->ai_canonname = "Quest-V";
+  internal_addrinfo->ai_next = (struct addrinfo *) 0;
+
+  switch (hint->ai_socktype) {
+    case SOCK_STREAM :
+      internal_addrinfo->ai_socktype = SOCK_STREAM;
+      internal_addrinfo->ai_protocol = IPPROTO_TCP;
+      break;
+    case SOCK_DGRAM :
+      internal_addrinfo->ai_socktype = SOCK_DGRAM;
+      internal_addrinfo->ai_protocol = IPPROTO_UDP;
+      break;
+    default :
+      printf ("Hint giving unsupported socket type %d\n", hint->ai_socktype);
+      return 1;
+  }
+
+  *res = internal_addrinfo;
+  
   return 0;
 }
 
 void
 freeaddrinfo (struct addrinfo *ai)
 {
+  free (ai->ai_addr);
+  free (ai);
   return;
 }
 

@@ -868,7 +868,13 @@ check_readfds:
     goto check_readfds;
   } else {
     /* Oops! Time out! */
-    count = 0;
+    if (!ready) {
+      count = 0;
+      DLOG ("Select timeout");
+    } else {
+      /* Something is ready */
+      DLOG ("readfds has fd ready");
+    }
   }
 
   /* Now, some read fds are ready. We can return since we ignore write fds for now. */
@@ -893,6 +899,8 @@ check_readfds:
       }
     }
   }
+
+  DLOG ("Select return: %d", count);
 
 finish:
   unlock_kernel ();

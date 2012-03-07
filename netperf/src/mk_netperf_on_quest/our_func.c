@@ -29,7 +29,6 @@ double atof(const char * s)
 
 int fflush(FILE *stream)
 {
-  unimplemented_funcion_called();
   return 0;
 }
 

@@ -10,6 +10,8 @@
 #ifndef _OUR_STUFF_H_
 #define _OUR_STUFF_H_
 
+#define fprintf(f,fmt,...)  printf(fmt,##__VA_ARGS__)
+
 #define BUFSIZ 8192
 
 #define _SS_ALIGNSIZE   (sizeof(sint64))
