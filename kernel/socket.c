@@ -533,6 +533,7 @@ sys_call_write (int filedes, const void *buf, int nbytes)
       }
       /* --!!-- Remove memcpy if performance or memory becomes a problem */
       memcpy (p->payload, buf, nbytes);
+      DLOG ("Sending %d bytes on UDP socket %d", nbytes, filedes);
       if ((err = udp_send ((struct udp_pcb *) fd_ent.entry, p)) != ERR_OK) {
         DLOG ("UDP sent failed : %d", err);
         pbuf_free (p);
@@ -541,6 +542,7 @@ sys_call_write (int filedes, const void *buf, int nbytes)
       pbuf_free (p);
       break;
     case FD_TYPE_TCP :
+      DLOG ("Sending %d bytes on TCP socket %d", nbytes, filedes);
       sys_call_tcp_sent_status = 0;
       tcp_sent ((struct tcp_pcb *) fd_ent.entry, tcp_sent_callback);
       sndbuf_len = tcp_sndbuf ((struct tcp_pcb *) fd_ent.entry);
@@ -568,6 +570,7 @@ sys_call_write (int filedes, const void *buf, int nbytes)
       sti ();
       while (!sys_call_tcp_sent_status);
       cli ();
+      DLOG ("TCP %d bytes sent", nbytes_sent);
       nbytes_sent = sys_call_tcp_sent_status;
       break;
     default :
@@ -802,9 +805,11 @@ sys_call_select (int maxfdp1, fd_set * readfds, fd_set * writefds,
     goto finish;
   }
 
+  DLOG ("Time out: %d seconds, %d microseconds", tvptr->tv_sec, tvptr->tv_usec);
+
   /* If no sets specified, select becomes "sleep" */
   if ((readfds == NULL) && (writefds == NULL)) {
-    sched_usleep (tvptr->tv_sec * 1000 + tvptr->tv_usec);
+    sched_usleep (tvptr->tv_sec * 1000000LL + tvptr->tv_usec);
     count = 0;
     goto finish;
   }
@@ -820,6 +825,8 @@ sys_call_select (int maxfdp1, fd_set * readfds, fd_set * writefds,
   }
   logger_printf ("\n");
 #endif
+
+#if 1
 
 check_readfds:
 
@@ -863,7 +870,7 @@ check_readfds:
 
   /* I'm lazy, just sleep twice here... */
   if (!ready && (wait_count < 2)) {
-    sched_usleep ((tvptr->tv_sec * 1000 + tvptr->tv_usec) >> 1);
+    sched_usleep ((tvptr->tv_sec * 1000000LL + tvptr->tv_usec) >> 1);
     wait_count++;
     goto check_readfds;
   } else {
@@ -880,6 +887,18 @@ check_readfds:
   /* Now, some read fds are ready. We can return since we ignore write fds for now. */
   /* Replace old readfds with read_ready set */
   memcpy (*readfds, read_ready, sizeof (read_ready));
+
+#else
+
+  if (readfds) {
+    for (i = 0; i < maxfdp1; i++) {
+      if (FD_ISSET (i, readfds)) {
+        count++;
+      }
+    }
+  }
+
+#endif
 
 #ifdef DEBUG_SOCKET
   /* Debug info */
