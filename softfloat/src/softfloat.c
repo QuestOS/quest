@@ -1,11 +1,12 @@
 #include "softfloat.h"
 #include "stdio.h"
+#include "helper.h"
 
 
 #define unimplemented_function						\
 {									\
   do {									\
-    printf("Unimpemented function %s in %s", __FUNCTION__, __FILE__);	\
+    printf("Unimpemented function %s in %s\n", __FUNCTION__, __FILE__);	\
     exit(-1);								\
     return 0;								\
   } while(0);								\
@@ -16,8 +17,20 @@
  * These functions return the sum of a and b.
  */
 
-float __addsf3 (float a, float b) unimplemented_function
-double __adddf3 (double a, double b) unimplemented_function
+float __addsf3 (float a, float b)
+{
+  float32 result = float32_add (*((float32 *) (&a)), *((float32 *) (&b)));
+
+  return *((float*)(&result));
+}
+
+double __adddf3 (double a, double b)
+{
+  float64 result = float64_add (*((float64 *) (&a)), *((float64 *) (&b)));
+
+  return *((double *)(&result));
+}
+
 long double __addtf3 (long double a, long double b) unimplemented_function
 long double __addxf3 (long double a, long double b) unimplemented_function
 
@@ -26,8 +39,20 @@ long double __addxf3 (long double a, long double b) unimplemented_function
  * These functions return the difference between b and a; that is, a - b.
  */
   
-float __subsf3 (float a, float b) unimplemented_function
-double __subdf3 (double a, double b) unimplemented_function
+float __subsf3 (float a, float b)
+{
+  float32 result = float32_sub (*((float32 *) (&a)), *((float32 *) (&b)));
+
+  return *((float*)(&result));
+}
+
+double __subdf3 (double a, double b)
+{
+  float64 result = float64_sub (*((float64 *) (&a)), *((float64 *) (&b)));
+  
+  return *((double *)(&result));
+}
+
 long double __subtf3 (long double a, long double b) unimplemented_function
 long double __subxf3 (long double a, long double b) unimplemented_function
 
@@ -36,8 +61,20 @@ long double __subxf3 (long double a, long double b) unimplemented_function
  * These functions return the product of a and b.
  */
   
-float __mulsf3 (float a, float b) unimplemented_function
-double __muldf3 (double a, double b) unimplemented_function
+float __mulsf3 (float a, float b)
+{
+  float32 result = float32_mul (*((float32 *) (&a)), *((float32 *) (&b)));
+
+  return *((float *)(&result));
+}
+
+double __muldf3 (double a, double b)
+{
+  float64 result = float64_mul (*((float64 *) (&a)), *((float64 *) (&b)));
+
+  return *((double *)(&result));
+}
+
 long double __multf3 (long double a, long double b) unimplemented_function
 long double __mulxf3 (long double a, long double b) unimplemented_function
 
@@ -46,8 +83,20 @@ long double __mulxf3 (long double a, long double b) unimplemented_function
  * These functions return the quotient of a and b; that is, a / b.
  */
 
-float __divsf3 (float a, float b) unimplemented_function
-double __divdf3 (double a, double b) unimplemented_function
+float __divsf3 (float a, float b)
+{
+  float32 result = float32_div (*((float32 *) (&a)), *((float32 *) (&b)));
+
+  return *((float*)(&result));
+}
+
+double __divdf3 (double a, double b)
+{
+  float64 result = float64_div (*((float64 *) (&a)), *((float64 *) (&b)));
+
+  return *((double *)(&result));
+}
+
 long double __divtf3 (long double a, long double b) unimplemented_function
 long double __divxf3 (long double a, long double b) unimplemented_function
 
@@ -66,7 +115,13 @@ long double __negxf2 (long double a) unimplemented_function
  * These functions extend a to the wider mode of their return type.
  */
 
-double __extendsfdf2 (float a) unimplemented_function
+double __extendsfdf2 (float a)
+{
+  float64 result = float32_to_float64 (*((float32 *) (&a)));
+
+  return *((double *)(&result));
+}
+
 long double __extendsftf2 (float a) unimplemented_function
 long double __extendsfxf2 (float a) unimplemented_function
 long double __extenddftf2 (double a) unimplemented_function
@@ -81,7 +136,12 @@ double __truncxfdf2 (long double a) unimplemented_function
 double __trunctfdf2 (long double a) unimplemented_function
 float __truncxfsf2 (long double a) unimplemented_function
 float __trunctfsf2 (long double a) unimplemented_function
-float __truncdfsf2 (double a) unimplemented_function
+float __truncdfsf2 (double a)
+{
+  float32 result = float64_to_float32 (*((float64 *) (&a)));
+
+  return *((float *)(&result));
+}
 
 
 /*
@@ -120,7 +180,12 @@ long long __fixxfti (long double a) unimplemented_function
  */
 
 unsigned int __fixunssfsi (float a) unimplemented_function
-unsigned int __fixunsdfsi (double a) unimplemented_function
+unsigned int __fixunsdfsi (double a)
+{
+  int result = float64_to_int32 (*((float64 *)&a));
+  return result > 0 ? result : 0;
+}
+
 unsigned int __fixunstfsi (long double a) unimplemented_function
 unsigned int __fixunsxfsi (long double a) unimplemented_function
 
@@ -152,13 +217,18 @@ unsigned long long __fixunsxfti (long double a) unimplemented_function
 
 float __floatsisf (int i)
 {
-  return int32_to_float32(i);
+  float32 result = int32_to_float32 (i);
+
+  return *((float*)(&result));
 }
 
 double __floatsidf (int i)
 {
-  return int32_to_float64(i);
+  float64 result = int32_to_float64 (i);
+
+  return *((double*)(&result));
 }
+
 long double __floatsitf (int i) unimplemented_function
 long double __floatsixf (int i) unimplemented_function
 
@@ -186,7 +256,13 @@ long double __floattixf (long long i) unimplemented_function
  */
 
 float __floatunsisf (unsigned int i) unimplemented_function
-double __floatunsidf (unsigned int i) unimplemented_function
+double __floatunsidf (unsigned int i)
+{
+  float64 result = int32_to_float64 ((int) i);
+
+  return *((double*)(&result));
+}
+
 long double __floatunsitf (unsigned int i) unimplemented_function
 long double __floatunsixf (unsigned int i) unimplemented_function
 

@@ -354,12 +354,28 @@ void srand(unsigned int seed) {
   next = seed;
 }
 
-/* --??-- To be implemented */
+/*
+ * --!!-- not a full implementation but good enough for most cases
+ * hasn't been tested
+ */
 int atoi(const char *nptr) {
+  int negative = FALSE;
+  int result = 0;
 
-  return -1;
+  while(*nptr == ' ') ++nptr;
+
+  if(*nptr == '-') {
+    negative = TRUE;
+    nptr++;
+  }
+
+  while(*nptr == ' ') ++nptr;
+
+  while(*nptr >= '0' && *nptr <= '9')
+    result = result * 10 + *nptr++ - '0';
+
+  return negative ? -1 * result : result;
 }
-
 
 clock_t clock( void ) {
 

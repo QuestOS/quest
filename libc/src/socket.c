@@ -139,7 +139,7 @@ getaddrinfo (const char *host, const char *service,
     (struct sockaddr_in *) malloc (sizeof (struct sockaddr_in));
 
   /* Assign ports... sort of... */
-  static unsigned short p = 12865;
+  static unsigned short p = 13452;
   unsigned int ip4_addr = 0;
   internal_addrinfo->ai_family = AF_INET;
   /* Local host or IP_ANY? Let's assume we have only one interface for each sandbox */

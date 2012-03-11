@@ -868,9 +868,9 @@ check_readfds:
     }
   }
 
-  /* I'm lazy, just sleep twice here... */
-  if (!ready && (wait_count < 2)) {
-    sched_usleep ((tvptr->tv_sec * 1000000LL + tvptr->tv_usec) >> 1);
+  /* I'm lazy, just sleep 16 times here... */
+  if (!ready && (wait_count < 16)) {
+    sched_usleep ((tvptr->tv_sec * 1000000LL + tvptr->tv_usec) >> 4);
     wait_count++;
     goto check_readfds;
   } else {

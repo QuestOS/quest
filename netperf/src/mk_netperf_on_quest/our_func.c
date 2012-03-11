@@ -6,7 +6,7 @@
 #include <arpa/inet.h>
 
 char *optarg;
-int optind, opterr, optopt;
+int optind = 1, opterr = 1, optopt;
 
 #define unimplemented_funcion_called()					\
   do {									\
@@ -310,7 +310,8 @@ inet_ntop_v4 (const void *src, char *dst, size_t size)
 
 struct protoent *getprotobyname(const char *name)
 {
-  unimplemented_funcion_called();
+  //printf ("Calling getprotobyname (%s)\n", name);
+  //unimplemented_funcion_called();
   return 0;
 }
 
