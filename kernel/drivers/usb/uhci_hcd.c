@@ -496,25 +496,8 @@ uhci_reset (void)
   return 0;
 }
 
-#define USB_MAX_DEVICES 32
-static USB_DEVICE_INFO devinfo[USB_MAX_DEVICES+1];
-static uint next_address = 1;
 
-#define USB_MAX_DEVICE_DRIVERS 32
-static USB_DRIVER drivers[USB_MAX_DEVICE_DRIVERS];
-static uint num_drivers = 0;
-
-void
-find_device_driver (USB_DEVICE_INFO *info, USB_CFG_DESC *cfgd, USB_IF_DESC *ifd)
-{
-  int d;
-  for (d=0; d<num_drivers; d++) {
-    if (drivers[d].probe (info, cfgd, ifd))
-      return;
-  }
-}
-
-void
+static void
 dlog_devd (USB_DEV_DESC *devd)
 {
   DLOG ("DEVICE DESCRIPTOR len=%d type=%d bcdUSB=0x%x",
@@ -527,7 +510,7 @@ dlog_devd (USB_DEV_DESC *devd)
         devd->bNumConfigurations);
 }
 
-void
+static void
 dlog_info (USB_DEVICE_INFO *info)
 {
   DLOG ("ADDRESS %d", info->address);
@@ -556,6 +539,7 @@ dlog_info (USB_DEVICE_INFO *info)
 }
 
 /* figures out what device is attached as address 0 */
+#if 0 // Getting rid of uhci_enumerate because it does not use usb_hcd
 bool
 uhci_enumerate (void)
 {
@@ -581,10 +565,10 @@ uhci_enumerate (void)
   info->address = 0;
   info->host_type = USB_TYPE_HC_UHCI;
 
-  /* OK, here is the deal. The spec says you should use the maximum
-   * packet size in the data phase of control transfer if the data
-   * is larger than one packet. Since we do not want to support low
-   * speed device for now, the bMaxPacketSize0 is always set to 64
+  /* --WARN-- OK, here is the deal. The spec says you should use the
+   * maximum packet size in the data phase of control transfer if the
+   * data is larger than one packet. Since we do not want to support
+   * low speed device for now, the bMaxPacketSize0 is always set to 64
    * bytes for full speed device. So, do not be surprised if your USB
    * mouse does not work in Quest!
    */
@@ -608,7 +592,7 @@ uhci_enumerate (void)
   }
 
   if (devd.bNumConfigurations == 255)
-    devd.bNumConfigurations = 1; /* hack */
+    devd.bNumConfigurations = 1; /* --!!-- hack */
 
   /* Update device info structure. Put it in USB core might be better */
   memcpy (&info->devd, &devd, sizeof (USB_DEV_DESC));
@@ -715,19 +699,13 @@ uhci_enumerate (void)
   return FALSE;
 }
 
-bool
-usb_register_driver (USB_DRIVER *driver)
-{
-  if (num_drivers >= USB_MAX_DEVICE_DRIVERS) return FALSE;
-  memcpy (&drivers[num_drivers], driver, sizeof (USB_DRIVER));
-  num_drivers++;
-  return TRUE;
-}
+#endif
 
 static bool uhci_operational = FALSE;
 bool
 usb_do_enumeration (void)
 {
+#if 0
   int i;
 #include <drivers/usb/usb_tests.h>
   if (!uhci_operational) return FALSE;
@@ -740,6 +718,7 @@ usb_do_enumeration (void)
     show_usb_regs (bus, dev, func);
   }
   DLOG ("end enumeration");
+  #endif
   return TRUE;
 }
 
@@ -1042,13 +1021,12 @@ uhci_bulk_transfer(
 }
 
 int
-uhci_control_transfer (
-    uint8_t address,
-    addr_t setup_req,    /* Use virtual address here */
-    int setup_len,
-    addr_t setup_data,   /* Use virtual address here */
-    int data_len,
-    int packet_len)      /* 64 bytes for Full-speed and 8 bytes for Low-speed */
+uhci_control_transfer (uint8_t address,
+                       addr_t setup_req,    /* Use virtual address here */
+                       int setup_len,
+                       addr_t setup_data,   /* Use virtual address here */
+                       int data_len,
+                       int packet_len)      /* 64 bytes for Full-speed and 8 bytes for Low-speed */
 {
   UHCI_TD *tx_tds = 0;
   UHCI_TD *td_idx = 0;
@@ -1154,14 +1132,13 @@ uhci_control_transfer (
 }
 
 int
-uhci_get_descriptor (
-    uint8_t address,
-    uint16_t dtype,   /* Descriptor type */
-    uint16_t dindex,   /* Descriptor index */
-    uint16_t index,    /* Zero or Language ID */
-    uint16_t length,   /* Descriptor length */
-    addr_t desc,
-    uint8_t packet_size)
+uhci_get_descriptor (uint8_t address,
+                     uint16_t dtype,   /* Descriptor type */
+                     uint16_t dindex,   /* Descriptor index */
+                     uint16_t index,    /* Zero or Language ID */
+                     uint16_t length,   /* Descriptor length */
+                     addr_t desc,
+                     uint8_t packet_size)
 {
   USB_DEV_REQ setup_req;
   setup_req.bmRequestType = 0x80;       // Characteristics of request, see spec, P183, Rev 1.1
@@ -1596,6 +1573,7 @@ static const struct module_ops mod_ops = {
   .init = uhci_init
 };
 
+// Remove UHCI as it crashes with the gigabyte mini-itx board
 //DEF_MODULE (usb___uhci, "UHCI driver", &mod_ops, {"usb", "pci"});
 
 /*

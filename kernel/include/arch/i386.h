@@ -114,6 +114,9 @@ typedef struct _idt_descriptor
   uint32 pBase1:16;       /* Offset (bits 16-31) */
 } idt_descriptor;
 
+
+#define gccmb()    asm volatile ("" : : : "memory")
+
 static inline void
 cli (void)
 {

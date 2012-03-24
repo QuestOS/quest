@@ -157,7 +157,7 @@ probe_hub (USB_DEVICE_INFO *info, USB_CFG_DESC *cfgd, USB_IF_DESC *ifd)
       hub_clr_port_feature (address, i, HUB_PORT_C_RESET);
       hub_port_status (address, i);
       delay (2*hubd.bPwrOn2PwrGood);
-      uhci_enumerate ();
+      usb_enumerate(info->hcd);
     }
   }
   return TRUE;

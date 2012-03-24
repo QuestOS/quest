@@ -65,6 +65,19 @@
 #define USB_TYPE_HC_EHCI    0x01
 #define USB_TYPE_HC_OHCI    0x02
 
+
+#define PIPE_ISOCHRONOUS  0
+#define PIPE_INTERRUPT    1
+#define PIPE_CONTROL      2
+#define PIPE_BULK         3
+
+#define USB_SPEED_LOW  1
+#define USB_SPEED_FULL 2
+#define USB_SPEED_HIGH 3
+
+typedef struct _usb_hcd_t usb_hcd_t;
+
+
 /*
  * USB_DEV_REQ : USB Device Request
  *
@@ -80,6 +93,8 @@ struct usb_dev_req
   uint16_t wIndex;
   uint16_t wLength;
 } PACKED;
+
+#define IS_INPUT_USB_DEV_REQ(dev_req_addr) ( (*((uint8_t*)dev_req_addr) ) & 0x80 )
 
 typedef struct usb_dev_req USB_DEV_REQ;
 
@@ -212,11 +227,12 @@ typedef struct usb_str_desc USB_STR_DESC;
 
 /* ************************************************** */
 
-typedef struct
+typedef struct 
 {
   uint8 address;
   USB_DEV_DESC devd;
   uint8 host_type;
+  usb_hcd_t* hcd;
   uint8 *raw;
 } USB_DEVICE_INFO;
 
@@ -241,6 +257,34 @@ extern int usb_get_configuration(USB_DEVICE_INFO *);
 extern int usb_set_configuration(USB_DEVICE_INFO *, uint8_t);
 extern int usb_get_interface(USB_DEVICE_INFO *, uint16_t);
 extern int usb_set_interface(USB_DEVICE_INFO *, uint16_t, uint16_t);
+
+
+bool usb_enumerate(usb_hcd_t* usb_hcd);
+
+
+
+
+typedef bool (*usb_reset_root_ports_func) (usb_hcd_t* usb_hcd);
+
+/*
+ * Generic USB Host controller Device object 
+ */
+struct _usb_hcd_t
+{
+  #define USB_MAX_DEVICES 32
+  
+  uint32_t usb_hc_type;
+  usb_reset_root_ports_func reset_root_ports;
+  uint32_t next_address;
+  USB_DEVICE_INFO devinfo[USB_MAX_DEVICES+1];  // add +1 so device address corresponds to index
+};
+
+bool initialise_usb_hcd(usb_hcd_t* usb_hcd, uint32_t usb_hc_type,
+                        usb_reset_root_ports_func reset_root_ports);
+
+bool add_usb_hcd(usb_hcd_t* usb_hcd);
+
+usb_hcd_t* get_usb_hcd(uint32_t index);
 
 #endif
 

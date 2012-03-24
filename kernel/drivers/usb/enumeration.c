@@ -16,14 +16,43 @@
  */
 
 #include "kernel.h"
+#include "drivers/usb/usb.h"
 #include "module/header.h"
+#include <util/printf.h>
+
+#define DEBUG_USB_ENUM
+
+
+#ifdef DEBUG_USB_ENUM
+#define DLOG(fmt,...) DLOG_PREFIX("USB ENUM",fmt,##__VA_ARGS__)
+#else
+#define DLOG(fmt,...) ;
+#endif
+
 
 /* Enumerate the USB bus */
 bool
 usbenumeration_init (void)
 {
-  extern bool usb_do_enumeration (void);
-  return usb_do_enumeration ();
+  // Turn UHCI enumeration off
+  //extern bool usb_do_enumeration (void);
+  //if(!usb_do_enumeration()) return FALSE;
+
+  uint32_t index = 0;
+  usb_hcd_t* hcd = NULL;
+
+  DLOG("IN USB ENUM");
+
+  while( (hcd = get_usb_hcd(index)) != NULL) {
+    index++;
+    if(!hcd->reset_root_ports(hcd)) continue;
+    if(!usb_enumerate(hcd)) DLOG("Failed to enumerate device %d", index-1);
+  }
+
+  DLOG("Number of USB HCD enumerated %d", index);
+  while(1);
+  
+  return TRUE;
 }
 
 static const struct module_ops mod_ops = {

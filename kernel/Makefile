@@ -50,6 +50,7 @@ OBJS =  boot/boot.o boot/init.o kernel.o module/loader.o \
 	drivers/eeprom/93cx6.o \
 	drivers/usb/uhci_hcd.o drivers/usb/uvc.o drivers/usb/umsc.o \
 	drivers/usb/hub.o drivers/usb/net.o drivers/usb/asix.o \
+	drivers/usb/ehci_hcd.o drivers/usb/ehci_mem.o \
 	drivers/usb/ftdi.o drivers/usb/pl2303.o \
 	drivers/usb/rtl8187b.o \
 	drivers/usb/usb_tests.o \
