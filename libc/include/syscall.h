@@ -391,6 +391,19 @@ socket_select (int maxfdp1, fd_set * readfds, fd_set * writefds,
   return ret;
 }
 
+static inline int
+socket_get_sb_id ()
+{
+  int ret;
+
+  asm volatile ("int $0x3D\n"
+                :"=a" (ret)
+                :"a" (11), "b" (0), "c" (0), "d" (0), "S" (0), "D" (0)
+                :"memory", "cc");
+
+  return ret;
+}
+
 #ifdef USE_VMX
 static inline int
 switch_screen (int dir)

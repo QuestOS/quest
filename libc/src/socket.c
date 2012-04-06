@@ -16,6 +16,7 @@
  */
 
 #include <sys/socket.h>
+#include <sys/select.h>
 #include <netinet/in.h>
 #include <netdb.h>
 #include "syscall.h"
@@ -138,15 +139,23 @@ getaddrinfo (const char *host, const char *service,
   struct sockaddr_in *internal_sockaddr =
     (struct sockaddr_in *) malloc (sizeof (struct sockaddr_in));
 
+  int cpu = socket_get_sb_id ();
   /* Assign ports... sort of... */
   static unsigned short p = 13452;
   unsigned int ip4_addr = 0;
   internal_addrinfo->ai_family = AF_INET;
   /* Local host or IP_ANY? Let's assume we have only one interface for each sandbox */
   if ((strcmp (host, "localhost") == 0) || (strcmp (host, "0.0.0.0") == 0)) {
-    // TODO Make it return different addr for each sandbox
-    // For now, just static IP of SB0
-    inet_pton (AF_INET, "192.168.2.11", &ip4_addr);
+
+    if (cpu == 0)
+      inet_pton (AF_INET, "192.168.2.11", &ip4_addr);
+    else if (cpu == 1)
+      inet_pton (AF_INET, "192.168.2.12", &ip4_addr);
+    else if (cpu == 2)
+      inet_pton (AF_INET, "192.168.2.13", &ip4_addr);
+    else if (cpu == 3)
+      inet_pton (AF_INET, "192.168.2.14", &ip4_addr);
+
     internal_sockaddr->sin_family = AF_INET;
     internal_sockaddr->sin_addr.s_addr = ip4_addr;
     internal_sockaddr->sin_port = htons (p++);
@@ -156,7 +165,14 @@ getaddrinfo (const char *host, const char *service,
     inet_pton (AF_INET, "192.168.2.1", &ip4_addr);
     internal_sockaddr->sin_family = AF_INET;
     internal_sockaddr->sin_addr.s_addr = ip4_addr;
-    internal_sockaddr->sin_port = htons (12865);
+    if (cpu == 0)
+      internal_sockaddr->sin_port = htons (12865);
+    else if (cpu == 1)
+      internal_sockaddr->sin_port = htons (12866);
+    else if (cpu == 2)
+      internal_sockaddr->sin_port = htons (12867);
+    else if (cpu == 3)
+      internal_sockaddr->sin_port = htons (12868);
     internal_addrinfo->ai_addr = (struct sockaddr *)internal_sockaddr;
   }
 

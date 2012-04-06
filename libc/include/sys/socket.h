@@ -19,6 +19,7 @@
 #define _SYS_SOCKET_H
 
 #include "../types.h"
+#include <sys/select.h>
 
 typedef int socklen_t;
 
@@ -267,6 +268,9 @@ extern ssize_t recvfrom (int sockfd, void *buf, size_t len, int flags,
 extern int setsockopt (int sockfd, int level, int option, const void *val, socklen_t len);
 extern int getsockopt (int sockfd, int level, int option, void *val, socklen_t *lenp);
 extern int getsockname (int sockfd, struct sockaddr *addr, socklen_t *alenp);
+
+/* OK, this should be in sys/time.h */
+extern int gettimeofday (struct timeval *tp, void *tzp);
 
 #endif
 

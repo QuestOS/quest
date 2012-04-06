@@ -72,7 +72,7 @@ pid_t getpid(void)
 
 void perror(const char *s)
 {
-  unimplemented_funcion_called();
+  printf (s);
 }
 
 

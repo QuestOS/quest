@@ -6432,7 +6432,7 @@ bytes   bytes    secs            #      #   %s/sec\n\n";
   char *tput_fmt_1 = "\
 %6d  %6d   %-7.2f   %7d %6d    %7.2f\n\
 %6d           %-7.2f   %7d           %7.2f\n\n";
-  
+
   
   char *cpu_title = "\
 Socket  Message  Elapsed      Messages                   CPU      Service\n\
@@ -6664,7 +6664,7 @@ bytes   bytes    secs            #      #   %s/sec %% %c%c     us/KB\n\n";
     
     if (test_time) {
       times_up = 0;
-      start_timer(test_time);
+      //start_timer(test_time);
     }
     else {
       fprintf(where,"Sorry, UDP_STREAM tests must be timed.\n");
@@ -6720,8 +6720,7 @@ bytes   bytes    secs            #      #   %s/sec %% %c%c     us/KB\n\n";
 		    send_size,
 		    0);
       } else {
-	
-  printf("calling sendto in %s at %d\n", __FILE__, __LINE__); 
+
          len = sendto(data_socket,
 		      send_ring->buffer_ptr,
 		      send_size,
@@ -6764,7 +6763,23 @@ bytes   bytes    secs            #      #   %s/sec %% %c%c     us/KB\n\n";
 #ifdef WANT_INTERVALS      
       INTERVALS_WAIT();
 #endif /* WANT_INTERVALS */
-      
+
+      /* 
+       * In order to get around start_timer which sets up signal handling
+       * we use polling to count the time. When the time is up, we manually
+       * set times_up to 1 to stop the test from client side.
+       */
+      static struct timeval end_tp = {0, 0}, start_tp = {0, 0};
+
+      if ((start_tp.tv_sec == 0) && (start_tp.tv_usec == 0)) {
+        gettimeofday (&start_tp, NULL);
+      } else {
+        gettimeofday (&end_tp, NULL);
+        /* Time up? */
+        if ((end_tp.tv_sec - start_tp.tv_sec) >= test_time)
+          times_up = 1;
+      }
+
     }
     
     /* This is a timed test, so the remote will be returning to us after */
@@ -6961,6 +6976,44 @@ bytes   bytes    secs            #      #   %s/sec %% %c%c     us/KB\n\n";
     }
   }
   else {
+    struct quest_netperf_report {
+      char title_string[256];
+      char fmt_string[256];
+      int lss_size;
+      int send_size;
+      float elapsed_time;
+      unsigned int messages_sent;
+      unsigned int failed_sends;
+      double local_thruput;
+      int rsr_size;
+      float elapsed_time1;
+      unsigned int messages_recvd;
+      double remote_thruput;
+    } __attribute__ ((packed));
+
+    struct quest_netperf_report qnp_report;
+    int report_sock;
+    struct sockaddr_in server;
+
+    memcpy (qnp_report.title_string, tput_title, strlen (tput_title) + 1);
+    memcpy (qnp_report.fmt_string, tput_fmt_1, strlen (tput_fmt_1) + 1);
+    qnp_report.lss_size = lss_size;
+    qnp_report.send_size = send_size; 
+    qnp_report.elapsed_time = elapsed_time;
+    qnp_report.messages_sent = messages_sent;
+    qnp_report.failed_sends = failed_sends;
+    qnp_report.local_thruput = local_thruput;
+    qnp_report.rsr_size = rsr_size;
+    qnp_report.elapsed_time1 = elapsed_time;
+    qnp_report.messages_recvd = messages_recvd;
+    qnp_report.remote_thruput = remote_thruput;
+
+    /* Socket for remote report server */
+    report_sock = socket (PF_INET, SOCK_DGRAM, IPPROTO_UDP);
+    server.sin_family = AF_INET;
+    server.sin_addr.s_addr = inet_addr ("192.168.2.1");
+    server.sin_port = htons ((unsigned short) 1234);
+
     /* The tester did not wish to measure service demand. */
     switch (verbosity) {
     case 0:
@@ -6985,6 +7038,30 @@ bytes   bytes    secs            #      #   %s/sec %% %c%c     us/KB\n\n";
 	      elapsed_time,
 	      messages_recvd,
 	      remote_thruput);
+
+      int cpu = socket_get_sb_id ();
+      if (cpu == 0)
+        usleep (1000000);
+      else if (cpu == 1)
+        usleep (2000000);
+      else if (cpu == 2)
+        usleep (3000000);
+      else if (cpu == 3)
+        usleep (4000000);
+
+      /* Sending the result to a Linux machine. A server will be running there
+       * and print the report. Big hack here, so, no point of bothering the byte
+       * order, I guess...
+       */
+      if (sendto(report_sock, (const void *) &qnp_report,
+          sizeof (struct quest_netperf_report), 0,
+          (struct sockaddr *) &server,
+          sizeof(server)) != sizeof (struct quest_netperf_report)) {
+        printf ("Sending failed, message length mismatch\n");
+      } else {
+        printf ("Message sent to server\n");
+      }
+
       break;
     }
   }

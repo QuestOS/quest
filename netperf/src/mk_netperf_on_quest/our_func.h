@@ -56,8 +56,6 @@ unsigned int sleep(unsigned int seconds);
 
 char *strerror(int errnum);
 
-int gettimeofday(struct timeval *tv, struct timezone *tz);
-
 int settimeofday(const struct timeval *tv, const struct timezone *tz);
 
 double pow(double x, double y);

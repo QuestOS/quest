@@ -40,7 +40,7 @@
 #include "vm/shm.h"
 #endif
 
-#define DEBUG_SOCKET
+//#define DEBUG_SOCKET
 
 #ifdef DEBUG_SOCKET
 #define DLOG(fmt,...) DLOG_PREFIX("socket_syscall",fmt,##__VA_ARGS__)
@@ -543,19 +543,23 @@ sys_call_write (int filedes, const void *buf, int nbytes)
       break;
     case FD_TYPE_TCP :
       DLOG ("Sending %d bytes on TCP socket %d", nbytes, filedes);
-      sys_call_tcp_sent_status = 0;
+      nbytes_sent = 0;
       tcp_sent ((struct tcp_pcb *) fd_ent.entry, tcp_sent_callback);
-      sndbuf_len = tcp_sndbuf ((struct tcp_pcb *) fd_ent.entry);
-      if (sndbuf_len < nbytes) {
+TCP_SENDING:
+      sys_call_tcp_sent_status = 0;
+      if ((sndbuf_len = tcp_sndbuf ((struct tcp_pcb *) fd_ent.entry)) < (nbytes - nbytes_sent)) {
         /* --!!-- We should wait and re-check here */
         DLOG ("Not enough space in output queue");
-        return -1;
+      } else {
+        sndbuf_len = nbytes - nbytes_sent;
       }
 
       int count = 0;
-      while ((err = tcp_write ((struct tcp_pcb *) fd_ent.entry, buf, nbytes, 1)) != ERR_OK ) {
+      while ((err = tcp_write ((struct tcp_pcb *) fd_ent.entry,
+                               ((const char *)buf) + nbytes_sent, sndbuf_len, 1))
+             != ERR_OK ) {
         DLOG ("tcp_write failed: %d", err);
-        DLOG ("nbytes=%d", nbytes);
+        DLOG ("nbytes_sent=%d", nbytes_sent);
         if (err == ERR_MEM) {
           /* Retry if ERR_MEM returned */
           tsc_delay_usec (5000);
@@ -571,7 +575,8 @@ sys_call_write (int filedes, const void *buf, int nbytes)
       while (!sys_call_tcp_sent_status);
       cli ();
       DLOG ("TCP %d bytes sent", nbytes_sent);
-      nbytes_sent = sys_call_tcp_sent_status;
+      nbytes_sent += sys_call_tcp_sent_status;
+      if (nbytes_sent != nbytes) goto TCP_SENDING;
       break;
     default :
       logger_printf ("Socket type %d not supported in write\n",
@@ -619,7 +624,7 @@ sys_call_sendto (int sockfd, const void *buf, int nbytes, uint32 addr, uint16 po
       /* So, it seems that it's in host byte order */
       if ((err = udp_sendto ((struct udp_pcb *) fd_ent.entry, p,
                              (struct ip_addr *) &addr, ntohs (port))) != ERR_OK) {
-        DLOG ("UDP sendto failed : %d", err);
+        logger_printf ("UDP sendto failed : %d\n", err);
         pbuf_free (p);
         return -1;
       }
@@ -930,6 +935,12 @@ extern uint64 tsc_freq;         /* timestamp counter frequency */
 static uint64 last_tsc = 0;
 static struct timeval last_tp = {0, 0};
 
+/* --!!-- This is a very crude implementation that assumes the first time
+ * gettimeofday is called will be 1970... Let's read the real time from BIOS
+ * during boot and setup an interrupt for the update later.
+ *
+ * We just want to make netperf work here, so...
+ */
 static int
 sys_call_get_time (struct timeval *tp)
 {
@@ -942,6 +953,7 @@ sys_call_get_time (struct timeval *tp)
   RDTSC (cur_tsc);
 
   usec = div64_64 (cur_tsc - last_tsc, tsc_freq);
+  if (!usec) goto finish;
   usec = usec * 1000000LL;
   sec = div64_64 (usec, 1000000LL);
   usec = usec - sec * 1000000LL;
@@ -950,10 +962,17 @@ sys_call_get_time (struct timeval *tp)
   last_tp.tv_usec += (long int) usec;
 
   last_tsc = cur_tsc;
+finish:
   memcpy (tp, &last_tp, sizeof (struct timeval));
   
   unlock_kernel ();
   return 0;
+}
+
+static int
+sys_call_get_sb_id ()
+{
+  return get_pcpu_id ();
 }
 
 sys_call_ptr_t _socket_syscall_table [] ALIGNED (0x1000) = {
@@ -968,7 +987,7 @@ sys_call_ptr_t _socket_syscall_table [] ALIGNED (0x1000) = {
   (sys_call_ptr_t) sys_call_recv,           /* 08 */
   (sys_call_ptr_t) sys_call_select,         /* 09 */
   (sys_call_ptr_t) sys_call_get_time,       /* 10 */
-  (sys_call_ptr_t) NULL,
+  (sys_call_ptr_t) sys_call_get_sb_id,      /* 11 */
   (sys_call_ptr_t) NULL
 };
 
@@ -994,7 +1013,7 @@ socket_sys_call_init ()
         TCP_ACCEPT_LEN,
         sizeof (struct tcp_pcb *));
 
-    DLOG ("socket buffers initialized");
+    DLOG ("socket buffers initialized on sandbox %d", get_pcpu_id ());
     socket_sys_call_initialized = TRUE;
   }
 }
