@@ -404,6 +404,19 @@ socket_get_sb_id ()
   return ret;
 }
 
+static inline int
+socket_getsockname (int sockfd, void *addr, void *len)
+{
+  int ret;
+
+  asm volatile ("int $0x3D\n"
+                :"=a" (ret)
+                :"a" (12), "b" (sockfd), "c" (addr), "d" (len), "S" (0), "D" (0)
+                :"memory", "cc");
+
+  return ret;
+}
+
 #ifdef USE_VMX
 static inline int
 switch_screen (int dir)

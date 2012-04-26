@@ -69,6 +69,7 @@ typedef struct {
 
 #define TCP_RECV_BUF_LEN  32
 
+/* TODO: We should have a buffer for each socket here. */
 tcp_recv_buf_t tcp_recv_buf[TCP_RECV_BUF_LEN];
 circular tcp_recv_buf_circ;
 
@@ -810,12 +811,15 @@ sys_call_select (int maxfdp1, fd_set * readfds, fd_set * writefds,
     goto finish;
   }
 
-  DLOG ("Time out: %d seconds, %d microseconds", tvptr->tv_sec, tvptr->tv_usec);
+  if (tvptr != NULL)
+    DLOG ("Time out: %d seconds, %d microseconds", tvptr->tv_sec, tvptr->tv_usec);
 
   /* If no sets specified, select becomes "sleep" */
   if ((readfds == NULL) && (writefds == NULL)) {
-    sched_usleep (tvptr->tv_sec * 1000000LL + tvptr->tv_usec);
-    count = 0;
+    if (tvptr != NULL) {
+      sched_usleep (tvptr->tv_sec * 1000000LL + tvptr->tv_usec);
+      count = 0;
+    }
     goto finish;
   }
 
@@ -873,6 +877,8 @@ check_readfds:
     }
   }
 
+  if (tvptr == NULL) goto skip_waiting;
+
   /* I'm lazy, just sleep 16 times here... */
   if (!ready && (wait_count < 16)) {
     sched_usleep ((tvptr->tv_sec * 1000000LL + tvptr->tv_usec) >> 4);
@@ -889,6 +895,7 @@ check_readfds:
     }
   }
 
+skip_waiting:
   /* Now, some read fds are ready. We can return since we ignore write fds for now. */
   /* Replace old readfds with read_ready set */
   memcpy (*readfds, read_ready, sizeof (read_ready));
@@ -975,6 +982,71 @@ sys_call_get_sb_id ()
   return get_pcpu_id ();
 }
 
+static int
+sys_call_getsockname (int sockfd, void *addr, void *len)
+{
+  quest_tss * tss;
+  fd_table_entry_t fd_ent;
+  task_id cur = percpu_read (current_task);
+  struct tcp_pcb *tpcb;
+  struct udp_pcb *upcb;
+
+  if (!cur) {
+    logger_printf ("No current task\n");
+    return -1;
+  }
+
+  tss = lookup_TSS (cur);
+
+  if (tss == NULL) {
+    logger_printf ("Task 0x%x does not exist\n", cur);
+    return -1;
+  }
+
+  DLOG ("getsockname on socket %d", sockfd);
+
+  fd_ent = tss->fd_table[sockfd];
+
+  switch (fd_ent.type) {
+    case FD_TYPE_TCP :
+      tpcb = (struct tcp_pcb *) fd_ent.entry;
+      if (!tpcb) {
+        DLOG ("getsockname socket %d not found", sockfd);
+        return -1;
+      }
+      if (addr) {
+        ((struct sockaddr_in *) addr)->sin_family = AF_INET;
+        ((struct sockaddr_in *) addr)->sin_port = htons (tpcb->local_port);
+        ((struct sockaddr_in *) addr)->sin_addr.s_addr = tpcb->local_ip.addr;
+      }
+
+      if (len)
+        *((socklen_t *) len) = sizeof (struct sockaddr_in);
+      break;
+    case FD_TYPE_UDP :
+      upcb = (struct udp_pcb *) fd_ent.entry;
+      if (!upcb) {
+        DLOG ("getsockname socket %d not found", sockfd);
+        return -1;
+      }
+      if (addr) {
+        ((struct sockaddr_in *) addr)->sin_family = AF_INET;
+        ((struct sockaddr_in *) addr)->sin_port = htons (upcb->local_port);
+        ((struct sockaddr_in *) addr)->sin_addr.s_addr = upcb->local_ip.addr;
+      }
+
+      if (len)
+        *((socklen_t *) len) = sizeof (struct sockaddr_in);
+      break;
+    default :
+      logger_printf ("Socket type %d not supported in getsockname\n",
+                     fd_ent.type);
+      return -1;
+  }
+
+  return 0;
+}
+
 sys_call_ptr_t _socket_syscall_table [] ALIGNED (0x1000) = {
   (sys_call_ptr_t) sys_call_open_socket,    /* 00 */
   (sys_call_ptr_t) sys_call_close,          /* 01 */
@@ -988,7 +1060,10 @@ sys_call_ptr_t _socket_syscall_table [] ALIGNED (0x1000) = {
   (sys_call_ptr_t) sys_call_select,         /* 09 */
   (sys_call_ptr_t) sys_call_get_time,       /* 10 */
   (sys_call_ptr_t) sys_call_get_sb_id,      /* 11 */
-  (sys_call_ptr_t) NULL
+  (sys_call_ptr_t) sys_call_getsockname,    /* 12 */
+  (sys_call_ptr_t) NULL,                    /* 13 */
+  (sys_call_ptr_t) NULL,                    /* 14 */
+  (sys_call_ptr_t) NULL                     /* 15 */
 };
 
 static bool socket_sys_call_initialized = FALSE;

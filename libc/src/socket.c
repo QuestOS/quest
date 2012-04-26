@@ -127,7 +127,7 @@ getsockopt (int sockfd, int level, int option, void *val, socklen_t *lenp)
 int
 getsockname (int sockfd, struct sockaddr *addr, socklen_t *alenp)
 {
-  return 0;
+  return socket_getsockname (sockfd, addr, alenp);
 }
 
 int
