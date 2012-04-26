@@ -73,6 +73,7 @@
 #include "sched/sched.h"
 #include "module/header.h"
 #include "kernel.h"
+#include "arch/i386-div64.h"
 
 //#define DEBUG_NETIF
 
@@ -427,7 +428,7 @@ echo_init (void)
 
 /* Demo UDP echo server on port UDP_SERVER_PORT */
 
-#define UDP_SERVER_PORT  538
+#define UDP_SERVER_PORT  1538
 
 static void
 udp_echo_recv (void * arg,
@@ -462,6 +463,65 @@ udp_echo_init (void)
   struct udp_pcb * udp_echo_pcb = udp_new ();
   udp_bind (udp_echo_pcb, IP_ADDR_ANY, UDP_SERVER_PORT);
   udp_recv (udp_echo_pcb, udp_echo_recv, NULL);
+}
+
+/* ************************************************** */
+
+/* UDP Bandwith Test Client */
+
+extern uint64 tsc_freq;         /* timestamp counter frequency */
+static u32 udp_band_stack[1024] ALIGNED (0x1000);
+#define UDP_BSIZE  (4096 * 6)
+
+static void
+udp_bandwith_thread (void)
+{
+  sched_usleep (15000000LL);
+  struct udp_pcb * udp_band_pcb = udp_new ();
+  struct pbuf *p;
+  err_t err;
+  struct ip_addr server;
+  uint64 start, end, sec;
+  IP4_ADDR (&server, 192, 168, 2, 1);
+
+  unlock_kernel ();
+  sti ();
+  RDTSC (start);
+  logger_printf ("UDP Test Started\n");
+
+  p = pbuf_alloc (PBUF_TRANSPORT, UDP_BSIZE, PBUF_RAM);
+  logger_printf ("pbuf.tot_len=%d\n", p->tot_len);
+send:
+  cli ();
+  err = udp_sendto (udp_band_pcb, p, &server, 1548);
+  sti ();
+  if (err != ERR_OK) {
+    logger_printf ("UDP send failed: %d\n", err);
+  }
+  RDTSC (end);
+
+  sec = div64_64 (end - start, tsc_freq);
+  if (sec >= 10) {
+    logger_printf ("UDP Test Ended\n");
+    pbuf_free (p);
+    exit_kernel_thread ();
+  } else {
+    //logger_printf ("Time: %d\n", sec);
+    goto send;
+  }
+
+  return;
+}
+
+bool
+udp_bandwith_init (void)
+{
+  task_id udpt = start_kernel_thread ((uint32) udp_bandwith_thread, (uint32) &udp_band_stack);
+  lookup_TSS (udpt)->cpu = 0;
+
+  logger_printf ("UDP Bandwith Test Thread Started on sandbox %d...\n", get_pcpu_id ());
+
+  return TRUE;
 }
 
 /* ************************************************** */

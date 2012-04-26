@@ -516,6 +516,7 @@ init (multiboot * pmb)
 
   /* Load all modules, chasing dependencies */
   { extern bool module_load_all (void); module_load_all (); }
+  //{ extern bool udp_bandwith_init (void); udp_bandwith_init (); }
   //{ extern bool ipc_send_init (void); ipc_send_init (); }
   //{ extern bool msgt_init (void); msgt_init (); }
   //{
