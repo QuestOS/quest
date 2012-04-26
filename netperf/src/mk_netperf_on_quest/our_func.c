@@ -14,12 +14,11 @@ int optind = 1, opterr = 1, optopt;
     exit(-1);								\
   } while(0)
 
-
-int snprintf(char *str, size_t size, const char *format, ...)
-{
-  unimplemented_funcion_called();
-  return 0;
-}
+//int snprintf(char *str, size_t size, const char *format, ...)
+//{
+//  unimplemented_funcion_called();
+//  return 0;
+//}
 
 double atof(const char * s)
 {
@@ -29,6 +28,35 @@ double atof(const char * s)
 
 int fflush(FILE *stream)
 {
+  return 0;
+}
+
+int dup (int filedes)
+{
+  unimplemented_funcion_called();
+  return 0;
+}
+
+int fileno (FILE *fp)
+{
+  unimplemented_funcion_called();
+  return 0;
+}
+
+int stat (const char *pathname, struct stat *buf)
+{
+  unimplemented_funcion_called();
+  return 0;
+}
+
+int unlink (const char *pathname)
+{
+  return 0;
+}
+
+int chmod (const char *pathname, mode_t mode)
+{
+  unimplemented_funcion_called();
   return 0;
 }
 

@@ -3105,7 +3105,7 @@ establish_control_internal(char *hostname,
   if (!local_res)
     return(INVALID_SOCKET);
 
-  if (debug) {
+  if (1) {
     fprintf(where,
             "establish_control called with host '%s' port '%s' remfam %s\n"
             "\t\tlocal '%s' port '%s' locfam %s\n",

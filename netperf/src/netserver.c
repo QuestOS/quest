@@ -43,6 +43,10 @@
 */
 
 #include "netperf_version.h"
+#include "our_func.h"
+
+/* To get rid of some warnings */
+#define fflush(a) ;
 
 char	netserver_id[]="\
 @(#)netserver.c (c) Copyright 1993-2011 Hewlett-Packard Co. Version 2.5.0";
@@ -113,7 +117,7 @@ char	netserver_id[]="\
 #endif
 
 #if !defined(HAVE_SETSID)
-#if HAVE_SYS_WAIT_H>
+#if HAVE_SYS_WAIT_H
 #include <sys/wait.h>
 #endif
 #endif
@@ -1450,6 +1454,14 @@ check_if_inetd() {
 int _cdecl
 main(int argc, char *argv[]) {
 
+  argc = 4;
+  argv = malloc(sizeof(char*) * argc);
+
+  argv[0] = "/boot/netserver";
+  argv[1] = "-D4f";
+  argv[2] = "-p";
+  argv[3] = "12865";
+ 
 #ifdef WIN32
   WSADATA	wsa_data ;
   

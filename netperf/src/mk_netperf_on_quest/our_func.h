@@ -9,7 +9,8 @@
 
 ssize_t sendmsg (int sockfd, const struct msghdr *msg, int flags);
 
-int snprintf(char *str, size_t size, const char *format, ...);
+//int snprintf(char *str, size_t size, const char *format, ...);
+#define snprintf(str, size, format, ...) sprintf(str, format, ##__VA_ARGS__)
 
 //int fprintf(FILE *stream, const char *format, ...);
 
@@ -22,6 +23,16 @@ uint32_t ntohl(uint32_t netlong);
 uint16_t ntohs(uint16_t netshort);
 
 int fflush(FILE *stream);
+
+int dup (int filedes);
+
+int fileno (FILE *fp);
+
+int stat (const char *pathname, struct stat *buf);
+
+int unlink (const char *pathname);
+
+int chmod (const char *pathname, mode_t mode);
 
 int sigemptyset(sigset_t *set);
 

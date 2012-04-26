@@ -13,6 +13,10 @@
 #define fprintf(f,fmt,...)  printf(fmt,##__VA_ARGS__)
 
 #define BUFSIZ 8192
+#define MAX_PATH 256
+#define STDIN_FILENO  0
+#define STDOUT_FILENO 1
+#define STDERR_FILENO 2
 
 #define _SS_ALIGNSIZE   (sizeof(sint64))
 #define _SS_MAXSIZE     128U
