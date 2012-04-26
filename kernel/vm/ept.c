@@ -28,6 +28,7 @@
 #include "arch/i386.h"
 #include "arch/i386-mtrr.h"
 #include "sched/sched.h"
+#include "vm/spow2.h"
 
 #define DEBUG_EPT    0
 #if DEBUG_EPT > 0
@@ -238,8 +239,19 @@ vmx_init_mem (uint32 cpu)
 
   virt_pgd_new[1023] = ((virt_pgd[1023] & 0xFFFFF000) + physical_offset) | 3;
 
+  /*
+   * Clear mappings in page table except APIC and shared component memory allocator
+   * memory pool. See vm/spow2.h for detail. This pool might be removed in the future.
+   * But for now, we need some continuous virtual memory consistently mapped for each
+   * sandbox. This way, shared driver efficiency can be improved.
+   */
   for (i = 1; i < (APIC_VIRT_ADDR >> 22); i++) {
-    virt_pgd_new[i] = 0;
+    if ((i >= (PHY_SHARED_MEM_POOL_START >> 22)) ||
+        (i < ((PHY_SHARED_MEM_POOL_START + SHARED_MEM_POOL_SIZE) >> 22))) {
+      virt_pgd_new[i] = ((i << 22) + 0x83);
+    } else {
+      virt_pgd_new[i] = 0;
+    }
   }
 
 #if 0
@@ -253,7 +265,12 @@ vmx_init_mem (uint32 cpu)
   /* Restore Paging Structures for Host */
   virt_pgd[0] = bios_backup;
   for (i = 1; i < (APIC_VIRT_ADDR >> 22); i++) {
-    virt_pgd[i] = 0;
+    if ((i >= (PHY_SHARED_MEM_POOL_START >> 22)) ||
+        (i < ((PHY_SHARED_MEM_POOL_START + SHARED_MEM_POOL_SIZE) >> 22))) {
+      virt_pgd_new[i] = ((i << 22) + 0x83);
+    } else {
+      virt_pgd_new[i] = 0;
+    }
   }
   flush_tlb_all ();
 

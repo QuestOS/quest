@@ -37,8 +37,12 @@
 #include "drivers/input/keyboard.h"
 #include "sched/sched.h"
 #include "sched/vcpu.h"
+#include "lwip/pbuf.h"
+#include "lwip/tcp.h"
+#include "lwip/udp.h"
 #ifdef USE_VMX
 #include "vm/shm.h"
+#include "vm/spow2.h"
 #endif
 
 //#define DEBUG_SYSCALL
@@ -627,7 +631,13 @@ _exec (char *filename, char *argv[], uint32 *curr_stack)
 #endif
   for (i = 0; i < 1019; i++) {  /* Skip freeing kernel pg table mapping and
                                    kernel stack space. */
-    if (plPageDirectory[i]) {   /* Present in currrent address space */
+#ifdef USE_VMX
+    if (plPageDirectory[i] && (i < (PHY_SHARED_MEM_POOL_START >> 22) ||
+        i >= ((PHY_SHARED_MEM_POOL_START + SHARED_MEM_POOL_SIZE) >> 22))) {
+#else
+    if (plPageDirectory[i]) {
+#endif
+      /* Present in currrent address space */
       tmp_page = map_virtual_page (plPageDirectory[i] | 3);
       for (j = 0; j < 1024; j++) {
         if (tmp_page[j]) {      /* Present in current address space */
@@ -850,7 +860,8 @@ _read (char *pathname, void *buf, int count)
 {
   lock_kernel ();
   //logger_printf ("_read (\"%s\", %p, 0x%x)\n", pathname, buf, count);
-  int res = vfs_read (pathname, buf, count);
+  int act_len = vfs_dir (pathname);
+  int res = vfs_read (pathname, buf, count < act_len ? count : act_len);
   unlock_kernel ();
   return res;
 }
@@ -1135,6 +1146,23 @@ __exit (int status)
   /* Remove space for tss -- but first we need to construct the linear
      address of where it is in memory from the TSS descriptor */
   ptss = lookup_TSS (tss);
+
+  for (i = 3; i < MAX_FD; i++) {
+    if (ptss->fd_table[i].entry) {
+      switch (ptss->fd_table[i].type) {
+        case FD_TYPE_UDP :
+          udp_remove ((struct udp_pcb *) ptss->fd_table[i].entry);
+          break;
+        case FD_TYPE_TCP :
+          if (tcp_close ((struct tcp_pcb *) ptss->fd_table[i].entry) != ERR_OK) {
+            logger_printf ("TCP PCB close failed in exit\n");
+          }
+          break;
+        default :
+          break;
+      }
+    }
+  }
 
   /* All tasks waiting for us now belong on the runqueue. */
   while ((waiter = queue_remove_head (&ptss->waitqueue)))

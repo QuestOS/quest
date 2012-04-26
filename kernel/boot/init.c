@@ -36,6 +36,7 @@
 #include "vm/ept.h"
 #include "vm/shm.h"
 #include "drivers/net/ethernet.h"
+#include "vm/spow2.h"
 #endif
 
 extern descriptor idt[];
@@ -116,6 +117,13 @@ load_module (multiboot_module * pmm, int mod_num)
   /* LAPIC/IOAPIC mappings */
   memcpy (&plPageDirectory[1019], (void *) (((uint32) get_pdbr ()) + 4076),
           4);
+#ifdef USE_VMX
+  /* Shared component memory pool */
+  for (i = (PHY_SHARED_MEM_POOL_START >> 22);
+       i < ((PHY_SHARED_MEM_POOL_START + SHARED_MEM_POOL_SIZE) >> 22); i++) {
+    plPageDirectory[i] = ((i << 22) + 0x83);
+  }
+#endif
 
   /* Populate ring 3 page directory with entries for its private address
      space */

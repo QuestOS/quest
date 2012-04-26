@@ -20,6 +20,7 @@
 #include "types.h"
 #include "mem/physical.h"
 #include "mem/virtual.h"
+#include "util/printf.h"
 
 extern uint32 _kernelstart;
 
@@ -172,10 +173,15 @@ get_phys_addr (void *virt_addr)
 
   virt_pdbr = map_virtual_page (phys_pdbr | 3);
   phys_ptbr = (virt_pdbr[va >> 22] & 0xFFFFF000);
-  virt_ptbr = map_virtual_page (phys_ptbr | 3);
-  phys_frame = virt_ptbr[(va >> 12) & 0x3FF] & 0xFFFFF000;
-  pa = (void *) (phys_frame + (va & 0x00000FFF));
-  unmap_virtual_page (virt_ptbr);
+  if (virt_pdbr[va >> 22] & 0x80) {
+    /* 4MB page */
+    pa = (void *) (phys_ptbr + (va & 0x003FFFFF));
+  } else {
+    virt_ptbr = map_virtual_page (phys_ptbr | 3);
+    phys_frame = virt_ptbr[(va >> 12) & 0x3FF] & 0xFFFFF000;
+    pa = (void *) (phys_frame + (va & 0x00000FFF));
+    unmap_virtual_page (virt_ptbr);
+  }
   unmap_virtual_page (virt_pdbr);
 
   return pa;
@@ -387,7 +393,10 @@ clone_page_directory (pgdir_t dir)
         new_dir.dir_va[i].raw = dir.dir_va[i].raw;
       } else if (dir.dir_va[i].flags.page_size) {
         /* clone 4 MiB page */
-        panic ("userspace 4 MiB pages not supported");
+        //panic ("userspace 4 MiB pages not supported");
+        new_dir.dir_va[i].raw = (dir.dir_va[i].framenum << 22) + 0x83;
+        //new_dir.dir_va[i].raw = dir.dir_va[i].raw;
+        //com1_printf ("Copy frame 0x%X: 0x%X\n", i, new_dir.dir_va[i].raw);
       } else {
         /* clone a page table */
         pgtbl_t tbl, new_tbl;

@@ -19,6 +19,8 @@
 #include "mem/mem.h"
 #include "vm/shm.h"
 #include "smp/spinlock.h"
+#include "vm/spow2.h"
+#include "util/printf.h"
 
 /*
  * This is a copy of power-of-2 memory allocator from mem/pow2.c.
@@ -52,6 +54,80 @@
 /* Mask the index from a descriptor: */
 #define SHM_POW2_MASK_POW ((1<<SHM_POW2_MIN_POW)-1)
 
+uint32 spow2_pool_table[SHARED_MEM_POOL_INDEX_MAX];
+uint32 spow2_pool_begin = PHY_SHARED_MEM_POOL_START >> 12;
+uint32 spow2_pool_limit = (PHY_SHARED_MEM_POOL_START + SHARED_MEM_POOL_SIZE) >> 12;
+static spinlock spow2_pool_lock ALIGNED(LOCK_ALIGNMENT) = SPINLOCK_INIT;
+
+uint32
+spow2_alloc_mapped_frame (void)
+{
+  int i;
+
+  spinlock_lock (&spow2_pool_lock);
+  for (i = spow2_pool_begin; i < spow2_pool_limit; i++)
+    if (SPOW2_BITMAP_TST (spow2_pool_table, i)) {
+      SPOW2_BITMAP_CLR (spow2_pool_table, i);
+      spinlock_unlock (&spow2_pool_lock);
+      return (i << 12);
+    }
+  spinlock_unlock (&spow2_pool_lock);
+
+  logger_printf ("spow2_alloc_mapped_frame failed!");
+  return -1;
+}
+
+uint32
+spow2_alloc_mapped_frames (uint32 count)
+{
+  int i, j;
+
+  spinlock_lock (&spow2_pool_lock);
+
+  for (i = spow2_pool_begin; i < spow2_pool_limit - count + 1; i++) {
+    for (j = 0; j < count; j++) {
+      if (!SPOW2_BITMAP_TST (spow2_pool_table, i + j)) {      /* Is not free page? */
+        i = i + j;
+        goto keep_searching;
+      }
+    }
+    /* found window: */
+    for (j = 0; j < count; j++) {
+      SPOW2_BITMAP_CLR (spow2_pool_table, i + j);
+    }
+    spinlock_unlock (&spow2_pool_lock);
+    return (i << 12);           /* physical byte address of free frames */
+keep_searching:
+    ;
+  }
+
+  spinlock_unlock (&spow2_pool_lock);
+
+  logger_printf ("spow2_alloc_mapped_frames failed!");
+  return -1;
+}
+
+void
+spow2_free_mapped_frame (uint32 frame)
+{
+  spinlock_lock (&spow2_pool_lock);
+  SPOW2_BITMAP_SET (spow2_pool_table, frame >> 12);
+  spinlock_unlock (&spow2_pool_lock);
+}
+
+void
+spow2_free_mapped_frames (uint32 frame, uint32 count)
+{
+  int i;
+
+  frame >>= 12;
+
+  spinlock_lock (&spow2_pool_lock);
+  for (i = 0; i < count; i++)
+    SPOW2_BITMAP_SET (spow2_pool_table, frame + i);
+  spinlock_unlock (&spow2_pool_lock);
+}
+
 struct _SHM_POW2_HEADER
 {
   struct _SHM_POW2_HEADER *next;
@@ -75,6 +151,10 @@ shm_pow2_add_free_block (uint8 * ptr, uint8 index)
   SHM_POW2_HEADER *hdr = shm_pow2_table[index - SHM_POW2_MIN_POW];
 
   for (;;) {
+    if (!hdr) {
+      com1_printf ("hdr empty\n");
+      return;
+    }
     if (hdr->count < POW2_MAX_COUNT) {
       /* There is room in the current header's block */
       hdr->ptrs[hdr->count++] = ptr;
@@ -86,7 +166,7 @@ shm_pow2_add_free_block (uint8 * ptr, uint8 index)
         hdr = hdr->next;
       } else {
         /* End of the list -- make a new header */
-        hdr->next = map_virtual_page (shm_alloc_phys_frame () | 3);
+        hdr->next = (void *) spow2_alloc_mapped_frame ();
         memset (hdr->next, 0, 0x1000);
         hdr = hdr->next;
       }
@@ -97,7 +177,6 @@ shm_pow2_add_free_block (uint8 * ptr, uint8 index)
 /* Trying to avoid making the frame-size of shm_pow2_get_free_block any
  * larger than it is -- because of recursion -- and this is used in a
  * re-entrantly safe fashion. */
-static uint32 shm_pow2_tmp_phys_frames[SHM_POW2_MAX_POW_FRAMES];
 
 static uint8 *
 shm_pow2_get_free_block (uint8 index)
@@ -127,20 +206,15 @@ shm_pow2_get_free_block (uint8 index)
         return ptr2;
       } else {
         /* grab new pages */
-        int i;
-        for (i = 0; i < SHM_POW2_MAX_POW_FRAMES; i++)
-          shm_pow2_tmp_phys_frames[i] = shm_alloc_phys_frame () | 3;
-        return map_virtual_pages (shm_pow2_tmp_phys_frames, SHM_POW2_MAX_POW_FRAMES);
+        return (void *) spow2_alloc_mapped_frames (SHM_POW2_MAX_POW_FRAMES);
       }
     } else if (hdr->count < POW2_MAX_COUNT || hdr->next == NULL) {
       /* There are free blocks ready to go */
       ptr = hdr->ptrs[--hdr->count];
       if (prev && hdr->count == 0) {
         /* We followed a next pointer to get here. */
-        uint32 frame = (uint32) get_phys_addr ((void *) hdr);
         prev->next = NULL;
-        unmap_virtual_page ((void *) hdr);
-        shm_free_phys_frame (frame);
+        spow2_free_mapped_frame ((uint32) hdr);
       }
       return ptr;
     } else {
@@ -157,12 +231,10 @@ shm_pow2_insert_used_table (uint8 * ptr, uint8 index)
 {
   if (shm_pow2_used_count >= (shm_pow2_used_table_pages * 0x400)) {
     uint32 count = shm_pow2_used_table_pages + 1;
-    uint32 frames = shm_alloc_phys_frames (count), old_frames;
-    void *virt = map_contiguous_virtual_pages (frames | 3, count);
+    uint32 frames = spow2_alloc_mapped_frames (count);
+    void *virt = (void *) frames;
     memcpy (virt, shm_pow2_used_table, sizeof (uint32) * shm_pow2_used_count);
-    old_frames = (uint32) get_phys_addr (shm_pow2_used_table);
-    unmap_virtual_pages ((void *) shm_pow2_used_table, shm_pow2_used_table_pages);
-    shm_free_phys_frames (old_frames, shm_pow2_used_table_pages);
+    spow2_free_mapped_frames ((uint32) shm_pow2_used_table, shm_pow2_used_table_pages);
     shm_pow2_used_table = (uint32 *) virt;
     shm_pow2_used_table_pages = count;
   }
@@ -228,22 +300,27 @@ void
 shm_pow2_init (void)
 {
   int i;
-  uint32 phy_frame = 0;
+  uint32 m_frame = 0;
+
+  //memset ((void *) PHY_SHARED_MEM_POOL_START, 0, SHARED_MEM_POOL_SIZE);
+  for (i = spow2_pool_begin; i < spow2_pool_limit; i++) {
+    SPOW2_BITMAP_SET (spow2_pool_table, i);
+  }
 
   for (i = 0; i < SHM_POW2_TABLE_LEN; i++) {
-    phy_frame = shm_alloc_phys_frame ();
-    if (phy_frame == -1) {
-      panic ("spow2: physical memory allocation failed!");
+    m_frame = spow2_alloc_mapped_frame ();
+    if (m_frame == -1) {
+      panic ("spow2: pool memory allocation failed!");
     }
-    shm_pow2_table[i] = map_virtual_page (phy_frame | 3);
+    shm_pow2_table[i] = (void *) m_frame;
     memset (shm_pow2_table[i], 0, 0x1000);
   }
 
-  phy_frame = shm_alloc_phys_frame ();
-  if (phy_frame == -1) {
-    panic ("spow2: used table physical memory allocation failed!");
+  m_frame = spow2_alloc_mapped_frame ();
+  if (m_frame == -1) {
+    panic ("spow2: used table pool memory allocation failed!");
   }
-  shm_pow2_used_table = map_virtual_page (phy_frame | 3);
+  shm_pow2_used_table = (void *) m_frame;
   memset (shm_pow2_used_table, 0, 0x1000);
   shm_pow2_used_count = 0;
   shm_pow2_used_table_pages = 1;

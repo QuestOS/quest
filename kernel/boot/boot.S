@@ -131,6 +131,16 @@ real_start:
         movl $0xFEC00083, %eax
         movl %eax, pgd+0xFEC
 
+        #ifdef USE_VMX
+        /* Shared Memory Pool for power-of-two allocator (Quest-V)*/
+        movl $0x9F000083, %eax
+        movl %eax, pgd+0x9F0
+        movl $0x9F400083, %eax
+        movl %eax, pgd+0x9F4
+        movl $0x9F800083, %eax
+        movl %eax, pgd+0x9F8
+        #endif
+
         /* Set 1024th (top) entry in PGD to reference kern_pg_table
          * Here, we have 1 4MB superpage for the entire kernel
          */
