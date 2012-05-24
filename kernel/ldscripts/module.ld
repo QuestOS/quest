@@ -11,4 +11,10 @@ SECTIONS
   . = DATA_SEGMENT_ALIGN( 0x1000, 0x1000 );
   .data : { *(.data) }
   .bss : { *(.bss) *(COMMON) }
+
+  . = ALIGN(0x1000);
+  _bss_end =
+      (LOADADDR(.bss) + SIZEOF(.bss) + 0xFFF ) & 0xFFFFF000;
+  .eh_frame (NOLOAD) : AT ( _bss_end )
+                       { *(.eh_frame) } : NONE
 }

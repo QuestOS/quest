@@ -35,6 +35,11 @@ extern int rand( void );
 extern void srand(unsigned int seed);
 extern __attribute__((noreturn)) void exit( int status );
 
+#define MIN(a,b)  ((a) > (b) ? (b) : (a))
+#define MAX(a,b)  ((a) < (b) ? (b) : (a))
+
+extern void bzero(void *s, size_t n);
+
 #endif
 
 /* 

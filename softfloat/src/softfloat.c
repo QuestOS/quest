@@ -118,7 +118,6 @@ long double __negxf2 (long double a) unimplemented_function
 double __extendsfdf2 (float a)
 {
   float64 result = float32_to_float64 (*((float32 *) (&a)));
-
   return *((double *)(&result));
 }
 
@@ -149,8 +148,14 @@ float __truncdfsf2 (double a)
  * zero.
  */
   
-int __fixsfsi (float a) unimplemented_function
-int __fixdfsi (double a) unimplemented_function
+int __fixsfsi (float a)
+{
+  return (int)float32_to_int32_round_to_zero(*((float32 *)&a));
+}
+int __fixdfsi (double a)
+{
+  return (int)float64_to_int32_round_to_zero(*((float64 *)&a));
+}
 int __fixtfsi (long double a) unimplemented_function
 int __fixxfsi (long double a) unimplemented_function
 
@@ -179,11 +184,23 @@ long long __fixxfti (long double a) unimplemented_function
  * zero. Negative values all become zero.
  */
 
-unsigned int __fixunssfsi (float a) unimplemented_function
+unsigned int __fixunssfsi (float a)
+{
+  if(a < 0.0) return 0;
+  int rc = float32_to_int32_round_to_zero(* ((float32 *) &a));
+  if (rc == INT_MAX) {
+    printf ("__fixunssfsi: Returned INT_MAX\n");
+  }
+  return rc;
+}
 unsigned int __fixunsdfsi (double a)
 {
-  int result = float64_to_int32 (*((float64 *)&a));
-  return result > 0 ? result : 0;
+  if(a < 0.0) return 0;
+  int rc = float64_to_int32_round_to_zero (*((float64 *)&a));
+  if(rc == INT_MAX){
+    printf("__fixunsdfsi: Returned INT_MAX\n");
+  }
+  return rc;
 }
 
 unsigned int __fixunstfsi (long double a) unimplemented_function
@@ -258,6 +275,7 @@ long double __floattixf (long long i) unimplemented_function
 float __floatunsisf (unsigned int i) unimplemented_function
 double __floatunsidf (unsigned int i)
 {
+  if(i > INT_MAX) printf("__floatunsidf: integer overflow\n");
   float64 result = int32_to_float64 ((int) i);
 
   return *((double*)(&result));
@@ -353,8 +371,14 @@ int __netf2 (long double a, long double b) unimplemented_function
  * neither argument is NaN, and a is greater than or equal to b.
  */
 
-int __gesf2 (float a, float b) unimplemented_function
-int __gedf2 (double a, double b) unimplemented_function
+int __gesf2 (float a, float b)
+{
+  return float32_lt(*((float32 *) &a), *((float32 *) &b)) ? -1 : 1;
+}
+int __gedf2 (double a, double b)
+{
+  return float64_lt(*((float64 *)&a), *((float64 *)&b)) ? -1 : 1;
+}
 int __getf2 (long double a, long double b) unimplemented_function
 
 
@@ -363,10 +387,13 @@ int __getf2 (long double a, long double b) unimplemented_function
  * is NaN, and a is strictly less than b.
  */
 
-int __ltsf2 (float a, float b) unimplemented_function
+int __ltsf2 (float a, float b)
+{
+  return float32_lt(*((float32 *) &a), *((float32 *) &b)) ? -1 : 1;
+}
 int __ltdf2 (double a, double b)
 {
-  return -1 * float32_le(a,b);
+  return float64_lt(*((float64 *) &a), *((float64 *) &b)) ? -1 : 1;
 }
 int __lttf2 (long double a, long double b) unimplemented_function
 
@@ -375,7 +402,10 @@ int __lttf2 (long double a, long double b) unimplemented_function
  * neither argument is NaN, and a is less than or equal to b.
  */
 
-int __lesf2 (float a, float b) unimplemented_function
+int __lesf2 (float a, float b)
+{
+  return float32_le(*((float32 *) &a), *((float32 *) &b)) ? -1 : 1;
+}
 int __ledf2 (double a, double b) unimplemented_function
 int __letf2 (long double a, long double b) unimplemented_function
 
@@ -385,5 +415,10 @@ int __letf2 (long double a, long double b) unimplemented_function
  * argument is NaN, and a is strictly greater than b.
  */
 int __gtsf2 (float a, float b) unimplemented_function
-int __gtdf2 (double a, double b) unimplemented_function
+int __gtdf2 (double a, double b)
+{
+  return float64_le(*((float64 *)&a), *((float64 *)&b)) ? -1 : 1;
+}
 int __gttf2 (long double a, long double b) unimplemented_function
+
+/* vi: set et sw=2 sts=2: */

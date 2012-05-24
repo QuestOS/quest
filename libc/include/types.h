@@ -20,6 +20,15 @@
 
 typedef int ssize_t;
 
+#define INT_MAX  2147483647
+#define INT_MIN  (-INT_MAX - 1)
+#define UINT_MAX 4294967295
+#define FLT_MAX __FLT_MAX__
+
+#define BOOL unsigned char
+#define TRUE 1
+#define FALSE 0
+
 #ifndef _SIZE_T
 typedef int size_t;
 #define _SIZE_T 1
@@ -32,6 +41,16 @@ typedef unsigned short int uint16_t;
 typedef unsigned long int uint32_t;
 typedef unsigned long long int uint64_t;
 #endif
+
+typedef unsigned char uint8;
+typedef unsigned short int uint16;
+typedef unsigned long int uint32;
+typedef unsigned long long int uint64;
+
+typedef signed char sint8;
+typedef signed short int sint16;
+typedef signed long int sint32;
+typedef signed long long int sint64;
 
 #endif
 

@@ -591,6 +591,11 @@ char *strstr(const char *s1, const char *s2)
   return NULL;
 }
 
+
+void bzero(void *s, size_t n){
+
+  memset(s, 0, n);
+}
     
 /* 
  * Local Variables:
