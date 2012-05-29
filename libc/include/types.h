@@ -20,7 +20,9 @@
 
 typedef int ssize_t;
 
+#ifndef INT_MAX
 #define INT_MAX  2147483647
+#endif
 #define INT_MIN  (-INT_MAX - 1)
 #define UINT_MAX 4294967295
 #define FLT_MAX __FLT_MAX__

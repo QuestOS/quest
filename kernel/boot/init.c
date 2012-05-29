@@ -287,6 +287,35 @@ task_id shell_tss = 0;
 #endif
 
 void
+mem_check (void)
+{
+  int i = 0, j = 0;
+  uint32 *page = NULL;
+  int uflag = 0, mflag = 0;
+
+  /* Only test first 4GB */
+  for (i = 0; i < 0x100000; i++) {
+    if (BITMAP_TST (mm_table, i)) {
+      /* Free frame */
+      if (uflag) {
+        com1_printf ("Used frame end: 0x%X\n", (i << 12) - 1);
+        uflag = 0;
+      }
+    } else {
+      /* Allocated frame */
+      if (uflag == 0) {
+        com1_printf ("Used frame begin: 0x%X\n", i << 12);
+        uflag = 1;
+      }
+    }
+  }
+  if (uflag) {
+    com1_printf ("Used frame end: 0x%X\n", (i << 12) - 1);
+    uflag = 0;
+  }
+}
+
+void
 init (multiboot * pmb)
 {
   int i, j, k, c, num_cpus;
@@ -485,6 +514,8 @@ init (multiboot * pmb)
    * first IRQ after interrupts are re-enabled.  That's why it is safe
    * to utilize the dummy TSS without locking the kernel yet. */
   smp_secondary_init ();
+
+  mem_check ();
 
 #ifdef USE_VMX
   { extern bool vmx_init (void); vmx_init (); }

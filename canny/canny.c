@@ -5,17 +5,13 @@
 #include "canny.h"
 
 extern unsigned char buf[];
-int a_buf[256 * 256 * 2];
-//unsigned char img_buf[256 * 256 * 3];
 unsigned char * img_buf = buf;
-//int edg_buf[256 * 256];
 int dat_buf[256 * 256];
-int xx_buf[256 * 256];
+int mag_buf[256 * 256];
 float xC_buf[256 * 256];
 float xG_buf[256 * 256];
 float yC_buf[256 * 256];
 float yG_buf[256 * 256];
-int *mag_buf = xx_buf;
 
 float kkk;
 int bbb;
@@ -70,16 +66,8 @@ C_init(CEDetector *detect)
   bzero(xG_buf, 256 * 256 * sizeof(float));
   bzero(yC_buf, 256 * 256 * sizeof(float));
   bzero(yG_buf, 256 * 256 * sizeof(float));
-//  bzero(edg_buf, 256 * 256 * sizeof(int));
   bzero(dat_buf, 256 * 256 * sizeof(int));
   bzero(mag_buf, 256 * 256 * sizeof(int));
-/*
-  int i;
-  for(i = 0; i < 256 * 256 / 16; i += 16){
-    printf("%d %d %d %d %d %d %d %d", mag_buf[i], mag_buf[i+1], mag_buf[i+2], mag_buf[i+3], mag_buf[i+4], mag_buf[i+5], mag_buf[i+6], mag_buf[i+7]);
-    printf("%d %d %d %d %d %d %d %d\n", mag_buf[i+8], mag_buf[i+9], mag_buf[i+10], mag_buf[i+11], mag_buf[i+12], mag_buf[i+13], mag_buf[i+14], mag_buf[i+15]);
-  }
-*/ 
 
   int i, flag = 0;
   for(i = 0; i < 256 * 256; i++){

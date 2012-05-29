@@ -18,7 +18,9 @@
 #ifndef __TYPES_H__
 #define __TYPES_H__
 
+#ifndef INT_MAX
 #define INT_MAX 0xFFFFFFFF
+#endif
 
 #ifndef __ASSEMBLER__
 

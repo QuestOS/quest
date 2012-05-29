@@ -745,8 +745,8 @@ _exec (char *filename, char *argv[], uint32 *curr_stack)
   }
 
   /* --??-- temporarily map video memory into exec()ed process */
-  for (i = 0; i < 16; i++)
-    plPageTable[0x200 + i] = 0xA0000 | (i << 12) | 7;
+  //for (i = 0; i < 16; i++)
+  //  plPageTable[0x200 + i] = 0xA0000 | (i << 12) | 7;
 
   /* map stack and clear its contents -- Here, setup 16 pages for stack */
   for (i = 0; i < 16; i++) {
