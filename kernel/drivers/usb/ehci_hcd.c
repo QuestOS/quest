@@ -19,195 +19,12 @@
 #include <drivers/usb/usb.h>
 #include <drivers/usb/ehci.h>
 #include <drivers/usb/ehci_mem.h>
-#include <util/printf.h>
+#include <drivers/usb/ehci_debug.h>
 #include <mem/virtual.h>
 #include <mem/pow2.h>
 #include <arch/i386-div64.h>
 #include <kernel.h>
 #include "sched/sched.h"
-#include <util/cassert.h>
-
-
-#define DEBUG_EHCI
-#define DEBUG_EHCI_VERBOSE
-
-#ifdef DEBUG_EHCI
-#define DLOG(fmt,...) DLOG_PREFIX("EHCI",fmt,##__VA_ARGS__)
-#else
-#define DLOG(fmt,...) ;
-#endif
-
-#ifdef DEBUG_EHCI_VERBOSE
-#define DLOGV(fmt,...) DLOG_PREFIX("EHCI",fmt,##__VA_ARGS__)
-#else
-#define DLOGV(fmt,...) ;
-#endif
-
-#ifdef DEBUG_EHCI_VERBOSE
-#define EHCI_DEBUG_HALT()                                               \
-  do { DLOGV("HALTING file %s line %d",                                 \
-             __FILE__, __LINE__); while(1); } while(0)
-#else
-#define EHCI_DEBUG_HALT() ;
-#endif
-
-#ifdef DEBUG_EHCI_VERBOSE
-#define EHCI_ASSERT(test)                                               \
-  do {                                                                  \
-    if(!(test)) {                                                       \
-      DLOG("assert in file " __FILE__ " line %d failed", __LINE__);     \
-      panic("assert failed");                                           \
-    }                                                                   \
-  }                                                                     \
-  while(0)
-#endif
-  
-
-
-/*
- * Used for debug purposes, prints state of EHCI registers through
- * DLOGV
- */
-static void SQUELCH_UNUSED
-print_caps_and_regs_info(ehci_hcd_t* ehci_hcd, char* msg)
-{
-#ifdef DEBUG_EHCI_VERBOSE
-  sint32 num_ports, i;
-
-#define PRINT_CAP_INFO(REGISTER)                        \
-  DLOGV(#REGISTER ": 0x%X", ehci_hcd->caps->REGISTER);
-
-#define PRINT_REG_INFO(REGISTER)                        \
-  DLOGV(#REGISTER ": 0x%X", ehci_hcd->regs->REGISTER);
-
-  DLOGV("\n\n\n\n\nCompiled at %s - %s", __TIME__, msg);
-  
-  DLOGV("Caps info");
-  DLOGV("caps virtual address: 0x%X", ehci_hcd->caps);
-  PRINT_CAP_INFO(cap_length);
-  PRINT_CAP_INFO(hci_version);
-  PRINT_CAP_INFO(hcs_params);
-  PRINT_CAP_INFO(hcc_params);
-
-  DLOGV("Regs info");
-  DLOGV("reg virtual address: 0x%X", ehci_hcd->regs);
-  PRINT_REG_INFO(command);
-  PRINT_REG_INFO(status);
-  PRINT_REG_INFO(interrupt_enable);
-  PRINT_REG_INFO(frame_index);
-  PRINT_REG_INFO(segment);
-  PRINT_REG_INFO(frame_list);
-  PRINT_REG_INFO(async_next);
-  PRINT_REG_INFO(configured_flag);
-
-  num_ports = GET_NUM_PORTS(ehci_hcd);
-
-  for(i = 0; i < num_ports; ++i) {
-    DLOGV("Port %d status: 0x%X", i, ehci_hcd->regs->port_status[i]);
-  }
-  
-  DLOGV("\n\n\n\n");
-  
-#endif
-}
-
-static void SQUELCH_UNUSED
-print_qtd_info(qtd_t* qtd, char* msg)
-{
-#ifdef DEBUG_EHCI_VERBOSE
-
-#define PRINT_QTD_MEMBER(member) DLOGV(#member ": 0x%X", qtd->member)
-
-  DLOGV("%s", msg);
-  
-  PRINT_QTD_MEMBER(next_pointer_raw);
-  PRINT_QTD_MEMBER(alt_pointer_raw);
-  PRINT_QTD_MEMBER(token);
-  PRINT_QTD_MEMBER(buffer_page[0]);
-  PRINT_QTD_MEMBER(buffer_page[1]);
-  PRINT_QTD_MEMBER(buffer_page[2]);
-  PRINT_QTD_MEMBER(buffer_page[3]);
-  PRINT_QTD_MEMBER(buffer_page[4]);
-  
-#endif  
-}
-
-/*
- * Used for debug purposes, prints state of qh
- */
-
-static void SQUELCH_UNUSED
-print_qh_info(ehci_hcd_t* ehci_hcd, qh_t* qh, bool print_tds ,char* msg)
-{
-#ifdef DEBUG_EHCI_VERBOSE
-#define PRINT_QH_MEMBER(member) DLOGV(#member ": 0x%X", qh->member)
-
-  int qtd_count = 0;
-  
-  DLOGV("**************************************************************************");
-  DLOGV("%s", msg);
-
-  PRINT_QH_MEMBER(horizontalPointer.raw);
-  PRINT_QH_MEMBER(hw_info1);
-  PRINT_QH_MEMBER(hw_info2);
-  PRINT_QH_MEMBER(current_qtd_ptr_raw);
-  PRINT_QH_MEMBER(next_qtd_ptr_raw);
-  PRINT_QH_MEMBER(alt_qtd_ptr_raw);
-  PRINT_QH_MEMBER(qtd_token_raw);
-  PRINT_QH_MEMBER(raw5);
-  PRINT_QH_MEMBER(raw6);
-  PRINT_QH_MEMBER(raw7);
-  PRINT_QH_MEMBER(raw8);
-  PRINT_QH_MEMBER(raw9);
-  DLOG("Software only members:");
-  PRINT_QH_MEMBER(state);
-
-
-  if(print_tds) {
-    qtd_t* qtd;
-    qtd_t* alt_qtd = NULL;
-    if(qh->current_qtd_ptr_raw > 32) {
-      qtd = EHCI_QTD_PHYS_TO_VIRT(ehci_hcd, qh->current_qtd_ptr_raw);
-      print_qtd_info(qtd, "Current QH QTD");
-    }
-    qtd = NULL;
-    if(qh->next_qtd_ptr_raw > 32) {
-      qtd = EHCI_QTD_PHYS_TO_VIRT(ehci_hcd, qh->next_qtd_ptr_raw);
-    }
-    if(qh->alt_qtd_ptr_raw > 32) {
-      
-      alt_qtd = EHCI_QTD_PHYS_TO_VIRT(ehci_hcd, qh->alt_qtd_ptr_raw);
-    }
-    while(qtd != NULL) {
-      DLOGV("QTD %d info", qtd_count);
-      print_qtd_info(qtd, "");
-      if(alt_qtd != NULL) {
-        DLOGV("Alt qtd %d info:", qtd_count);
-          print_qtd_info(alt_qtd, "");
-      }
-      else {
-        DLOGV("Alt qtd %d is NULL", qtd_count);
-      }
-      qtd_count++;
-      alt_qtd = NULL;
-      if(qtd->next_pointer_raw > 32) {
-        qtd = EHCI_QTD_PHYS_TO_VIRT(ehci_hcd, qtd->next_pointer_raw);
-        
-        if(qtd->alt_pointer_raw > 32) {
-          alt_qtd = EHCI_QTD_PHYS_TO_VIRT(ehci_hcd, qtd->alt_pointer_raw);
-        }
-      }
-      else {
-        qtd = NULL;
-      }
-    }
-  }
-  
-  
-#endif  
-}
-
-
 
 
 #define DEFAULT_FRM_LST_SIZE 1024 /*
@@ -226,7 +43,8 @@ static frm_lst_lnk_ptr_t frame_list[FRM_LIST_SIZE] ALIGNED(0x1000);
 static qh_t queue_head_pool[QH_POOL_SIZE] ALIGNED(0x1000);
 static uint32_t used_queue_head_bitmap[(QH_POOL_SIZE + 31)/ 32];
 static qtd_t qtd_pool[QTD_POOL_SIZE] ALIGNED(0x1000);
-static uint32_t used_qtd_bitmap[(QH_POOL_SIZE + EHCI_ELEMENTS_PER_BITMAP_ENTRY - 1) / EHCI_ELEMENTS_PER_BITMAP_ENTRY];
+static uint32_t used_qtd_bitmap[(QH_POOL_SIZE + EHCI_ELEMENTS_PER_BITMAP_ENTRY - 1) /
+                                EHCI_ELEMENTS_PER_BITMAP_ENTRY];
 
 static bool
 handshake(uint32_t *ptr, uint32_t mask, uint32_t done, uint32_t usec)
@@ -249,8 +67,10 @@ handshake(uint32_t *ptr, uint32_t mask, uint32_t done, uint32_t usec)
 static uint32_t
 ehci_irq_handler(uint8 vec)
 {
-  DLOG("%s: %d", __FUNCTION__, vec);
-  panic("IN UNIMPLEMENTED IRQ HANDLER");
+  print_caps_and_regs_info(&ehci_hcd, "");
+
+  
+  panic("in unimplemented irq handler");
   return 0;
 }
 
@@ -381,6 +201,11 @@ set_ehci_on(ehci_hcd_t* ehci_hcd)
   return TRUE;
 }
 
+static inline void enable_interrupts(ehci_hcd_t* ehci_hcd)
+{
+  EHCI_SET_INT(ehci_hcd);
+}
+
 static bool
 reset_root_port(ehci_hcd_t* ehci_hcd, ehci_port_t* port)
 {
@@ -421,6 +246,7 @@ reset_root_port(ehci_hcd_t* ehci_hcd, ehci_port_t* port)
   /*
    * Software must wait 2 ms for port to end reset, EHCI Specs page 28
    */
+  
   if(!handshake(port, PORT_RESET, 0, 2 * 1000)) return FALSE;
 
   DLOG("Port after leave reset 0x%X", *port);
@@ -446,6 +272,7 @@ ehci_reset_root_ports(usb_hcd_t* usb_hcd)
     DLOG("Resetting port %d", num_ports);
     if(!reset_root_port(ehci_hcd, &ports[num_ports])) {
       DLOG("Failed to reset port: %d", num_ports);
+      return FALSE;
     }
   }
 
@@ -499,34 +326,39 @@ initialise_ehci_hcd(uint32_t usb_base,
   ehci_hcd->num_ports           = GET_NUM_PORTS(ehci_hcd);
 
   /*
-   * Set used_queue_head_bitmap and used_qtd_bitmap to all zero to
+   * Set used_queue_head_bitmap and used_qtd_bitmap to all zeros to
    * mark all elements as free
    */
 
   ehci_hcd->used_queue_head_bitmap_size =
     calc_used_queue_head_bitmap_size(ehci_hcd);
 
-  memset(used_queue_head_bitmap, 0, ehci_hcd->used_queue_head_bitmap_size * sizeof(*used_queue_head_bitmap));
+  memset(used_queue_head_bitmap, 0,
+         ehci_hcd->used_queue_head_bitmap_size * sizeof(*used_queue_head_bitmap));
   
   ehci_hcd->used_qtd_bitmap_size =
     calc_used_qtd_bitmap_size(ehci_hcd);
 
-  memset(used_qtd_bitmap, 0, ehci_hcd->used_qtd_bitmap_size * sizeof(*used_qtd_bitmap));
+  memset(used_qtd_bitmap, 0,
+         ehci_hcd->used_qtd_bitmap_size * sizeof(*used_qtd_bitmap));
   
   if(!restart_ehci_hcd(ehci_hcd)) return FALSE;
+  //enable_interrupts(ehci_hcd);
   if(!initialise_frame_list(ehci_hcd)) return FALSE;
   if(!initialise_async_head(ehci_hcd)) return FALSE;
+
+
   
   // Set desired interrupt threshold
   if(!set_interrupt_threshold(ehci_hcd)) return FALSE;
 
-  /* --??-- write memory barrier might be needed here */
+  gccmb();
   
   // Turn EHCI chip on
   if(!set_ehci_on(ehci_hcd)) return FALSE;
 
-  /* --??-- write memory barrier might be needed here */
-
+  gccmb();
+ 
   // Set all ports to route to EHCI chip
   EHCI_SET_CONFIG_FLAG(ehci_hcd, 1);
 
@@ -549,6 +381,9 @@ ehci_init(void)
   DLOGV("***************************************************");
   DLOGV("Entering %s compiled at %s", __FUNCTION__, __TIMESTAMP__);
 
+  DLOGV("size of qtd = %d", sizeof(qtd_t));
+  DLOGV("size of qh = %d", sizeof (qh_t));
+
   if(mp_ISA_PC) {
     DLOG("Cannot operate without PCI");
     DLOGV("Exiting %s with FALSE", __FUNCTION__);
@@ -561,11 +396,12 @@ ehci_init(void)
 
   /*
    * --WARN-- Only looking for 1 specific EHCI host controller device
-   * this is D29 for Intel 6 C200 or qemu ehci chip
+   * this is D29 for Intel 6 C200 or the qemu ehci chip would be best
+   * to add all EHCI chips to an array that is iterated, and each time
+   * one is found it is pushed to the usb core
    */
   
-  //while (pci_find_device (0x8086, 0x1C26, 0x0C, 0x03, i, &i)) {
-  while (pci_find_device (0x8086, 0x24CD, 0x0C, 0x03, i, &i)) { 
+  while (pci_find_device (0x8086, 0x1C26, 0x0C, 0x03, i, &i)) {
     if (pci_get_device (i, &ehci_device)) { 
       if (ehci_device.progIF == 0x20) {
         device_index = i;
@@ -575,6 +411,20 @@ ehci_init(void)
     } else break;
   }
 
+
+  if(device_index == ~0) {
+    while (pci_find_device (0x8086, 0x24CD, 0x0C, 0x03, i, &i)) { 
+      if (pci_get_device (i, &ehci_device)) { 
+        if (ehci_device.progIF == 0x20) {
+          device_index = i;
+          break;
+        }
+        i++;
+      } else break;
+    }
+  }
+
+  
   DLOG("Device %d", device_index);
   
   if (device_index == ~0) {
@@ -584,6 +434,8 @@ ehci_init(void)
     EHCI_DEBUG_HALT();
     return FALSE;
   }
+
+  
 
   DLOGV("Found device on PCI bus");
   
@@ -665,7 +517,12 @@ qtd_fill(qtd_t* qtd,
   uint32_t count, i;
   
   qtd->buffer_page[0].raw = phys_data_addr;
-  
+  qtd->ex_buf_ptr_pgs[0] = 0;
+  qtd->ex_buf_ptr_pgs[1] = 0;
+  qtd->ex_buf_ptr_pgs[2] = 0;
+  qtd->ex_buf_ptr_pgs[3] = 0;
+  qtd->ex_buf_ptr_pgs[4] = 0;
+
   /* Number of bytes buffer_page[0] stores */
   count = 0x1000 - (phys_data_addr & 0x0FFF);
   if(data_len < count) {
@@ -708,7 +565,8 @@ create_qtd_chain(ehci_hcd_t* ehci_hcd,
                  uint32_t data_len,
                  uint32_t packet_len,
                  uint32_t pipe_type,
-                 uint32_t is_input)
+                 uint32_t is_input,
+                 bool enable_ioc)
 {
   uint32_t     token;
   qtd_t*      first_qtd;
@@ -719,8 +577,11 @@ create_qtd_chain(ehci_hcd_t* ehci_hcd,
   token = QTD_ACTIVE | (EHCI_TUNE_CERR << QTD_CERR);
   
   first_qtd = current_qtd = allocate_qtd(ehci_hcd);
+
+  
   
   if(!current_qtd) return NULL;
+
 
   if(pipe_type == PIPE_CONTROL) {
     if(qtd_fill(current_qtd, (phys_addr_t)get_phys_addr(setup_req),
@@ -733,6 +594,7 @@ create_qtd_chain(ehci_hcd_t* ehci_hcd,
     previous_qtd = current_qtd;
     current_qtd = allocate_qtd(ehci_hcd);
     if(!current_qtd) goto create_qtd_chain_cleanup;
+
     if(data_len == 0) {
       token |= QTD_INPUT;
     }
@@ -777,7 +639,7 @@ create_qtd_chain(ehci_hcd_t* ehci_hcd,
     previous_qtd = current_qtd;
     current_qtd = allocate_qtd(ehci_hcd);
     if(!current_qtd) goto create_qtd_chain_cleanup;
-    
+
     previous_qtd->next_pointer_raw = EHCI_QTD_VIRT_TO_PHYS(ehci_hcd, current_qtd);
   }
 
@@ -817,9 +679,11 @@ create_qtd_chain(ehci_hcd_t* ehci_hcd,
     }
   }
 
-  /* Interrupt on complete */
-  QTD_ENABLE_IOC(current_qtd);
-      
+  if(enable_ioc) {
+    /* Interrupt on complete */
+    QTD_ENABLE_IOC(current_qtd);
+  }
+  
   return first_qtd;
   
  create_qtd_chain_cleanup:
@@ -835,6 +699,7 @@ static void qh_prep(qh_t* qh, uint32_t endpoint, uint32_t device_addr,
 {
   uint32_t info1 = 0;
   uint32_t info2 = 0;
+
 
   info1  = device_addr;
   info1 |= endpoint;
@@ -853,13 +718,24 @@ static void qh_prep(qh_t* qh, uint32_t endpoint, uint32_t device_addr,
 
   switch(dev_speed) {
   case USB_SPEED_LOW:
+    info1 |= (1 << 12); // Set EPS to low
   case USB_SPEED_FULL:
-    /*
-     * --!! Unimplemented, will add logic for low and full speed
-     * devices later, see Linux ehci-q.c function qh_make
-     */
-    DLOG("Unimplemented case in file %s line %d", __FILE__, __LINE__);
-    panic("Unimplemented case");
+
+    /* full speed -> EPS = 0 */
+
+    if(pipe_type != PIPE_INTERRUPT) {
+      info1 |= (EHCI_TUNE_RL_HS << 28);
+    }
+    if(pipe_type == PIPE_CONTROL) {
+      info1 |= (1 << 27);     /* for TT */
+      info1 |= 1 << 14;       /* toggle from qtd */
+    }
+
+    info1 |= max_packet_len << 16;
+
+    info2 |= (EHCI_TUNE_MULT_TT << 30);
+
+    /* -- !! -- Should set ttport not doing it right now */
 
     break;
 
@@ -921,25 +797,54 @@ void qh_append_qtds(ehci_hcd_t* ehci_hcd, qh_t* qh, qtd_t* start_qtd)
   qh->alt_qtd_ptr_raw  = EHCI_LIST_END;
 }
 
-void link_qh_to_async(ehci_hcd_t* ehci_hcd, qh_t* qh)
+int link_qh_to_async(ehci_hcd_t* ehci_hcd, qh_t* qh, bool ioc_enabled)
 {
-  qh->state = QH_STATE_LINKED;
+  qtd_t* last_qtd;
+
+  /*
+   * This is outside the if below because it will probably be the
+   * information that has to be saved to check when the interrupt has
+   * completed so we need it in either case even though right now it
+   * is not being used when ioc_enabled is true
+   */
+  last_qtd = EHCI_QTD_PHYS_TO_VIRT(ehci_hcd, qh->next_qtd_ptr_raw);
   
-  print_qh_info(ehci_hcd, qh, TRUE, "******************Before Link***************************");
+  if(!ioc_enabled) {
+    while(last_qtd->next_pointer_raw > 32) {
+      last_qtd = EHCI_QTD_PHYS_TO_VIRT(ehci_hcd, last_qtd->next_pointer_raw);
+    }
+  }
+  
+  
+  qh->state = QH_STATE_LINKED;
   qh->horizontalPointer = ehci_hcd->async_head->horizontalPointer;
   gccmb();
   ehci_hcd->async_head->horizontalPointer.raw = QH_NEXT(ehci_hcd, qh);
 
-  tsc_delay_usec(10000000);
-  print_qh_info(ehci_hcd, qh, TRUE, "********************************After Link***************************");
+  if(ioc_enabled) {
+    /* -- !! -- Right now must do synchronous complete.
+     */
+    DLOG("ioc not allowed because interrupts don't work see file %s line %d", __FILE__, __LINE__);
+    panic("ioc not allowed because interrupts don't work");
+  }
+  else {
+    while(last_qtd->token & QTD_ACTIVE)  { }
 
-  while(1);
+    if(last_qtd->token & QTD_HALT) {
+      DLOGV("%s failed", __FUNCTION__);
+      while(1);
+    }
+    return last_qtd->token & QTD_HALT ? -1 : 0;
+  }
+
+  DLOG("Reached end of %s which should never happen", __FUNCTION__);
+  panic("reached end of link_qh_to_async");
 }
 
 static int submit_async_qtd_chain(ehci_hcd_t* ehci_hcd, qh_t** qh, qtd_t* start_qtd,
                                   uint32_t endpoint, uint32_t device_addr,
                                   uint32_t dev_speed, uint32_t pipe_type,
-                                  uint32_t max_packet_len, bool is_input)
+                                  uint32_t max_packet_len, bool is_input, bool ioc_enabled)
 {
   if(*qh == NULL) {
     *qh = allocate_qh(ehci_hcd);
@@ -957,10 +862,7 @@ static int submit_async_qtd_chain(ehci_hcd_t* ehci_hcd, qh_t** qh, qtd_t* start_
   
   qh_append_qtds(ehci_hcd, *qh, start_qtd);
 
-  link_qh_to_async(ehci_hcd, *qh);
-
-  EHCI_DEBUG_HALT();
-  return 0;
+  return link_qh_to_async(ehci_hcd, *qh, ioc_enabled);
 }
 
 int
@@ -972,24 +874,27 @@ ehci_control_transfer(ehci_hcd_t* ehci_hcd,
                       uint32_t data_len,
                       uint32_t packet_len)
 {
+  bool ioc_enabled = FALSE;
   qh_t* qh = NULL;
   qtd_t* start_qtd = create_qtd_chain(ehci_hcd, address, setup_req, setup_len,
                                       setup_data, data_len, packet_len,
-                                      PIPE_CONTROL, IS_INPUT_USB_DEV_REQ(setup_req));
+                                      PIPE_CONTROL, IS_INPUT_USB_DEV_REQ(setup_req), ioc_enabled);
   if(start_qtd == NULL) return -1;
 
   /*
    * --WARN-- Right now I am hardcoding the speed to USB_SPEED_HIGH.
-   * Also our USB core assumes control transfers are to endpoint 0
+   * Also our USB core assumes ALL control transfers are to endpoint 0
    * (which is a fair assumption) so the endpoint is being hardcoded
    * in as well
    */
 
   submit_async_qtd_chain(ehci_hcd, &qh, start_qtd, 0, address,
                          USB_SPEED_HIGH, PIPE_CONTROL, packet_len,
-                         IS_INPUT_USB_DEV_REQ(setup_req));
+                         IS_INPUT_USB_DEV_REQ(setup_req), ioc_enabled);
+
   
-  return -1;
+  
+  return 0;
 }
 
 

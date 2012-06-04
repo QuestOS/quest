@@ -50,7 +50,6 @@ usbenumeration_init (void)
   }
 
   DLOG("Number of USB HCD enumerated %d", index);
-  while(1);
   
   return TRUE;
 }

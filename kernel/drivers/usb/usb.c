@@ -41,9 +41,6 @@ static uint num_drivers = 0;
 usb_hcd_t* usb_hcd_list[MAX_USB_HCD];
 uint32_t usb_hcd_list_next = 0;
 
-#define USB_SPEED_LOW  (0)
-#define USB_SPEED_FULL (1)
-#define USB_SPEED_HIGH (2)
 
 bool
 initialise_usb_hcd(usb_hcd_t* usb_hcd, uint32_t usb_hc_type,
@@ -52,6 +49,7 @@ initialise_usb_hcd(usb_hcd_t* usb_hcd, uint32_t usb_hc_type,
   usb_hcd->usb_hc_type = usb_hc_type;
   usb_hcd->reset_root_ports = reset_root_ports;
   usb_hcd->next_address = 1;
+  memset(usb_hcd->toggles, 0 , sizeof(uint32) * TOGGLE_SIZE);
   return TRUE;
 }
 
@@ -77,7 +75,7 @@ get_usb_hcd(uint32_t index)
 
 int
 usb_control_transfer(
-    USB_DEVICE_INFO * dev,
+    USB_DEVICE_INFO* dev,
     addr_t setup_req,
     uint16_t req_len,
     addr_t data,
@@ -120,7 +118,7 @@ usb_control_transfer(
 
 int
 usb_bulk_transfer(
-    USB_DEVICE_INFO * dev,
+    USB_DEVICE_INFO* dev,
     uint8_t endp,
     addr_t data,
     uint16_t len,
@@ -140,7 +138,7 @@ usb_bulk_transfer(
       }
 
     case USB_TYPE_HC_EHCI :
-      DLOG("EHCI Host Controller is not supported now!");
+      DLOG("EHCI Host Controller is not supported now! usb_bulk_transfer");
       return -1;
 
     case USB_TYPE_HC_OHCI :
@@ -155,7 +153,7 @@ usb_bulk_transfer(
 }
 
 int
-usb_get_descriptor(USB_DEVICE_INFO * dev,
+usb_get_descriptor(USB_DEVICE_INFO* dev,
                    uint16_t dtype,
                    uint16_t dindex,
                    uint16_t index,
@@ -186,8 +184,26 @@ usb_get_descriptor(USB_DEVICE_INFO * dev,
 }
 
 int
-usb_set_address (USB_DEVICE_INFO * dev, uint8_t new_addr)
+usb_set_address (USB_DEVICE_INFO* dev, uint8_t new_addr)
 {
+  sint status;
+  USB_DEV_REQ setup_req;
+  uint8_t old_addr = dev->address;
+  usb_hcd_t* hcd = dev->hcd;
+  
+  setup_req.bmRequestType = 0x0;
+  setup_req.bRequest = USB_SET_ADDRESS;
+  setup_req.wValue = new_addr;
+  setup_req.wIndex = 0;
+  setup_req.wLength = 0;
+
+  status = usb_control_transfer (dev, (addr_t) & setup_req,
+                                 sizeof (USB_DEV_REQ), 0, 0);
+  if (status == 0) {
+    hcd->toggles[old_addr] = hcd->toggles[new_addr] = 0;
+  }
+  return status;
+  /*
   switch (dev->host_type)
   {
     case USB_TYPE_HC_UHCI :
@@ -200,7 +216,7 @@ usb_set_address (USB_DEVICE_INFO * dev, uint8_t new_addr)
       }
 
     case USB_TYPE_HC_EHCI :
-      DLOG("EHCI Host Controller is not supported now!");
+      DLOG("EHCI Host Controller is not supported now! usb_set_address");
       return -1;
 
     case USB_TYPE_HC_OHCI :
@@ -212,10 +228,11 @@ usb_set_address (USB_DEVICE_INFO * dev, uint8_t new_addr)
       return -1;
   }
   return -1;
+  */
 }
 
 int
-usb_get_configuration(USB_DEVICE_INFO * dev)
+usb_get_configuration(USB_DEVICE_INFO* dev)
 {
   switch (dev->host_type)
   {
@@ -229,7 +246,8 @@ usb_get_configuration(USB_DEVICE_INFO * dev)
       }
 
     case USB_TYPE_HC_EHCI :
-      DLOG("EHCI Host Controller is not supported now!");
+      DLOG("EHCI Host Controller is not supported now! usb_get_configuration");
+      panic("EHCI Host Controller is not supported now! usb_get_configuration");
       return -1;
 
     case USB_TYPE_HC_OHCI :
@@ -241,11 +259,28 @@ usb_get_configuration(USB_DEVICE_INFO * dev)
       return -1;
   }
   return -1;
+  
 }
 
 int
 usb_set_configuration(USB_DEVICE_INFO * dev, uint8_t conf)
 {
+  
+  USB_DEV_REQ setup_req;
+  setup_req.bmRequestType = 0x0;
+  setup_req.bRequest = USB_SET_CONFIGURATION;
+  setup_req.wValue = conf;
+  setup_req.wIndex = 0;
+  setup_req.wLength = 0;
+  /*
+   * A bulk endpoint's toggle is initialized to DATA0 when any
+   * configuration event is experienced
+   */
+  dev->hcd->toggles[dev->address] = 0;
+
+  return usb_control_transfer (dev, (addr_t) & setup_req,
+                                 sizeof (USB_DEV_REQ), 0, 0);
+  /*
   switch (dev->host_type)
   {
     case USB_TYPE_HC_UHCI :
@@ -258,7 +293,8 @@ usb_set_configuration(USB_DEVICE_INFO * dev, uint8_t conf)
       }
 
     case USB_TYPE_HC_EHCI :
-      DLOG("EHCI Host Controller is not supported now!");
+      DLOG("EHCI Host Controller is not supported now! usb_set_configuration");
+      panic("usb_set_configuration not implemented");
       return -1;
 
     case USB_TYPE_HC_OHCI :
@@ -270,6 +306,7 @@ usb_set_configuration(USB_DEVICE_INFO * dev, uint8_t conf)
       return -1;
   }
   return -1;
+  */
 }
 
 int
@@ -287,7 +324,8 @@ usb_get_interface(USB_DEVICE_INFO * dev, uint16_t interface)
       }
 
     case USB_TYPE_HC_EHCI :
-      DLOG("EHCI Host Controller is not supported now!");
+      DLOG("EHCI Host Controller is not supported now! usb_get_interface");
+      panic("ehci usb_get_interface not supported");
       return -1;
 
     case USB_TYPE_HC_OHCI :
@@ -316,7 +354,8 @@ usb_set_interface(USB_DEVICE_INFO * dev, uint16_t alt, uint16_t interface)
       }
 
     case USB_TYPE_HC_EHCI :
-      DLOG("EHCI Host Controller is not supported now!");
+      DLOG("EHCI Host Controller is not supported now! usb_set_interface");
+      panic("EHCI Host Controller is not supported now! usb_set_interface");
       return -1;
 
     case USB_TYPE_HC_OHCI :
@@ -366,7 +405,7 @@ dlog_info (USB_DEVICE_INFO *info)
   DLOG ("ADDRESS %d", info->address);
   dlog_devd (&info->devd);
 
-#if 0
+#if 1
   uint8 strbuf[64];
   uint8 str[32];
 #define do_str(slot,label)                                              \
@@ -387,6 +426,8 @@ dlog_info (USB_DEVICE_INFO *info)
 #undef do_str
 #endif
 }
+
+
 
 /* figures out what device is attached as address 0 */
 bool
@@ -429,17 +470,19 @@ usb_enumerate(usb_hcd_t* usb_hcd)
   /* get device descriptor */
   status = usb_get_descriptor (info, USB_TYPE_DEV_DESC, 0, 0,
                                sizeof (USB_DEV_DESC), &devd);
-  if (status != 0) {
+  if (status < 0) {
     DLOG("Could not get descriptor");
     goto abort;
   }
+  
+  dlog_devd(&devd);
 
   if (devd.bMaxPacketSize0 == 8) {
     /* get device descriptor */
     info->devd.bMaxPacketSize0 = 8;
     status = usb_get_descriptor(info, USB_TYPE_DEV_DESC, 0, 0,
                                 sizeof(USB_DEV_DESC), &devd);
-    if (status != 0)
+    if (status < 0)
       goto abort;
   }
   
@@ -450,8 +493,9 @@ usb_enumerate(usb_hcd_t* usb_hcd)
   memcpy (&info->devd, &devd, sizeof (USB_DEV_DESC));
   
   /* assign an address */
-  if (usb_set_address (info, curdev) != 0)
+  if (usb_set_address (info, curdev) < 0)
     goto abort;
+  
   DLOG ("usb_enumerate: set (0x%x, 0x%x, 0x%x) to addr %d",
         devd.bDeviceClass, devd.idVendor, devd.idProduct, curdev);
   delay (2);
@@ -461,14 +505,14 @@ usb_enumerate(usb_hcd_t* usb_hcd)
   /* Update device info structure for new address. */
   info->address = curdev;
 
-  dlog_info (info);
+
 
   for (c=0; c<devd.bNumConfigurations; c++) {
     /* get a config descriptor for size field */
     memset (temp, 0, TEMPSZ);
     status = usb_get_descriptor (info, USB_TYPE_CFG_DESC, c, 0,
                                  sizeof (USB_CFG_DESC), temp);
-    if (status != 0) {
+    if (status < 0) {
       DLOG ("usb_enumerate: failed to get config descriptor for c=%d", c);
       goto abort;
     }
@@ -489,12 +533,12 @@ usb_enumerate(usb_hcd_t* usb_hcd)
 
   /* read all cfg, if, and endpoint descriptors */
   ptr = info->raw;
-  for (c=0; c<devd.bNumConfigurations; c++) {
+  for (c=0; c < devd.bNumConfigurations; c++) {
     /* obtain precise size info */
     memset (temp, 0, TEMPSZ);
     status = usb_get_descriptor (info, USB_TYPE_CFG_DESC, c, 0,
                                  sizeof (USB_CFG_DESC), temp);
-    if (status != 0) {
+    if (status < 0) {
       DLOG ("usb_enumerate: failed to get config descriptor for c=%d", c);
       goto abort_mem;
     }
@@ -503,7 +547,7 @@ usb_enumerate(usb_hcd_t* usb_hcd)
     /* get cfg, if, and endp descriptors */
     status =
       usb_get_descriptor (info, USB_TYPE_CFG_DESC, c, 0, cfgd->wTotalLength, ptr);
-    if (status != 0)
+    if (status < 0)
       goto abort_mem;
 
     cfgd = (USB_CFG_DESC *)ptr;
@@ -516,10 +560,10 @@ usb_enumerate(usb_hcd_t* usb_hcd)
 
   /* parse cfg and if descriptors */
   ptr = info->raw;
-  for (c=0; c<devd.bNumConfigurations; c++) {
+  for (c=0; c < devd.bNumConfigurations; c++) {
     cfgd = (USB_CFG_DESC *) ptr;
     ptr += cfgd->bLength;
-    for (i=0; i<cfgd->bNumInterfaces; i++) {
+    for (i=0; i < cfgd->bNumInterfaces; i++) {
       /* find the next if descriptor, skipping any class-specific stuff */
       for (ifd = (USB_IF_DESC *) ptr;
            ifd->bDescriptorType != USB_TYPE_IF_DESC;
@@ -546,13 +590,6 @@ usb_enumerate(usb_hcd_t* usb_hcd)
    * config?
    */
   
-  /*
-   * I say whichever driver it picks first is the one assigned to it,
-   * and too bad for the other one, pretty sure that is how Linux does
-   * it.  We could also have the driver registration fail if it is
-   * determined that 2 drivers match the same configuration -
-   * E. Missimer
-   */
 
   return TRUE;
 

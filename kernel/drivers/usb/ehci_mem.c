@@ -23,13 +23,13 @@
 #define DEBUG_EHCI_MEM_VERBOSE
 
 #ifdef DEBUG_EHCI_MEM
-#define DLOG(fmt,...) DLOG_PREFIX("EHCI",fmt,##__VA_ARGS__)
+#define DLOG(fmt,...) DLOG_PREFIX("EHCI_MEM",fmt,##__VA_ARGS__)
 #else
 #define DLOG(fmt,...) ;
 #endif
 
 #ifdef DEBUG_EHCI_MEM_VERBOSE
-#define DLOGV(fmt,...) DLOG_PREFIX("EHCI",fmt,##__VA_ARGS__)
+#define DLOGV(fmt,...) DLOG_PREFIX("EHCI_MEM",fmt,##__VA_ARGS__)
 #else
 #define DLOGV(fmt,...) ;
 #endif
@@ -68,7 +68,6 @@ initialise_qtd(qtd_t* qtd)
 uint32_t
 allocate_qtds(ehci_hcd_t* ehci_hcd, qtd_t** qtds, uint32_t num_qtd)
 {
-  DLOG("ehci_hcd : 0x%X", ehci_hcd);
   uint32_t  count       = 0;
   uint32_t  entry;
   uint32_t  i           = ehci_hcd->used_qtd_bitmap_size;
@@ -147,7 +146,7 @@ uint32_t allocate_qhs(ehci_hcd_t* ehci_hcd, qh_t** qhs, uint32_t num_qh)
   qh_t*     pool        = ehci_hcd->queue_head_pool;
 
   
-  DLOG("Size of qh_t 0x%X", sizeof(qh_t));
+
   while(i--) {
     /* if all queue heads at this bitmap entry are used */
     if(used_bitmap[i] == INT_MAX) continue;
@@ -157,7 +156,6 @@ uint32_t allocate_qhs(ehci_hcd_t* ehci_hcd, qh_t** qhs, uint32_t num_qh)
       if(!(used_bitmap[i] & (1 << entry)) ) {
         used_bitmap[i] |= (1 << entry); /* Mark entry as allocated */
         qhs[count] = &pool[i * EHCI_ELEMENTS_PER_BITMAP_ENTRY + entry];
-        DLOGV("qhs[count] = 0x%X", qhs[count]);
         EHCI_MEM_ASSERT( !( ((uint32_t)qhs[count]) & 0x1F) );
         
         /*

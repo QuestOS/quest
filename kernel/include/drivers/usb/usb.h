@@ -234,6 +234,7 @@ typedef struct
   uint8 host_type;
   usb_hcd_t* hcd;
   uint8 *raw;
+  
 } USB_DEVICE_INFO;
 
 typedef struct
@@ -245,18 +246,28 @@ bool usb_register_driver (USB_DRIVER *);
 
 
 /* Generic USB operations */
-extern int usb_control_transfer(USB_DEVICE_INFO *, addr_t, uint16_t,
-    addr_t, uint16_t);
-extern int usb_bulk_transfer(USB_DEVICE_INFO *, uint8_t, addr_t,
-                             uint16_t, uint8_t, uint8_t, uint32_t *);
+extern int usb_control_transfer(USB_DEVICE_INFO* dev, addr_t setup_req,
+                                uint16_t req_len, addr_t data,
+                                uint16_t data_len);
 
-extern int usb_get_descriptor(USB_DEVICE_INFO *, uint16_t, uint16_t,
-    uint16_t, uint16_t, addr_t);
-extern int usb_set_address(USB_DEVICE_INFO *, uint8_t);
-extern int usb_get_configuration(USB_DEVICE_INFO *);
-extern int usb_set_configuration(USB_DEVICE_INFO *, uint8_t);
-extern int usb_get_interface(USB_DEVICE_INFO *, uint16_t);
-extern int usb_set_interface(USB_DEVICE_INFO *, uint16_t, uint16_t);
+extern int usb_bulk_transfer(USB_DEVICE_INFO* dev, uint8_t endp,
+                             addr_t data, uint16_t len, uint8_t packet_len,
+                             uint8_t dir, uint32_t *act_len);
+
+
+extern int usb_get_descriptor(USB_DEVICE_INFO* dev, uint16_t dtype,
+                              uint16_t dindex, uint16_t index,
+                              uint16_t length, addr_t desc);
+
+extern int usb_set_address(USB_DEVICE_INFO * dev, uint8_t new_addr);
+
+extern int usb_get_configuration(USB_DEVICE_INFO* dev);
+
+extern int usb_set_configuration(USB_DEVICE_INFO* dev, uint8_t conf);
+
+extern int usb_get_interface(USB_DEVICE_INFO* dev, uint16_t interface);
+
+extern int usb_set_interface(USB_DEVICE_INFO* dev, uint16_t alt, uint16_t interface);
 
 
 bool usb_enumerate(usb_hcd_t* usb_hcd);
@@ -271,12 +282,14 @@ typedef bool (*usb_reset_root_ports_func) (usb_hcd_t* usb_hcd);
  */
 struct _usb_hcd_t
 {
-  #define USB_MAX_DEVICES 32
+  #define USB_MAX_DEVICES 127
+  #define TOGGLE_SIZE 128
   
   uint32_t usb_hc_type;
   usb_reset_root_ports_func reset_root_ports;
   uint32_t next_address;
   USB_DEVICE_INFO devinfo[USB_MAX_DEVICES+1];  // add +1 so device address corresponds to index
+  uint32 toggles[TOGGLE_SIZE];
 };
 
 bool initialise_usb_hcd(usb_hcd_t* usb_hcd, uint32_t usb_hc_type,

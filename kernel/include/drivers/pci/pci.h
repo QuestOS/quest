@@ -250,6 +250,18 @@ pci_write_dword (pci_config_addr a, uint32 v)
   outl (v, PCI_CONFIG_DATA);
 }
 
+static inline uint16
+pci_get_status(uint8 bus, uint8 device, uint8 func)
+{
+  return pci_read_word(pci_addr(bus, device, func, 0x06));
+}
+
+static inline uint16
+pci_get_command(uint8 bus, uint8 device, uint8 func)
+{
+  return pci_read_word(pci_addr(bus, device, func, 0x04));
+}
+
 #endif
 
 /*

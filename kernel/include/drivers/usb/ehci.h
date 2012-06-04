@@ -46,6 +46,8 @@
 /* 1-3 transactions per microframe see section 4.10.3 of EHCI specs */
 #define EHCI_TUNE_MULT_HS 1
 
+#define EHCI_TUNE_MULT_TT 1
+
 typedef uint32_t ehci_port_t;
 
 
@@ -112,8 +114,22 @@ typedef struct
   
 #define HALTED (1<<12)
 #define EHCI_IS_HALTED(hcd) (hcd->regs->status & HALTED)
+#define USBINT (1 << 0)
+
+  
   
   uint32_t interrupt_enable;
+
+#define USBINTR_IAA  (1<<5)          /* Interrupted on async advance */
+#define USBINTR_HSE  (1<<4)          /* such as some PCI access errors */
+#define USBINTR_FLR  (1<<3)          /* frame list rolled over */
+#define USBINTR_PCD  (1<<2)          /* port change detect */
+#define USBINTR_ERR  (1<<1)          /* "error" completion (overflow, ...) */
+#define USBINTR_INT  (1<<0)          /* "normal" completion (short, ...) */
+#define USBINTR_MASK (USBINTR_IAA | USBINTR_HSE | USBINTR_PCD | USBINTR_ERR | USBINTR_INT )
+
+#define EHCI_SET_INT(hcd) (hcd->regs->interrupt_enable = USBINTR_MASK);
+  
   uint32_t frame_index;
   uint32_t segment;
   uint32_t frame_list;
@@ -159,7 +175,7 @@ typedef struct
 
 #define PORT_LEAVE_RESET(port) port &= ~PORT_RESET
   
-} ehci_regs_t PACKED;
+} PACKED ehci_regs_t;
 
 
 
@@ -172,7 +188,7 @@ typedef union {
     uint32_t reserved:2;
     uint32_t pointer:27;
   } PACKED;
-} frm_lst_lnk_ptr_t PACKED;
+} PACKED frm_lst_lnk_ptr_t;
 
 #define CLEAR_FRAME_LIST_LINK_POINTER(frame_pointer)    \
   frame_pointer.raw = 1
@@ -251,8 +267,13 @@ typedef struct _qtd_t
   // dword 4-8, buffer page 0-4 ,current offset is used only in buffer page 0
 
   qtd_buffer_page_pointer_t buffer_page[5];
+
   
-} qtd_t PACKED ALIGNED(32);
+  uint32_t ex_buf_ptr_pgs[5];
+
+  uint32_t padding[3]; /* To make sizeof(qh_t) a multiple of 32 */
+  
+} PACKED ALIGNED(32) qtd_t;
 
 #define QH_NEXT(hcd, qh_virt) ( (EHCI_QH_VIRT_TO_PHYS(hcd, qh_virt) & ~0x1F) | (TYPE_QH << 1) )
 
@@ -382,6 +403,8 @@ typedef struct _qh_t{
     } PACKED;
   };
 
+  uint32_t ex_buf_ptr_pgs[5];
+
   /*
    * Everything after this is used by software only and is not
    * specified by EHCI
@@ -400,9 +423,9 @@ typedef struct _qh_t{
                                  buffer but the HC might still have
                                  links to it */
   
-  uint32_t padding; /* To make sizeof(qh_t) a multiple of 32 */
+  uint32_t padding[4]; /* To make sizeof(qh_t) a multiple of 32 */
 
-} qh_t ALIGNED(32) PACKED;
+} PACKED ALIGNED(32) qh_t;
 
 
 
