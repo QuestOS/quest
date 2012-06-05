@@ -44,10 +44,12 @@ uint32_t usb_hcd_list_next = 0;
 
 bool
 initialise_usb_hcd(usb_hcd_t* usb_hcd, uint32_t usb_hc_type,
-                   usb_reset_root_ports_func reset_root_ports)
+                   usb_reset_root_ports_func reset_root_ports,
+                   usb_post_enumeration_func post_enumeration)
 {
   usb_hcd->usb_hc_type = usb_hc_type;
   usb_hcd->reset_root_ports = reset_root_ports;
+  usb_hcd->post_enumeration = post_enumeration;
   usb_hcd->next_address = 1;
   memset(usb_hcd->toggles, 0 , sizeof(uint32) * TOGGLE_SIZE);
   return TRUE;

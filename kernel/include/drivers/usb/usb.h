@@ -272,10 +272,8 @@ extern int usb_set_interface(USB_DEVICE_INFO* dev, uint16_t alt, uint16_t interf
 
 bool usb_enumerate(usb_hcd_t* usb_hcd);
 
-
-
-
 typedef bool (*usb_reset_root_ports_func) (usb_hcd_t* usb_hcd);
+typedef bool (*usb_post_enumeration_func)(usb_hcd_t* usb_hcd);
 
 /*
  * Generic USB Host controller Device object 
@@ -287,13 +285,15 @@ struct _usb_hcd_t
   
   uint32_t usb_hc_type;
   usb_reset_root_ports_func reset_root_ports;
+  usb_post_enumeration_func post_enumeration;
   uint32_t next_address;
   USB_DEVICE_INFO devinfo[USB_MAX_DEVICES+1];  // add +1 so device address corresponds to index
   uint32 toggles[TOGGLE_SIZE];
 };
 
 bool initialise_usb_hcd(usb_hcd_t* usb_hcd, uint32_t usb_hc_type,
-                        usb_reset_root_ports_func reset_root_ports);
+                        usb_reset_root_ports_func reset_root_ports,
+                        usb_post_enumeration_func post_enumeration);
 
 bool add_usb_hcd(usb_hcd_t* usb_hcd);
 

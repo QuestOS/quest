@@ -193,11 +193,17 @@ void free_qhs(ehci_hcd_t* ehci_hcd, qh_t** qhs, uint32_t num_qh)
       ~(1 << (qh_index |  BITMAP_SUBINDEX_MASK));
   }
 }
- 
+
 
 inline void free_qh(ehci_hcd_t* ehci_hcd, qh_t* qh)
 {
   free_qhs(ehci_hcd, &qh, 1);
+}
+
+void free_qh_and_qtds(ehci_hcd_t* ehci_hcd, qh_t* qh)
+{
+  DLOG("free_qh_and_qtds not implemented");
+  panic("free_qh_and_qtds not implemented");
 }
 
 

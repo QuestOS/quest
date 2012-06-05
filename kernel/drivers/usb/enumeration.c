@@ -45,8 +45,18 @@ usbenumeration_init (void)
 
   while( (hcd = get_usb_hcd(index)) != NULL) {
     index++;
-    if(!hcd->reset_root_ports(hcd)) continue;
-    if(!usb_enumerate(hcd)) DLOG("Failed to enumerate device %d", index-1);
+    if(!hcd->reset_root_ports(hcd)) {
+      DLOG("Failed to reset root ports for device %d", index-1);
+      continue;
+    }
+    if(!usb_enumerate(hcd))  {
+      DLOG("Failed to enumerate device %d", index-1);
+      continue;
+    }
+    if(!hcd->post_enumeration(hcd)) {
+      DLOG("post enumeration failed for device %d", index-1);
+      continue;
+    }
   }
 
   DLOG("Number of USB HCD enumerated %d", index);

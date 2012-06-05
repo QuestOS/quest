@@ -26,8 +26,8 @@
 #include <drivers/usb/usb.h>
 
 
-#define hcd_to_ehci_hcd(hcd) container_of(hcd, ehci_hcd_t, usb_hcd)
-#define ehci_hcd_to_hcd(ehci_hcd) ehci_hcd->usb_hcd
+#define hcd_to_ehci_hcd(hcd) container_of((hcd), ehci_hcd_t, usb_hcd)
+#define ehci_hcd_to_hcd(ehci_hcd) (ehci_hcd)->usb_hcd
 
 
 /*
@@ -67,14 +67,14 @@ typedef struct
 
 #define N_PORTS (0xF<<0)
 
-#define GET_NUM_PORTS(hcd) (hcd->caps->hcs_params & N_PORTS)
+#define GET_NUM_PORTS(hcd) ((hcd)->caps->hcs_params & N_PORTS)
   
   uint32_t hcc_params;
 
 #define PROG_FRM_LST_LENGTH (1<<1)
   
 #define EHCI_IS_FRM_LST_LEN_PROG(hcd)           \
-  (hcd->caps->hcc_params & PROG_FRM_LST_LENGTH)
+  ((hcd)->caps->hcc_params & PROG_FRM_LST_LENGTH)
   
   uint8_t  port_route[8];
 } ehci_caps_t PACKED;
@@ -87,35 +87,41 @@ typedef struct
 #define RESET (1<<1)
 #define PERIODIC_SCHED_ENABLE (1<<4)
 #define ASYNC_SCHED_ENABLE (1<<5)
+#define INT_ASYNC_ADV_DOORBELL (1<<6)
 #define INT_THRESHOLD (0xFF<<16)
 
 
-#define EHCI_ENABLE_ASYNC(hcd) (hcd->regs-> command |= ASYNC_SCHED_ENABLE)
-#define EHCI_IS_RUNNING(hcd) (hcd->regs->command & RUN)
-#define EHCI_RUN(hcd) hcd->regs->command |= RUN
-#define EHCI_HALT(hcd) hcd->regs->command &= ~RUN
-#define EHCI_RESET(hcd) hcd->regs->command |= RESET
-
+#define EHCI_ENABLE_ASYNC(hcd) ((hcd)->regs-> command |= ASYNC_SCHED_ENABLE)
+#define EHCI_IS_RUNNING(hcd) ((hcd)->regs->command & RUN)
+#define EHCI_RUN(hcd) (hcd)->regs->command |= RUN
+#define EHCI_HALT(hcd) (hcd)->regs->command &= ~RUN
+#define EHCI_RESET(hcd) (hcd)->regs->command |= RESET
+#define EHCI_ASYNC_DOORBELL_ENABLED(hcd) ((hcd)->regs->command | INT_ASYNC_ADV_DOORBELL)
+#define EHCI_ENABLE_ASYNC_DOORBELL(hcd) ((hcd)->regs->command |= INT_ASYNC_ADV_DOORBELL)
+#define EHCI_DISABLE_ASYNC_DOORBELL(hcd) ((hcd)->regs->command &= ~INT_ASYNC_ADV_DOORBELL)
+  
 #define EHCI_SET_FRAME_LIST_SIZE(hcd, size)                       \
   do {                                                            \
-    uint32_t __command_temp = hcd->regs->command;                 \
+    uint32_t __command_temp = (hcd)->regs->command;               \
     __command_temp &= ~(3<<2);                                    \
-    hcd->regs->command = __command_temp | (size<<2);              \
+    (hcd)->regs->command = __command_temp | ((size)<<2);          \
   } while(0)
   
 #define EHCI_SET_INT_THRESHOLD(hcd, threshold)                    \
   do {                                                            \
-    uint32_t __command_temp = hcd->regs->command;                 \
+    uint32_t __command_temp = (hcd)->regs->command;               \
     __command_temp &= ~INT_THRESHOLD;                             \
-    hcd->regs->command = __command_temp | (threshold << 16);      \
+    (hcd)->regs->command = __command_temp | ((threshold) << 16);  \
   } while(0)
   
   uint32_t status;
   
 #define HALTED (1<<12)
-#define EHCI_IS_HALTED(hcd) (hcd->regs->status & HALTED)
-#define USBINT (1 << 0)
-
+#define EHCI_IS_HALTED(hcd) ((hcd)->regs->status & HALTED)
+#define EHCI_ACK_INTERRUPTS(hcd) ((hcd)->regs->status |= USBINTR_MASK)
+#define EHCI_ASYNC_DOORBELL_RUNG(hcd) ((hcd)->regs->status & USBINTR_IAA)
+#define EHCI_ACK_DOORBELL(hcd) ((hcd)->regs->status |= USBINTR_IAA)
+  
   
   
   uint32_t interrupt_enable;
@@ -128,17 +134,22 @@ typedef struct
 #define USBINTR_INT  (1<<0)          /* "normal" completion (short, ...) */
 #define USBINTR_MASK (USBINTR_IAA | USBINTR_HSE | USBINTR_PCD | USBINTR_ERR | USBINTR_INT )
 
-#define EHCI_SET_INT(hcd) (hcd->regs->interrupt_enable = USBINTR_MASK);
+#define EHCI_ENABLE_INTR(hcd, intr) ((hcd)->regs->interrupt_enable |= (intr))
+#define EHCI_SET_INTRS(hcd) EHCI_ENABLE_INTR((hcd), USBINTR_MASK)
+#define EHCI_DISABLE_INTR(hcd, intr) ((hcd)->regs->interrupt_enable &= ~(intr))
+#define EHCI_INTR_ENABLED(hcd, intr) ((hcd)->regs->interrupt_enable | (intr))
   
   uint32_t frame_index;
   uint32_t segment;
   uint32_t frame_list;
   uint32_t async_next;
+
+  
   uint32_t reserved[9];
   uint32_t configured_flag;
 
 #define  EHCI_SET_CONFIG_FLAG(hcd, flag)        \
-  hcd->regs->configured_flag = 0x1 & flag
+  (hcd)->regs->configured_flag = 0x1 & flag
   
   ehci_port_t port_status[0];
 
@@ -155,7 +166,7 @@ typedef struct
 #define PORT_POWER (1<<12)
 #define PORT_OWNER (1<<13)
 #define PORT_INDIC_CONTROL (3<<14)
-#define PORT_TEST (0xF<16)
+#define PORT_TEST (0xF<<16)
 #define WAKE_ON_CON_ENABLED (1<<20)
 #define WAKE_ON_DISCON_ENABLED (1<<21)
 #define WAKE_ON_OVER_CURR_ENABLED (1<<22)
@@ -430,10 +441,10 @@ typedef struct _qh_t{
 
 
 #define __EHCI_POOL_PHYS_TO_VIRT(hcd, phys_addr, pool)                  \
-  ((((uint32_t)phys_addr) - ((uint32_t)hcd->pool ## _phys_addr)) + ((uint32_t)hcd->pool))
+  ((((uint32_t)phys_addr) - ((uint32_t)(hcd)->pool ## _phys_addr)) + ((uint32_t)(hcd)->pool))
 
 #define __EHCI_POOL_VIRT_TO_PHYS(hcd, virt_addr, pool)                  \
-  ((((uint32_t)virt_addr) - ((uint32_t)hcd->pool)) + ((uint32_t)hcd->pool ## _phys_addr))
+  ((((uint32_t)virt_addr) - ((uint32_t)(hcd)->pool)) + ((uint32_t)(hcd)->pool ## _phys_addr))
 
 #define EHCI_QH_VIRT_TO_PHYS(hcd, qh_virt_addr)                 \
   __EHCI_POOL_VIRT_TO_PHYS(hcd, qh_virt_addr, queue_head_pool)
@@ -456,6 +467,7 @@ typedef struct
   uint32_t dev;
   uint32_t func;
   uint32_t irq_line;
+  uint8_t  handler_vector;
   
   phys_addr_t   base_physical_address;
   addr_t        base_virtual_address;
@@ -498,7 +510,7 @@ ehci_control_transfer(ehci_hcd_t* ehci_hcd,
                       uint32_t packet_len);
 
 
-#define calc_bitmap_size(hcd, pool_size) (hcd->pool_size + 31) / 32;
+#define calc_bitmap_size(hcd, pool_size) ((hcd)->pool_size + 31) / 32;
 
 #define calc_used_queue_head_bitmap_size(hcd)   \
   calc_bitmap_size(hcd, queue_head_pool_size)
