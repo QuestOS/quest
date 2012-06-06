@@ -151,7 +151,7 @@ duplicate_TSS (uint32 ebp,
   /* Note, we rely on page being initialised to 0 since EAX contains
    * return value for child
    */
-  pTSS = alloc_quest_tss ();;
+  pTSS = alloc_quest_tss ();
 
   /* Clear virtual page before use. */
   memset (pTSS, 0, 4096);
@@ -185,6 +185,7 @@ duplicate_TSS (uint32 ebp,
   pTSS->ESP = child_esp;
   pTSS->EBP = child_ebp;
   pTSS->tid = new_task_id ();
+  pTSS->sandbox_affinity = get_pcpu_id ();
 
   semaphore_init (&pTSS->Msem, 1, 0);
 
@@ -199,6 +200,7 @@ alloc_idle_TSS (int cpu_num)
 {
   quest_tss *pTSS = (quest_tss *) (&idleTSS[cpu_num]);
   void idle_task (void);
+  char * name = "idle thread";
 
   tss_add_tail (pTSS);
 
@@ -216,6 +218,9 @@ alloc_idle_TSS (int cpu_num)
   pTSS->ESP = (u32) &stk[1023];
   pTSS->EBP = pTSS->ESP;
   pTSS->tid = new_task_id ();
+  pTSS->sandbox_affinity = cpu_num;
+  memcpy (pTSS->name, name, strlen (name));
+  pTSS->name[strlen (name)] = '\0';
 
   /* Return the index into the GDT for the segment */
   return pTSS->tid;
@@ -241,6 +246,7 @@ alloc_TSS (void *pPageDirectory, void *pEntry, int mod_num)
   pTSS->ESP = 0x400000 - 100;
   pTSS->EBP = 0x400000 - 100;
   pTSS->tid = new_task_id ();
+  pTSS->sandbox_affinity = get_pcpu_id ();
 
   semaphore_init (&pTSS->Msem, 1, 0);
 

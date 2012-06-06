@@ -108,6 +108,12 @@ dispatch_vector (uint32 vec)
   return v;
 }
 
+bool
+vector_used (uint8 vec)
+{
+  return (get_vector_handler (vec) != (&default_vector_handler));
+}
+
 u8
 find_unused_vector (u8 min_prio)
 {
@@ -584,6 +590,7 @@ _exec (char *filename, char *argv[], uint32 *curr_stack)
   int i, j, c;
   char command_args[80];
   char filename_bak[256];
+  quest_tss * tss;
 
   if (!argv || !argv[0]) {
     BITMAP_SET (mm_table, phys_addr >> 12);
@@ -609,6 +616,11 @@ _exec (char *filename, char *argv[], uint32 *curr_stack)
    * and will already be gone with the old stack at that time.
    */
   strncpy (filename_bak, filename, 256);
+  c = strlen (filename);
+  if (c > 31) c = 31;
+  tss = lookup_TSS (str ());
+  memcpy (tss->name, filename, c);
+  tss->name[c] = '\0';
 
 #ifdef DEBUG_SYSCALL
   com1_printf ("_exec: vfs_dir\n");
@@ -973,6 +985,16 @@ _time (void)
     last = 0;
   } else {
     last = now;
+  }
+#endif
+
+#if 0
+  int i = 0;
+  uint32 *paddr = NULL;
+
+  for (i = 0; i < 1024; i++) {
+    paddr = get_phys_addr ((void*) (i << 12));
+    com1_printf ("0x%X mapped to: 0x%X\n", i << 12, (uint32) paddr);
   }
 #endif
 

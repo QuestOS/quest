@@ -273,7 +273,7 @@ uvc_probe (USB_DEVICE_INFO *dev, USB_CFG_DESC *cfg, USB_IF_DESC *ifd)
     return FALSE;
   }
 
-  //start_kernel_thread((uint)uvc_test, (uint)&uvc_test_stack[1023]);
+  //start_kernel_thread((uint)uvc_test, (uint)&uvc_test_stack[1023], "UVC Test");
   uvc_test ();
 
 #if 0

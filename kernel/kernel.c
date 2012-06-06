@@ -25,6 +25,9 @@
 #include "mem/physical.h"
 #include "sched/sched.h"
 #include "vm/ept.h"
+#include "sched/proc.h"
+#include "sched/vcpu.h"
+#include "arch/i386-percpu.h"
 
 static spinlock kernel_lock ALIGNED(LOCK_ALIGNMENT) = SPINLOCK_INIT;
 
@@ -186,10 +189,11 @@ static bool kernel_threads_running = FALSE;
 static task_id kernel_thread_waitq = 0;
 
 task_id
-create_kernel_thread_args (uint eip, uint esp, bool run, uint n, ...)
+create_kernel_thread_args (uint eip, uint esp, const char * name, bool run, uint n, ...)
 {
   task_id pid;
   uint32 eflags;
+  quest_tss * tss;
   extern u32 *pgd;              /* original page-global dir */
 #ifdef USE_VMX
   int cpu = 0;
@@ -198,7 +202,7 @@ create_kernel_thread_args (uint eip, uint esp, bool run, uint n, ...)
 #else
   void *page_dir = &pgd;
 #endif
-  uint *stack, i;
+  uint *stack, i, c;
   va_list args;
 
   asm volatile ("pushfl\n" "pop %0\n":"=r" (eflags):);
@@ -219,7 +223,14 @@ create_kernel_thread_args (uint eip, uint esp, bool run, uint n, ...)
                        eip, 0, esp,
                        eflags, (uint32) page_dir);
 
-  lookup_TSS (pid)->priority = 0x1f;
+  tss = lookup_TSS (pid);
+  tss->priority = 0x1f;
+  if (name) {
+    c = strlen (name);
+    if (c > 31) c = 31;
+    memcpy (tss->name, name, c);
+    tss->name[c] = '\0';
+  }
 
   if (run) {
     if (kernel_threads_running)
@@ -232,9 +243,9 @@ create_kernel_thread_args (uint eip, uint esp, bool run, uint n, ...)
 }
 
 task_id
-start_kernel_thread (uint eip, uint esp)
+start_kernel_thread (uint eip, uint esp, const char * name)
 {
-  return create_kernel_thread_args (eip, esp, TRUE, 0);
+  return create_kernel_thread_args (eip, esp, name, TRUE, 0);
 }
 
 void
@@ -274,6 +285,68 @@ exit_kernel_thread (void)
 
   panic ("exit_kernel_thread: unreachable");
 }
+
+#ifdef USE_VMX
+/* 
+ * check_copied_threads checks threads created in BSP sandbox and copied
+ * to other sandboxes during vm_mem_init. These threads will be created
+ * with a task_id indicating its source sandbox as 0 and affinity to 0.
+ * Shell and idle thread should be fix when they were created.
+ * 
+ * Three different groups need to be checked: (1) The global queue for all
+ * quest_tss headed by init_tss (2) The wait queue for all newly created
+ * kernel thread headed by kernel_thread_waitq (3) VCPU run queues
+ */
+void
+check_copied_threads (void)
+{
+  uint cpu = get_pcpu_id ();
+  quest_tss * t;
+  task_id q = 0;
+  vcpu * queue = NULL;
+  logger_printf ("Fixing threads in sandbox %d\n", cpu);
+
+  /* Check global (per-sandbox) queue headed by init_tss */
+  logger_printf ("Checking threads in global queue...\n");
+  for (t = &init_tss; ((t = t->next_tss) != &init_tss);) {
+    logger_printf ("  name: %s, task_id: 0x%X, affinity: %d\n",
+                   t->name, t->tid, t->sandbox_affinity);
+  }
+
+  /* Check wait queue headed by kernel_thread_waitq */
+  logger_printf ("Checking threads in kernel_thread_waitq...\n");
+  q = kernel_thread_waitq;
+  while (q) {
+    t = lookup_TSS (q);
+    logger_printf ("  name: %s, task_id: 0x%X, affinity: %d\n",
+                   t->name, t->tid, t->sandbox_affinity);
+    q = t->next;
+  }
+
+  /* Check VCPU queues */
+  logger_printf ("Checking VCPU run queues...\n");
+  queue = percpu_read (vcpu_queue);
+  /* Iterate VCPU queue */
+  while (queue) {
+    q = queue->runqueue;
+    if (queue->tr) {
+      logger_printf ("  vcpu 0x%X has current task:\n", queue);
+      t = lookup_TSS (queue->tr);
+      logger_printf ("    name: %s, task_id: 0x%X, affinity: %d, vcpu: 0x%X\n",
+                     t->name, t->tid, t->sandbox_affinity, queue);
+    }
+    while (q) {
+      t = lookup_TSS (q);
+      logger_printf ("  name: %s, task_id: 0x%X, affinity: %d, vcpu: 0x%X\n",
+                     t->name, t->tid, t->sandbox_affinity, queue);
+      q = t->next;
+    }
+    queue = queue->next;
+  }
+
+  return;
+}
+#endif
 
 /*
  * Local Variables:

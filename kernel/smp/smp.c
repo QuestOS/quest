@@ -306,6 +306,8 @@ ap_init (void)
   { extern bool r8169_register (void); r8169_register (); }
   { extern bool netsetup_init (void); netsetup_init (); }
   { extern bool vfs_init (void); vfs_init (); }
+  { extern bool migration_init (void); migration_init (); }
+  //{ extern bool udp_bandwidth_init (void); udp_bandwidth_init (); }
   //{ extern bool ipc_recv_init (void); ipc_recv_init (); }
   //{ extern bool msgt_init (void); msgt_init (); }
 
@@ -317,7 +319,7 @@ ap_init (void)
   //print ("Sandbox ");
   //putx (phys_id);
   //print (" Loading Shell...\n");
-  extern uint16 shell_tss;
+  extern task_id shell_tss;
   int mod_num = NR_MODS - 1;
   quest_tss * usr_mod = lookup_TSS (shell_tss);
   //quest_tss * usr_mod = (quest_tss *) ul_tss[mod_num];
@@ -357,8 +359,10 @@ ap_init (void)
   usr_mod->CR3 = (uint32) plPageDirectory;
   usr_mod->ESP = 0x400000 - 100;
   usr_mod->EBP = 0x400000 - 100;
+  usr_mod->sandbox_affinity = phys_id;
 
   ltr (shell_tss);
+  check_copied_threads ();
   /* We don't switch to idle task initially. So, unlock the kernel. */
   unlock_kernel ();
   spinlock_unlock (&(shm->global_lock));

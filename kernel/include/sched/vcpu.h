@@ -135,6 +135,7 @@ extern void vcpu_reset (void);
 #endif
 
 extern DEF_PER_CPU (vcpu*, vcpu_current);
+extern DEF_PER_CPU (vcpu*, vcpu_queue);
 
 #endif
 

@@ -43,7 +43,8 @@ netsetup_init (void)
   socket_sys_call_init ();
   netsetup_id =
       start_kernel_thread ((u32) netsetup_thread,
-                           (u32) &netsetup_stack[1023]);
+                           (u32) &netsetup_stack[1023],
+                           "Network Setup");
   return TRUE;
 }
 
@@ -57,7 +58,7 @@ netsetup_custom_init (struct ip_addr ip,
   netsetup_id =
       create_kernel_thread_args ((u32) netsetup_custom_thread,
                                  (u32) &netsetup_custom_stack[1023],
-                                 TRUE, 4, ip, nm, gw, num);
+                                 "Network Custom Setup", TRUE, 4 ,ip, nm, gw, num);
   return TRUE;
 }
 

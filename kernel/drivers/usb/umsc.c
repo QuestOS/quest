@@ -326,7 +326,7 @@ umsc_probe (USB_DEVICE_INFO *info, USB_CFG_DESC *cfgd, USB_IF_DESC *ifd)
   num_umsc_devs++;
 
   umsc_thread_id =
-    start_kernel_thread ((u32) umsc_thread, (u32) &umsc_stack[1023]);
+    start_kernel_thread ((u32) umsc_thread, (u32) &umsc_stack[1023], "USB Mass Storage");
   set_iovcpu (umsc_thread_id, IOVCPU_CLASS_USB | IOVCPU_CLASS_DISK);
 
   return TRUE;

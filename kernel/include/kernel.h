@@ -99,6 +99,7 @@ extern void set_vector_handler (uint8 vector, vector_handler func);
 extern void clr_vector_handler (uint8 vector);
 extern vector_handler get_vector_handler (uint8 vector);
 #define MINIMUM_VECTOR_PRIORITY 0x4
+extern bool vector_used (uint8 vector);
 extern u8 find_unused_vector (u8 min_prio);
 extern void init_interrupt_handlers (void);
 
@@ -106,9 +107,14 @@ void stacktrace (void);
 
 void tsc_delay_usec (uint32 usec);
 
-task_id start_kernel_thread (uint eip, uint esp);
-task_id create_kernel_thread_args (uint eip, uint esp, bool run, uint n, ...);
+task_id start_kernel_thread (uint eip, uint esp, const char * name);
+task_id create_kernel_thread_args (uint eip, uint esp, const char * name,
+                                   bool run, uint n, ...);
 void exit_kernel_thread (void);
+
+#ifdef USE_VMX
+void check_copied_threads (void);
+#endif
 
 /* Declare space for a stack */
 extern uint32 ul_stack[][1024] __attribute__ ((aligned (4096)));

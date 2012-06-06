@@ -144,8 +144,8 @@ extern bool
 ipc_init (void)
 {
   DLOG ("hello");
-  testS_id = start_kernel_thread ((u32) testS, (u32) &testS_stack[1023]);
-  testR_id = start_kernel_thread ((u32) testR, (u32) &testR_stack[1023]);
+  testS_id = start_kernel_thread ((u32) testS, (u32) &testS_stack[1023], "IPC TestS");
+  testR_id = start_kernel_thread ((u32) testR, (u32) &testR_stack[1023], "IPC TestR");
   lookup_TSS (testS_id)->cpu = 0;
   lookup_TSS (testR_id)->cpu = 0;
   return TRUE;

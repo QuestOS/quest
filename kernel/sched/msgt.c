@@ -215,7 +215,7 @@ msgt_init (void)
   int sandbox = 0;
   sandbox = get_pcpu_id ();
 
-  msgt_id = start_kernel_thread ((u32) msg_thread, (u32) &msgt_stack[1023]);
+  msgt_id = start_kernel_thread ((u32) msg_thread, (u32) &msgt_stack[1023], "MSGT init");
   lookup_TSS (msgt_id)->cpu = 1;
 
   DLOG ("Communication Thread Created on Sandbox %d, Thread ID is: 0x%x...\n", sandbox, msgt_id);
@@ -229,7 +229,7 @@ ipc_send_init (void)
   sandbox = get_pcpu_id ();
   task_id ipc_id = 0;
 
-  ipc_id = start_kernel_thread ((u32) ipc_send_thread, (u32) &ipc_stack[1023]);
+  ipc_id = start_kernel_thread ((u32) ipc_send_thread, (u32) &ipc_stack[1023], "IPC send");
   lookup_TSS (ipc_id)->cpu = 1;
 
   DLOG ("Sandbox %d: Sender 0x%x created", sandbox, ipc_id);
@@ -244,7 +244,7 @@ ipc_recv_init (void)
   sandbox = get_pcpu_id ();
   task_id ipc_id = 0;
 
-  ipc_id = start_kernel_thread ((u32) ipc_recv_thread, (u32) &ipc_stack[1023]);
+  ipc_id = start_kernel_thread ((u32) ipc_recv_thread, (u32) &ipc_stack[1023], "IPC recv");
   lookup_TSS (ipc_id)->cpu = 1;
 
   DLOG ("Sandbox %d: Receiver 0x%x created", sandbox, ipc_id);

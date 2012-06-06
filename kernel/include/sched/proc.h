@@ -82,6 +82,8 @@ typedef struct _quest_tss
   struct _quest_tss * next_tss;
   struct _quest_tss * prev_tss;
   task_id tid;
+  char * name[32];              /* A simple description or the path of the process */
+  uint sandbox_affinity;        /* Sandbox binding. Change this to migrate. */
   fd_table_entry_t fd_table[MAX_FD];
 } quest_tss;
 

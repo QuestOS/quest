@@ -474,7 +474,7 @@ static u32 udp_band_stack[1024] ALIGNED (0x1000);
 #define UDP_BSIZE  (4096 * 6)
 
 static void
-udp_bandwith_thread (void)
+udp_bandwidth_thread (void)
 {
   sched_usleep (15000000LL);
   struct udp_pcb * udp_band_pcb = udp_new ();
@@ -514,12 +514,13 @@ send:
 }
 
 bool
-udp_bandwith_init (void)
+udp_bandwidth_init (void)
 {
-  task_id udpt = start_kernel_thread ((uint32) udp_bandwith_thread, (uint32) &udp_band_stack);
+  task_id udpt = start_kernel_thread ((uint32) udp_bandwidth_thread, (uint32) &udp_band_stack,
+                                      "UDP Bandwidth Test");
   lookup_TSS (udpt)->cpu = 0;
 
-  logger_printf ("UDP Bandwith Test Thread Started on sandbox %d...\n", get_pcpu_id ());
+  logger_printf ("UDP Bandwidth Test Thread Started on sandbox %d...\n", get_pcpu_id ());
 
   return TRUE;
 }
@@ -637,7 +638,7 @@ khttpd_init (void)
                  KHTTPD_STR_SIZ);
 
   khttpd_id =
-    start_kernel_thread ((u32) khttpd_thread, (u32) &khttpd_stack[1023]);
+    start_kernel_thread ((u32) khttpd_thread, (u32) &khttpd_stack[1023], "khttpd");
   lookup_TSS (khttpd_id)->cpu = KHTTPD_CPU;
   struct tcp_pcb* khttpd_pcb = tcp_new ();
   tcp_bind (khttpd_pcb, IP_ADDR_ANY, 80);
@@ -819,7 +820,8 @@ net_init(void)
   //udp_echo_init ();
 
   net_tmr_pid = start_kernel_thread ((uint) net_tmr_thread,
-                                     (uint) &net_tmr_stack[1023]);
+                                     (uint) &net_tmr_stack[1023],
+                                     "Network Timer Thread");
   uint select_iovcpu (u32);
   lookup_TSS (net_tmr_pid)->cpu = select_iovcpu (0);
   ethernet_device_count = 0;

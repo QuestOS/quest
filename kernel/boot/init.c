@@ -289,9 +289,8 @@ task_id shell_tss = 0;
 void
 mem_check (void)
 {
-  int i = 0, j = 0;
-  uint32 *page = NULL;
-  int uflag = 0, mflag = 0;
+  int i = 0;
+  int uflag = 0;
 
   /* Only test first 4GB */
   for (i = 0; i < 0x100000; i++) {
@@ -495,12 +494,19 @@ init (multiboot * pmb)
     tss[i] = load_module (pmb->mods_addr + i, i);
     lookup_TSS (tss[i])->priority = MIN_PRIO;
   }
+
+  /* --??-- Assume the first is shell here */
+  char * name = "/boot/shell";
+  memcpy (lookup_TSS (tss[0])->name, name, strlen (name));
+  lookup_TSS (tss[0])->name[strlen(name)] = '\0';
   
 #ifdef USE_VMX
   /* Back up shell module for sandboxes */
   shell_tss = load_module (pmb->mods_addr, NR_MODS - 1);
   lookup_TSS (shell_tss)->priority = MIN_PRIO;
   lookup_TSS (shell_tss)->EFLAGS = F_1 | F_IF | F_IOPL0;
+  memcpy (lookup_TSS (shell_tss)->name, name, strlen (name));
+  lookup_TSS (shell_tss)->name[strlen(name)] = '\0';
 #endif
 
   /* Remove identity mapping of first 4MB */
@@ -547,6 +553,7 @@ init (multiboot * pmb)
 
   /* Load all modules, chasing dependencies */
   { extern bool module_load_all (void); module_load_all (); }
+  { extern bool migration_init (void); migration_init (); }
   //{ extern bool udp_bandwith_init (void); udp_bandwith_init (); }
   //{ extern bool ipc_send_init (void); ipc_send_init (); }
   //{ extern bool msgt_init (void); msgt_init (); }

@@ -181,7 +181,7 @@ ieee80211_register_hw (struct ieee80211_hw *hw)
   init_tsc_ufreq ();
 
   create_kernel_thread_args ((u32) beacon_thread, (u32) &beacon_stack[1023],
-                             TRUE, 1, local);
+                             "mac80211 beacon", TRUE, 1, local);
 
   return TRUE;
 }

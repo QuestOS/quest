@@ -20,7 +20,7 @@ PROGS = quest \
 	sysprogs/shell sysprogs/spinner sysprogs/iotest sysprogs/ipctest \
 	sysprogs/udpclient sysprogs/udpserver sysprogs/tcpserver \
 	sysprogs/tcpclient sysprogs/webserver \
-	tests/exec tests/race tests/test1 tests/test2 \
+	tests/exec tests/race tests/test1 tests/test2 tests/migtest \
 	tests/test3 tests/test4 tests/test5 tests/test6 tests/test7
 
 ##################################################
@@ -29,7 +29,7 @@ OBJS =  boot/boot.o boot/init.o kernel.o module/loader.o \
 	interrupt.o interrupt_handler.o socket.o \
 	smp/boot-smp.o smp/smp.o smp/intel.o smp/acpi.o smp/apic.o smp/semaphore.o \
 	arch/i386/percpu.o arch/i386/measure.o \
-	vm/vmx.o vm/vm86.o vm/code16.o vm/ept.o vm/shm.o vm/shdr.o \
+	vm/vmx.o vm/vm86.o vm/code16.o vm/ept.o vm/shm.o vm/shdr.o vm/migration.o \
 	sched/task.o sched/sched.o sched/sleep.o sched/vcpu.o sched/ipc.o sched/msgt.o sched/proc.o \
 	mem/physical.o mem/virtual.o mem/pow2.o \
 	util/cpuid.o util/printf.o util/screen.o util/debug.o util/circular.o \
