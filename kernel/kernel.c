@@ -304,7 +304,7 @@ check_copied_threads (void)
   quest_tss * t;
   task_id q = 0;
   vcpu * queue = NULL;
-  logger_printf ("Fixing threads in sandbox %d\n", cpu);
+  logger_printf ("Checking threads in sandbox %d\n", cpu);
 
   /* Check global (per-sandbox) queue headed by init_tss */
   logger_printf ("Checking threads in global queue...\n");
