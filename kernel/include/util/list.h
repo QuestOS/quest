@@ -1,5 +1,5 @@
-#ifndef __LIST_H
-#define __LIST_H
+#ifndef _LIST_H_
+#define _LIST_H_
 
 /* This file is from Linux Kernel (include/linux/list.h) 
  * and modified by simply removing hardware prefetching of list items. 
@@ -9,9 +9,9 @@
  * Simple doubly linked list implementation.
  */
 
-struct list_head {
+typedef struct list_head {
 	struct list_head *next, *prev;
-};
+} list_head_t;
 
 #define LIST_HEAD_INIT(name) { &(name), &(name) }
 

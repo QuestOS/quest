@@ -375,7 +375,7 @@ usb_ftdi_write (unsigned char * buf, uint32_t len)
   int status = 0;
 
   if ((status = usb_bulk_transfer (&ftdi_dev, out_ept, (addr_t) buf,
-        len, 64, DIR_OUT, &act_len)))
+        len, 64, USB_DIR_OUT, &act_len)))
     DLOG ("Bulk write failed. Error Code: 0x%X", status);
   
   return act_len;
@@ -415,7 +415,7 @@ usb_ftdi_read (unsigned char * buf, uint32_t len)
   int status = 0;
 
   if ((status = usb_bulk_transfer (&ftdi_dev, in_ept, (addr_t) buf,
-        len, 64, DIR_IN, &act_len)))
+        len, 64, USB_DIR_IN, &act_len)))
     DLOG ("Bulk read failed. Error Code: 0x%X", status);
   
   return act_len;
@@ -437,7 +437,7 @@ static const struct module_ops mod_ops = {
   .init = usb_ftdi_driver_init
 };
 
-DEF_MODULE (usb___ftdi, "USB FTDI driver", &mod_ops, {"usb"});
+//DEF_MODULE (usb___ftdi, "USB FTDI driver", &mod_ops, {"usb"});
 
 /*
  * Local Variables:

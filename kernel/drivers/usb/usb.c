@@ -51,7 +51,6 @@ initialise_usb_hcd(usb_hcd_t* usb_hcd, uint32_t usb_hc_type,
   usb_hcd->reset_root_ports = reset_root_ports;
   usb_hcd->post_enumeration = post_enumeration;
   usb_hcd->next_address = 1;
-  memset(usb_hcd->toggles, 0 , sizeof(uint32) * TOGGLE_SIZE);
   return TRUE;
 }
 
@@ -83,29 +82,27 @@ usb_control_transfer(
     addr_t data,
     uint16_t data_len)
 {
+  if ((dev->devd).bMaxPacketSize0 == 0) {
+        DLOG("USB_DEVICE_INFO is probably not initialized!");
+        return -1;
+  }
   switch (dev->host_type)
   {
     case USB_TYPE_HC_UHCI :
-      if ((dev->devd).bMaxPacketSize0 == 0) {
-        DLOG("USB_DEVICE_INFO is probably not initialized!");
-        return -1;
-      }
-      else {
-        return uhci_control_transfer(dev->address, setup_req,
-                                     req_len, data, data_len,
-                                     (dev->devd).bMaxPacketSize0);
-      }
+      panic("UHCI Broken: usb_control_transfer");
+      
+      return uhci_control_transfer(dev->address, setup_req,
+                                   req_len, data, data_len,
+                                   (dev->devd).bMaxPacketSize0);
+      
       
     case USB_TYPE_HC_EHCI :
-      if ((dev->devd).bMaxPacketSize0 == 0) {
-        DLOG("USB_DEVICE_INFO is probably not initialized!");
-        return -1;
-      } else {
-        return ehci_control_transfer(hcd_to_ehci_hcd(dev->hcd),
-                                     dev->address, setup_req,
-                                     req_len, data, data_len,
-                                     (dev->devd).bMaxPacketSize0);
-      }
+     
+      return ehci_control_transfer(hcd_to_ehci_hcd(dev->hcd),
+                                   dev->address, setup_req,
+                                   req_len, data, data_len,
+                                   (dev->devd).bMaxPacketSize0);
+      
 
     case USB_TYPE_HC_OHCI :
       DLOG("OHCI Host Controller is not supported now!");
@@ -124,24 +121,30 @@ usb_bulk_transfer(
     uint8_t endp,
     addr_t data,
     uint16_t len,
-    uint8_t packet_len,
+    uint16_t packet_len,
     uint8_t dir,
     uint32_t *act_len)
 {
+  DLOG("usb_bulk: packet_len: %d", packet_len);
+  if ((dev->devd).bMaxPacketSize0 == 0) {
+        DLOG("USB_DEVICE_INFO is probably not initialized!");
+        return -1;
+  }
   switch (dev->host_type)
   {
     case USB_TYPE_HC_UHCI :
-      if ((dev->devd).bMaxPacketSize0 == 0) {
-        DLOG("USB_DEVICE_INFO is probably not initialized!");
-        return -1;
-      } else {
-        return uhci_bulk_transfer(dev->address, endp, data,
-                                  len, packet_len, dir, act_len);
-      }
+      panic("UHCI Broken: usb_bulk_transfer");
+      
+      return uhci_bulk_transfer(dev->address, endp, data,
+                                len, packet_len, dir, act_len);
+      
 
     case USB_TYPE_HC_EHCI :
-      DLOG("EHCI Host Controller is not supported now! usb_bulk_transfer");
-      return -1;
+      
+      return ehci_bulk_transfer(hcd_to_ehci_hcd(dev->hcd),
+                                dev->address, endp, data,
+                                len, packet_len, dir, act_len);
+      
 
     case USB_TYPE_HC_OHCI :
       DLOG("OHCI Host Controller is not supported now!");
@@ -185,13 +188,12 @@ usb_get_descriptor(USB_DEVICE_INFO* dev,
                               desc, length);
 }
 
+
 int
 usb_set_address (USB_DEVICE_INFO* dev, uint8_t new_addr)
 {
   sint status;
   USB_DEV_REQ setup_req;
-  uint8_t old_addr = dev->address;
-  usb_hcd_t* hcd = dev->hcd;
   
   setup_req.bmRequestType = 0x0;
   setup_req.bRequest = USB_SET_ADDRESS;
@@ -202,7 +204,7 @@ usb_set_address (USB_DEVICE_INFO* dev, uint8_t new_addr)
   status = usb_control_transfer (dev, (addr_t) & setup_req,
                                  sizeof (USB_DEV_REQ), 0, 0);
   if (status == 0) {
-    hcd->toggles[old_addr] = hcd->toggles[new_addr] = 0;
+    dev->endpoint_toggles = 0;
   }
   return status;
   /*
@@ -239,6 +241,7 @@ usb_get_configuration(USB_DEVICE_INFO* dev)
   switch (dev->host_type)
   {
     case USB_TYPE_HC_UHCI :
+      panic("UHCI broken: usb_get_configuration");
       if ((dev->devd).bMaxPacketSize0 == 0) {
         DLOG("USB_DEVICE_INFO is probably not initialized!");
         return -1;
@@ -278,7 +281,7 @@ usb_set_configuration(USB_DEVICE_INFO * dev, uint8_t conf)
    * A bulk endpoint's toggle is initialized to DATA0 when any
    * configuration event is experienced
    */
-  dev->hcd->toggles[dev->address] = 0;
+  dev->endpoint_toggles = 0;
 
   return usb_control_transfer (dev, (addr_t) & setup_req,
                                  sizeof (USB_DEV_REQ), 0, 0);
@@ -317,6 +320,7 @@ usb_get_interface(USB_DEVICE_INFO * dev, uint16_t interface)
   switch (dev->host_type)
   {
     case USB_TYPE_HC_UHCI :
+      panic("UHCI broken: usb_get_interface");
       if ((dev->devd).bMaxPacketSize0 == 0) {
         DLOG("USB_DEVICE_INFO is probably not initialized!");
         return -1;
@@ -347,6 +351,7 @@ usb_set_interface(USB_DEVICE_INFO * dev, uint16_t alt, uint16_t interface)
   switch (dev->host_type)
   {
     case USB_TYPE_HC_UHCI :
+      panic("UHCI broken: usb_set_interface");
       if ((dev->devd).bMaxPacketSize0 == 0) {
         DLOG("USB_DEVICE_INFO is probably not initialized!");
         return -1;
@@ -381,14 +386,6 @@ usb_register_driver (USB_DRIVER *driver)
 }
 
 static void
-find_device_driver (USB_DEVICE_INFO *info, USB_CFG_DESC *cfgd, USB_IF_DESC *ifd)
-{
-  int d;
-  for (d=0; d<num_drivers; d++)
-    if (drivers[d].probe (info, cfgd, ifd)) return;
-}
-
-static void
 dlog_devd (USB_DEV_DESC *devd)
 {
   DLOG ("DEVICE DESCRIPTOR len=%d type=%d bcdUSB=0x%x",
@@ -407,7 +404,7 @@ dlog_info (USB_DEVICE_INFO *info)
   DLOG ("ADDRESS %d", info->address);
   dlog_devd (&info->devd);
 
-#if 1
+#if 0
   uint8 strbuf[64];
   uint8 str[32];
 #define do_str(slot,label)                                              \
@@ -428,6 +425,18 @@ dlog_info (USB_DEVICE_INFO *info)
 #undef do_str
 #endif
 }
+
+static void
+find_device_driver (USB_DEVICE_INFO *info, USB_CFG_DESC *cfgd, USB_IF_DESC *ifd)
+{
+  int d;
+  dlog_info(info);
+  for (d=0; d<num_drivers; d++) {
+    if (drivers[d].probe (info, cfgd, ifd)) return;
+  }
+}
+
+
 
 
 
@@ -457,6 +466,7 @@ usb_enumerate(usb_hcd_t* usb_hcd)
   info->address = 0;
   info->host_type = usb_hcd->usb_hc_type;
   info->hcd = usb_hcd;
+  info->endpoint_toggles = 0;
 
   /* --WARN-- OK, here is the deal. The spec says you should use the
    * maximum packet size in the data phase of control transfer if the
@@ -527,14 +537,14 @@ usb_enumerate(usb_hcd_t* usb_hcd)
   DLOG ("usb_enumerate: total_length=%d", total_length);
 
   /* allocate memory to hold everything */
-  pow2_alloc (total_length, &info->raw);
-  if (!info->raw) {
+  pow2_alloc (total_length, &info->configurations);
+  if (!info->configurations) {
     DLOG ("usb_enumerate: pow2_alloc (%d) failed", total_length);
     goto abort;
   }
 
   /* read all cfg, if, and endpoint descriptors */
-  ptr = info->raw;
+  ptr = info->configurations;
   for (c=0; c < devd.bNumConfigurations; c++) {
     /* obtain precise size info */
     memset (temp, 0, TEMPSZ);
@@ -561,7 +571,7 @@ usb_enumerate(usb_hcd_t* usb_hcd)
   usb_hcd->next_address++;
 
   /* parse cfg and if descriptors */
-  ptr = info->raw;
+  ptr = info->configurations;
   for (c=0; c < devd.bNumConfigurations; c++) {
     cfgd = (USB_CFG_DESC *) ptr;
     ptr += cfgd->bLength;
@@ -596,9 +606,15 @@ usb_enumerate(usb_hcd_t* usb_hcd)
   return TRUE;
 
  abort_mem:
-  pow2_free (info->raw);
+  pow2_free (info->configurations);
  abort:
   return FALSE;
+}
+
+void dlog_usb_hcd(usb_hcd_t* usb_hcd)
+{
+  DLOG("usb_hc_type:  %d", usb_hcd->usb_hc_type);
+  DLOG("next_address: %d", usb_hcd->next_address);
 }
 
 bool

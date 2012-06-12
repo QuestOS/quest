@@ -126,7 +126,7 @@ transmit (uint8* buf, sint len)
   DLOG ("transmitting data len=%d: %.02X %.02X %.02X %.02X", len,
         buf[0], buf[1], buf[2], buf[3]);
   if (usb_bulk_transfer (ethusbdev, data_ept_out, buf, len,
-                         data_maxpkt, DIR_OUT, &act_len) == 0)
+                         data_maxpkt, USB_DIR_OUT, &act_len) == 0)
     ret = len;
   else
     ret = 0;
@@ -140,7 +140,7 @@ poll (void)
   uint8 buffer[1600];
   uint32 act_len;
   if (usb_bulk_transfer (ethusbdev, data_ept_in, buffer, 1514,
-                         data_maxpkt, DIR_IN, &act_len) == 0) {
+                         data_maxpkt, USB_DIR_IN, &act_len) == 0) {
     if (act_len > 0) {
       DLOG ("receiving data len=%d: %.02X %.02X %.02X %.02X",
             act_len, buffer[0], buffer[1], buffer[2], buffer[3]);
@@ -302,7 +302,7 @@ static const struct module_ops mod_ops = {
   .init = usb_net_driver_init
 };
 
-DEF_MODULE (usb___net, "USB net driver", &mod_ops, {"usb", "net___ethernet"});
+//DEF_MODULE (usb___net, "USB net driver", &mod_ops, {"usb", "net___ethernet"});
 
 
 /*

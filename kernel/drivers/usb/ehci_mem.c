@@ -95,8 +95,7 @@ inline qtd_t*
 allocate_qtd(ehci_hcd_t* ehci_hcd)
 {
   qtd_t* qtd;
-  qtd_t** temp = &qtd;
-  return allocate_qtds(ehci_hcd, temp, 1) ? qtd : NULL;
+  return allocate_qtds(ehci_hcd, &qtd, 1) ? qtd : NULL;
 }
 
 void
@@ -133,6 +132,7 @@ inline bool initialise_qh(ehci_hcd_t* ehci_hcd, qh_t* qh)
   memset(qh, 0, sizeof(*qh));
   qh->state = QH_STATE_NOT_LINKED;
   qh->dummy_qtd = allocate_qtd(ehci_hcd);
+  INIT_LIST_HEAD(&qh->qtd_list);
   return qh->dummy_qtd != NULL;
 }
 
@@ -144,8 +144,6 @@ uint32_t allocate_qhs(ehci_hcd_t* ehci_hcd, qh_t** qhs, uint32_t num_qh)
   uint32_t  i           = ehci_hcd->used_queue_head_bitmap_size;
   uint32_t* used_bitmap = ehci_hcd->used_queue_head_bitmap;
   qh_t*     pool        = ehci_hcd->queue_head_pool;
-
-  
 
   while(i--) {
     /* if all queue heads at this bitmap entry are used */
@@ -183,11 +181,11 @@ void free_qhs(ehci_hcd_t* ehci_hcd, qh_t** qhs, uint32_t num_qh)
 {
   uint32_t* used_bitmap = ehci_hcd->used_queue_head_bitmap;
   qh_t*     pool        = ehci_hcd->queue_head_pool;
-  
+
   while(num_qh--) {
     uint32_t qh_index = qhs[num_qh] - pool;
     EHCI_MEM_ASSERT(&pool[qh_index] == qhs[num_qh]);
-    
+
     /* Flip the one bit to zero */
     used_bitmap[qh_index << BITMAP_INDEX_SHIFT] &=
       ~(1 << (qh_index |  BITMAP_SUBINDEX_MASK));
@@ -202,8 +200,14 @@ inline void free_qh(ehci_hcd_t* ehci_hcd, qh_t* qh)
 
 void free_qh_and_qtds(ehci_hcd_t* ehci_hcd, qh_t* qh)
 {
-  DLOG("free_qh_and_qtds not implemented");
-  panic("free_qh_and_qtds not implemented");
+  qtd_t* cur;
+  qtd_t* temp;
+  list_for_each_entry_safe(cur, temp, &qh->qtd_list, chain_list) {
+    list_del(&cur->chain_list);
+    free_qtd(ehci_hcd, cur);
+  }
+
+  free_qh(ehci_hcd, qh);
 }
 
 

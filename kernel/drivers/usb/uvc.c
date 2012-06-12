@@ -129,7 +129,7 @@ uvc_get_frame (
     index = buf + i * transfer_len;
 
     status += uhci_isochronous_transfer (dev->address, iso_src->endp,
-        (addr_t) index, transfer_len, &act_len, i, DIR_IN, 0);
+        (addr_t) index, transfer_len, &act_len, i, USB_DIR_IN, 0);
 
     header_len = *(index);
     *frm_len += (act_len - header_len);
@@ -691,7 +691,7 @@ static const struct module_ops mod_ops = {
   .init = usb_uvc_driver_init
 };
 
-DEF_MODULE (usb___uvc, "USB video driver", &mod_ops, {"usb"});
+//DEF_MODULE (usb___uvc, "USB video driver", &mod_ops, {"usb"});
 
 /*
  * Local Variables:

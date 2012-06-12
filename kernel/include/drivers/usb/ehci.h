@@ -24,10 +24,11 @@
 #include <arch/i386.h>
 #include <drivers/pci/pci.h>
 #include <drivers/usb/usb.h>
+#include <util/list.h>
 
 
 #define hcd_to_ehci_hcd(hcd) container_of((hcd), ehci_hcd_t, usb_hcd)
-#define ehci_hcd_to_hcd(ehci_hcd) (ehci_hcd)->usb_hcd
+#define ehci_hcd_to_hcd(ehci_hcd) (&((ehci_hcd)->usb_hcd))
 
 
 /*
@@ -37,7 +38,7 @@
  */
 
 
-/* Number of qtd retries Possible values: 0-3 0 == don't stop */
+/* Number of qtd retries Possible values: 0-3   0 == don't stop */
 #define EHCI_TUNE_CERR 3
 
 /* nak throttle, see section 4.9 of EHCI specs */
@@ -76,7 +77,7 @@ typedef struct
 #define EHCI_IS_FRM_LST_LEN_PROG(hcd)           \
   ((hcd)->caps->hcc_params & PROG_FRM_LST_LENGTH)
   
-  uint8_t  port_route[8];
+  uint8_t port_route[8];
 } ehci_caps_t PACKED;
 
 typedef struct
@@ -126,18 +127,18 @@ typedef struct
   
   uint32_t interrupt_enable;
 
-#define USBINTR_IAA  (1<<5)          /* Interrupted on async advance */
-#define USBINTR_HSE  (1<<4)          /* such as some PCI access errors */
-#define USBINTR_FLR  (1<<3)          /* frame list rolled over */
-#define USBINTR_PCD  (1<<2)          /* port change detect */
+#define USBINTR_IAA  (1<<5)          /* Interrupted on async advance       */
+#define USBINTR_HSE  (1<<4)          /* such as some PCI access errors     */
+#define USBINTR_FLR  (1<<3)          /* frame list rolled over             */
+#define USBINTR_PCD  (1<<2)          /* port change detect                 */
 #define USBINTR_ERR  (1<<1)          /* "error" completion (overflow, ...) */
-#define USBINTR_INT  (1<<0)          /* "normal" completion (short, ...) */
+#define USBINTR_INT  (1<<0)          /* "normal" completion (short, ...)   */
 #define USBINTR_MASK (USBINTR_IAA | USBINTR_HSE | USBINTR_PCD | USBINTR_ERR | USBINTR_INT )
 
 #define EHCI_ENABLE_INTR(hcd, intr) ((hcd)->regs->interrupt_enable |= (intr))
 #define EHCI_SET_INTRS(hcd) EHCI_ENABLE_INTR((hcd), USBINTR_MASK)
 #define EHCI_DISABLE_INTR(hcd, intr) ((hcd)->regs->interrupt_enable &= ~(intr))
-#define EHCI_INTR_ENABLED(hcd, intr) ((hcd)->regs->interrupt_enable | (intr))
+#define EHCI_INTR_ENABLED(hcd, intr) ((hcd)->regs->interrupt_enable & (intr))
   
   uint32_t frame_index;
   uint32_t segment;
@@ -278,10 +279,12 @@ typedef struct _qtd_t
   // dword 4-8, buffer page 0-4 ,current offset is used only in buffer page 0
 
   qtd_buffer_page_pointer_t buffer_page[5];
-
-  
   uint32_t ex_buf_ptr_pgs[5];
 
+  /* Software only members */
+
+  list_head_t chain_list;
+  
   uint32_t padding[3]; /* To make sizeof(qh_t) a multiple of 32 */
   
 } PACKED ALIGNED(32) qtd_t;
@@ -422,9 +425,9 @@ typedef struct _qh_t{
    */
 
   qtd_t* dummy_qtd;
-
-  
   uint32_t state;
+  list_head_t qtd_list;
+  list_head_t reclaim_chain;
 
 
 #define QH_STATE_NOT_LINKED 1 /* Not in the buffer at all */
@@ -433,8 +436,10 @@ typedef struct _qh_t{
                                  is being removed from the circular
                                  buffer but the HC might still have
                                  links to it */
+
   
-  uint32_t padding[4]; /* To make sizeof(qh_t) a multiple of 32 */
+  
+  //  uint32_t padding[2]; /* To make sizeof(qh_t) a multiple of 32 */
 
 } PACKED ALIGNED(32) qh_t;
 
@@ -495,7 +500,7 @@ typedef struct
   bool periodic_list_on;
 
   qh_t* async_head;
-  qh_t* reclaim_list;
+  list_head_t reclaim_list;
   
 } ehci_hcd_t;
 
@@ -508,6 +513,16 @@ ehci_control_transfer(ehci_hcd_t* ehci_hcd,
                       addr_t setup_data,   /* Use virtual address here */
                       uint32_t data_len,
                       uint32_t packet_len);
+
+int
+ehci_bulk_transfer(ehci_hcd_t* ehci_hcd,
+                   uint8_t address,
+                   uint8_t endpoint,
+                   addr_t data,
+                   int data_len,
+                   int packet_len,
+                   uint8_t direction,
+                   uint32 *act_len);
 
 
 #define calc_bitmap_size(hcd, pool_size) ((hcd)->pool_size + 31) / 32;

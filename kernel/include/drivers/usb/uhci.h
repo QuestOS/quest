@@ -60,8 +60,6 @@
 #define QH_POOL_SIZE 16
 #define TYPE_TD 0
 #define TYPE_QH 1
-#define DIR_IN  0
-#define DIR_OUT 1
 
 /*
  * frm_lst_ptr : UHCI Frame List Pointer

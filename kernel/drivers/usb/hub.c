@@ -118,9 +118,10 @@ hub_clr_port_feature (USB_DEVICE_INFO* info, uint port, uint feature)
 static bool
 probe_hub (USB_DEVICE_INFO* info, USB_CFG_DESC *cfgd, USB_IF_DESC *ifd)
 {
-  sint status, i, address = info->address;
+  sint status, i;
   USB_DEV_REQ req;
   USB_HUB_DESC hubd;
+
 
   if (ifd->bInterfaceClass != USB_HUB_CLASS)
     return FALSE;
@@ -143,6 +144,7 @@ probe_hub (USB_DEVICE_INFO* info, USB_CFG_DESC *cfgd, USB_IF_DESC *ifd)
   status = usb_control_transfer (info, &req, sizeof (req), &hubd, sizeof (hubd));
   DLOG ("GET_HUB_DESCRIPTOR: status=%d len=%d nbrports=%d delay=%d",
         status, hubd.bDescLength, hubd.bNbrPorts, hubd.bPwrOn2PwrGood);
+
   if (status < 0) return FALSE;
   for (i=1; i<=hubd.bNbrPorts; i++) {
     /* power-on port if necessary */
@@ -154,7 +156,7 @@ probe_hub (USB_DEVICE_INFO* info, USB_CFG_DESC *cfgd, USB_IF_DESC *ifd)
       /* potential device on port i */
       hub_set_port_feature (info, i, HUB_PORT_RESET);
       delay (10);
-      hub_port_status (address, i);
+      hub_port_status (info, i);
       hub_clr_port_feature (info, i, HUB_PORT_C_RESET);
       hub_port_status (info, i);
       delay (2*hubd.bPwrOn2PwrGood);

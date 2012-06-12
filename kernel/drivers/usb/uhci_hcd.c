@@ -841,7 +841,7 @@ uhci_isochronous_transfer (
   iso_td->ioc = 0; // --??-- For test, mask the interrupt
   iso_td->iso = 1;
   iso_td->spd = 0;
-  iso_td->pid = (direction == DIR_IN) ? UHCI_PID_IN : UHCI_PID_OUT;
+  iso_td->pid = (direction == USB_DIR_IN) ? UHCI_PID_IN : UHCI_PID_OUT;
   iso_td->addr = address;
   iso_td->endp = endpoint;
   iso_td->toggle = 0;
@@ -931,7 +931,7 @@ uhci_bulk_transfer(
   int i = 0, num_data_packets = 0, data_left = 0, return_status = 0, tog_idx;
 
   DLOGV ("bulk: %d %d %d %c", address, endpoint, data_len,
-         direction == DIR_IN ? 'I' : 'O');
+         direction == USB_DIR_IN ? 'I' : 'O');
   num_data_packets = (data_len + max_packet_len) / (max_packet_len + 1);
   data_left = data_len;
 
@@ -947,13 +947,13 @@ uhci_bulk_transfer(
     data_td->status = 0x80;
     data_td->c_err = 3;
     data_td->ioc = data_td->iso = 0;
-    data_td->spd = (direction == DIR_IN ? 1 : 0);
+    data_td->spd = (direction == USB_DIR_IN ? 1 : 0);
 
-    data_td->pid = (direction == DIR_IN) ? UHCI_PID_IN : UHCI_PID_OUT;
+    data_td->pid = (direction == USB_DIR_IN) ? UHCI_PID_IN : UHCI_PID_OUT;
     data_td->addr = address;
     data_td->endp = endpoint;
 
-    tog_idx = (address * 32 + (endpoint + ((direction == DIR_IN) << 4)));
+    tog_idx = (address * 32 + (endpoint + ((direction == USB_DIR_IN) << 4)));
     data_td->toggle = (BITMAP_TST (toggles, tog_idx) ? 1 : 0);
     if (data_td->toggle)
       BITMAP_CLR (toggles, tog_idx);

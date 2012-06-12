@@ -89,7 +89,7 @@ print_qh_info(ehci_hcd_t* ehci_hcd, qh_t* qh, bool print_tds ,char* msg)
 {
 #ifdef DEBUG_EHCI_VERBOSE
 #define PRINT_QH_MEMBER(member) DLOGV(#member ": 0x%X", qh->member)
-
+  #define QUEUE_HEAD_PRINT_VERBOSE
   int qtd_count = 0;
   
   DLOGV("**************************************************************************");
@@ -97,11 +97,31 @@ print_qh_info(ehci_hcd_t* ehci_hcd, qh_t* qh, bool print_tds ,char* msg)
 
   PRINT_QH_MEMBER(horizontalPointer.raw);
   PRINT_QH_MEMBER(hw_info1);
+#ifdef QUEUE_HEAD_PRINT_VERBOSE
+  PRINT_QH_MEMBER(device_address);
+  PRINT_QH_MEMBER(inactive_on_next);
+  PRINT_QH_MEMBER(endpoint_num);
+  PRINT_QH_MEMBER(endpoint_speed);
+  PRINT_QH_MEMBER(data_toggle_control);
+  PRINT_QH_MEMBER(head_reclam);
+  PRINT_QH_MEMBER(max_packet_length);
+  PRINT_QH_MEMBER(cnt_endpoint);
+  PRINT_QH_MEMBER(nak_cnt_reload);
+#endif
   PRINT_QH_MEMBER(hw_info2);
+#ifdef QUEUE_HEAD_PRINT_VERBOSE
+  
+  PRINT_QH_MEMBER(interrupt_sched_mask);
+  PRINT_QH_MEMBER(split_comp_mask);
+  PRINT_QH_MEMBER(hub_addr);
+  PRINT_QH_MEMBER(port_num);
+  PRINT_QH_MEMBER(mult);
+#endif
   PRINT_QH_MEMBER(current_qtd_ptr_raw);
   PRINT_QH_MEMBER(next_qtd_ptr_raw);
   PRINT_QH_MEMBER(alt_qtd_ptr_raw);
   PRINT_QH_MEMBER(qtd_token_raw);
+  PRINT_QH_MEMBER(data_toggle);
   PRINT_QH_MEMBER(raw5);
   PRINT_QH_MEMBER(raw6);
   PRINT_QH_MEMBER(raw7);
