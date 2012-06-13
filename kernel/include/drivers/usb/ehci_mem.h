@@ -24,8 +24,32 @@
 #include <arch/i386.h>
 #include <drivers/pci/pci.h>
 #include <drivers/usb/usb.h>
+#include <drivers/usb/ehci.h>
+
 
 #define EHCI_ELEMENTS_PER_BITMAP_ENTRY (sizeof(uint32_t) * 8)
+
+
+
+
+#define __EHCI_POOL_PHYS_TO_VIRT(hcd, phys_addr, pool)                  \
+  ((((uint32_t)phys_addr) - ((uint32_t)(hcd)->pool ## _phys_addr)) + ((uint32_t)(hcd)->pool))
+
+#define __EHCI_POOL_VIRT_TO_PHYS(hcd, virt_addr, pool)                  \
+  ((((uint32_t)virt_addr) - ((uint32_t)(hcd)->pool)) + ((uint32_t)(hcd)->pool ## _phys_addr))
+
+#define EHCI_QH_VIRT_TO_PHYS(hcd, qh_virt_addr)                 \
+  __EHCI_POOL_VIRT_TO_PHYS(hcd, qh_virt_addr, queue_head_pool)
+
+#define EHCI_QH_PHYS_TO_VIRT(hcd, qh_phys_addr)                 \
+  (qh_t*)__EHCI_POOL_PHYS_TO_VIRT(hcd, qh_phys_addr, queue_head_pool)
+
+#define EHCI_QTD_VIRT_TO_PHYS(hcd, qtd_virt_addr)               \
+  __EHCI_POOL_VIRT_TO_PHYS(hcd, qtd_virt_addr, qtd_pool)
+
+#define EHCI_QTD_PHYS_TO_VIRT(hcd, qtd_phys_addr)               \
+  (qtd_t*)__EHCI_POOL_PHYS_TO_VIRT(hcd, qtd_phys_addr, qtd_pool)
+
 
 /* Start of functions related to qtd_t memory management*/
 

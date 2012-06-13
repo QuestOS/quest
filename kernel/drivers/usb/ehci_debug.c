@@ -1,4 +1,5 @@
 #include <drivers/usb/ehci_debug.h>
+#include <drivers/usb/ehci_mem.h>
 
 /*
  * Used for debug purposes, prints state of EHCI registers through

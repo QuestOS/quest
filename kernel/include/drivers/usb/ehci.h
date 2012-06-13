@@ -251,11 +251,14 @@ typedef struct _qtd_t
 
 #define QTD_ACTIVE (1 << 7)
 #define QTD_HALT (1 << 6)
+#define QTD_STS_PING (1 << 0)
       
       uint32_t pid_code:2;
 
 #define QTD_SETUP (2 << 8)
 #define QTD_INPUT (1 << 8)
+#define QTD_IS_OUT(qtd) (!((qtd)->token & 0x300))
+#define QTD_IS_INPUT(qtd) ((qtd)->token & 0x100)
       
       uint32_t error_counter:2;
 
@@ -285,7 +288,7 @@ typedef struct _qtd_t
 
   list_head_t chain_list;
   
-  uint32_t padding[3]; /* To make sizeof(qh_t) a multiple of 32 */
+  uint32_t padding[3]; /* To make sizeof(qtd_t) a multiple of 32 */
   
 } PACKED ALIGNED(32) qtd_t;
 
@@ -303,6 +306,9 @@ typedef struct _qh_t{
       uint32_t device_address:7;
       uint32_t inactive_on_next:1;
       uint32_t endpoint_num:4;
+
+#define QH_GET_ENDPOINT(qh) (((qh)->hw_info1 >> 8) & 0x0F)
+      
       uint32_t endpoint_speed:2;
       uint32_t data_toggle_control:1;
       uint32_t head_reclam:1;
@@ -312,6 +318,7 @@ typedef struct _qh_t{
     } PACKED;
   };
 
+#define QH_DATA_TOGGLE_CONTROL (1 << 14)
 #define QH_HEAD (0x00008000)
 
   // dword 2
@@ -428,6 +435,7 @@ typedef struct _qh_t{
   uint32_t state;
   list_head_t qtd_list;
   list_head_t reclaim_chain;
+  USB_DEVICE_INFO* dev;
 
 
 #define QH_STATE_NOT_LINKED 1 /* Not in the buffer at all */
@@ -439,29 +447,9 @@ typedef struct _qh_t{
 
   
   
-  //  uint32_t padding[2]; /* To make sizeof(qh_t) a multiple of 32 */
+  uint32_t padding[4]; /* To make sizeof(qh_t) a multiple of 32 */
 
 } PACKED ALIGNED(32) qh_t;
-
-
-
-#define __EHCI_POOL_PHYS_TO_VIRT(hcd, phys_addr, pool)                  \
-  ((((uint32_t)phys_addr) - ((uint32_t)(hcd)->pool ## _phys_addr)) + ((uint32_t)(hcd)->pool))
-
-#define __EHCI_POOL_VIRT_TO_PHYS(hcd, virt_addr, pool)                  \
-  ((((uint32_t)virt_addr) - ((uint32_t)(hcd)->pool)) + ((uint32_t)(hcd)->pool ## _phys_addr))
-
-#define EHCI_QH_VIRT_TO_PHYS(hcd, qh_virt_addr)                 \
-  __EHCI_POOL_VIRT_TO_PHYS(hcd, qh_virt_addr, queue_head_pool)
-
-#define EHCI_QH_PHYS_TO_VIRT(hcd, qh_phys_addr)                 \
-  (qh_t*)__EHCI_POOL_PHYS_TO_VIRT(hcd, qh_phys_addr, queue_head_pool)
-
-#define EHCI_QTD_VIRT_TO_PHYS(hcd, qtd_virt_addr)               \
-  __EHCI_POOL_VIRT_TO_PHYS(hcd, qtd_virt_addr, qtd_pool)
-
-#define EHCI_QTD_PHYS_TO_VIRT(hcd, qtd_phys_addr)               \
-  (qtd_t*)__EHCI_POOL_PHYS_TO_VIRT(hcd, qtd_phys_addr, qtd_pool)
 
 
 typedef struct

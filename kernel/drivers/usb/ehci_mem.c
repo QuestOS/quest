@@ -63,6 +63,7 @@ initialise_qtd(qtd_t* qtd)
   qtd->token = QTD_HALT;
   qtd->next_pointer_raw = EHCI_LIST_END;
   qtd->alt_pointer_raw = EHCI_LIST_END;
+  INIT_LIST_HEAD(&qtd->chain_list);
 }
 
 uint32_t
@@ -131,8 +132,8 @@ inline bool initialise_qh(ehci_hcd_t* ehci_hcd, qh_t* qh)
 {
   memset(qh, 0, sizeof(*qh));
   qh->state = QH_STATE_NOT_LINKED;
-  qh->dummy_qtd = allocate_qtd(ehci_hcd);
   INIT_LIST_HEAD(&qh->qtd_list);
+  qh->dummy_qtd = allocate_qtd(ehci_hcd);
   return qh->dummy_qtd != NULL;
 }
 
