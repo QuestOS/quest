@@ -130,6 +130,9 @@ extern void iovcpu_job_completion (void);
 extern uint lowest_priority_vcpu (void);
 extern uint select_iovcpu (iovcpu_class);
 extern void set_iovcpu (task_id, iovcpu_class);
+extern vcpu * vcpu_lookup (int);
+extern bool vcpu_in_runqueue (vcpu *, task_id);
+extern void vcpu_remove_from_runqueue (vcpu *, task_id);
 #ifdef USE_VMX
 extern void vcpu_reset (void);
 #endif

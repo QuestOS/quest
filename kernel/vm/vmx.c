@@ -28,6 +28,8 @@
 #include "arch/i386-mtrr.h"
 #include "sched/sched.h"
 #include "vm/shdr.h"
+#include "vm/shm.h"
+#include "vm/migration.h"
 
 #define DEBUG_VMX 2
 #define VMX_EPT
@@ -576,17 +578,61 @@ vmx_create_pmode_VM (virtual_machine *vm, u32 rip0, u32 rsp0)
   return -1;
 }
 
+/* --??-- We use two global variables for input and output of vm_exit routine */
+void * vm_exit_input_param = NULL;
+void * vm_exit_return_val = NULL;
+
 /*
  * Processing intentional VM-Exit from Sandboxes.
  */
 void
 vmx_process_exit (uint32 status)
 {
-  //logger_printf ("Sandbox%d: performing VM-Exit Status: 0x%X\n",
-  //    get_pcpu_id (), status);
-  //uint32 hphys = get_host_phys_addr (status);
-  //logger_printf ("Sandbox%d: Host Phys for 0x%X is 0x%X\n", get_pcpu_id (),
-  //               vm->guest_regs.ecx, hphys);
+  uint cpu = get_pcpu_id ();
+  quest_tss * ret_tss = NULL;
+  pgdir_t mdir = {-1, 0}, cdir = {-1, 0};
+  DLOG ("Sandbox%d: performing VM-Exit Status: 0x%X Input: 0x%X\n",
+        cpu, status, vm_exit_input_param);
+
+  switch (status) {
+    case VM_EXIT_REASON_MIGRATION:
+      /* Begin migration by first pulling the whole address space over */
+      ret_tss = pull_quest_tss (vm_exit_input_param);
+      if (ret_tss) {
+        mdir.dir_pa = ret_tss->CR3;
+        mdir.dir_va = map_virtual_page (mdir.dir_pa | 3);
+        if (!mdir.dir_va) {
+          logger_printf ("map_virtual_page failed in migration!\n");
+          vm_exit_return_val = NULL;
+          free_quest_tss (ret_tss);
+          break;
+        }
+        cdir = remote_clone_page_directory (mdir);
+        unmap_virtual_page (mdir.dir_va);
+        if (!cdir.dir_va) {
+          /* Clone failed */
+          logger_printf ("Task 0x%X address space clone failed in migration!\n", ret_tss->tid);
+          vm_exit_return_val = NULL;
+          /* Clean up ret_tss */
+          free_quest_tss (ret_tss);
+        } else {
+          ret_tss->CR3 = cdir.dir_pa;
+          unmap_virtual_page (mdir.dir_va);
+          vm_exit_return_val = (void *) ret_tss;
+        }
+      } else {
+        vm_exit_return_val = NULL;
+        logger_printf ("pull_quest_tss failed!\n");
+      }
+      break;
+    case VM_EXIT_REASON_GET_HPA:
+      vm_exit_return_val = (void *) get_host_phys_addr ((uint32) vm_exit_input_param);
+      DLOG ("Sandbox%d: Host Phys for 0x%X is 0x%X\n", get_pcpu_id (),
+            (uint32) vm_exit_input_param, (uint32) vm_exit_return_val);
+      break;
+    default:
+      logger_printf ("Unknow reason 0x%X caused VM-Exit in sandbox %d\n", status, cpu);
+  }
 
   return;
 }

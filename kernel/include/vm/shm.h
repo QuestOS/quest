@@ -36,6 +36,7 @@
 #define SHM_MAGIC               0xCAFEBABE
 
 #define SHM_MAX_SCREEN          0x08
+#define SHM_MAX_SANDBOX         0x08
 
 typedef struct _cursor {
   int x;
@@ -52,15 +53,20 @@ typedef struct _display_t {
 } display_t;
 
 typedef struct _shm_info {
+  /* A flag shows whether this structure is properly initialized */
   uint32 magic;
   spinlock shm_lock;
   spinlock logger_lock;
   spinlock global_lock;
+  /* Allocatable shared driver locks */
   spinlock driver_lock[NUM_DRV_LOCKS];
   uint32 driver_lock_table[DRV_LOCK_INDEX];
+  /* Physical memory bitmap for shared memory */
   uint32 shm_table[SHARED_MEM_INDEX_MAX];
   display_t virtual_display;
   uint32 num_sandbox;
+  /* The migration request queue storing the physical address of its first quest_tss */
+  void * migration_queue[SHM_MAX_SANDBOX];
   bool bsp_booted;
 } shm_info;
 

@@ -45,6 +45,10 @@
 #define IA32_VMX_TRUE_EXIT_CTLS      0x048F
 #define IA32_VMX_TRUE_ENTRY_CTLS     0x0490
 
+/* Software VM-Exit reasons */
+#define VM_EXIT_REASON_MIGRATION     0x0001  /* Process migration */
+#define VM_EXIT_REASON_GET_HPA       0x0002  /* Get HPA for a given GPA */
+
 extern bool shared_driver_available;
 
 typedef struct

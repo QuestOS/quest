@@ -59,6 +59,12 @@
  */
 extern void * detach_task (task_id tid);
 
+/* attach_task add a (migrated) task into the local sandbox scheduler. This
+ * includes adding quest_tss to per-sandbox quest_tss list and vcpu run queue.
+ * Returns 0 if attach failed.
+ */
+extern int attach_task (quest_tss * new_tss);
+
 /* pull_quest_tss is called by the remote sandbox to create a new tss
  * and set it up for the migrating process.
  * The physical address of the migrating tss is specified with the address
@@ -77,7 +83,7 @@ extern pgdir_t remote_clone_page_directory (pgdir_t dir);
  * quest_tss etc.).
  * This is similar to an exit() system call.
  */
-extern void destroy_task (void * phy_tss);
+extern void destroy_task (task_id tid);
 
 /* Send a migration request from current sandbox to sandbox. The actual
  * request will be retrieved through shared memory.

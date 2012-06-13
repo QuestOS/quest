@@ -29,6 +29,8 @@
 #include "util/debug.h"
 #include "util/printf.h"
 #include "mem/pow2.h"
+#include "vm/migration.h"
+#include "vm/shm.h"
 
 #define UNITS_PER_SEC 1000
 
@@ -622,6 +624,7 @@ vcpu_schedule (void)
     *queue = percpu_read (vcpu_queue),
     *cur   = percpu_read (vcpu_current),
     *vcpu  = NULL,
+    *mvcpu = NULL,
     **ptr,
     **vnext = NULL;
   u64 tprev = percpu_read64 (pcpu_tprev);
@@ -688,6 +691,60 @@ vcpu_schedule (void)
       }
 
       percpu_write (vcpu_current, NULL);
+    }
+
+    /* Check migration request */
+    if (str () != next) {
+      quest_tss * tss = lookup_TSS (str ());
+      uint32 * ph_tss = NULL;
+      task_id waiter;
+      uint current_cpu = get_pcpu_id ();
+      if (tss) {
+        if (tss->sandbox_affinity != current_cpu) {
+          logger_printf ("Migration Request: taskid=0x%X, src=%d, dest=%d, vcpu=%d\n",
+              str (), current_cpu, tss->sandbox_affinity, tss->cpu);
+          mvcpu = vcpu_lookup (tss->cpu);
+          if (!mvcpu) {
+            logger_printf ("No VCPU (%d) associated with Task 0x%X\n", tss->cpu, tss->tid);
+          } else {
+            /* Located the migrating quest_tss and its VCPU */
+            /* Detach the migrating task from local scheduler */
+            ph_tss = detach_task (tss->tid);
+            logger_printf ("Process quest_tss to be migrated: 0x%X\n", ph_tss);
+
+            /* Add the migrating process to migration queue of destination sandbox */
+            if (shm->migration_queue[tss->sandbox_affinity]) {
+              /* TODO:
+               * Assume the queue can have only one element for now. In case of queued
+               * requests, quest_tss should be chained as usual.
+               */
+              logger_printf ("Migration queue in sandbox %d is not empty\n",
+                             tss->sandbox_affinity);
+            } else {
+              shm->migration_queue[tss->sandbox_affinity] = ph_tss;
+            }
+
+            /* All tasks waiting for us now belong on the runqueue. */
+            /* TODO:
+             * For now, we wake up all the waiting processes. This
+             * is not really a solution for the shared resource problem.
+             * Some more specific mechanisms must be devised for this
+             * issue in the future.
+             */
+            while ((waiter = queue_remove_head (&tss->waitqueue)))
+              wakeup (waiter);
+
+            if (ph_tss) {
+              /* Request migration */
+              if (!request_migration (tss->sandbox_affinity))
+                logger_printf ("Failed to send migration request to sandbox %d\n",
+                               tss->sandbox_affinity);
+            } else {
+              logger_printf ("Failed to detach task 0x%X from local scheduler\n", tss->tid);
+            }
+          }
+        }
+      }
     }
 
     /* find time of next important event */
