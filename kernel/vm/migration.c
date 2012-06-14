@@ -28,6 +28,8 @@
 #include "vm/migration.h"
 #include "sched/sched.h"
 #include "sched/vcpu.h"
+#include "lwip/tcp.h"
+#include "lwip/udp.h"
 
 #define DEBUG_MIGRATION
 
@@ -97,7 +99,7 @@ attach_task (quest_tss * new_tss)
 {
   /* Add new quest_tss to per-sandbox quest_tss list */
   tss_add_tail (new_tss);
-  /* TODO: Add task into vcpu run queue */
+  /* TODO: Find a VCPU or create a new one for the process */
   /* Let's do a wakeup for now without considering VCPU */
   wakeup (new_tss->tid);
 
@@ -190,6 +192,64 @@ remote_clone_page_directory (pgdir_t dir)
 void
 destroy_task (task_id tid)
 {
+  quest_tss * tss = lookup_TSS (tid);
+  uint32 * virt_addr = NULL;
+  uint32 * tmp_page = NULL;
+  task_id waiter = 0;
+  int i, j;
+  if (!tss) return;
+
+  /* Reclaim resources */
+  virt_addr = map_virtual_page (tss->CR3 | 3);
+  if (!virt_addr) goto abort;
+
+  /* Free user-level virtual address space */
+  for (i = 0; i < 1023; i++) {
+    if (virt_addr[i]            /* Free page directory entry */
+        &&!(virt_addr[i] & 0x80)) {     /* and not 4MB page */
+      tmp_page = map_virtual_page (virt_addr[i] | 3);
+      for (j = 0; j < 1024; j++) {
+        if (tmp_page[j]) {      /* Free frame */
+          if ((j < 0x200) || (j > 0x20F) || i) {        /* --??-- Skip releasing
+                                                           video memory */
+            BITMAP_SET (mm_table, tmp_page[j] >> 12);
+          }
+        }
+      }
+      unmap_virtual_page (tmp_page);
+      BITMAP_SET (mm_table, virt_addr[i] >> 12);
+    }
+  }
+
+  BITMAP_SET (mm_table, (uint32) tss->CR3 >> 12);    /* Free up page for page directory */
+  unmap_virtual_page (virt_addr);
+
+  for (i = 3; i < MAX_FD; i++) {
+    if (tss->fd_table[i].entry) {
+      switch (tss->fd_table[i].type) {
+        case FD_TYPE_UDP :
+          udp_remove ((struct udp_pcb *) tss->fd_table[i].entry);
+          break;
+        case FD_TYPE_TCP :
+          if (tcp_close ((struct tcp_pcb *) tss->fd_table[i].entry) != ERR_OK) {
+            logger_printf ("TCP PCB close failed in exit\n");
+          }
+          break;
+        default :
+          break;
+      }
+    }
+  }
+
+  /* All tasks waiting for us now belong on the runqueue. */
+  while ((waiter = queue_remove_head (&tss->waitqueue)))
+    wakeup (waiter);
+
+ abort:
+  /* Remove quest_tss */
+  tss_remove (tss->tid);
+  free_quest_tss (tss);
+
   return;
 }
 
@@ -258,6 +318,15 @@ receive_migration_request (uint8 vector)
   return 0;
 }
 
+static uint32
+receive_cleanup_request (uint8 vector)
+{
+  int cpu = get_pcpu_id ();
+  DLOG ("Received migration cleanup request in sandbox kernel %d!", cpu);
+
+  return 0;
+}
+
 /*
  * migration_init should be called by EACH sandbox kernel to setup
  * migration threads and register IPI handlers etc.
@@ -273,6 +342,14 @@ migration_init (void)
   } else {
     set_vector_handler (MIGRATION_RECV_REQ_VECTOR, &receive_migration_request);
   }
+
+  if (vector_used (MIGRATION_CLEANUP_VECTOR)) {
+    DLOG ("Interrupt vector %d has been used in sandbox %d. IPI handler registration failed!",
+          MIGRATION_CLEANUP_VECTOR, cpu);
+  } else {
+    set_vector_handler (MIGRATION_CLEANUP_VECTOR, &receive_cleanup_request);
+  }
+
 
   DLOG ("Migration subsystem initialized in sandbox kernel %d", cpu);
 
