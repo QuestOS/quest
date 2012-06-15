@@ -243,7 +243,6 @@ typedef struct
    *  number can be shared by 2 endpoints one IN and one OUT
    */
   uint32 endpoint_toggles;
-  
 } USB_DEVICE_INFO;
 
 #define IS_ENDPOINT_TOGGLED(dev_info, endpoint, is_input)               \
@@ -253,10 +252,12 @@ typedef struct
 #define SET_ENDPOINT_TOGGLE(dev_info, endpoint, is_input, val)          \
   do {                                                                  \
     if(val) {                                                           \
-      ((dev_info)->endpoint_toggles) |= (1 << (endpoint + ( (!!(is_input)) << 4))); \
+      ((dev_info)->endpoint_toggles) |=                                 \
+        (1 << (endpoint + ( (!!(is_input)) << 4)));                     \
     }                                                                   \
     else {                                                              \
-      ((dev_info)->endpoint_toggles) &= ~(1 << (endpoint + ( (!!(is_input)) << 4))); \
+      ((dev_info)->endpoint_toggles) &=                                 \
+        ~(1 << (endpoint + ( (!!(is_input)) << 4)));                    \
     }                                                                   \
   }                                                                     \
   while(0)
@@ -311,7 +312,8 @@ struct _usb_hcd_t
   usb_reset_root_ports_func reset_root_ports;
   usb_post_enumeration_func post_enumeration;
   uint32_t next_address;
-  USB_DEVICE_INFO devinfo[USB_MAX_DEVICES+1];  // add +1 so device address corresponds to index
+  USB_DEVICE_INFO devinfo[USB_MAX_DEVICES+1];  // +1 so device address corresponds to index
+  
 };
 
 bool initialise_usb_hcd(usb_hcd_t* usb_hcd, uint32_t usb_hc_type,

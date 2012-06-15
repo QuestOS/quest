@@ -125,7 +125,6 @@ usb_bulk_transfer(
     uint8_t dir,
     uint32_t *act_len)
 {
-  DLOG("usb_bulk: packet_len: %d", packet_len);
   if ((dev->devd).bMaxPacketSize0 == 0) {
         DLOG("USB_DEVICE_INFO is probably not initialized!");
         return -1;
@@ -434,6 +433,8 @@ find_device_driver (USB_DEVICE_INFO *info, USB_CFG_DESC *cfgd, USB_IF_DESC *ifd)
   for (d=0; d<num_drivers; d++) {
     if (drivers[d].probe (info, cfgd, ifd)) return;
   }
+  DLOG("Unknown device file %s line %d", __FILE__, __LINE__);
+  panic("Unknown Device");
 }
 
 

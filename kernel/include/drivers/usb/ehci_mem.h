@@ -81,9 +81,6 @@ inline void free_qh(ehci_hcd_t* ehci_hcd, qh_t* qh);
 
 /* End of functions related to qh_t memory management */
 
-void free_qh_and_qtds(ehci_hcd_t* ehci_hcd, qh_t* qh);
-
-
 #endif // _EHCI_MEM_H_
 
 /*

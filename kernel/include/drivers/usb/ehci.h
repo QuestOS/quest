@@ -38,7 +38,7 @@
  */
 
 
-/* Number of qtd retries Possible values: 0-3   0 == don't stop */
+/* Number of qtd retries Possible values: 0-3   0 -> don't stop */
 #define EHCI_TUNE_CERR 3
 
 /* nak throttle, see section 4.9 of EHCI specs */
@@ -451,10 +451,22 @@ typedef struct _qh_t{
 
 } PACKED ALIGNED(32) qh_t;
 
+/*
+ * -- WARN -- There might be a better way to store queue heads for
+ * endpoints but for now this is good enough, right now 128 instances
+ * of this struct takes 4 pages
+ */ 
+typedef struct
+{
+  /* First Index: Out = 0, In = 1, Second Index: Endpoint # */
+  qh_t* queue_heads[2][16];
+} ehci_dev_info_t;
 
 typedef struct
 {
   usb_hcd_t usb_hcd;
+
+  ehci_dev_info_t ehci_devinfo[USB_MAX_DEVICES+1];
   
   uint32_t bus;
   uint32_t dev;
@@ -491,6 +503,12 @@ typedef struct
   list_head_t reclaim_list;
   
 } ehci_hcd_t;
+
+#define EHCI_GET_DEVICE_QH(ehci_hcd, addr, is_input, endpoint)          \
+  ((ehci_hcd)->ehci_devinfo[(addr)].queue_heads[(is_input) && ((endpoint) != 0)][(endpoint)])
+
+#define EHCI_SET_DEVICE_QH(ehci_hcd, addr, is_input, endpoint, qh)      \
+  ((ehci_hcd)->ehci_devinfo[(addr)].queue_heads[(is_input) && ((endpoint) != 0)][(endpoint)] = qh)
 
 
 int

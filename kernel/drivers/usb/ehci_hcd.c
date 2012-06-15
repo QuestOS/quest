@@ -32,7 +32,7 @@
                                    * by EHCI Specs
                                    */
 
-#define FRM_LIST_SIZE DEFAULT_FRM_LST_SIZE        /* Frame list size used in Quest */
+#define FRM_LIST_SIZE DEFAULT_FRM_LST_SIZE  /* Frame list size used in Quest */
 #define QH_POOL_SIZE 256
 #define DEFAULT_INT_THRESHOLD 4
 #define QTD_POOL_SIZE 256
@@ -290,16 +290,16 @@ reset_root_port(ehci_hcd_t* ehci_hcd, ehci_port_t* port)
    */
   
   if(!handshake(port, PORT_RESET, 0, 2 * 1000)) return FALSE;
-
+  
   DLOG("Port after leave reset 0x%X", *port);
-
+  
   return TRUE;
 }
 
 bool ehci_post_enumeration(usb_hcd_t* usb_hcd)
 {
   
-  //  ehci_hcd_t* ehci_hcd = hcd_to_ehci_hcd(usb_hcd);
+  //ehci_hcd_t* ehci_hcd = hcd_to_ehci_hcd(usb_hcd);
   //enable_interrupts(ehci_hcd);
   
   return TRUE;
@@ -317,7 +317,6 @@ ehci_reset_root_ports(usb_hcd_t* usb_hcd)
   ehci_hcd = hcd_to_ehci_hcd(usb_hcd);
   num_ports = ehci_hcd->num_ports;
   ports = ehci_hcd->regs->port_status;
-  
   
   while(num_ports--) {
     DLOG("Resetting port %d", num_ports);
@@ -360,7 +359,7 @@ initialise_ehci_hcd(uint32_t usb_base,
   ehci_hcd->regs = (ehci_regs_t*)(ehci_hcd->base_virtual_address
                                   + ehci_hcd->caps->cap_length);
 
-  
+  memset(ehci_hcd->ehci_devinfo, 0, sizeof(ehci_hcd->ehci_devinfo));
   
   ehci_hcd->frame_list      = frm_lst;
   ehci_hcd->frame_list_size = frm_lst_size;
@@ -624,7 +623,7 @@ create_qtd_chain(ehci_hcd_t* ehci_hcd,
                  bool enable_ioc,
                  list_head_t* qtd_list) /* Should be empty/uninitialized */
 {
-  uint32_t     token;
+  uint32_t    token;
   qtd_t*      first_qtd;
   qtd_t*      current_qtd;
   qtd_t*      previous_qtd;
@@ -756,6 +755,7 @@ create_qtd_chain(ehci_hcd_t* ehci_hcd,
  create_qtd_chain_cleanup:
   /* -- !! -- Unimplemented */
   
+  DLOG("Unimplemented cleanup in create_qtd_chain!!!!!!!");
   panic("Unimplemented cleanup in create_qtd_chain!!!!!!!");
   return FALSE;
 }
@@ -764,7 +764,7 @@ create_qtd_chain(ehci_hcd_t* ehci_hcd,
  * Same idea as linux qh_refresh combined with qh_update, figure out
  * which qtd to use and then set the qh with that qtd
  */
-static void qh_refresh(ehci_hcd_t* ehci_hcd, qh_t* qh, bool is_input)
+static void qh_refresh(ehci_hcd_t* ehci_hcd, qh_t* qh)
 {
   qtd_t *qtd;
   
@@ -792,7 +792,7 @@ static void qh_refresh(ehci_hcd_t* ehci_hcd, qh_t* qh, bool is_input)
     
     if(!(qh->hw_info1 & QH_DATA_TOGGLE_CONTROL)) {
       qh->data_toggle =
-        IS_ENDPOINT_TOGGLED(qh->dev, QH_GET_ENDPOINT(qh), is_input);
+        IS_ENDPOINT_TOGGLED(qh->dev, QH_GET_ENDPOINT(qh), QTD_IS_INPUT(qtd));
     }
   }
   
@@ -806,11 +806,10 @@ static void qh_prep(ehci_hcd_t* ehci_hcd, qh_t* qh, uint32_t endpoint,
 {
   uint32_t info1 = 0;
   uint32_t info2 = 0;
-  DLOG("device_addr = %d", device_addr);
+  
 
   if(device_addr != 0) {
     usb_hcd_t* usb_hcd = ehci_hcd_to_hcd(ehci_hcd);
-    
     qh->dev = &usb_hcd->devinfo[device_addr];
   }
 
@@ -834,7 +833,7 @@ static void qh_prep(ehci_hcd_t* ehci_hcd, qh_t* qh, uint32_t endpoint,
     info1 |= (1 << 12); // Set EPS to low
   case USB_SPEED_FULL:
 
-   /* full speed -> EPS = 0 */
+    /* full speed -> EPS = 0 */
 
     if(pipe_type != PIPE_INTERRUPT) {
       info1 |= (EHCI_TUNE_RL_HS << 28);
@@ -849,7 +848,8 @@ static void qh_prep(ehci_hcd_t* ehci_hcd, qh_t* qh, uint32_t endpoint,
     info2 |= (EHCI_TUNE_MULT_TT << 30);
 
     /* -- !! -- Should set ttport not doing it right now */
-    DLOG("this has not been tested if you are seeing this you need to know that and then can remove this panic file %s function %s line %d", __FILE__, __FUNCTION__, __LINE__);
+    DLOG("this has not been tested if you are seeing this you need to know that and then can remove this panic file %s function %s line %d",
+         __FILE__, __FUNCTION__, __LINE__);
     panic("this has not been tested if you are seeing this you need to know that and then can remove this panic");
 
     break;
@@ -897,21 +897,34 @@ static void qh_prep(ehci_hcd_t* ehci_hcd, qh_t* qh, uint32_t endpoint,
   qh->hw_info1 = info1;
   qh->hw_info2 = info2;
 
-  DLOG("calling qh_refresh qtd_token_raw = 0x%x", qh->qtd_token_raw);
-  qh_refresh(ehci_hcd, qh, is_input);
+  qh_refresh(ehci_hcd, qh);
 }
 
 
-void qh_append_qtds(ehci_hcd_t* ehci_hcd, qh_t* qh, list_head_t* qtd_list)
+void qh_append_qtds(ehci_hcd_t* ehci_hcd, qh_t* qh, list_head_t* qtd_list, uint32_t pipe_type)
 {
+  static int bulk_count = -1;
   qtd_t* qtd;
   qtd_t* dummy;
   uint32_t token;
   phys_addr_t new_dummy_phys_addr;
   if(list_empty(qtd_list)) return;
 
-  qtd = list_entry(qtd_list->next, qtd_t, chain_list);
+  if(pipe_type == PIPE_BULK) {
+    bulk_count++;
+  }
 
+  if(bulk_count == 2) {
+    int count = 0;
+    qtd_t* print_qtd;
+    print_qh_info(ehci_hcd, qh, TRUE, "In qh_append_qtds Before link");
+    list_for_each_entry(print_qtd, qtd_list, chain_list) {
+      DLOG("Qtd #%d", count++);
+      print_qtd_info(ehci_hcd, print_qtd, "");
+    }
+  }
+
+  qtd = list_entry(qtd_list->next, qtd_t, chain_list);
 
   token = qtd->token;
   qtd->token = QTD_HALT;
@@ -930,29 +943,11 @@ void qh_append_qtds(ehci_hcd_t* ehci_hcd, qh_t* qh, list_head_t* qtd_list)
   qtd->next_pointer_raw = new_dummy_phys_addr;
   gccmb();
   dummy->token = token;
-  /*
-  switch(qh->state) {
-  case QH_STATE_LINKED:
-    qh->next_qtd_ptr_raw = EHCI_QTD_VIRT_TO_PHYS(ehci_hcd, start_qtd);
-    qh->alt_qtd_ptr_raw  = EHCI_LIST_END;
-    list_splice(qtd_list, qh->qtd_list.prev);
-    break;
 
-  case QH_STATE_NOT_LINKED:
-    
-    DLOG("Should never pass an active qh to qh_append_qtds see file %s line %d",
-         __FILE__, __LINE__);
-    panic("Passed an active qh to qh_append_qtds");
-    break;
-
-  case QH_STATE_RECLAIM:
-    
-    DLOG("Should never pass a queue in the reclaim state to qh_append_qtds see file %s line %d",
-         __FILE__, __LINE__);
-    panic("Passed qh in relcaim state to qh_append_qtds");
-    break;
+  
+  if(bulk_count == 2) {
+    print_qh_info(ehci_hcd, qh, TRUE, "In qh_append_qtds after link");
   }
-  */
 }
 
 /*
@@ -970,184 +965,202 @@ static void add_qh_to_reclaim_list(ehci_hcd_t* ehci_hcd, qh_t* qh)
   list_add(&qh->reclaim_chain, &ehci_hcd->reclaim_list);
 }
 
-int link_qh_to_async(ehci_hcd_t* ehci_hcd, qh_t* qh, bool ioc_enabled,
-                     uint32_t pipe_type, uint32_t address,
-                     uint16_t endpoint, bool is_input)
+void link_qh_to_async(ehci_hcd_t* ehci_hcd, qh_t* qh, bool ioc_enabled,
+                      uint32_t pipe_type, uint32_t address,
+                      uint16_t endpoint, bool is_input, bool save_qh)
 {
-  static uint32_t count = 0;
-  qtd_t* last_qtd;
-  usb_hcd_t* usb_hcd = ehci_hcd_to_hcd(ehci_hcd);
-  USB_DEVICE_INFO* dev_info = &usb_hcd->devinfo[address];
 
 
-  DLOG("qh = 0x%p, link_qh_to_async call not working #%d", qh, count);
-  if(count == 24) {
-    //qh->qtd_token_raw = 0;
-    //print_qh_info(ehci_hcd, qh, TRUE, "in link to async");
-    //print_caps_and_regs_info(ehci_hcd, "at the 24th");
+  if(qh->state == QH_STATE_NOT_LINKED) {
+    qh_refresh(ehci_hcd, qh);
   }
-  if(count == 25) {
-    print_caps_and_regs_info(ehci_hcd, "Got to the 25th");
-    //while(1);
-  }
-
-  if(is_input) {
-    DLOG("QTD IS INPUT IN LINK QH");
-  }
-  else {
-    DLOG("QTD IS OUTPUT IN LINK QH");
-  }
-
-  count++;
-  last_qtd = EHCI_QTD_PHYS_TO_VIRT(ehci_hcd, qh->next_qtd_ptr_raw);
-
-  DLOG("qh->dummy_qtd 0x%p", qh->dummy_qtd);
-  while(last_qtd->next_pointer_raw != EHCI_QTD_VIRT_TO_PHYS(ehci_hcd, qh->dummy_qtd)) {
-    last_qtd = EHCI_QTD_PHYS_TO_VIRT(ehci_hcd, last_qtd->next_pointer_raw);
-  }
- 
 
   qh->state = QH_STATE_LINKED;
   qh->horizontalPointer = ehci_hcd->async_head->horizontalPointer;
   gccmb();
   ehci_hcd->async_head->horizontalPointer.raw = QH_NEXT(ehci_hcd, qh);
-  
-  if(ioc_enabled) {
-    /*
-     * -- !! -- Right now must do synchronous complete.
-     */
-    DLOG("ioc not allowed  see file %s line %d", __FILE__, __LINE__);
-    panic("ioc not allowed");
+}
+
+static sint32 spin_for_transfer_completion(ehci_hcd_t* ehci_hcd,
+                                           qh_t* qh, uint8_t address, uint32_t endpoint,
+                                           uint8_t pipe_type, bool is_input,
+                                           bool save_qh)
+{
+  qtd_t* last_qtd;
+  qtd_t* temp_qtd;
+  list_for_each_entry(temp_qtd, &qh->qtd_list, chain_list) {
+    last_qtd = temp_qtd;
   }
-  else {
+  
+  /*
+   * -- !! -- I am not sure if wait spinning on the last qtd is
+   * sufficient to make sure the queue head is done (besides the
+   * fact that we might not detect errors on qtds that don't occur
+   * at the end), if it is not this could result in some nasty
+   * side-effects of us trying to use a qh that is not finished,
+   * although combined with the doorbell I think it is safe
+   */
 
+  /*
+   * -- EM --Here is an outline of the precedding code.  I am not
+   * sure if it is the most efficient but I am pretty sure it is
+   * sufficient (except for the note above)
+   *
+   * 1) Check if the iaa interrupt is on, if it is panic, could be
+   * removed later once we know everything is working
+   *
+   * 2) Spin until the last qtd is complete or an error occurs
+   * (don't have error checking yet which is very bad)
+   *
+   * 3) Unlink 
+   *
+   * 4) Acknowledge current doorbell to clear the bit
+   *
+   * 5) Add the queue and its tds to be reclaimed
+   */
+
+  /* Step 1 */
+  if( EHCI_INTR_ENABLED(ehci_hcd, USBINTR_IAA) ) {
     /*
-     * -- !! -- I am not sure if wait spinning on the last qtd is
-     * sufficient to make sure the queue head is done (besides the
-     * fact that we might not detect errors on qtds that don't occur
-     * at the end), if it is not this could result in some nasty
-     * side-effects of us trying to use a qh that is not finished,
-     * although combined with the doorbell I think it is safe
+     * -- !! -- Should fail more gracefully here but its not that
+     * big a deal since non-ioc transactions should only occur at
+     * boot
      */
-    
-    /*
-     * -- EM --Here is an outline of the precedding code.  I am not
-     * sure if it is the most efficient but I am pretty sure it is
-     * sufficient (except for the note above)
-     *
-     * 1) Check if the iaa interrupt is on, if it is panic
-     *
-     * 2) Spin until the last qtd is complete or an error occurs
-     * (don't have error checking yet which is very bad)
-     *
-     * 3) Unlink 
-     *
-     * 4) Acknowledge current doorbell to clear the bit
-     *
-     * 5) Add the queue and its tds to be reclaimed
-     */
-    
-    /* Step 1 */
-    if( EHCI_INTR_ENABLED(ehci_hcd, USBINTR_IAA) ) {
-      /* -- !! -- Should fail more gracefully here but its not that
-       * big a deal since non-ioc transactions should only occur at boot
-       */
-      DLOG("Should only be using non-ioc transactions if the interrupt is already disabled");
-      panic("Should only be using non-ioc transactions if the interrupt is already disabled");
+    DLOG("Should only be using non-ioc transactions if the interrupt is already disabled");
+    panic("Should only be using non-ioc transactions if the interrupt is already disabled");
+  }
+
+  /*
+   * -- !! -- If an error occurs and it isn't on the last qtd then
+   * this will spin forever -> very bad also this is a hack right
+   * now to figure out if a td is never going to end would be better
+   * to check various things for errors
+   */
+  /* Step 2 */
+  uint32_t spin_tick = 0;
+  while(last_qtd->token & QTD_ACTIVE) {
+    tsc_delay_usec(100);
+    if(++spin_tick == 50000) {
+      print_qh_info(ehci_hcd, qh, TRUE, "In Spin");
+      print_caps_and_regs_info(ehci_hcd, "In Spin");
+      while(1);
     }
+  }
 
-    /*
-     * -- !! -- If an error occurs and it isn't on the last qtd then
-     * this will spin forever very bad
-     */
-    /* Step 2 */
-    unsigned int spin_tick = 0;
-    while(last_qtd->token & QTD_ACTIVE) {
-      tsc_delay_usec(100);
-      if(++spin_tick == 50000) {
-        print_qh_info(ehci_hcd, qh, TRUE, "In Spin");
-        while(1);
+  if(pipe_type == PIPE_BULK) {
+    USB_DEVICE_INFO* dev_info = &ehci_hcd_to_hcd(ehci_hcd)->devinfo[address];
+    SET_ENDPOINT_TOGGLE(dev_info, endpoint, is_input, qh->data_toggle );
+  }
+
+  if(last_qtd->token & QTD_HALT) {
+    print_caps_and_regs_info(ehci_hcd, "in failure");
+    print_qh_info(ehci_hcd, qh, TRUE, "in failure");
+    DLOG("pci status in failure = 0x%X",
+         pci_get_status(ehci_hcd->bus, ehci_hcd->dev,ehci_hcd->func));
+    DLOG("pci command in failure = 0x%X",
+         pci_get_command(ehci_hcd->bus, ehci_hcd->dev,ehci_hcd->func));
+
+    /*-- !! -- Need a better cleanup here */
+    DLOG("%s failed at line %d", __FUNCTION__, __LINE__);
+    panic("link_qh_to_async failed");
+  }
+
+  if(save_qh) {
+    qtd_t* qtd_to_remove;
+    qtd_t* qtd_tmp;
+    list_for_each_entry_safe(qtd_to_remove, qtd_tmp, &qh->qtd_list, chain_list) {
+      if(EHCI_QTD_VIRT_TO_PHYS(ehci_hcd, qtd_to_remove) == qh->current_qtd_ptr_raw) {
+        break;
+      }
+      else {
+        list_del(&qtd_to_remove->chain_list);
+        free_qtd(ehci_hcd, qtd_to_remove);
       }
     }
-    
-    if(pipe_type == PIPE_BULK) {
-      SET_ENDPOINT_TOGGLE(dev_info, endpoint, is_input, qh->data_toggle != 0 );
-    }
-    
-    if(last_qtd->token & QTD_HALT) {
-      print_caps_and_regs_info(ehci_hcd, "in failure");
-      print_qh_info(ehci_hcd, qh, TRUE, "in failure");
-        DLOG("pci status in failure = 0x%X",
-             pci_get_status(ehci_hcd->bus, ehci_hcd->dev,ehci_hcd->func));
-        DLOG("pci command in failure = 0x%X",
-             pci_get_command(ehci_hcd->bus, ehci_hcd->dev,ehci_hcd->func));
-      
-      /*-- !! -- Need a better cleanup here */
-      DLOG("%s failed at line %d", __FUNCTION__, __LINE__);
-      panic("link_qh_to_async failed");
+    if(list_empty(&qh->qtd_list)) {
+      /*
+       * -- EM -- ALL QTDS REMOVED this can happen because a silicon
+       * quirk with some ehci host controllers moving the dummy qtd as
+       * the active one, I have not tested the functionally when this
+       * occurs so all bets are off
+       */
+      DLOG("ALL QTDS REMOVED see comment at file %s line %d");
+      panic("ALL QTDS REMOVED");
     }
 
+  }
+  else {
     /* Step 3 */
     unlink_single_queue_head(ehci_hcd->async_head, qh);
-    
-    //print_caps_and_regs_info(ehci_hcd, "Before step 5");
+      
     /* Step 4 */
     EHCI_ACK_DOORBELL(ehci_hcd); /* Ack current doorbell to clear bit */
-
+      
     /* Step 5 */
     add_qh_to_reclaim_list(ehci_hcd, qh);
     qh->state = QH_STATE_RECLAIM;
-
-    if(pci_get_status(ehci_hcd->bus, ehci_hcd->dev,ehci_hcd->func) & 0x2000) {
-      DLOG("EHCI PCI master abort: function %s line %d", __FUNCTION__, __LINE__);
-      panic("PCI master abort");
-    }
-  
     
-    return last_qtd->token & QTD_HALT ? -1 : 0;
+      
   }
 
-  DLOG("Reached end of %s which should never happen", __FUNCTION__);
-  panic("reached end of link_qh_to_async");
+  if(pci_get_status(ehci_hcd->bus, ehci_hcd->dev,ehci_hcd->func) & 0x2000) {
+    DLOG("EHCI PCI master abort: function %s line %d", __FUNCTION__, __LINE__);
+    panic("PCI master abort");
+  }
+
+  return 0;
 }
 
-static int submit_async_qtd_chain(ehci_hcd_t* ehci_hcd, qh_t** qh,
-                                  uint32_t endpoint, uint32_t device_addr,
-                                  uint32_t dev_speed, uint32_t pipe_type,
-                                  uint32_t max_packet_len, bool is_input,
-                                  bool ioc_enabled, list_head_t* qtd_list)
+static sint32 submit_async_qtd_chain(ehci_hcd_t* ehci_hcd, qh_t** qh,
+                                     uint32_t endpoint, uint32_t device_addr,
+                                     uint32_t dev_speed, uint32_t pipe_type,
+                                     uint32_t max_packet_len, bool is_input,
+                                     bool ioc_enabled, list_head_t* qtd_list,
+                                     bool save_qh)
 {
+  sint32 result;
   if(*qh == NULL) {
     *qh = allocate_qh(ehci_hcd);
     qh_prep(ehci_hcd, *qh, endpoint, device_addr,
             max_packet_len, dev_speed, pipe_type, is_input);
   }
+  if(save_qh) {
+    EHCI_SET_DEVICE_QH(ehci_hcd, device_addr, is_input, endpoint, *qh);
+  }
   
-  qh_append_qtds(ehci_hcd, *qh, qtd_list);
+  qh_append_qtds(ehci_hcd, *qh, qtd_list, pipe_type);
 
-  if((*qh)->state == QH_STATE_NOT_LINKED){
-    return link_qh_to_async(ehci_hcd, *qh, ioc_enabled, pipe_type, device_addr, endpoint, is_input);
+  if((*qh)->state == QH_STATE_NOT_LINKED) {
+    link_qh_to_async(ehci_hcd, *qh, ioc_enabled, pipe_type,
+                     device_addr, endpoint, is_input, save_qh);
+  }
+  
+  if(ioc_enabled) {
+    DLOG("Must do ioc not enabled, ioc enabled is not done");
+    panic("Must do ioc not enabled, ioc enabled is not done");
   }
   else {
-    return 0;
+    if((result = spin_for_transfer_completion(ehci_hcd, *qh, device_addr,
+                                              endpoint, pipe_type, is_input, save_qh)) < 0) {
+      return result;
+    }
   }
+  return 0;
 }
 
-int ehci_async_transfer(ehci_hcd_t* ehci_hcd,
-                        uint8_t pipe_type,
-                        uint8_t address,
-                        uint8_t endpoint,
+int ehci_async_transfer(ehci_hcd_t* ehci_hcd, uint8_t pipe_type,
+                        uint8_t address, uint8_t endpoint,
                         addr_t setup_req, /* Use virtual address here */
                         uint32_t setup_len,
                         addr_t data, /* Use virtual address here */
-                        int data_len,
-                        int packet_len,
-                        bool is_input,
-                        bool ioc_enabled,
-                        uint32 *act_len)
+                        int data_len, int packet_len,
+                        bool is_input, bool ioc_enabled,
+                        uint32 *act_len, bool save_qh)
 {
-  qh_t* qh = NULL;
+
+  qh_t* qh  = EHCI_GET_DEVICE_QH(ehci_hcd, address, is_input, endpoint);
   list_head_t qtd_list;
+  
   
   if(!create_qtd_chain(ehci_hcd, address, setup_req, setup_len,
                        data, data_len, packet_len,
@@ -1159,35 +1172,27 @@ int ehci_async_transfer(ehci_hcd_t* ehci_hcd,
   submit_async_qtd_chain(ehci_hcd, &qh, endpoint, address,
                          USB_SPEED_HIGH, pipe_type, packet_len,
                          is_input, ioc_enabled,
-                         &qtd_list);
+                         &qtd_list, save_qh);
 
-  
-  
   return 0;
 }
 
-int ehci_bulk_transfer(ehci_hcd_t* ehci_hcd,
-                       uint8_t address,
-                       uint8_t endpoint,
-                       addr_t data,
-                       int data_len,
-                       int packet_len,
-                       uint8_t direction,
-                       uint32 *act_len)
+int ehci_bulk_transfer(ehci_hcd_t* ehci_hcd, uint8_t address,
+                       uint8_t endpoint, addr_t data,
+                       int data_len, int packet_len,
+                       uint8_t direction, uint32 *act_len)
 {
   return ehci_async_transfer(ehci_hcd, PIPE_BULK, address, endpoint,
                              NULL, 0, data, data_len, packet_len,
-                             direction == USB_DIR_IN, FALSE, act_len);
+                             direction == USB_DIR_IN, FALSE, act_len, TRUE);
 }
 
 int
-ehci_control_transfer(ehci_hcd_t* ehci_hcd, 
-                      uint8_t address,
+ehci_control_transfer(ehci_hcd_t* ehci_hcd, uint8_t address,
                       addr_t setup_req,    /* Use virtual address here */
                       uint32_t setup_len,
                       addr_t setup_data,   /* Use virtual address here */
-                      uint32_t data_len,
-                      uint32_t packet_len)
+                      uint32_t data_len, uint32_t packet_len)
 {
   /*
    * -- WARN -- Right now I am hardcoding the speed to USB_SPEED_HIGH.
@@ -1196,10 +1201,11 @@ ehci_control_transfer(ehci_hcd_t* ehci_hcd,
    * in as well
    */
   
-  return ehci_async_transfer(ehci_hcd, PIPE_CONTROL, address, 0, setup_req, setup_len,
+  return ehci_async_transfer(ehci_hcd, PIPE_CONTROL, address, 0,
+                             setup_req, setup_len,
                              setup_data, data_len, packet_len,
                              IS_INPUT_USB_DEV_REQ(setup_req),
-                             FALSE, NULL);
+                             FALSE, NULL, TRUE);
 }
 
 

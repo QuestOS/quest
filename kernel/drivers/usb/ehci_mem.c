@@ -45,13 +45,9 @@
   while(0)
 #endif
 
-
-
-
 #define BITMAP_ALL_USED_MASK 0xFFFFFFFF
 #define BITMAP_INDEX_SHIFT 5
 #define BITMAP_SUBINDEX_MASK (EHCI_ELEMENTS_PER_BITMAP_ENTRY - 1)
-
 
 
 /* Start of functions related to qtd_t memory management*/
@@ -74,6 +70,10 @@ allocate_qtds(ehci_hcd_t* ehci_hcd, qtd_t** qtds, uint32_t num_qtd)
   uint32_t  i           = ehci_hcd->used_qtd_bitmap_size;
   uint32_t* used_bitmap = ehci_hcd->used_qtd_bitmap;
   qtd_t*    pool        = ehci_hcd->qtd_pool;
+
+  
+
+  
   
   while(i--) {
     if(used_bitmap[i] == INT_MAX) continue; /* all qtd at this bitmap
@@ -85,10 +85,14 @@ allocate_qtds(ehci_hcd_t* ehci_hcd, qtd_t** qtds, uint32_t num_qtd)
         qtds[count] = &pool[i * EHCI_ELEMENTS_PER_BITMAP_ENTRY + entry];
         initialise_qtd(qtds[count]);
         EHCI_MEM_ASSERT( !( ((uint32_t)qtds[count]) & 0x1F) );
-	if(++count == num_qtd) return count;
+	if(++count == num_qtd) {
+          
+          return count;
+        } 
       }
     }
   }
+  panic("ran out of qtds");
   return count;
 }
 
@@ -104,15 +108,21 @@ free_qtds(ehci_hcd_t* ehci_hcd, qtd_t** qtds, uint32_t num_qtd)
 {
   uint32_t* used_bitmap = ehci_hcd->used_qtd_bitmap;
   qtd_t*    pool        = ehci_hcd->qtd_pool;
+
+  
+  
+ 
   
   while(num_qtd--) {
     uint32_t qtd_index = qtds[num_qtd] - pool;
     EHCI_MEM_ASSERT(&pool[qtd_index] == qtds[num_qtd]);
     
     /* Flip the one bit to zero */
-    used_bitmap[qtd_index << BITMAP_INDEX_SHIFT] &=
-      ~(1 << (qtd_index |  BITMAP_SUBINDEX_MASK));
+    used_bitmap[qtd_index >> BITMAP_INDEX_SHIFT] &=
+      ~(1 << (qtd_index & BITMAP_SUBINDEX_MASK));
   }
+
+  
 }
 
 inline void
@@ -146,6 +156,10 @@ uint32_t allocate_qhs(ehci_hcd_t* ehci_hcd, qh_t** qhs, uint32_t num_qh)
   uint32_t* used_bitmap = ehci_hcd->used_queue_head_bitmap;
   qh_t*     pool        = ehci_hcd->queue_head_pool;
 
+  
+  
+
+
   while(i--) {
     /* if all queue heads at this bitmap entry are used */
     if(used_bitmap[i] == INT_MAX) continue;
@@ -166,10 +180,16 @@ uint32_t allocate_qhs(ehci_hcd_t* ehci_hcd, qh_t** qhs, uint32_t num_qh)
           return count;
         }
         
-        if(++count == num_qh) return count;
+        if(++count == num_qh) {
+          
+          return count;
+        } 
       }
     }
-  } return count;
+  }
+  
+  panic("ran out of qhs");
+  return count;
 }
 
 inline qh_t* allocate_qh(ehci_hcd_t* ehci_hcd)
@@ -183,14 +203,18 @@ void free_qhs(ehci_hcd_t* ehci_hcd, qh_t** qhs, uint32_t num_qh)
   uint32_t* used_bitmap = ehci_hcd->used_queue_head_bitmap;
   qh_t*     pool        = ehci_hcd->queue_head_pool;
 
+  
+  
   while(num_qh--) {
     uint32_t qh_index = qhs[num_qh] - pool;
     EHCI_MEM_ASSERT(&pool[qh_index] == qhs[num_qh]);
 
     /* Flip the one bit to zero */
-    used_bitmap[qh_index << BITMAP_INDEX_SHIFT] &=
-      ~(1 << (qh_index |  BITMAP_SUBINDEX_MASK));
+    used_bitmap[qh_index >> BITMAP_INDEX_SHIFT] &=
+      ~(1 << (qh_index & BITMAP_SUBINDEX_MASK));
   }
+
+  
 }
 
 
@@ -199,17 +223,7 @@ inline void free_qh(ehci_hcd_t* ehci_hcd, qh_t* qh)
   free_qhs(ehci_hcd, &qh, 1);
 }
 
-void free_qh_and_qtds(ehci_hcd_t* ehci_hcd, qh_t* qh)
-{
-  qtd_t* cur;
-  qtd_t* temp;
-  list_for_each_entry_safe(cur, temp, &qh->qtd_list, chain_list) {
-    list_del(&cur->chain_list);
-    free_qtd(ehci_hcd, cur);
-  }
 
-  free_qh(ehci_hcd, qh);
-}
 
 
 /* End of functions related to qh_t memory management */
