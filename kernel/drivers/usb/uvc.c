@@ -16,7 +16,6 @@
  */
 
 #include <drivers/usb/usb.h>
-#include <drivers/usb/uhci.h>
 #include <drivers/usb/uvc.h>
 #include <arch/i386.h>
 #include <util/printf.h>
@@ -39,7 +38,7 @@
 #define DLOG(fmt,...) ;
 #endif
 
-#define BUF_SIZE        38400
+#define BUF_SIZE        (153600)
 #define PACKET_SIZE     944
 
 struct iso_data_source
@@ -118,43 +117,55 @@ uvc_get_frame (
     uint8_t * frame,
     uint32_t * frm_len)
 {
-  int status = 0, i = 0, j = 0, act_len = 0;
+  int status = 0, i = 0, j = 0;
+  uint32_t act_len;
   uint8_t * index;
   int counter = 0, header_len = 0;
 
   //DLOG("In uvc_get_frame!");
   *frm_len = 0;
 
+  transfer_len = 300;
   for (i = 0; i < 1024; i++) {
     index = buf + i * transfer_len;
-
-    status += uhci_isochronous_transfer (dev->address, iso_src->endp,
-        (addr_t) index, transfer_len, &act_len, i, USB_DIR_IN, 0);
-
-    header_len = *(index);
-    *frm_len += (act_len - header_len);
+    
+    if((i+1) * transfer_len >= BUF_SIZE) {
+      DLOG("buffer too small");
+      while(1);
+    }
+    //DLOG("transfer_len = %d", transfer_len);
+    status += usb_isochronous_transfer(dev, iso_src->endp,
+                                       (addr_t) index, transfer_len, 384,
+                                       USB_DIR_IN, &act_len);
+    if(act_len != 0) {
+      header_len = *(index);
+      if(act_len - header_len > 0) {
+        *frm_len += (act_len - header_len);
 
 #if 0
-    DLOG("Actual length received : %d, header : %d, frame : %d",
-        act_len, header_len, *frm_len);
+        DLOG("Actual length received : %d, header : %d, frame : %d",
+             act_len, header_len, *frm_len);
 #endif
+    
+        for (j = 0; j < (act_len - header_len); j++) {
+          *(frame + counter) = *(index + header_len + j);
+          counter++;
+        }
 
-    for (j = 0; j < (act_len - header_len); j++) {
-      *(frame + counter) = *(index + header_len + j);
-      counter ++;
-    }
-
-    /* Now, we only retreive one frame. Check EOF in the header */
-    if ((*(index + 1)) & 0x02) {
-      //DLOG("End of frame reached!");
-      break;
+        /* Now, we only retreive one frame. Check EOF in the header */
+        if ((*(index + 1)) & 0x02) {
+          DLOG("End of frame reached!");
+          break;
+        }
+      }
     }
   }
 
   DLOG("%d TDs used for one frame", i + 1);
-
+  
   return status;
 }
+
 
 static bool
 uvc_init (USB_DEVICE_INFO * dev, USB_CFG_DESC * cfg)
@@ -162,6 +173,7 @@ uvc_init (USB_DEVICE_INFO * dev, USB_CFG_DESC * cfg)
   USB_SPD_CFG_DESC *scfgd;
   UVC_VS_CTL_PAR_BLOCK par;
   uint8_t tmp[1300];
+  
 
   DLOG("Configuring UVC device ...");
 
@@ -193,7 +205,7 @@ uvc_init (USB_DEVICE_INFO * dev, USB_CFG_DESC * cfg)
   }
 
   /* There is only one configuration in Logitech Webcam Pro 9000 */
-  DLOG("Set configuration to %d.", cfg->bConfigurationValue);
+  //DLOG("Set configuration to %d.", cfg->bConfigurationValue);
   usb_set_configuration(dev, cfg->bConfigurationValue);
 
   /* Now, negotiate with VS interface for streaming parameters */
@@ -201,12 +213,12 @@ uvc_init (USB_DEVICE_INFO * dev, USB_CFG_DESC * cfg)
   /* Manually set parameters */
   par.bmHint = 1; // Frame Interval Fixed
   par.bFormatIndex = 2;
-  par.bFrameIndex = 4;
+  par.bFrameIndex = 2;
   //par.dwFrameInterval = 0x61A80; // 25FPS
   par.dwFrameInterval = 0xF4240; // 10FPS
   //par.wCompQuality = 5000; // 1 - 10000, with 1 the lowest
   //par.dwMaxPayloadTransferSize = 512;
-
+  
   if (video_probe_controls (dev, SET_CUR, 1, &par)) {
     DLOG("Initial negotiation failed during probe");
   }
@@ -236,12 +248,13 @@ uvc_init (USB_DEVICE_INFO * dev, USB_CFG_DESC * cfg)
     return FALSE;
   }
 
-  delay(1000);
-  delay(1000);
-  delay(1000);
-  delay(1000);
-  delay(1000);
-  delay(1000);
+  delay(6000); /* -- EM -- Why is this here? I'm guessing because of
+                * there is a delay that is required but this should be
+                * done via checking for the control error whether the
+                * last control transaction is complete, unless it is
+                * asynchronous in which case the interrupt endpoint
+                * should be checked
+                */
 
   return TRUE;
 }
@@ -249,10 +262,6 @@ uvc_init (USB_DEVICE_INFO * dev, USB_CFG_DESC * cfg)
 static bool
 uvc_probe (USB_DEVICE_INFO *dev, USB_CFG_DESC *cfg, USB_IF_DESC *ifd)
 {
-  /* Avoid multi-entrance in uhci_enumerate(), should be removed soon */
-  static int entrance = 0;
-  if (entrance) return FALSE;
-
   /* For now, we only support device with multi video interface
    * collections. This is ugly. But let's make Logitech Webcam Pro
    * 9000 work first.
@@ -291,9 +300,8 @@ uvc_probe (USB_DEVICE_INFO *dev, USB_CFG_DESC *cfg, USB_IF_DESC *ifd)
   }
 #endif
 
-  /* Avoid multi-entrance in uhci_enumerate(), should be removed soon */
-  entrance++;
-
+  
+  
   return TRUE;
 }
 
@@ -396,6 +404,8 @@ para_block_dump (UVC_VS_CTL_PAR_BLOCK * par)
   DLOG ("  bMaxVersion : 0x%x", par->bMaxVersion);
 }
 
+static uint8_t conf[3000];
+
 static int
 uvc_device_cfg (
     USB_DEVICE_INFO *dev,
@@ -403,7 +413,7 @@ uvc_device_cfg (
     ISO_DATA_SRC * src)
 {
   /* Dump all the descriptors retreived from UVC device */
-  uint8_t conf[1300];
+  
   int index = 0, tmp_index = 0;
 
   USB_DEV_DESC *desc;
@@ -426,8 +436,19 @@ uvc_device_cfg (
   UVC_DESC_IDX * desc_idx;
 
   desc = &(dev->devd);
+  if(cfg->wTotalLength > sizeof(conf)) {
+    DLOG("cfg->wTotalLength > sizeof(conf)");
+    panic("cfg->wTotalLength > sizeof(conf)");
+  }
+  DLOG("cfg->wTotalLength = %d", cfg->wTotalLength);
   usb_get_descriptor(dev, USB_TYPE_CFG_DESC, 0, 0, cfg->wTotalLength, (addr_t)conf);
 
+  DLOG("Primary descriptor");
+  DLOG("  bLength : 0x%x  bDescriptorType : 0x%x  wTotalLength : 0x%x",
+       cfg->bLength, cfg->bDescriptorType, cfg->wTotalLength);
+  DLOG("  bNumInterfaces : 0x%x  bConfigurationValue : 0x%x",
+       cfg->bNumInterfaces, cfg->bConfigurationValue);
+  
   /* Parsing all UVC specific descriptors */
   /* Get the first IAD */
   DLOG("Getting IAD ...");
@@ -503,9 +524,10 @@ uvc_device_cfg (
   DLOG("Getting Input and Output Terminals ...");
   tmp_index = index;
   index += csvcifd->wTotalLength;
+  DLOG("csvcifd->wTotalLength = %d", csvcifd->wTotalLength);
+  
   while (tmp_index < index) {
     desc_idx = (UVC_DESC_IDX *)(&conf[tmp_index]);
-
     if ((desc_idx->bDescriptorType == CS_INTERFACE) &&
         (desc_idx->bDescriptorSubType == VC_INPUT_TERMINAL)) {
       intd = (UVC_IN_TERM_DESC *)(&conf[tmp_index]);
@@ -691,7 +713,7 @@ static const struct module_ops mod_ops = {
   .init = usb_uvc_driver_init
 };
 
-//DEF_MODULE (usb___uvc, "USB video driver", &mod_ops, {"usb"});
+DEF_MODULE (usb___uvc, "USB video driver", &mod_ops, {"usb"});
 
 /*
  * Local Variables:

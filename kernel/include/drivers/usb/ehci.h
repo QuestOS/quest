@@ -25,6 +25,7 @@
 #include <drivers/pci/pci.h>
 #include <drivers/usb/usb.h>
 #include <util/list.h>
+#include <util/cassert.h>
 
 
 #define hcd_to_ehci_hcd(hcd) container_of((hcd), ehci_hcd_t, usb_hcd)
@@ -92,7 +93,8 @@ typedef struct
 #define INT_THRESHOLD (0xFF<<16)
 
 
-#define EHCI_ENABLE_ASYNC(hcd) ((hcd)->regs-> command |= ASYNC_SCHED_ENABLE)
+#define EHCI_ENABLE_ASYNC(hcd) ((hcd)->regs->command |= ASYNC_SCHED_ENABLE)
+#define EHCI_ENABLE_PERIODIC(hcd) ((hcd)->regs->command |= PERIODIC_SCHED_ENABLE)
 #define EHCI_IS_RUNNING(hcd) ((hcd)->regs->command & RUN)
 #define EHCI_RUN(hcd) (hcd)->regs->command |= RUN
 #define EHCI_HALT(hcd) (hcd)->regs->command &= ~RUN
@@ -141,6 +143,21 @@ typedef struct
 #define EHCI_INTR_ENABLED(hcd, intr) ((hcd)->regs->interrupt_enable & (intr))
   
   uint32_t frame_index;
+
+  /*
+   * -- EM -- Right now being lazy and making an extremely safe
+   * (adding 40 (5 frames)) estimate of the safest frame index.  Fix
+   * this later to appropriately check how much the EHCI chip caches
+   * (or perhaps not since we will have a real-time system this should
+   * all be periodic this macro might never be used in the RT system)
+   */
+  /*
+   * Should only call this macro right before adding itds to periodic
+   * list, the value returned should be checked to see if it goes
+   * beyond the frame list size
+   */
+#define EHCI_GET_SAFE_FRAME_INDEX(hcd) (((hcd)->regs->frame_index  + 40) >> 3)
+  
   uint32_t segment;
   uint32_t frame_list;
   uint32_t async_next;
@@ -202,8 +219,11 @@ typedef union {
   } PACKED;
 } PACKED frm_lst_lnk_ptr_t;
 
+
+#define EHCI_LIST_END 1 
+
 #define CLEAR_FRAME_LIST_LINK_POINTER(frame_pointer)    \
-  frame_pointer.raw = 1
+  (frame_pointer.raw = EHCI_LIST_END)
 
 
 
@@ -231,7 +251,6 @@ typedef struct _qtd_t
     } PACKED;
   };
 
-#define EHCI_LIST_END 1 
 
   // dword 2, alternative next qTD
   union {
@@ -288,11 +307,12 @@ typedef struct _qtd_t
 
   list_head_t chain_list;
   
-  uint32_t padding[3]; /* To make sizeof(qtd_t) a multiple of 32 */
-  
 } PACKED ALIGNED(32) qtd_t;
 
-#define QH_NEXT(hcd, qh_virt) ( (EHCI_QH_VIRT_TO_PHYS(hcd, qh_virt) & ~0x1F) | (TYPE_QH << 1) )
+
+CASSERT( (sizeof(qtd_t) % 32) == 0, ehci_qtd_size);
+
+#define QH_NEXT(hcd, qh_virt) ( (EHCI_QH_VIRT_TO_PHYS(hcd, qh_virt)) | (TYPE_QH << 1) )
 
 typedef struct _qh_t{
   
@@ -446,15 +466,60 @@ typedef struct _qh_t{
                                  links to it */
 
   
-  
-  uint32_t padding[4]; /* To make sizeof(qh_t) a multiple of 32 */
-
 } PACKED ALIGNED(32) qh_t;
 
+typedef struct {
+  union {
+    uint32_t raw;
+    struct {
+      uint32_t offset:12;
+      uint32_t page_selector:3;
+      uint32_t ioc:1;
+      uint32_t length:12;
+      uint32_t status:4;
+    } PACKED;
+  };
+} PACKED itd_transaction_t;
+
+#define ITD_NEXT(hcd, itd_virt)                                 \
+  ( (EHCI_ITD_VIRT_TO_PHYS(hcd, itd_virt) ) | (TYPE_ITD << 1) )
+
+CASSERT( (sizeof(qh_t) % 32) == 0, ehci_qh_size);
+
+typedef struct _itd_t {
+  frm_lst_lnk_ptr_t next_link_pointer;
+  itd_transaction_t transaction[8];
+
+#define ITD_ACTIVE  (1 << 31)
+#define ITD_BUF_ERR (1 << 30)
+#define ITD_BAB_ERR (1 << 29)
+#define ITD_TRN_ERR (1 << 28)
+  
+  uint32_t buf_ptr[7];
+
+#define ITD_INPUT (1 << 11)
+
+#define ITD_SET_BUF_PTR(itd, page_num, phys_addr)               \
+  ( (itd)->buf_ptr[(page_num)] |= ( (phys_addr) & ~0x0FFF ) )
+  
+  uint32_t ex_buf_ptr_pgs[7];
+
+  /*
+   * Everything after this is used by software only and is not
+   * specified by EHCI
+   */
+
+  list_head_t chain_list;
+  uint32_t total_bytes_to_transfer;
+} PACKED ALIGNED(32) itd_t;
+
+CASSERT( (sizeof(itd_t) % 32) == 0, ehci_itd_size);
+
+
 /*
- * -- WARN -- There might be a better way to store queue heads for
- * endpoints but for now this is good enough, right now 128 instances
- * of this struct takes 4 pages
+ * -- EM -- There are better ways to store queue heads for endpoints
+ * but for now this is good enough, right now 128 instances of this
+ * struct takes 4 pages, running even lower on kernel memory
  */ 
 typedef struct
 {
@@ -482,17 +547,23 @@ typedef struct
   frm_lst_lnk_ptr_t* frame_list;
   uint32_t           frame_list_size;
 
-  qh_t*       queue_head_pool;
-  phys_addr_t queue_head_pool_phys_addr;
-  uint32_t    queue_head_pool_size;
-  uint32_t*   used_queue_head_bitmap;
-  uint32_t    used_queue_head_bitmap_size;
+  qh_t*       qh_pool;
+  phys_addr_t qh_pool_phys_addr;
+  uint32_t    qh_pool_size;
+  uint32_t*   used_qh_bitmap;
+  uint32_t    used_qh_bitmap_size;
   
   qtd_t*      qtd_pool;
   phys_addr_t qtd_pool_phys_addr;
   uint32_t    qtd_pool_size;
   uint32_t*   used_qtd_bitmap;
   uint32_t    used_qtd_bitmap_size;
+  
+  itd_t*      itd_pool;
+  phys_addr_t itd_pool_phys_addr;
+  uint32_t    itd_pool_size;
+  uint32_t*   used_itd_bitmap;
+  uint32_t    used_itd_bitmap_size;
   
   uint32_t interrupt_threshold;
   uint32_t num_ports;
@@ -505,10 +576,12 @@ typedef struct
 } ehci_hcd_t;
 
 #define EHCI_GET_DEVICE_QH(ehci_hcd, addr, is_input, endpoint)          \
-  ((ehci_hcd)->ehci_devinfo[(addr)].queue_heads[(is_input) && ((endpoint) != 0)][(endpoint)])
+  ((ehci_hcd)->ehci_devinfo[(addr)]                                     \
+   .queue_heads[(is_input) && ((endpoint) != 0)][(endpoint)])
 
 #define EHCI_SET_DEVICE_QH(ehci_hcd, addr, is_input, endpoint, qh)      \
-  ((ehci_hcd)->ehci_devinfo[(addr)].queue_heads[(is_input) && ((endpoint) != 0)][(endpoint)] = qh)
+  ((ehci_hcd)->ehci_devinfo[(addr)]                                     \
+   .queue_heads[(is_input) && ((endpoint) != 0)][(endpoint)] = qh)
 
 
 int
@@ -528,17 +601,26 @@ ehci_bulk_transfer(ehci_hcd_t* ehci_hcd,
                    int data_len,
                    int packet_len,
                    uint8_t direction,
-                   uint32 *act_len);
+                   uint32_t *act_len);
+
+int ehci_isochronous_transfer(ehci_hcd_t* ehci_hcd, uint8_t address,
+                              uint8_t endpoint, addr_t data,
+                              int data_len, int packet_len,
+                              uint8_t direction, uint32_t *act_len);
 
 
-#define calc_bitmap_size(hcd, pool_size) ((hcd)->pool_size + 31) / 32;
+#define calc_bitmap_size(hcd, pool_size)                        \
+  ((hcd)->pool_size + (EHCI_ELEMENTS_PER_BITMAP_ENTRY - 1))     \
+  / EHCI_ELEMENTS_PER_BITMAP_ENTRY;
 
-#define calc_used_queue_head_bitmap_size(hcd)   \
-  calc_bitmap_size(hcd, queue_head_pool_size)
+#define calc_used_qh_bitmap_size(hcd)           \
+  calc_bitmap_size(hcd, qh_pool_size)
 
 #define calc_used_qtd_bitmap_size(hcd)          \
   calc_bitmap_size(hcd, qtd_pool_size)
 
+#define calc_used_itd_bitmap_size(hcd)          \
+  calc_bitmap_size(hcd, itd_pool_size)
 #endif // _EHCI_H_
 
 /*

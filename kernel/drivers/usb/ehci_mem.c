@@ -50,92 +50,18 @@
 #define BITMAP_SUBINDEX_MASK (EHCI_ELEMENTS_PER_BITMAP_ENTRY - 1)
 
 
-/* Start of functions related to qtd_t memory management*/
+/* Start of initialisation functions */
 
-inline void
-initialise_qtd(qtd_t* qtd)
+inline bool
+initialise_qtd(ehci_hcd_t* ehci_hcd, qtd_t* qtd)
 {
   memset(qtd, 0, sizeof(*qtd));
   qtd->token = QTD_HALT;
   qtd->next_pointer_raw = EHCI_LIST_END;
   qtd->alt_pointer_raw = EHCI_LIST_END;
   INIT_LIST_HEAD(&qtd->chain_list);
+  return TRUE;
 }
-
-uint32_t
-allocate_qtds(ehci_hcd_t* ehci_hcd, qtd_t** qtds, uint32_t num_qtd)
-{
-  uint32_t  count       = 0;
-  uint32_t  entry;
-  uint32_t  i           = ehci_hcd->used_qtd_bitmap_size;
-  uint32_t* used_bitmap = ehci_hcd->used_qtd_bitmap;
-  qtd_t*    pool        = ehci_hcd->qtd_pool;
-
-  
-
-  
-  
-  while(i--) {
-    if(used_bitmap[i] == INT_MAX) continue; /* all qtd at this bitmap
-                                               entry are used */
-    entry = EHCI_ELEMENTS_PER_BITMAP_ENTRY;
-    while(entry--) {
-      if(!(used_bitmap[i] & (1 << entry)) ) {
-        used_bitmap[i] |= (1 << entry); /* Mark entry as allocated */
-        qtds[count] = &pool[i * EHCI_ELEMENTS_PER_BITMAP_ENTRY + entry];
-        initialise_qtd(qtds[count]);
-        EHCI_MEM_ASSERT( !( ((uint32_t)qtds[count]) & 0x1F) );
-	if(++count == num_qtd) {
-          
-          return count;
-        } 
-      }
-    }
-  }
-  panic("ran out of qtds");
-  return count;
-}
-
-inline qtd_t*
-allocate_qtd(ehci_hcd_t* ehci_hcd)
-{
-  qtd_t* qtd;
-  return allocate_qtds(ehci_hcd, &qtd, 1) ? qtd : NULL;
-}
-
-void
-free_qtds(ehci_hcd_t* ehci_hcd, qtd_t** qtds, uint32_t num_qtd)
-{
-  uint32_t* used_bitmap = ehci_hcd->used_qtd_bitmap;
-  qtd_t*    pool        = ehci_hcd->qtd_pool;
-
-  
-  
- 
-  
-  while(num_qtd--) {
-    uint32_t qtd_index = qtds[num_qtd] - pool;
-    EHCI_MEM_ASSERT(&pool[qtd_index] == qtds[num_qtd]);
-    
-    /* Flip the one bit to zero */
-    used_bitmap[qtd_index >> BITMAP_INDEX_SHIFT] &=
-      ~(1 << (qtd_index & BITMAP_SUBINDEX_MASK));
-  }
-
-  
-}
-
-inline void
-free_qtd(ehci_hcd_t* ehci_hcd, qtd_t* qtd)
-{
-  free_qtds(ehci_hcd, &qtd, 1);
-}
-
-/* End of functions related to qtd_t memory management */
-
-
-
-/* Start of functions related to qh_t memory management */
 
 /* If we cannot allocate a dummy qtd return false */
 inline bool initialise_qh(ehci_hcd_t* ehci_hcd, qh_t* qh)
@@ -147,81 +73,89 @@ inline bool initialise_qh(ehci_hcd_t* ehci_hcd, qh_t* qh)
   return qh->dummy_qtd != NULL;
 }
 
-uint32_t allocate_qhs(ehci_hcd_t* ehci_hcd, qh_t** qhs, uint32_t num_qh)
+inline bool initialise_itd(ehci_hcd_t* ehci_hcd, itd_t* itd)
 {
-  
-  uint32_t  count       = 0;
-  uint32_t  entry;
-  uint32_t  i           = ehci_hcd->used_queue_head_bitmap_size;
-  uint32_t* used_bitmap = ehci_hcd->used_queue_head_bitmap;
-  qh_t*     pool        = ehci_hcd->queue_head_pool;
+  memset(itd, 0, sizeof(*itd));
+  INIT_LIST_HEAD(&itd->chain_list);
+  return TRUE;
+}
 
-  
-  
+/* End of initialisation functions */
 
+/*
+ * -- EM -- I know the following is ugly, but right now since all the
+ * pools are statically declared and that is not the way it will
+ * permanently be it does not matter.  Eventually the ehci memory
+ * stuff will use the kernel heap/we will have a more unified dma pool
+ * system similar to Linux and this can be redone to be nicer and
+ * simpler since all these static pools will go away
+ */
 
-  while(i--) {
-    /* if all queue heads at this bitmap entry are used */
-    if(used_bitmap[i] == INT_MAX) continue;
-    
-    entry = EHCI_ELEMENTS_PER_BITMAP_ENTRY;
-    while(entry--) {
-      if(!(used_bitmap[i] & (1 << entry)) ) {
-        used_bitmap[i] |= (1 << entry); /* Mark entry as allocated */
-        qhs[count] = &pool[i * EHCI_ELEMENTS_PER_BITMAP_ENTRY + entry];
-        EHCI_MEM_ASSERT( !( ((uint32_t)qhs[count]) & 0x1F) );
-        
-        /*
-         * If we fail to initialise a qh, free the qh and return the
-         * number of qh's successfully initialized
-         */
-        if(!initialise_qh(ehci_hcd, qhs[count])) {
-          free_qh(ehci_hcd, qhs[count]);
-          return count;
-        }
-        
-        if(++count == num_qh) {
-          
-          return count;
-        } 
-      }
-    }
+#define RESOURCE_MEMORY_FUNCS(res)                                      \
+  uint32_t allocate_##res##s(ehci_hcd_t* ehci_hcd, res##_t** items, uint32_t num) \
+  {                                                                     \
+    uint32_t  count       = 0;                                          \
+    uint32_t  entry;                                                    \
+    uint32_t  i           = ehci_hcd->used_##res##_bitmap_size;         \
+    uint32_t* used_bitmap = ehci_hcd->used_##res##_bitmap;              \
+    res##_t*  pool        = ehci_hcd->res##_pool;                       \
+                                                                        \
+    while(i--) {                                                        \
+      if(used_bitmap[i] == INT_MAX) continue;                           \
+                                                                        \
+      entry = EHCI_ELEMENTS_PER_BITMAP_ENTRY;                           \
+      while(entry--) {                                                  \
+        if(!(used_bitmap[i] & (1 << entry)) ) {                         \
+          used_bitmap[i] |= (1 << entry); /* Mark entry as allocated */ \
+          items[count] = &pool[i * EHCI_ELEMENTS_PER_BITMAP_ENTRY + entry]; \
+          if(!initialise_##res(ehci_hcd, items[count])) {               \
+            free_##res(ehci_hcd, items[count]);                         \
+            return count;                                               \
+          }                                                             \
+          EHCI_MEM_ASSERT( !( ((uint32_t)items[count]) & 0x1F) );       \
+          if(++count == num) {                                          \
+            return count;                                               \
+          }                                                             \
+        }                                                               \
+      }                                                                 \
+    }                                                                   \
+    panic("ran out of " #res);                                          \
+    return count;                                                       \
+  }                                                                     \
+                                                                        \
+  inline res##_t* allocate_##res(ehci_hcd_t* ehci_hcd)                  \
+  {                                                                     \
+    res##_t* temp;                                                      \
+    return allocate_##res##s(ehci_hcd, &temp, 1) ? temp : NULL;         \
+  }                                                                     \
+                                                                        \
+  void free_##res##s(ehci_hcd_t* ehci_hcd, res##_t** items, uint32_t num) \
+  {                                                                     \
+    uint32_t* used_bitmap = ehci_hcd->used_##res##_bitmap;              \
+    res##_t*    pool        = ehci_hcd->res##_pool;                     \
+                                                                        \
+    while(num--) {                                                      \
+      uint32_t index = items[num] - pool;                               \
+      EHCI_MEM_ASSERT(&pool[index] == items[num]);                      \
+                                                                        \
+      /* Flip the one bit to zero */                                    \
+      used_bitmap[index >> BITMAP_INDEX_SHIFT] &=                       \
+        ~(1 << (index & BITMAP_SUBINDEX_MASK));                         \
+    }                                                                   \
+  }                                                                     \
+                                                                        \
+  inline void free_##res(ehci_hcd_t* ehci_hcd, res##_t* item)           \
+  {                                                                     \
+    free_##res##s(ehci_hcd, &item, 1);                                  \
   }
   
-  panic("ran out of qhs");
-  return count;
-}
 
-inline qh_t* allocate_qh(ehci_hcd_t* ehci_hcd)
-{
-  qh_t* qh;
-  return allocate_qhs(ehci_hcd, &qh, 1) ? qh : NULL;
-}
-
-void free_qhs(ehci_hcd_t* ehci_hcd, qh_t** qhs, uint32_t num_qh)
-{
-  uint32_t* used_bitmap = ehci_hcd->used_queue_head_bitmap;
-  qh_t*     pool        = ehci_hcd->queue_head_pool;
-
-  
-  
-  while(num_qh--) {
-    uint32_t qh_index = qhs[num_qh] - pool;
-    EHCI_MEM_ASSERT(&pool[qh_index] == qhs[num_qh]);
-
-    /* Flip the one bit to zero */
-    used_bitmap[qh_index >> BITMAP_INDEX_SHIFT] &=
-      ~(1 << (qh_index & BITMAP_SUBINDEX_MASK));
-  }
-
-  
-}
+RESOURCE_MEMORY_FUNCS(qtd)
+RESOURCE_MEMORY_FUNCS(itd)
+RESOURCE_MEMORY_FUNCS(qh)
 
 
-inline void free_qh(ehci_hcd_t* ehci_hcd, qh_t* qh)
-{
-  free_qhs(ehci_hcd, &qh, 1);
-}
+
 
 
 

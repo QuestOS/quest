@@ -47,12 +47,14 @@ usbenumeration_init (void)
     index++;
     if(!hcd->reset_root_ports(hcd)) {
       DLOG("Failed to reset root ports for device %d", index-1);
+      panic("Failed to reset root ports for device");
       continue;
     }
     if(!usb_enumerate(hcd))  {
       DLOG("Failed to enumerate device %d", index-1);
       continue;
     }
+    
     if(!hcd->post_enumeration(hcd)) {
       DLOG("post enumeration failed for device %d", index-1);
       continue;

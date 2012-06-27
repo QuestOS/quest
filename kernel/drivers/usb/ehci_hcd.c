@@ -33,18 +33,30 @@
                                    */
 
 #define FRM_LIST_SIZE DEFAULT_FRM_LST_SIZE  /* Frame list size used in Quest */
-#define QH_POOL_SIZE 256
 #define DEFAULT_INT_THRESHOLD 4
+#define QH_POOL_SIZE  256
 #define QTD_POOL_SIZE 256
+#define ITD_POOL_SIZE 256
 
+CASSERT((QH_POOL_SIZE % 32) == 0, ehci_qh_pool_size)
+CASSERT((QTD_POOL_SIZE % 32) == 0, ehci_qtd_pool_size)
+CASSERT((ITD_POOL_SIZE % 32) == 0, ehci_itd_pool_size)
 
 static ehci_hcd_t ehci_hcd;
 static frm_lst_lnk_ptr_t frame_list[FRM_LIST_SIZE] ALIGNED(0x1000);
-static qh_t queue_head_pool[QH_POOL_SIZE] ALIGNED(0x1000);
-static uint32_t used_queue_head_bitmap[(QH_POOL_SIZE + 31)/ 32];
-static qtd_t qtd_pool[QTD_POOL_SIZE] ALIGNED(0x1000);
-static uint32_t used_qtd_bitmap[(QH_POOL_SIZE + EHCI_ELEMENTS_PER_BITMAP_ENTRY - 1) /
+
+static qh_t qh_pool[QH_POOL_SIZE] ALIGNED(0x1000);
+static uint32_t used_qh_bitmap [(QH_POOL_SIZE + EHCI_ELEMENTS_PER_BITMAP_ENTRY - 1) /
                                 EHCI_ELEMENTS_PER_BITMAP_ENTRY];
+
+static qtd_t qtd_pool[QTD_POOL_SIZE] ALIGNED(0x1000);
+static uint32_t used_qtd_bitmap[(QTD_POOL_SIZE + EHCI_ELEMENTS_PER_BITMAP_ENTRY - 1) /
+                                EHCI_ELEMENTS_PER_BITMAP_ENTRY];
+
+static itd_t itd_pool[ITD_POOL_SIZE] ALIGNED(0x1000);
+static uint32_t used_itd_bitmap[(ITD_POOL_SIZE + EHCI_ELEMENTS_PER_BITMAP_ENTRY - 1) /
+                                EHCI_ELEMENTS_PER_BITMAP_ENTRY];
+
 
 static bool
 handshake(uint32_t *ptr, uint32_t mask, uint32_t done, uint32_t usec)
@@ -170,7 +182,10 @@ initialise_frame_list(ehci_hcd_t* ehci_hcd)
     CLEAR_FRAME_LIST_LINK_POINTER(frame_list[frm_lst_size]);
   }
   
-  ehci_hcd->regs->frame_list = (uint32_t)ehci_hcd->frame_list;
+  ehci_hcd->regs->frame_list = (uint32_t)get_phys_addr(ehci_hcd->frame_list);
+
+  gccmb();
+  EHCI_ENABLE_PERIODIC(ehci_hcd);
   return TRUE;
 }
 
@@ -301,7 +316,7 @@ bool ehci_post_enumeration(usb_hcd_t* usb_hcd)
   
   //ehci_hcd_t* ehci_hcd = hcd_to_ehci_hcd(usb_hcd);
   //enable_interrupts(ehci_hcd);
-  
+  print_caps_and_regs_info(hcd_to_ehci_hcd(usb_hcd), "In ehci_post_enumeration");
   return TRUE;
 }
 
@@ -339,12 +354,15 @@ initialise_ehci_hcd(uint32_t usb_base,
                     ehci_hcd_t* ehci_hcd,
                     frm_lst_lnk_ptr_t* frm_lst,
                     uint32_t frm_lst_size,
-                    qh_t* queue_head_pool,
-                    uint32_t queue_head_pool_size,
-                    uint32_t* used_queue_head_bitmap,
+                    qh_t* qh_pool,
+                    uint32_t qh_pool_size,
+                    uint32_t* used_qh_bitmap,
                     qtd_t* qtd_pool,
                     uint32_t qtd_pool_size,
                     uint32_t* used_qtd_bitmap,
+                    itd_t* itd_pool,
+                    uint32_t itd_pool_size,
+                    uint32_t* used_itd_bitmap,
                     uint32_t int_threshold)
 { 
   if(!initialise_usb_hcd(ehci_hcd_to_hcd(ehci_hcd),
@@ -364,38 +382,50 @@ initialise_ehci_hcd(uint32_t usb_base,
   ehci_hcd->frame_list      = frm_lst;
   ehci_hcd->frame_list_size = frm_lst_size;
 
-  ehci_hcd->queue_head_pool           = queue_head_pool;
-  ehci_hcd->queue_head_pool_phys_addr = (phys_addr_t)get_phys_addr(queue_head_pool);
-  ehci_hcd->queue_head_pool_size      = queue_head_pool_size;
-  ehci_hcd->used_queue_head_bitmap    = used_queue_head_bitmap;
-  memset(queue_head_pool, 0, queue_head_pool_size * sizeof(qh_t));
+  ehci_hcd->qh_pool           = qh_pool;
+  ehci_hcd->qh_pool_phys_addr = (phys_addr_t)get_phys_addr(qh_pool);
+  ehci_hcd->qh_pool_size      = qh_pool_size;
+  ehci_hcd->used_qh_bitmap    = used_qh_bitmap;
+  memset(qh_pool, 0, qh_pool_size * sizeof(qh_t));
 
   ehci_hcd->qtd_pool           = qtd_pool;
   ehci_hcd->qtd_pool_phys_addr = (phys_addr_t)get_phys_addr(qtd_pool);
   ehci_hcd->qtd_pool_size      = qtd_pool_size;
   ehci_hcd->used_qtd_bitmap    = used_qtd_bitmap;
   memset(qtd_pool, 0, qtd_pool_size * sizeof(qtd_t));
+
+  ehci_hcd->itd_pool           = itd_pool;
+  ehci_hcd->itd_pool_phys_addr = (phys_addr_t)get_phys_addr(itd_pool);
+  ehci_hcd->itd_pool_size      = itd_pool_size;
+  ehci_hcd->used_itd_bitmap    = used_itd_bitmap;
+  memset(itd_pool, 0, itd_pool_size * sizeof(itd_t));
   
   
   ehci_hcd->interrupt_threshold = int_threshold;
   ehci_hcd->num_ports           = GET_NUM_PORTS(ehci_hcd);
 
   /*
-   * Set used_queue_head_bitmap and used_qtd_bitmap to all zeros to
+   * Set used_qh_bitmap and used_qtd_bitmap to all zeros to
    * mark all elements as free
    */
 
-  ehci_hcd->used_queue_head_bitmap_size =
-    calc_used_queue_head_bitmap_size(ehci_hcd);
+  ehci_hcd->used_qh_bitmap_size =
+    calc_used_qh_bitmap_size(ehci_hcd);
 
-  memset(used_queue_head_bitmap, 0,
-         ehci_hcd->used_queue_head_bitmap_size * sizeof(*used_queue_head_bitmap));
+  memset(used_qh_bitmap, 0,
+         ehci_hcd->used_qh_bitmap_size * sizeof(*used_qh_bitmap));
   
   ehci_hcd->used_qtd_bitmap_size =
     calc_used_qtd_bitmap_size(ehci_hcd);
 
   memset(used_qtd_bitmap, 0,
          ehci_hcd->used_qtd_bitmap_size * sizeof(*used_qtd_bitmap));
+
+   ehci_hcd->used_itd_bitmap_size =
+    calc_used_itd_bitmap_size(ehci_hcd);
+
+  memset(used_itd_bitmap, 0,
+         ehci_hcd->used_itd_bitmap_size * sizeof(*used_itd_bitmap));
   
   if(!restart_ehci_hcd(ehci_hcd)) return FALSE;
   if(!initialise_frame_list(ehci_hcd)) return FALSE;
@@ -540,12 +570,15 @@ ehci_init(void)
   
   if(!initialise_ehci_hcd(usb_base, &ehci_hcd, frame_list,
                           sizeof(frame_list)/sizeof(frm_lst_lnk_ptr_t),
-                          queue_head_pool,
-                          sizeof(queue_head_pool)/sizeof(qh_t),
-                          used_queue_head_bitmap,
+                          qh_pool,
+                          sizeof(qh_pool)/sizeof(qh_t),
+                          used_qh_bitmap,
                           qtd_pool,
                           sizeof(qtd_pool)/sizeof(qtd_t),
                           used_qtd_bitmap,
+                          itd_pool,
+                          sizeof(itd_pool)/sizeof(itd_t),
+                          used_itd_bitmap,
                           DEFAULT_INT_THRESHOLD)) {
     EHCI_DEBUG_HALT();
     return FALSE;
@@ -586,7 +619,7 @@ qtd_fill(qtd_t* qtd,
   else {
     /* Increment to next 4K boundary */
     phys_data_addr += 0x1000;
-    phys_data_addr &= 0xF000;
+    phys_data_addr &= ~0x0FFF;
 
     for(i = 1; i < 5 && count < data_len; ++i) {
       qtd->buffer_page[i].raw = phys_data_addr;
@@ -624,18 +657,18 @@ create_qtd_chain(ehci_hcd_t* ehci_hcd,
                  list_head_t* qtd_list) /* Should be empty/uninitialized */
 {
   uint32_t    token;
-  qtd_t*      first_qtd;
   qtd_t*      current_qtd;
   qtd_t*      previous_qtd;
   phys_addr_t data_phys_addr;
     
   token = QTD_ACTIVE | (EHCI_TUNE_CERR << QTD_CERR);
   INIT_LIST_HEAD(qtd_list);
-  first_qtd = current_qtd = allocate_qtd(ehci_hcd);
+  current_qtd = allocate_qtd(ehci_hcd);
   
-  list_add_tail(&first_qtd->chain_list, qtd_list);
+  if(current_qtd == NULL) return FALSE;
   
-  if(!current_qtd) return FALSE;
+  list_add_tail(&current_qtd->chain_list, qtd_list);
+  
 
 
   if(pipe_type == PIPE_CONTROL) {
@@ -936,18 +969,13 @@ void qh_append_qtds(ehci_hcd_t* ehci_hcd, qh_t* qh, list_head_t* qtd_list, uint3
   list_del(&qtd->chain_list);
   list_add(&dummy->chain_list, qtd_list);
   list_splice_tail(qtd_list, &qh->qtd_list);
-  initialise_qtd(qtd);
+  initialise_qtd(ehci_hcd, qtd);
   qh->dummy_qtd = qtd;
   new_dummy_phys_addr = EHCI_QTD_VIRT_TO_PHYS(ehci_hcd, qtd);
   qtd = list_entry(qh->qtd_list.prev, qtd_t, chain_list);
   qtd->next_pointer_raw = new_dummy_phys_addr;
   gccmb();
   dummy->token = token;
-
-  
-  if(bulk_count == 2) {
-    print_qh_info(ehci_hcd, qh, TRUE, "In qh_append_qtds after link");
-  }
 }
 
 /*
@@ -991,7 +1019,7 @@ static sint32 spin_for_transfer_completion(ehci_hcd_t* ehci_hcd,
   list_for_each_entry(temp_qtd, &qh->qtd_list, chain_list) {
     last_qtd = temp_qtd;
   }
-  
+
   /*
    * -- !! -- I am not sure if wait spinning on the last qtd is
    * sufficient to make sure the queue head is done (besides the
@@ -1065,6 +1093,14 @@ static sint32 spin_for_transfer_completion(ehci_hcd_t* ehci_hcd,
     panic("link_qh_to_async failed");
   }
 
+  list_for_each_entry(temp_qtd, &qh->qtd_list, chain_list) {
+    if(temp_qtd->total_bytes_to_transfer != 0) {
+
+      DLOG("Failed to transfer everything");
+      panic("Failed to transfer everything");
+    }
+  }
+
   if(save_qh) {
     qtd_t* qtd_to_remove;
     qtd_t* qtd_tmp;
@@ -1084,7 +1120,7 @@ static sint32 spin_for_transfer_completion(ehci_hcd_t* ehci_hcd,
        * the active one, I have not tested the functionally when this
        * occurs so all bets are off
        */
-      DLOG("ALL QTDS REMOVED see comment at file %s line %d");
+      DLOG("ALL QTDS REMOVED see comment at file %s line %d", __FILE__, __LINE__);
       panic("ALL QTDS REMOVED");
     }
 
@@ -1180,22 +1216,21 @@ int ehci_async_transfer(ehci_hcd_t* ehci_hcd, uint8_t pipe_type,
 int ehci_bulk_transfer(ehci_hcd_t* ehci_hcd, uint8_t address,
                        uint8_t endpoint, addr_t data,
                        int data_len, int packet_len,
-                       uint8_t direction, uint32 *act_len)
+                       uint8_t direction, uint32_t *act_len)
 {
   return ehci_async_transfer(ehci_hcd, PIPE_BULK, address, endpoint,
                              NULL, 0, data, data_len, packet_len,
                              direction == USB_DIR_IN, FALSE, act_len, TRUE);
 }
 
-int
-ehci_control_transfer(ehci_hcd_t* ehci_hcd, uint8_t address,
-                      addr_t setup_req,    /* Use virtual address here */
-                      uint32_t setup_len,
-                      addr_t setup_data,   /* Use virtual address here */
-                      uint32_t data_len, uint32_t packet_len)
+int ehci_control_transfer(ehci_hcd_t* ehci_hcd, uint8_t address,
+                          addr_t setup_req,    /* Use virtual address here */
+                          uint32_t setup_len,
+                          addr_t setup_data,   /* Use virtual address here */
+                          uint32_t data_len, uint32_t packet_len)
 {
   /*
-   * -- WARN -- Right now I am hardcoding the speed to USB_SPEED_HIGH.
+   * -- EM -- Right now I am assuming the speed is USB_SPEED_HIGH.
    * Also our USB core assumes ALL control transfers are to endpoint 0
    * (which is a fair assumption) so the endpoint is being hardcoded
    * in as well
@@ -1203,9 +1238,227 @@ ehci_control_transfer(ehci_hcd_t* ehci_hcd, uint8_t address,
   
   return ehci_async_transfer(ehci_hcd, PIPE_CONTROL, address, 0,
                              setup_req, setup_len,
-                             setup_data, data_len, packet_len,
+                             setup_data, data_len, 8,
                              IS_INPUT_USB_DEV_REQ(setup_req),
                              FALSE, NULL, TRUE);
+}
+
+uint32_t itd_fill(itd_t* itd, uint8_t address, uint8_t endpoint,
+                  int packet_len, bool is_input, phys_addr_t data_phys,
+                  int data_len)
+{
+  int i;
+  uint32_t mult = 1;
+  uint32_t data_per_transaction = mult * packet_len;
+  uint32_t bytes_added = 0;
+  int cur_buf_ptr = 0;
+  uint32_t old_buf_ptr_value = data_phys & ~0x0FFF;
+
+  
+  itd->ex_buf_ptr_pgs[0] = 0;
+  itd->ex_buf_ptr_pgs[1] = 0;
+  itd->ex_buf_ptr_pgs[2] = 0;
+  itd->ex_buf_ptr_pgs[3] = 0;
+  itd->ex_buf_ptr_pgs[4] = 0;
+  itd->ex_buf_ptr_pgs[5] = 0;
+  itd->ex_buf_ptr_pgs[6] = 0;
+  
+  itd->next_link_pointer.raw = EHCI_LIST_END;
+
+  ITD_SET_BUF_PTR(itd, 0, data_phys);
+  itd->buf_ptr[0] = data_phys & ~0x0FFF;
+  itd->buf_ptr[0] |= address;
+  itd->buf_ptr[0] |= (endpoint << 8);
+  itd->buf_ptr[1] = packet_len;
+  DLOG("packet_len = %d", packet_len);
+  if(is_input) {
+    itd->buf_ptr[1] |= ITD_INPUT;
+  }
+  
+  /*
+   * -- EM -- Right now following KISS and only doing one transaction
+   * per iTD subentry i.e. multi is always 1, this means each
+   * transaction length is equal to packet length or less
+   */
+  itd->buf_ptr[2] = mult; // Setting mult
+
+  for(i = 0; i < 8; ++i) {
+    uint32_t bytes_this_transaction =
+      data_len >= data_per_transaction ? data_per_transaction : data_len;
+
+    /*
+     * Check to see if we have crossed a page boundary and if so fill
+     * the buffer pointer with the appropriate address and increment
+     * our current buffer pointer
+     */
+    if(old_buf_ptr_value != (data_phys & ~0x0FFF)) {
+      old_buf_ptr_value = data_phys & ~0x0FFF;
+      cur_buf_ptr++;
+      ITD_SET_BUF_PTR(itd, cur_buf_ptr, data_phys);
+    }
+
+    DLOG("bytes_this_transaction = %d", bytes_this_transaction);
+    
+    itd->transaction[i].raw = ITD_ACTIVE;
+    itd->transaction[i].offset = data_phys & 0x0FFF;
+    itd->transaction[i].length = bytes_this_transaction;
+    itd->transaction[i].page_selector = cur_buf_ptr;
+    
+    bytes_added += bytes_this_transaction;
+    data_phys   += bytes_this_transaction;
+    data_len    -= bytes_this_transaction;
+    
+    if(data_len == 0) { // We are done and can stop filling this itd
+      break;
+    }
+    
+    /*
+     * Not done; need to add more data if we haven't filled the iTD
+     * completely
+     */
+  }
+  itd->total_bytes_to_transfer = bytes_added;
+  return bytes_added;
+}
+
+static int create_itd_chain(ehci_hcd_t* ehci_hcd, uint8_t address,
+                            uint8_t endpoint, addr_t data,
+                            int data_len, int packet_len,
+                            bool is_input, list_head_t* itd_list)
+{
+  static int times_called = 0;
+  times_called++;
+  DLOG("times_called = %d", times_called);
+  phys_addr_t data_phys = (phys_addr_t)get_phys_addr(data);
+  INIT_LIST_HEAD(itd_list);
+  
+  while(data_len) {
+    
+    itd_t* current_itd = allocate_itd(ehci_hcd);
+    if(current_itd == NULL) {
+      DLOG("Failed to allocate itd");
+      panic("Failed to allocate itd");
+      return -1;
+    }
+    
+    list_add_tail(&current_itd->chain_list, itd_list);
+    
+    uint32_t added = itd_fill(current_itd, address, endpoint, packet_len,
+                              is_input, data_phys, data_len);
+    
+    data_len  -= added;
+    data_phys += added;
+  }
+  
+  return 0;
+}
+
+static int submit_itd_chain(ehci_hcd_t* ehci_hcd, list_head_t* itd_list,
+                            int* start_index)
+{
+  itd_t* itd;
+  frm_lst_lnk_ptr_t* frame_list = ehci_hcd->frame_list;
+  uint32_t frame_list_mask      = ehci_hcd->frame_list_size - 1;
+  register uint32_t frame_index = EHCI_GET_SAFE_FRAME_INDEX(ehci_hcd);
+  uint32_t frame_index_before_adjustment = frame_index;
+  
+  /*
+   * -- EM -- Right now following the ideas of KISS and just adding a
+   * single iTD to each index with nothing following it.  And that
+   * nothing else is using the periodic list.  This will obviously be
+   * changed later but right now just want to make sure the simplest
+   * thing is working first
+   */
+  frame_index = frame_index & frame_list_mask;
+  *start_index = frame_index;
+  list_for_each_entry(itd, itd_list, chain_list) {
+    frame_list[frame_index++].raw = ITD_NEXT(ehci_hcd, itd);
+  }
+  
+  return 0;
+}
+
+int ehci_isochronous_transfer(ehci_hcd_t* ehci_hcd, uint8_t address,
+                              uint8_t endpoint, addr_t data,
+                              int data_len, int packet_len,
+                              uint8_t direction, uint32_t *act_len)
+{
+  list_head_t itd_list;
+  itd_t* itd;
+  itd_t* temp_itd;
+  bool done = FALSE;
+  int j = 0;
+  *act_len = 0;
+  int start_index;
+
+  if(create_itd_chain(ehci_hcd, address, endpoint, data, data_len,
+                      packet_len, direction == USB_DIR_IN, &itd_list) < 0) {
+    DLOG("create_itd_chain failed");
+    panic("create_itd_chain failed");
+    return -1;
+  }
+
+  list_for_each_entry(itd, &itd_list, chain_list) {
+    // print_itd_info(ehci_hcd, itd, "Before Submission");
+  }
+  
+  
+  if(submit_itd_chain(ehci_hcd, &itd_list, &start_index) < 0) {
+    DLOG("submit_itd_chain failed");
+    panic("submit_itd_chain failed");
+    return -1;
+  }
+  
+
+  itd = list_entry(itd_list.prev, itd_t, chain_list);
+  
+  while(!done) {
+    int i;
+    for(i = 0; i < 8; ++i) {
+      if(itd->transaction[i].raw & ITD_ACTIVE) {
+        break;
+      }
+    }
+    done = i == 8;
+    ++j;
+    tsc_delay_usec(10);
+    if(j == 300000) {
+      DLOG("stuck in spin");
+      list_for_each_entry(itd, &itd_list, chain_list) {
+        print_itd_info(ehci_hcd, itd, "Before Submission");
+      }
+      print_caps_and_regs_info(ehci_hcd, "In Spin");
+      
+    DLOG("pci status in spin = 0x%X",
+         pci_get_status(ehci_hcd->bus, ehci_hcd->dev,ehci_hcd->func));
+    DLOG("pci command in spin = 0x%X",
+         pci_get_command(ehci_hcd->bus, ehci_hcd->dev,ehci_hcd->func));
+    }
+  }
+
+
+  
+
+  list_for_each_entry(itd, &itd_list, chain_list) {
+    int i;
+    int total_bytes_not_transfered = 0;
+    //DLOG("\n\n\n\n\n\n");
+    //print_itd_info(ehci_hcd, itd, "After wait");
+
+    for(i = 0; i < 8; ++i) {
+      total_bytes_not_transfered += itd->transaction[i].length;
+    }
+    *act_len += (itd->total_bytes_to_transfer - total_bytes_not_transfered);
+  }
+  //DLOG("\n\n\n\n\n\n");
+  //print_caps_and_regs_info(ehci_hcd, "After Wait");
+  //DLOG("act_len = %d", *act_len);
+
+  list_for_each_entry_safe(itd, temp_itd, &itd_list, chain_list) {
+    free_itd(ehci_hcd, itd);
+  }
+  
+  return 0;
 }
 
 

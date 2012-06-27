@@ -156,6 +156,43 @@ usb_bulk_transfer(
   return -1;
 }
 
+int usb_isochronous_transfer(USB_DEVICE_INFO* dev,
+                                    uint8_t endpoint,
+                                    addr_t data,
+                                    int len,
+                                    uint16_t packet_len,
+                                    uint8_t direction,
+                                    uint32_t *act_len)
+{
+  
+  if ((dev->devd).bMaxPacketSize0 == 0) {
+        DLOG("USB_DEVICE_INFO is probably not initialized!");
+        return -1;
+  }
+  switch (dev->host_type)
+  {
+    case USB_TYPE_HC_UHCI :
+      panic("UHCI Broken: usb_bulk_transfer");
+      
+      
+
+    case USB_TYPE_HC_EHCI :
+      return ehci_isochronous_transfer(hcd_to_ehci_hcd(dev->hcd),
+                                       dev->address, endpoint, data,
+                                       len, packet_len, direction, act_len);
+
+
+    case USB_TYPE_HC_OHCI :
+      DLOG("OHCI Host Controller is not supported now!");
+      return -1;
+
+    default :
+      DLOG("Unknown Host Controller request!");
+      return -1;
+  }
+  return -1;
+}
+
 int
 usb_get_descriptor(USB_DEVICE_INFO* dev,
                    uint16_t dtype,
@@ -347,33 +384,17 @@ usb_get_interface(USB_DEVICE_INFO * dev, uint16_t interface)
 int
 usb_set_interface(USB_DEVICE_INFO * dev, uint16_t alt, uint16_t interface)
 {
-  switch (dev->host_type)
-  {
-    case USB_TYPE_HC_UHCI :
-      panic("UHCI broken: usb_set_interface");
-      if ((dev->devd).bMaxPacketSize0 == 0) {
-        DLOG("USB_DEVICE_INFO is probably not initialized!");
-        return -1;
-      } else {
-        return uhci_set_interface(dev->address, alt, interface,
-            (dev->devd).bMaxPacketSize0);
-      }
-
-    case USB_TYPE_HC_EHCI :
-      DLOG("EHCI Host Controller is not supported now! usb_set_interface");
-      panic("EHCI Host Controller is not supported now! usb_set_interface");
-      return -1;
-
-    case USB_TYPE_HC_OHCI :
-      DLOG("OHCI Host Controller is not supported now!");
-      return -1;
-
-    default :
-      DLOG("Unknown Host Controller request!");
-      return -1;
-  }
-  return -1;
+  
+  USB_DEV_REQ setup_req;
+  setup_req.bmRequestType = 0x01;
+  setup_req.bRequest = USB_SET_INTERFACE;
+  setup_req.wValue = alt;
+  setup_req.wIndex = interface;
+  setup_req.wLength = 0;
+  
+  return usb_control_transfer(dev, (addr_t) & setup_req, sizeof (USB_DEV_REQ), 0, 0);
 }
+
 
 bool
 usb_register_driver (USB_DRIVER *driver)
@@ -434,7 +455,7 @@ find_device_driver (USB_DEVICE_INFO *info, USB_CFG_DESC *cfgd, USB_IF_DESC *ifd)
     if (drivers[d].probe (info, cfgd, ifd)) return;
   }
   DLOG("Unknown device file %s line %d", __FILE__, __LINE__);
-  panic("Unknown Device");
+  //panic("Unknown Device");
 }
 
 

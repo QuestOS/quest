@@ -281,6 +281,15 @@ extern int usb_bulk_transfer(USB_DEVICE_INFO* dev, uint8_t endp,
                              uint8_t dir, uint32_t *act_len);
 
 
+extern int usb_isochronous_transfer(USB_DEVICE_INFO* dev,
+                                    uint8_t endpoint,
+                                    addr_t data,
+                                    int len,
+                                    uint16_t packet_len,
+                                    uint8_t direction,
+                                    uint32_t *act_len);
+
+
 extern int usb_get_descriptor(USB_DEVICE_INFO* dev, uint16_t dtype,
                               uint16_t dindex, uint16_t index,
                               uint16_t length, addr_t desc);
