@@ -199,6 +199,7 @@ pow2_alloc (uint32 size, uint8 ** ptr)
   *ptr = pow2_get_free_block (index);
   pow2_insert_used_table (*ptr, index);
   spinlock_unlock (&pow2_lock);
+  memset (*ptr, 0, size);
   return index;
 }
 
