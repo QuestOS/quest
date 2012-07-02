@@ -77,6 +77,8 @@ print_qtd_info(ehci_hcd_t* ehci, qtd_t* qtd, char* msg)
   PRINT_QTD_MEMBER(ex_buf_ptr_pgs[2]);
   PRINT_QTD_MEMBER(ex_buf_ptr_pgs[3]);
   PRINT_QTD_MEMBER(ex_buf_ptr_pgs[4]);
+
+#undef PRINT_QTD_MEMBER
   
 #endif  
 }
@@ -136,6 +138,8 @@ print_qh_info(ehci_hcd_t* ehci_hcd, qh_t* qh, bool print_tds ,char* msg)
   DLOG("Software only members:");
   PRINT_QH_MEMBER(state);
 
+#undef PRINT_QH_MEMBER
+
 
   if(print_tds) {
     qtd_t* qtd;
@@ -186,13 +190,12 @@ print_qh_info(ehci_hcd_t* ehci_hcd, qh_t* qh, bool print_tds ,char* msg)
 void SQUELCH_UNUSED
 print_itd_info(ehci_hcd_t* ehci_hcd, itd_t* itd ,char* msg)
 {
-#ifdef DEBUG_EHCI_VERBOSE
 
-  DLOG("%s", msg);
+  DLOGV("%s", msg);
   
 #define PRINT_ITD_MEMBER(member) DLOGV(#member ": 0x%X", itd->member)
 
-#define ITD_PRINT_VERBOSE
+  //#define ITD_PRINT_VERBOSE
 
   PRINT_ITD_MEMBER(next_link_pointer);
   PRINT_ITD_MEMBER(transaction[0]);
@@ -280,6 +283,26 @@ print_itd_info(ehci_hcd_t* ehci_hcd, itd_t* itd ,char* msg)
   PRINT_ITD_MEMBER(ex_buf_ptr_pgs[4]);
   PRINT_ITD_MEMBER(ex_buf_ptr_pgs[5]);
   PRINT_ITD_MEMBER(ex_buf_ptr_pgs[6]);
+
+#undef PRINT_ITD_MEMBER
   
-#endif
+
+}
+
+
+uint32_t SQUELCH_UNUSED
+print_itd_dma(ehci_hcd_t* ehci_hcd, itd_t* itd, int transaction, char* msg)
+{
+  DLOGV("%s", msg);
+  if(itd->transaction[transaction].raw & ITD_ACTIVE) {
+    int buffer_page = (itd->transaction[transaction].raw >> 12) & 0x7;
+    uint32_t address = itd->transaction[transaction].raw & 0x0FFF;
+    address = address | (itd->buf_ptr[buffer_page] & 0xFFFFF000);
+    DLOGV("Transaction %d is active with dma address 0x%p", transaction, address);
+    return address;
+  }
+  else {
+    DLOGV("Transaction %d is not active", transaction);
+    return 0;
+  }
 }

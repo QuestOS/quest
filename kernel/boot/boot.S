@@ -378,7 +378,7 @@ int_table:
         .long syscalla          /* _exit */
         .long syscallb          /* waitpid */
         .long syscallc          /* sched_setparam -- not totally POSIX compliant */
-        .long interrupt3d
+        .long syscalld
         .long interrupt3e
         .long interrupt3f
 #define INT(n)     .long interrupt##n

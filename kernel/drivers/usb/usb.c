@@ -27,20 +27,46 @@
 #define DEBUG_USB
 
 #ifdef DEBUG_USB
-#define DLOG(fmt,...) DLOG_PREFIX("USB",fmt,##__VA_ARGS__)
+#define DLOG(fmt,...) DLOG_PREFIX("USB", fmt, ##__VA_ARGS__)
 #else
 #define DLOG(fmt,...) ;
 #endif
 
 #define MAX_USB_HCD 10
+usb_hcd_t* usb_hcd_list[MAX_USB_HCD];
+uint32_t usb_hcd_list_next = 0;
 
 #define USB_MAX_DEVICE_DRIVERS 32
 static USB_DRIVER drivers[USB_MAX_DEVICE_DRIVERS];
 static uint num_drivers = 0;
 
-usb_hcd_t* usb_hcd_list[MAX_USB_HCD];
-uint32_t usb_hcd_list_next = 0;
+#define USB_CORE_MAX_DEVICES 32
+static USB_DEVICE_INFO* devices[USB_CORE_MAX_DEVICES];
+static uint num_devices = 0;
 
+int usb_syscall_handler(int device_id, int operation, char* buf, int data_len)
+{
+  USB_DEVICE_INFO* device = usb_get_device(device_id);
+  if(device == NULL) {
+    DLOG("Unknown device id");
+    return -1;
+  }
+
+  switch(operation) {
+  case USB_USER_READ:
+
+    return device->driver->read(device, buf, data_len);
+    
+  case USB_USER_WRITE:
+    
+    return device->driver->write(device, buf, data_len);
+
+  default:
+    DLOG("Unknown usb user operation %d", operation);
+    return -1;
+  }
+  
+}
 
 bool
 initialise_usb_hcd(usb_hcd_t* usb_hcd, uint32_t usb_hc_type,
@@ -64,11 +90,25 @@ add_usb_hcd(usb_hcd_t* usb_hcd)
   return FALSE;
 }
 
+bool usb_register_device(USB_DEVICE_INFO* device, USB_DRIVER* driver)
+{
+  if(num_devices < USB_CORE_MAX_DEVICES) {
+    device->driver = driver;
+    devices[num_devices++] = device;
+    return TRUE;
+  }
+  return FALSE;
+}
+
+USB_DEVICE_INFO* usb_get_device(int device_id)
+{
+  if(device_id < num_devices) return devices[device_id];
+  return NULL;
+}
 
 usb_hcd_t*
 get_usb_hcd(uint32_t index)
 {
-  DLOG("usb_hcd_list_next = %d in get call", usb_hcd_list_next);
   if(index < usb_hcd_list_next) return usb_hcd_list[index];
   return NULL;
 }
@@ -156,13 +196,13 @@ usb_bulk_transfer(
   return -1;
 }
 
+
 int usb_isochronous_transfer(USB_DEVICE_INFO* dev,
-                                    uint8_t endpoint,
-                                    addr_t data,
-                                    int len,
-                                    uint16_t packet_len,
-                                    uint8_t direction,
-                                    uint32_t *act_len)
+                             uint8_t endpoint,
+                             uint16_t packet_len,
+                             uint8_t direction, addr_t data,
+                             usb_iso_packet_descriptor_t* packets,
+                             int num_packets)
 {
   
   if ((dev->devd).bMaxPacketSize0 == 0) {
@@ -178,8 +218,9 @@ int usb_isochronous_transfer(USB_DEVICE_INFO* dev,
 
     case USB_TYPE_HC_EHCI :
       return ehci_isochronous_transfer(hcd_to_ehci_hcd(dev->hcd),
-                                       dev->address, endpoint, data,
-                                       len, packet_len, direction, act_len);
+                                       dev->address, endpoint,
+                                       packet_len, direction, data,
+                                       packets, num_packets);
 
 
     case USB_TYPE_HC_OHCI :

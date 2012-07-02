@@ -19,6 +19,8 @@
 #define _USB_H_
 
 #include <types.h>
+#include <drivers/usb/linux_usb.h>
+
 
 #define pci_config_rd8(bus, slot, func, reg) \
   pci_read_byte (pci_addr (bus, slot, func, reg))
@@ -77,6 +79,14 @@
 
 #define USB_DIR_IN  0
 #define USB_DIR_OUT 1
+
+
+#define USB_USER_READ  0
+#define USB_USER_WRITE 1
+
+
+
+//struct _usb_hcd_t;
 
 typedef struct _usb_hcd_t usb_hcd_t;
 
@@ -230,6 +240,8 @@ typedef struct usb_str_desc USB_STR_DESC;
 
 /* ************************************************** */
 
+struct _USB_DRIVER;
+
 typedef struct 
 {
   uint8 address;
@@ -237,6 +249,8 @@ typedef struct
   uint8 host_type;
   usb_hcd_t* hcd;
   uint8 *configurations;
+  struct _USB_DRIVER* driver;
+  void* device_data; /* A place for a device to put its own private data */
 
   /*
    *  device can have 32 endpoints (16 endpoint numbers and each
@@ -263,13 +277,20 @@ typedef struct
   while(0)
 
 
-typedef struct
+typedef struct _USB_DRIVER
 {
   bool (*probe) (USB_DEVICE_INFO *, USB_CFG_DESC *, USB_IF_DESC *);
+  int (*write) (USB_DEVICE_INFO* device, char* buf, int data_len);
+  int (*read) (USB_DEVICE_INFO* device, char* buf, int data_len);
 } USB_DRIVER;
 
-bool usb_register_driver (USB_DRIVER *);
+bool usb_register_device(USB_DEVICE_INFO* device, USB_DRIVER* driver);
 
+bool usb_register_driver (USB_DRIVER *driver);
+
+USB_DEVICE_INFO* usb_get_device(int device_id);
+
+int usb_syscall_handler(int device_id, int operation, char* buf, int data_len);
 
 /* Generic USB operations */
 extern int usb_control_transfer(USB_DEVICE_INFO* dev, addr_t setup_req,
@@ -283,11 +304,10 @@ extern int usb_bulk_transfer(USB_DEVICE_INFO* dev, uint8_t endp,
 
 extern int usb_isochronous_transfer(USB_DEVICE_INFO* dev,
                                     uint8_t endpoint,
-                                    addr_t data,
-                                    int len,
                                     uint16_t packet_len,
-                                    uint8_t direction,
-                                    uint32_t *act_len);
+                                    uint8_t direction, addr_t data,
+                                    usb_iso_packet_descriptor_t* packets,
+                                    int num_packets);
 
 
 extern int usb_get_descriptor(USB_DEVICE_INFO* dev, uint16_t dtype,
@@ -325,6 +345,8 @@ struct _usb_hcd_t
   
 };
 
+int usb_syscall_handler(int device_id, int operation, char* buf, int data_len);
+
 bool initialise_usb_hcd(usb_hcd_t* usb_hcd, uint32_t usb_hc_type,
                         usb_reset_root_ports_func reset_root_ports,
                         usb_post_enumeration_func post_enumeration);
@@ -336,6 +358,7 @@ usb_hcd_t* get_usb_hcd(uint32_t index);
 void dlog_usb_hcd(usb_hcd_t* usb_hcd);
 
 #endif
+
 
 /*
  * Local Variables:

@@ -57,6 +57,8 @@ print_qh_info(ehci_hcd_t* ehci_hcd, qh_t* qh, bool print_tds ,char* msg);
 void SQUELCH_UNUSED
 print_itd_info(ehci_hcd_t* ehci_hcd, itd_t* itd ,char* msg);
 
+uint32_t SQUELCH_UNUSED
+print_itd_dma(ehci_hcd_t* ehci_hcd, itd_t* itd, int transaction,char* msg);
 
 #endif // _EHCI_DEBUG_H_
 

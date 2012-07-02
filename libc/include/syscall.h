@@ -16,6 +16,9 @@
  */
 
 
+#ifndef _SYSCALL_H_
+#define _SYSCALL_H_
+
 
 struct sched_param
 {
@@ -33,6 +36,7 @@ struct sched_param
 #define CLOBBERS3 "memory","cc","%ebx","%edx","%esi","%edi"
 #define CLOBBERS4 "memory","cc","%ebx","%ecx","%esi","%edi"
 #define CLOBBERS5 "memory","cc","%edx","%esi","%edi"
+#define CLOBBERS6 "memory","cc","%esi","%edi"
 
 
 /* Syscall 0 used as a test syscall 
@@ -241,6 +245,17 @@ sched_setparam (int pid, const struct sched_param *p)
 
   return ret;
 }
+
+static inline int
+usb_syscall(int device_id, int operation, void* buf, int data_len)
+{
+  int ret;
+  asm volatile ("int $0x3D\n":"=a" (ret) : "a"(device_id), "b" (operation),
+                "c" (buf), "d" (data_len) : CLOBBERS6);
+  return ret;
+}
+
+#endif //_SYSCALL_H_
 
 /* 
  * Local Variables:

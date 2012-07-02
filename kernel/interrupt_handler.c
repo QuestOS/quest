@@ -37,6 +37,7 @@
 #include "drivers/input/keyboard.h"
 #include "sched/sched.h"
 #include "sched/vcpu.h"
+#include "drivers/usb/usb.h"
 
 //#define DEBUG_SYSCALL
 //#define DEBUG_PIT
@@ -151,11 +152,11 @@ duplicate_TSS (uint32 ebp,
 
   if (i == 256)
     panic ("No free selector for TSS");
-
+#ifdef DEBUG_SYSCALL
   logger_printf ("duplicate_TSS: pTSS=%p i=0x%x esp=%p ebp=%p\n",
                  pTSS, i << 3,
                  child_esp, child_ebp);
-
+#endif
   /* See pp 6-7 in IA-32 vol 3 docs for meanings of these assignments */
   ad[i].uLimit0 = 0xFFF;        /* --??-- Right now, a page per TSS */
   ad[i].uLimit1 = 0;
@@ -1165,6 +1166,19 @@ _sched_setparam (task_id pid, const struct sched_param *p)
     unlock_kernel ();
   /* Destination task does not exist.  Return an error. */
   return -1;
+}
+
+/*
+ * Syscall: _usb_syscall This is just a hack right now to give user
+ * space access to usb devices
+ */
+extern int
+_usb_syscall(int device_id, int operation, char* buf, int data_len)
+{
+  com1_printf("In %s called with arguments: (%d, %d, 0x%X, %d)\n", __FUNCTION__,
+       device_id, operation, buf, data_len);
+
+  return usb_syscall_handler(device_id, operation, buf, data_len);
 }
 
 #if 0

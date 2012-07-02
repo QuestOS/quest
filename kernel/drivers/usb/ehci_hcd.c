@@ -36,9 +36,9 @@
 #define DEFAULT_INT_THRESHOLD 4
 #define QH_POOL_SIZE  256
 #define QTD_POOL_SIZE 256
-#define ITD_POOL_SIZE 256
+#define ITD_POOL_SIZE 1024
 
-CASSERT((QH_POOL_SIZE % 32) == 0, ehci_qh_pool_size)
+CASSERT( (QH_POOL_SIZE % 32) == 0, ehci_qh_pool_size)
 CASSERT((QTD_POOL_SIZE % 32) == 0, ehci_qtd_pool_size)
 CASSERT((ITD_POOL_SIZE % 32) == 0, ehci_itd_pool_size)
 
@@ -1095,8 +1095,9 @@ static sint32 spin_for_transfer_completion(ehci_hcd_t* ehci_hcd,
 
   list_for_each_entry(temp_qtd, &qh->qtd_list, chain_list) {
     if(temp_qtd->total_bytes_to_transfer != 0) {
-
+      
       DLOG("Failed to transfer everything");
+      DLOG("%d bytes left", temp_qtd->total_bytes_to_transfer);
       panic("Failed to transfer everything");
     }
   }
@@ -1177,7 +1178,8 @@ static sint32 submit_async_qtd_chain(ehci_hcd_t* ehci_hcd, qh_t** qh,
   }
   else {
     if((result = spin_for_transfer_completion(ehci_hcd, *qh, device_addr,
-                                              endpoint, pipe_type, is_input, save_qh)) < 0) {
+                                              endpoint, pipe_type, is_input,
+                                              save_qh)) < 0) {
       return result;
     }
   }
@@ -1243,17 +1245,18 @@ int ehci_control_transfer(ehci_hcd_t* ehci_hcd, uint8_t address,
                              FALSE, NULL, TRUE);
 }
 
-uint32_t itd_fill(itd_t* itd, uint8_t address, uint8_t endpoint,
-                  int packet_len, bool is_input, phys_addr_t data_phys,
-                  int data_len)
+int itd_fill(itd_t* itd, uint8_t address, uint8_t endpoint,
+             int packet_len, bool is_input, phys_addr_t data_phys,
+             usb_iso_packet_descriptor_t* packets, int num_packets)
 {
   int i;
   uint32_t mult = 1;
-  uint32_t data_per_transaction = mult * packet_len;
-  uint32_t bytes_added = 0;
   int cur_buf_ptr = 0;
-  uint32_t old_buf_ptr_value = data_phys & ~0x0FFF;
+  uint32_t old_buf_ptr_value;
+  phys_addr_t data_phys_start = data_phys;
 
+  data_phys = data_phys_start + packets[0].offset;
+  old_buf_ptr_value = data_phys & ~0x0FFF;
   
   itd->ex_buf_ptr_pgs[0] = 0;
   itd->ex_buf_ptr_pgs[1] = 0;
@@ -1270,7 +1273,7 @@ uint32_t itd_fill(itd_t* itd, uint8_t address, uint8_t endpoint,
   itd->buf_ptr[0] |= address;
   itd->buf_ptr[0] |= (endpoint << 8);
   itd->buf_ptr[1] = packet_len;
-  DLOG("packet_len = %d", packet_len);
+  
   if(is_input) {
     itd->buf_ptr[1] |= ITD_INPUT;
   }
@@ -1282,59 +1285,58 @@ uint32_t itd_fill(itd_t* itd, uint8_t address, uint8_t endpoint,
    */
   itd->buf_ptr[2] = mult; // Setting mult
 
-  for(i = 0; i < 8; ++i) {
-    uint32_t bytes_this_transaction =
-      data_len >= data_per_transaction ? data_per_transaction : data_len;
-
+  for(i = 0; i < num_packets; ++i) {
+    data_phys = data_phys_start + packets[i].offset;
+    
     /*
      * Check to see if we have crossed a page boundary and if so fill
      * the buffer pointer with the appropriate address and increment
      * our current buffer pointer
      */
     if(old_buf_ptr_value != (data_phys & ~0x0FFF)) {
+      if(cur_buf_ptr == 6) {
+        /*
+         * This can occur if the offset between iso packets is too
+         * larger, if this occurs we cannot make an iTD that can
+         * handle the given packets
+         */
+        DLOG("Cannot fit iso packets into a single iTD, crosses "
+             "too many buffer boundaries");
+        return -1;
+      }
       old_buf_ptr_value = data_phys & ~0x0FFF;
       cur_buf_ptr++;
       ITD_SET_BUF_PTR(itd, cur_buf_ptr, data_phys);
     }
 
-    DLOG("bytes_this_transaction = %d", bytes_this_transaction);
     
     itd->transaction[i].raw = ITD_ACTIVE;
     itd->transaction[i].offset = data_phys & 0x0FFF;
-    itd->transaction[i].length = bytes_this_transaction;
+    itd->transaction[i].length = packets[i].length;
     itd->transaction[i].page_selector = cur_buf_ptr;
     
-    bytes_added += bytes_this_transaction;
-    data_phys   += bytes_this_transaction;
-    data_len    -= bytes_this_transaction;
-    
-    if(data_len == 0) { // We are done and can stop filling this itd
-      break;
-    }
-    
-    /*
-     * Not done; need to add more data if we haven't filled the iTD
-     * completely
-     */
   }
-  itd->total_bytes_to_transfer = bytes_added;
-  return bytes_added;
+  return 0;
 }
 
 static int create_itd_chain(ehci_hcd_t* ehci_hcd, uint8_t address,
                             uint8_t endpoint, addr_t data,
-                            int data_len, int packet_len,
-                            bool is_input, list_head_t* itd_list)
+                            usb_iso_packet_descriptor_t* packets,
+                            int num_packets, 
+                            int packet_len, bool is_input,
+                            list_head_t* itd_list)
 {
-  static int times_called = 0;
-  times_called++;
-  DLOG("times_called = %d", times_called);
+  int i;
   phys_addr_t data_phys = (phys_addr_t)get_phys_addr(data);
   INIT_LIST_HEAD(itd_list);
-  
-  while(data_len) {
+
+  i = 0;
+  while(i < num_packets) {
     
+    int packets_this_itd = 8 < num_packets - i ? 8 : num_packets - i;
     itd_t* current_itd = allocate_itd(ehci_hcd);
+    usb_iso_packet_descriptor_t* itd_packets = &(packets[i]);
+    
     if(current_itd == NULL) {
       DLOG("Failed to allocate itd");
       panic("Failed to allocate itd");
@@ -1343,25 +1345,24 @@ static int create_itd_chain(ehci_hcd_t* ehci_hcd, uint8_t address,
     
     list_add_tail(&current_itd->chain_list, itd_list);
     
-    uint32_t added = itd_fill(current_itd, address, endpoint, packet_len,
-                              is_input, data_phys, data_len);
+    if(itd_fill(current_itd, address, endpoint, packet_len,
+                is_input, data_phys, itd_packets, packets_this_itd) < 0) {
+      return -1;
+    }
+
+    i += packets_this_itd;
     
-    data_len  -= added;
-    data_phys += added;
   }
-  
   return 0;
 }
 
-static int submit_itd_chain(ehci_hcd_t* ehci_hcd, list_head_t* itd_list,
-                            int* start_index)
+static int submit_itd_chain(ehci_hcd_t* ehci_hcd, list_head_t* itd_list)
 {
   itd_t* itd;
   frm_lst_lnk_ptr_t* frame_list = ehci_hcd->frame_list;
   uint32_t frame_list_mask      = ehci_hcd->frame_list_size - 1;
   register uint32_t frame_index = EHCI_GET_SAFE_FRAME_INDEX(ehci_hcd);
-  uint32_t frame_index_before_adjustment = frame_index;
-  
+    
   /*
    * -- EM -- Right now following the ideas of KISS and just adding a
    * single iTD to each index with nothing following it.  And that
@@ -1370,40 +1371,35 @@ static int submit_itd_chain(ehci_hcd_t* ehci_hcd, list_head_t* itd_list,
    * thing is working first
    */
   frame_index = frame_index & frame_list_mask;
-  *start_index = frame_index;
+  
   list_for_each_entry(itd, itd_list, chain_list) {
     frame_list[frame_index++].raw = ITD_NEXT(ehci_hcd, itd);
+    frame_index = frame_index & frame_list_mask;
   }
-  
   return 0;
 }
 
 int ehci_isochronous_transfer(ehci_hcd_t* ehci_hcd, uint8_t address,
-                              uint8_t endpoint, addr_t data,
-                              int data_len, int packet_len,
-                              uint8_t direction, uint32_t *act_len)
+                              uint8_t endpoint, int packet_len,
+                              uint8_t direction, addr_t data,
+                              usb_iso_packet_descriptor_t* packets,
+                              int num_packets)
 {
   list_head_t itd_list;
   itd_t* itd;
   itd_t* temp_itd;
   bool done = FALSE;
-  int j = 0;
-  *act_len = 0;
-  int start_index;
+  int j, i;
+  int packets_traversed;
 
-  if(create_itd_chain(ehci_hcd, address, endpoint, data, data_len,
+  if(create_itd_chain(ehci_hcd, address, endpoint, data, packets, num_packets,
                       packet_len, direction == USB_DIR_IN, &itd_list) < 0) {
     DLOG("create_itd_chain failed");
     panic("create_itd_chain failed");
     return -1;
   }
 
-  list_for_each_entry(itd, &itd_list, chain_list) {
-    // print_itd_info(ehci_hcd, itd, "Before Submission");
-  }
-  
-  
-  if(submit_itd_chain(ehci_hcd, &itd_list, &start_index) < 0) {
+  if(submit_itd_chain(ehci_hcd, &itd_list) < 0) {
     DLOG("submit_itd_chain failed");
     panic("submit_itd_chain failed");
     return -1;
@@ -1412,8 +1408,8 @@ int ehci_isochronous_transfer(ehci_hcd_t* ehci_hcd, uint8_t address,
 
   itd = list_entry(itd_list.prev, itd_t, chain_list);
   
+  j = 0;
   while(!done) {
-    int i;
     for(i = 0; i < 8; ++i) {
       if(itd->transaction[i].raw & ITD_ACTIVE) {
         break;
@@ -1422,10 +1418,11 @@ int ehci_isochronous_transfer(ehci_hcd_t* ehci_hcd, uint8_t address,
     done = i == 8;
     ++j;
     tsc_delay_usec(10);
-    if(j == 300000) {
+    //DLOG("in spin wait");
+    if(j == 3000000) {
       DLOG("stuck in spin");
       list_for_each_entry(itd, &itd_list, chain_list) {
-        print_itd_info(ehci_hcd, itd, "Before Submission");
+        print_itd_info(ehci_hcd, itd, "In Spin");
       }
       print_caps_and_regs_info(ehci_hcd, "In Spin");
       
@@ -1436,24 +1433,21 @@ int ehci_isochronous_transfer(ehci_hcd_t* ehci_hcd, uint8_t address,
     }
   }
 
-
-  
-
+  packets_traversed = 0;
   list_for_each_entry(itd, &itd_list, chain_list) {
-    int i;
-    int total_bytes_not_transfered = 0;
-    //DLOG("\n\n\n\n\n\n");
-    //print_itd_info(ehci_hcd, itd, "After wait");
-
-    for(i = 0; i < 8; ++i) {
-      total_bytes_not_transfered += itd->transaction[i].length;
+    for(i = 0; (i < 8) && (packets_traversed < num_packets);
+        ++i, ++packets_traversed) {
+      
+      packets[packets_traversed].actual_length = (itd->transaction[i].raw >> 16) & 0xFFF;
+      packets[packets_traversed].status = itd->transaction[i].status;
+      if(itd->transaction[i].raw & ITD_ACTIVE) {
+        
+        DLOG("itd should be done but is not");
+        panic("itd should be done but is not");
+      }
     }
-    *act_len += (itd->total_bytes_to_transfer - total_bytes_not_transfered);
   }
-  //DLOG("\n\n\n\n\n\n");
-  //print_caps_and_regs_info(ehci_hcd, "After Wait");
-  //DLOG("act_len = %d", *act_len);
-
+  
   list_for_each_entry_safe(itd, temp_itd, &itd_list, chain_list) {
     free_itd(ehci_hcd, itd);
   }

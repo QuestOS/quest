@@ -604,9 +604,10 @@ ehci_bulk_transfer(ehci_hcd_t* ehci_hcd,
                    uint32_t *act_len);
 
 int ehci_isochronous_transfer(ehci_hcd_t* ehci_hcd, uint8_t address,
-                              uint8_t endpoint, addr_t data,
-                              int data_len, int packet_len,
-                              uint8_t direction, uint32_t *act_len);
+                              uint8_t endpoint, int packet_len,
+                              uint8_t direction, addr_t data,
+                              usb_iso_packet_descriptor_t* packets,
+                              int num_packets);
 
 
 #define calc_bitmap_size(hcd, pool_size)                        \
@@ -621,6 +622,7 @@ int ehci_isochronous_transfer(ehci_hcd_t* ehci_hcd, uint8_t address,
 
 #define calc_used_itd_bitmap_size(hcd)          \
   calc_bitmap_size(hcd, itd_pool_size)
+
 #endif // _EHCI_H_
 
 /*

@@ -23,6 +23,7 @@
 #include <sched/sched.h>
 
 #define DEBUG_UVC
+#define DEBUG_UVC_VERBOSE
 
 #ifdef DEBUG_UVC
 
@@ -38,8 +39,18 @@
 #define DLOG(fmt,...) ;
 #endif
 
-#define BUF_SIZE        (153600)
-#define PACKET_SIZE     944
+#ifdef DEBUG_UVC_VERBOSE
+
+#define DLOGV(fmt,...) DLOG_PREFIX("uvc",fmt,##__VA_ARGS__)
+
+#else
+
+#define DLOGV(fmt, ...) ;
+
+#endif
+
+#define BUF_SIZE        (403600 * 1)
+#define PACKET_SIZE     192
 
 struct iso_data_source
 {
@@ -59,18 +70,38 @@ bool usb_uvc_driver_init (void);
 static bool uvc_probe (USB_DEVICE_INFO *, USB_CFG_DESC *, USB_IF_DESC *);
 static bool uvc_init(USB_DEVICE_INFO *, USB_CFG_DESC *);
 static int video_probe_controls (USB_DEVICE_INFO *, uint8_t, uint8_t,
-    UVC_VS_CTL_PAR_BLOCK *);
+                                 UVC_VS_CTL_PAR_BLOCK *);
 static int video_commit_controls (USB_DEVICE_INFO *, uint8_t, uint8_t,
-    UVC_VS_CTL_PAR_BLOCK *);
+                                  UVC_VS_CTL_PAR_BLOCK *);
 static int video_ctl_error_code (USB_DEVICE_INFO *, uint8_t, uint8_t);
 static void para_block_dump (UVC_VS_CTL_PAR_BLOCK *);
 int uvc_get_frame (USB_DEVICE_INFO *, ISO_DATA_SRC *, uint8_t *,
-    uint32_t, uint8_t *, uint32_t *);
+                   uint32_t, uint8_t *, uint32_t *);
 static void uvc_test (void);
 static int uvc_device_cfg (USB_DEVICE_INFO *, USB_CFG_DESC *,
-    ISO_DATA_SRC *);
+                           ISO_DATA_SRC *);
 
 static USB_DEVICE_INFO gdev; // --??-- Remove after test
+
+
+static int uvc_read(USB_DEVICE_INFO* device, char* buf, int data_len)
+{
+  DLOG("%s called\n   buf = 0x%X\n   data_len = %d", __FUNCTION__, buf, data_len);
+  return -1;
+}
+
+static int uvc_write(USB_DEVICE_INFO* device, char* buf, int data_len)
+{
+  DLOG("%s called\n\tbuf = 0x%X\n\tdata_len = %d", __FUNCTION__, buf, data_len);
+  return -1;
+}
+
+static USB_DRIVER uvc_driver = {
+  .probe = uvc_probe,
+  .read = uvc_read,
+  .write = uvc_write
+};
+
 
 static void
 uvc_test (void)
@@ -104,65 +135,99 @@ uvc_test (void)
     if ((i % 96) == 0) putchar('\n');
   }
 
+  
   for (;;)
     delay (1000);
 }
 
 int
 uvc_get_frame (
-    USB_DEVICE_INFO * dev,
-    ISO_DATA_SRC * iso_src,
-    uint8_t * buf,
-    uint32_t transfer_len,
-    uint8_t * frame,
-    uint32_t * frm_len)
+               USB_DEVICE_INFO * dev,
+               ISO_DATA_SRC * iso_src,
+               uint8_t * buf,
+               uint32_t transfer_len,
+               uint8_t * frame,
+               uint32_t * frm_len)
 {
+#define GET_FRAME_NUM_PACKETS ((BUF_SIZE / PACKET_SIZE) - 1)
+  //#define GET_FRAME_NUM_PACKETS 40
+  usb_iso_packet_descriptor_t iso_packets[GET_FRAME_NUM_PACKETS];
   int status = 0, i = 0, j = 0;
-  uint32_t act_len;
-  uint8_t * index;
   int counter = 0, header_len = 0;
+  uint8_t header_bitfield;
+  bool saving_data = FALSE;
+  
+  //transfer_len = PACKET_SIZE;
 
-  //DLOG("In uvc_get_frame!");
-  *frm_len = 0;
-
-  transfer_len = 300;
-  for (i = 0; i < 1024; i++) {
-    index = buf + i * transfer_len;
-    
+  DLOG("buffer_phys 0x%X", get_phys_addr(buf));
+  
+  for(i = 0; i < GET_FRAME_NUM_PACKETS; ++i) {
     if((i+1) * transfer_len >= BUF_SIZE) {
       DLOG("buffer too small");
       while(1);
     }
-    //DLOG("transfer_len = %d", transfer_len);
-    status += usb_isochronous_transfer(dev, iso_src->endp,
-                                       (addr_t) index, transfer_len, 384,
-                                       USB_DIR_IN, &act_len);
-    if(act_len != 0) {
-      header_len = *(index);
-      if(act_len - header_len > 0) {
-        *frm_len += (act_len - header_len);
-
+    iso_packets[i].length = transfer_len;
+    iso_packets[i].offset = i * transfer_len;
+  }
+  
+  //DLOG("In uvc_get_frame!");
+  *frm_len = 0;
+  
+  
+  if(usb_isochronous_transfer(dev, iso_src->endp, transfer_len, USB_DIR_IN,
+                              buf, iso_packets, GET_FRAME_NUM_PACKETS) < 0) {
+    DLOG("uvc_get_frame: usb_isochronous_transfer failed");
+    return -1;
+  }
+  
+  
+  
+  for(i = 0; i < GET_FRAME_NUM_PACKETS; ++i) {
+    //DLOG("loop iteration %d", i);
+    //DLOG("packet %d virt addr = 0x%p", i, &(iso_packets[i]));
+    if(iso_packets[i].actual_length == 0) {
+      //DLOG("%d: received zero length frame", i);
+    }
+    else {
+       header_len = *(buf + iso_packets[i].offset);
 #if 0
-        DLOG("Actual length received : %d, header : %d, frame : %d",
-             act_len, header_len, *frm_len);
+      
+      DLOG("%d: Actual length received : %d, header : %d, frame : %d", i,
+           iso_packets[i].actual_length, header_len, *frm_len);
+      DLOG("Header = 0x%X", *(buf + iso_packets[i].offset + 1) & 0xFF);
 #endif
-    
-        for (j = 0; j < (act_len - header_len); j++) {
-          *(frame + counter) = *(index + header_len + j);
-          counter++;
+     
+      
+      if(saving_data) {
+        if(iso_packets[i].actual_length > header_len) {
+          *frm_len += (iso_packets[i].actual_length - header_len);
+          
+          
+          if(iso_packets[i].actual_length > PACKET_SIZE ||
+             iso_packets[i].actual_length < 0) {
+            DLOG("error with transaction %d", i);
+            while(1);
+          }
+          for (j = 0; j < (iso_packets[i].actual_length - header_len); j++) {
+            *(frame + counter) = *(buf + iso_packets[i].offset + header_len + j);
+            counter++;
+          }
         }
-
-        /* Now, we only retreive one frame. Check EOF in the header */
-        if ((*(index + 1)) & 0x02) {
-          DLOG("End of frame reached!");
+        
+        /* Now, we only retrieve one frame. Check EOF in the header */
+      }
+      if ((*(buf + iso_packets[i].offset + 1)) & 0x02) {
+        DLOG("End of frame reached!");
+        if(saving_data) {
+          DLOG("frm_len = %d", *frm_len);
           break;
+        }
+        else {
+          saving_data = TRUE;
         }
       }
     }
   }
-
-  DLOG("%d TDs used for one frame", i + 1);
-  
   return status;
 }
 
@@ -174,11 +239,11 @@ uvc_init (USB_DEVICE_INFO * dev, USB_CFG_DESC * cfg)
   UVC_VS_CTL_PAR_BLOCK par;
   uint8_t tmp[1300];
   
-
+  
   DLOG("Configuring UVC device ...");
-
+  
   gdev = *dev; // --??-- Remove after test
-
+  
   if (uvc_device_cfg(dev, cfg, &iso_src) == -1) {
     DLOG("Device Configuration Failed!");
     return FALSE;
@@ -199,9 +264,9 @@ uvc_init (USB_DEVICE_INFO * dev, USB_CFG_DESC * cfg)
     scfgd = (USB_SPD_CFG_DESC *)tmp;
     DLOG("Other Speed Configuration:");
     DLOG("  bLength : 0x%x  bDescriptorType : 0x%x  wTotalLength : 0x%x",
-        scfgd->bLength, scfgd->bDescriptorType, scfgd->wTotalLength);
+         scfgd->bLength, scfgd->bDescriptorType, scfgd->wTotalLength);
     DLOG("  bNumInterfaces : 0x%x  bConfigurationValue : 0x%x",
-        scfgd->bNumInterfaces, scfgd->bConfigurationValue);
+         scfgd->bNumInterfaces, scfgd->bConfigurationValue);
   }
 
   /* There is only one configuration in Logitech Webcam Pro 9000 */
@@ -217,7 +282,9 @@ uvc_init (USB_DEVICE_INFO * dev, USB_CFG_DESC * cfg)
   //par.dwFrameInterval = 0x61A80; // 25FPS
   par.dwFrameInterval = 0xF4240; // 10FPS
   //par.wCompQuality = 5000; // 1 - 10000, with 1 the lowest
-  //par.dwMaxPayloadTransferSize = 512;
+  //par.dwMaxPayloadTransferSize = PACKET_SIZE;
+  
+  para_block_dump (&par);
   
   if (video_probe_controls (dev, SET_CUR, 1, &par)) {
     DLOG("Initial negotiation failed during probe");
@@ -240,10 +307,10 @@ uvc_init (USB_DEVICE_INFO * dev, USB_CFG_DESC * cfg)
   }
   para_block_dump (&par);
 
-  /* Select Alternate Setting 2 for interface 1 (Std VS interface) */
-  /* This is for an isochronous endpoint with MaxPacketSize 384 */
-  DLOG("Select Alternate Setting 2 for VS interface");
-  if (usb_set_interface(dev, 6, 1)) {
+  /* Select Alternate Setting 1 for interface 1 (Std VS interface) */
+  /* This is for an isochronous endpoint with MaxPacketSize 192 */
+  DLOG("Select Alternate Setting 11 for VS interface");
+  if (usb_set_interface(dev, 1, 1)) {
     DLOG("Cannot configure interface setting for Std VS interface");
     return FALSE;
   }
@@ -272,6 +339,13 @@ uvc_probe (USB_DEVICE_INFO *dev, USB_CFG_DESC *cfg, USB_IF_DESC *ifd)
     return FALSE;
   }
 
+  if(((bool)dev->device_data)) {
+    return TRUE;
+  }
+
+  usb_register_device(dev, &uvc_driver);
+  dev->device_data = TRUE;
+
 #if 0
   /* Dumping UVC device descriptors */
   desc_dump (dev, cfg);
@@ -283,7 +357,7 @@ uvc_probe (USB_DEVICE_INFO *dev, USB_CFG_DESC *cfg, USB_IF_DESC *ifd)
   }
 
   //start_kernel_thread((uint)uvc_test, (uint)&uvc_test_stack[1023]);
-  uvc_test ();
+  //uvc_test ();
 
 #if 0
   int i = 0;
@@ -307,9 +381,9 @@ uvc_probe (USB_DEVICE_INFO *dev, USB_CFG_DESC *cfg, USB_IF_DESC *ifd)
 
 static int
 video_ctl_error_code (
-    USB_DEVICE_INFO * dev,
-    uint8_t request,
-    uint8_t interface)
+                      USB_DEVICE_INFO * dev,
+                      uint8_t request,
+                      uint8_t interface)
 {
   USB_DEV_REQ setup_req;
   uint8_t code, status;
@@ -321,7 +395,7 @@ video_ctl_error_code (
   setup_req.wLength = 1;
 
   status = usb_control_transfer (dev, (addr_t) & setup_req,
-      sizeof (USB_DEV_REQ), (addr_t) & code, 1);
+                                 sizeof (USB_DEV_REQ), (addr_t) & code, 1);
 
   if (status) {DLOG("Getting error code failed!"); return 0xFF;}
 
@@ -330,10 +404,10 @@ video_ctl_error_code (
 
 static int
 video_probe_controls (
-    USB_DEVICE_INFO * dev,
-    uint8_t request,
-    uint8_t interface,
-    UVC_VS_CTL_PAR_BLOCK * par)
+                      USB_DEVICE_INFO * dev,
+                      uint8_t request,
+                      uint8_t interface,
+                      UVC_VS_CTL_PAR_BLOCK * par)
 {
   USB_DEV_REQ setup_req;
   if (request == SET_CUR)
@@ -347,15 +421,15 @@ video_probe_controls (
   setup_req.wLength = 26; // Why? It should be 34! Odd...
 
   return usb_control_transfer (dev, (addr_t) & setup_req,
-      sizeof (USB_DEV_REQ), (addr_t) par, setup_req.wLength);
+                               sizeof (USB_DEV_REQ), (addr_t) par, setup_req.wLength);
 }
 
 static int
 video_commit_controls (
-    USB_DEVICE_INFO * dev,
-    uint8_t request,
-    uint8_t interface,
-    UVC_VS_CTL_PAR_BLOCK * par)
+                       USB_DEVICE_INFO * dev,
+                       uint8_t request,
+                       uint8_t interface,
+                       UVC_VS_CTL_PAR_BLOCK * par)
 {
   USB_DEV_REQ setup_req;
   if (request == SET_CUR)
@@ -369,12 +443,12 @@ video_commit_controls (
   setup_req.wLength = 26; // Why? It should be 34! Odd...
 
   return usb_control_transfer (dev, (addr_t) & setup_req,
-      sizeof (USB_DEV_REQ), (addr_t) par, setup_req.wLength);
+                               sizeof (USB_DEV_REQ), (addr_t) par, setup_req.wLength);
 }
 
-static USB_DRIVER uvc_driver = {
-  .probe = uvc_probe
-};
+
+
+
 
 bool
 usb_uvc_driver_init (void)
@@ -385,32 +459,32 @@ usb_uvc_driver_init (void)
 static void
 para_block_dump (UVC_VS_CTL_PAR_BLOCK * par)
 {
-  DLOG ("Parameter Block Dump: ");
-  DLOG ("  bmHint : 0x%x", par->bmHint);
-  DLOG ("  bFormatIndex : 0x%x", par->bFormatIndex);
-  DLOG ("  bFrameIndex : 0x%x", par->bFrameIndex);
-  DLOG ("  dwFrameInterval : 0x%x", par->dwFrameInterval);
-  DLOG ("  wKeyFrameRate : 0x%x", par->wKeyFrameRate);
-  DLOG ("  wPFrameRate : 0x%x", par->wPFrameRate);
-  DLOG ("  wCompQuality : 0x%x", par->wCompQuality);
-  DLOG ("  wCompWindowSize : 0x%x", par->wCompWindowSize);
-  DLOG ("  wDelay : 0x%x", par->wDelay);
-  DLOG ("  dwMaxVideoFrameSize : 0x%x", par->dwMaxVideoFrameSize);
-  DLOG ("  dwMaxPayloadTransferSize : 0x%x", par->dwMaxPayloadTransferSize);
-  DLOG ("  dwClockFrequency : 0x%x", par->dwClockFrequency);
-  DLOG ("  bmFramingInfo : 0x%x", par->bmFramingInfo);
-  DLOG ("  bPreferedVersion : 0x%x", par->bPreferedVersion);
-  DLOG ("  bMinVersion : 0x%x", par->bMinVersion);
-  DLOG ("  bMaxVersion : 0x%x", par->bMaxVersion);
+  DLOGV ("Parameter Block Dump: ");
+  DLOGV ("  bmHint : 0x%x", par->bmHint);
+  DLOGV ("  bFormatIndex : 0x%x", par->bFormatIndex);
+  DLOGV ("  bFrameIndex : 0x%x", par->bFrameIndex);
+  DLOGV ("  dwFrameInterval : 0x%x", par->dwFrameInterval);
+  DLOGV ("  wKeyFrameRate : 0x%x", par->wKeyFrameRate);
+  DLOGV ("  wPFrameRate : 0x%x", par->wPFrameRate);
+  DLOGV ("  wCompQuality : 0x%x", par->wCompQuality);
+  DLOGV ("  wCompWindowSize : 0x%x", par->wCompWindowSize);
+  DLOGV ("  wDelay : 0x%x", par->wDelay);
+  DLOGV ("  dwMaxVideoFrameSize : 0x%x", par->dwMaxVideoFrameSize);
+  DLOGV ("  dwMaxPayloadTransferSize : 0x%x", par->dwMaxPayloadTransferSize);
+  DLOGV ("  dwClockFrequency : 0x%x", par->dwClockFrequency);
+  DLOGV ("  bmFramingInfo : 0x%x", par->bmFramingInfo);
+  DLOGV ("  bPreferedVersion : 0x%x", par->bPreferedVersion);
+  DLOGV ("  bMinVersion : 0x%x", par->bMinVersion);
+  DLOGV ("  bMaxVersion : 0x%x", par->bMaxVersion);
 }
 
 static uint8_t conf[3000];
 
 static int
 uvc_device_cfg (
-    USB_DEVICE_INFO *dev,
-    USB_CFG_DESC *cfg,
-    ISO_DATA_SRC * src)
+                USB_DEVICE_INFO *dev,
+                USB_CFG_DESC *cfg,
+                ISO_DATA_SRC * src)
 {
   /* Dump all the descriptors retreived from UVC device */
   
@@ -440,34 +514,34 @@ uvc_device_cfg (
     DLOG("cfg->wTotalLength > sizeof(conf)");
     panic("cfg->wTotalLength > sizeof(conf)");
   }
-  DLOG("cfg->wTotalLength = %d", cfg->wTotalLength);
+  DLOGV("cfg->wTotalLength = %d", cfg->wTotalLength);
   usb_get_descriptor(dev, USB_TYPE_CFG_DESC, 0, 0, cfg->wTotalLength, (addr_t)conf);
 
-  DLOG("Primary descriptor");
-  DLOG("  bLength : 0x%x  bDescriptorType : 0x%x  wTotalLength : 0x%x",
-       cfg->bLength, cfg->bDescriptorType, cfg->wTotalLength);
-  DLOG("  bNumInterfaces : 0x%x  bConfigurationValue : 0x%x",
-       cfg->bNumInterfaces, cfg->bConfigurationValue);
+  DLOGV("Primary descriptor");
+  DLOGV("  bLength : 0x%x  bDescriptorType : 0x%x  wTotalLength : 0x%x",
+        cfg->bLength, cfg->bDescriptorType, cfg->wTotalLength);
+  DLOGV("  bNumInterfaces : 0x%x  bConfigurationValue : 0x%x",
+        cfg->bNumInterfaces, cfg->bConfigurationValue);
   
   /* Parsing all UVC specific descriptors */
   /* Get the first IAD */
-  DLOG("Getting IAD ...");
+  DLOGV("Getting IAD ...");
   index += cfg->bLength;
   iad = (UVC_IA_DESC*)(&conf[index]);
 
   if ((iad->bDescriptorType != USB_TYPE_IA_DESC) ||
       (iad->bFunctionClass != CC_VIDEO) ||
       (iad->bFunctionSubClass != SC_VIDEO_INTERFACE_COLLECTION)) {
-    DLOG("IAD not found after configuration descriptor.");
+    DLOGV("IAD not found after configuration descriptor.");
     return -1;
   } else {
-    DLOG("Found Video Interface Collection");
-    DLOG("  bFirstInterface : 0x%x", iad->bFirstInterface);
-    DLOG("  bInterfaceCount : 0x%x", iad->bInterfaceCount);
+    DLOGV("Found Video Interface Collection");
+    DLOGV("  bFirstInterface : 0x%x", iad->bFirstInterface);
+    DLOGV("  bInterfaceCount : 0x%x", iad->bInterfaceCount);
   }
 
   /* Get First VC Interface Descriptor */
-  DLOG("Getting VC Interface Descriptor ...");
+  DLOGV("Getting VC Interface Descriptor ...");
   while (index < cfg->wTotalLength) {
     desc_idx = (UVC_DESC_IDX *)(&conf[index]);
     if (desc_idx->bDescriptorType != USB_TYPE_IF_DESC)
@@ -486,20 +560,22 @@ uvc_device_cfg (
   if ((vcifd->bDescriptorType != USB_TYPE_IF_DESC) ||
       (vcifd->bInterfaceClass != CC_VIDEO) ||
       (vcifd->bInterfaceSubClass != SC_VIDEOCONTROL)) {
-    DLOG("Standard VC Interface Descriptor cannot be found");
+    DLOGV("Standard VC Interface Descriptor cannot be found");
     return -1;
   } else {
-    DLOG("Found Standard VC Interface");
-    DLOG("  bInterfaceNumber : 0x%x", vcifd->bInterfaceNumber);
-    DLOG("  bAlternateSetting : 0x%x", vcifd->bAlternateSetting);
-    if (vcifd->bNumEndpoints)
-      DLOG("  Status interrupt endpoint is present");
-    else
-      DLOG("  Status interrupt endpoint is not present");
+    DLOGV("Found Standard VC Interface");
+    DLOGV("  bInterfaceNumber : 0x%x", vcifd->bInterfaceNumber);
+    DLOGV("  bAlternateSetting : 0x%x", vcifd->bAlternateSetting);
+    if (vcifd->bNumEndpoints) {
+      DLOGV("  Status interrupt endpoint is present");
+    }
+    else {
+      DLOGV("  Status interrupt endpoint is not present");
+    }
   }
 
   /* Get Class-specific VC Interface header descriptor */
-  DLOG("Getting Class-specific VC Interface Descriptor ...");
+  DLOGV("Getting Class-specific VC Interface Descriptor ...");
   while (index < cfg->wTotalLength) {
     desc_idx = (UVC_DESC_IDX *)(&conf[index]);
     if ((desc_idx->bDescriptorType != CS_INTERFACE) ||
@@ -516,35 +592,35 @@ uvc_device_cfg (
 
   csvcifd = (UVC_CSVC_IF_HDR_DESC *)(&conf[index]);
 
-  DLOG("Found Class-specific VC Interface Header");
-  DLOG("  wTotalLength : 0x%x", csvcifd->wTotalLength);
-  DLOG("  bInCollection : 0x%x", csvcifd->bInCollection);
+  DLOGV("Found Class-specific VC Interface Header");
+  DLOGV("  wTotalLength : 0x%x", csvcifd->wTotalLength);
+  DLOGV("  bInCollection : 0x%x", csvcifd->bInCollection);
 
   /* Get Input and Output Terminals */
-  DLOG("Getting Input and Output Terminals ...");
+  DLOGV("Getting Input and Output Terminals ...");
   tmp_index = index;
   index += csvcifd->wTotalLength;
-  DLOG("csvcifd->wTotalLength = %d", csvcifd->wTotalLength);
+  DLOGV("csvcifd->wTotalLength = %d", csvcifd->wTotalLength);
   
   while (tmp_index < index) {
     desc_idx = (UVC_DESC_IDX *)(&conf[tmp_index]);
     if ((desc_idx->bDescriptorType == CS_INTERFACE) &&
         (desc_idx->bDescriptorSubType == VC_INPUT_TERMINAL)) {
       intd = (UVC_IN_TERM_DESC *)(&conf[tmp_index]);
-      DLOG("Found Input Terminal");
-      DLOG("  bTerminalID : 0x%x", intd->bTerminalID);
-      DLOG("  wTerminalType : 0x%x", intd->wTerminalType);
-      DLOG("  bAssocTerminal : 0x%x", intd->bAssocTerminal);
+      DLOGV("Found Input Terminal");
+      DLOGV("  bTerminalID : 0x%x", intd->bTerminalID);
+      DLOGV("  wTerminalType : 0x%x", intd->wTerminalType);
+      DLOGV("  bAssocTerminal : 0x%x", intd->bAssocTerminal);
     }
 
     if ((desc_idx->bDescriptorType == CS_INTERFACE) &&
         (desc_idx->bDescriptorSubType == VC_OUTPUT_TERMINAL)) {
       outd = (UVC_OUT_TERM_DESC *)(&conf[tmp_index]);
-      DLOG("Found Output Terminal");
-      DLOG("  bTerminalID : 0x%x", outd->bTerminalID);
-      DLOG("  wTerminalType : 0x%x", outd->wTerminalType);
-      DLOG("  bAssocTerminal : 0x%x", outd->bAssocTerminal);
-      DLOG("  bSourceID : 0x%x", outd->bSourceID);
+      DLOGV("Found Output Terminal");
+      DLOGV("  bTerminalID : 0x%x", outd->bTerminalID);
+      DLOGV("  wTerminalType : 0x%x", outd->wTerminalType);
+      DLOGV("  bAssocTerminal : 0x%x", outd->bAssocTerminal);
+      DLOGV("  bSourceID : 0x%x", outd->bSourceID);
     }
 
     /* Multiple Processing or Extension Units may exist here */
@@ -558,7 +634,7 @@ uvc_device_cfg (
    */
 
   /* Get Standard VS Interface */
-  DLOG("Getting Standard VS Interface ...");
+  DLOGV("Getting Standard VS Interface ...");
   while (index < cfg->wTotalLength) {
     desc_idx = (UVC_DESC_IDX *)(&conf[index]);
     if (desc_idx->bDescriptorType != USB_TYPE_IF_DESC)
@@ -577,17 +653,17 @@ uvc_device_cfg (
   if ((vsifd->bDescriptorType != USB_TYPE_IF_DESC) ||
       (vsifd->bInterfaceClass != CC_VIDEO) ||
       (vsifd->bInterfaceSubClass != SC_VIDEOSTREAMING)) {
-    DLOG("Standard VS Interface Descriptor cannot be found");
+    DLOGV("Standard VS Interface Descriptor cannot be found");
     return -1;
   } else {
-    DLOG("Found Standard VS Interface");
-    DLOG("  bInterfaceNumber : 0x%x", vsifd->bInterfaceNumber);
-    DLOG("  bAlternateSetting : 0x%x", vsifd->bAlternateSetting);
-    DLOG("  bNumEndpoints : 0x%x", vsifd->bNumEndpoints);
+    DLOGV("Found Standard VS Interface");
+    DLOGV("  bInterfaceNumber : 0x%x", vsifd->bInterfaceNumber);
+    DLOGV("  bAlternateSetting : 0x%x", vsifd->bAlternateSetting);
+    DLOGV("  bNumEndpoints : 0x%x", vsifd->bNumEndpoints);
   }
 
   /* Get Class-Specific VS Interface Input Header Descriptor */
-  DLOG("Getting Class-Specific VS Interface Input Header ...");
+  DLOGV("Getting Class-Specific VS Interface Input Header ...");
   while (index < cfg->wTotalLength) {
     desc_idx = (UVC_DESC_IDX *)(&conf[index]);
     if ((desc_idx->bDescriptorType != CS_INTERFACE) ||
@@ -604,14 +680,14 @@ uvc_device_cfg (
 
   csvsifd = (UVC_CSVS_IF_HDR_DESC *)(&conf[index]);
 
-  DLOG("Found Class-specific VS Interface Input Header");
-  DLOG("  bNumFormats : 0x%x", csvsifd->bNumFormats);
-  DLOG("  wTotalLength : 0x%x", csvsifd->wTotalLength);
-  DLOG("  bEndpointAddress : 0x%x", csvsifd->bEndpointAddress);
-  DLOG("  bTerminalLink : 0x%x", csvsifd->bTerminalLink);
+  DLOGV("Found Class-specific VS Interface Input Header");
+  DLOGV("  bNumFormats : 0x%x", csvsifd->bNumFormats);
+  DLOGV("  wTotalLength : 0x%x", csvsifd->wTotalLength);
+  DLOGV("  bEndpointAddress : 0x%x", csvsifd->bEndpointAddress);
+  DLOGV("  bTerminalLink : 0x%x", csvsifd->bTerminalLink);
 
   /* Try to get MJPEG format and frame info */
-  DLOG("Getting MJPEG Format and Frame Info ...");
+  DLOGV("Getting MJPEG Format and Frame Info ...");
   tmp_index = index;
   index += csvsifd->wTotalLength;
 
@@ -626,14 +702,14 @@ uvc_device_cfg (
   jpegfd = (UVC_MJPEG_FORMAT_DESC *)(&conf[tmp_index]);
 
   if (tmp_index >= index) {
-    DLOG("Motion-JPEG format is not supported");
+    DLOGV("Motion-JPEG format is not supported");
     return -1;
   } else {
-    DLOG("Motion-JPEG format is supported");
-    DLOG("  bFormatIndex : 0x%x", jpegfd->bFormatIndex);
-    DLOG("  bNumFrameDescriptors : 0x%x", jpegfd->bNumFrameDescriptors);
-    DLOG("  bDefaultFrameIndex : 0x%x", jpegfd->bDefaultFrameIndex);
-    DLOG("  bCopyProtect : 0x%x", jpegfd->bCopyProtect);
+    DLOGV("Motion-JPEG format is supported");
+    DLOGV("  bFormatIndex : 0x%x", jpegfd->bFormatIndex);
+    DLOGV("  bNumFrameDescriptors : 0x%x", jpegfd->bNumFrameDescriptors);
+    DLOGV("  bDefaultFrameIndex : 0x%x", jpegfd->bDefaultFrameIndex);
+    DLOGV("  bCopyProtect : 0x%x", jpegfd->bCopyProtect);
   }
 
   tmp_index += jpegfd->bLength;
@@ -645,16 +721,16 @@ uvc_device_cfg (
         (desc_idx->bDescriptorSubType == VS_FRAME_MJPEG)) {
       jpegrd = (UVC_MJPEG_FRAME_DESC *)(&conf[tmp_index]);
 
-      DLOG("Found Motion-JPEG Frame Descriptor");
-      DLOG("  bFrameIndex : 0x%x", jpegrd->bFrameIndex);
-      DLOG("  The Minimum Bit Rate : %d", jpegrd->dwMinBitRate);
-      DLOG("  The Maximum Bit Rate : %d", jpegrd->dwMaxBitRate);
-      DLOG("  Maximum Frame Buffer : %d bytes",
-          jpegrd->dwMaxVideoFrameBufferSize);
-      DLOG("  The default interval : %d ns",
-          jpegrd->dwDefaultFrameInterval * 100);
-      DLOG("  The supported resolution : %d x %d",
-          jpegrd->wWidth, jpegrd->wHeight);
+      DLOGV("Found Motion-JPEG Frame Descriptor");
+      DLOGV("  bFrameIndex : 0x%x", jpegrd->bFrameIndex);
+      DLOGV("  The Minimum Bit Rate : %d", jpegrd->dwMinBitRate);
+      DLOGV("  The Maximum Bit Rate : %d", jpegrd->dwMaxBitRate);
+      DLOGV("  Maximum Frame Buffer : %d bytes",
+            jpegrd->dwMaxVideoFrameBufferSize);
+      DLOGV("  The default interval : %d ns",
+            jpegrd->dwDefaultFrameInterval * 100);
+      DLOGV("  The supported resolution : %d x %d",
+            jpegrd->wWidth, jpegrd->wHeight);
     }
 
     tmp_index += desc_idx->bLength;
@@ -666,43 +742,43 @@ uvc_device_cfg (
    */
 
   /* Get all the alternate settings for the VS interface above */
-  DLOG("Getting possible alternate settings for VS interface ...");
+  DLOGV("Getting possible alternate settings for VS interface ...");
   while (index < cfg->wTotalLength) {
     desc_idx = (UVC_DESC_IDX *)(&conf[index]);
 
     if (desc_idx->bDescriptorType == USB_TYPE_IA_DESC) {
-      DLOG("Reach the end of the current VS interface");
+      DLOGV("Reach the end of the current VS interface");
       break;
     }
 
     if (desc_idx->bDescriptorType == USB_TYPE_IF_DESC) {
       vsifd = (USB_IF_DESC *)(&conf[index]);
 
-      DLOG("Found Standard VS Interface");
-      DLOG("  bInterfaceNumber : 0x%x", vsifd->bInterfaceNumber);
-      DLOG("  bAlternateSetting : 0x%x", vsifd->bAlternateSetting);
-      DLOG("  bNumEndpoints : 0x%x", vsifd->bNumEndpoints);
+      DLOGV("Found Standard VS Interface");
+      DLOGV("  bInterfaceNumber : 0x%x", vsifd->bInterfaceNumber);
+      DLOGV("  bAlternateSetting : 0x%x", vsifd->bAlternateSetting);
+      DLOGV("  bNumEndpoints : 0x%x", vsifd->bNumEndpoints);
     }
 
     if (desc_idx->bDescriptorType == USB_TYPE_EPT_DESC) {
       videoept = (USB_EPT_DESC *)(&conf[index]);
 
-      DLOG("Found Video Data Endpoint");
-      DLOG("  bEndpointAddress : 0x%x", videoept->bEndpointAddress);
-      DLOG("  bmAttributes : 0x%x", videoept->bmAttributes);
+      DLOGV("Found Video Data Endpoint");
+      DLOGV("  bEndpointAddress : 0x%x", videoept->bEndpointAddress);
+      DLOGV("  bmAttributes : 0x%x", videoept->bmAttributes);
       if ((videoept->bmAttributes & 0xFC) == 1)
-        DLOG("  This is an isochronous end point"); 
+        DLOGV("  This is an isochronous end point"); 
       if ((videoept->bmAttributes & 0xFC) == 2)
-        DLOG("  This is a bulk end point"); 
-      DLOG("  The max packet size is : %d bytes",
-          videoept->wMaxPacketSize);
-      DLOG("  bInterval : 0x%x", videoept->bInterval);
+        DLOGV("  This is a bulk end point"); 
+      DLOGV("  The max packet size is : %d bytes",
+            videoept->wMaxPacketSize);
+      DLOGV("  bInterval : 0x%x", videoept->bInterval);
     }
 
     index += desc_idx->bLength;
   }
 
-  DLOG("UVC device configuration finished");
+  DLOGV("UVC device configuration finished");
 
   return 0;
 }
