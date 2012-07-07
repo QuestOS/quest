@@ -31,13 +31,16 @@
 #include "lwip/tcp.h"
 #include "lwip/udp.h"
 
-#define DEBUG_MIGRATION
+//#define DEBUG_MIGRATION
 
 #ifdef DEBUG_MIGRATION
 #define DLOG(fmt,...) DLOG_PREFIX("Migration",fmt,##__VA_ARGS__)
 #else
 #define DLOG(fmt,...) ;
 #endif
+
+extern bool sleepqueue_detach (task_id);
+extern void sleepqueue_append (task_id);
 
 void *
 detach_task (task_id tid)
@@ -48,6 +51,24 @@ detach_task (task_id tid)
   if (!v) return NULL;
   if (!vcpu_in_runqueue (v, tid)) {
     DLOG ("task 0x%X not in vcpu %d run queue", tid, tss->cpu);
+    /* tid is current task in its VCPU? */
+    if (v->tr == tid) {
+      /* If yes, we need to check the sleep queue. This is probably the only
+       * reason why this case could occur. The task has to be removed from the
+       * sleep queue of current sandbox and inserted into the sleep queue of
+       * the remote sandbox with the timestamp properly fixed.
+       */
+      DLOG ("task 0x%X is VCPU %d's current task", tid, tss->cpu);
+      if (v->runqueue == 0) {
+        v->runnable = FALSE;
+      }
+      /* Detach the task from local sleep queue if necessary. If task is not
+       * in the sleep queue, we set the sleep time to 0 so that the destination
+       * sandbox knows it won't need to put it to its sleep queue.
+       */
+      if (!sleepqueue_detach (tid)) tss->time = 0;
+      return get_phys_addr ((void *) tss);
+    }
     return NULL;
   } else {
     /* Remove migrating quest_tss from its VCPU run queue */
@@ -67,6 +88,7 @@ detach_task (task_id tid)
 quest_tss *
 pull_quest_tss (void * phy_tss)
 {
+  int cpu = get_pcpu_id ();
   quest_tss * new_tss = NULL;
   quest_tss * target_tss = map_virtual_page (((uint32) phy_tss) | 3);
   if (!target_tss) return NULL;
@@ -81,6 +103,17 @@ pull_quest_tss (void * phy_tss)
     goto abort;
   }
   memcpy (new_tss, target_tss, sizeof (quest_tss));
+
+  /* Fix sleep time if necessary */
+  if (new_tss->time) {
+    if (shm->remote_tsc_diff[cpu]) {
+      /* Local TSC is faster */
+      new_tss->time += shm->remote_tsc[cpu];
+    } else {
+      /* Local TSC is slower */
+      new_tss->time -= shm->remote_tsc[cpu];
+    }
+  }
 
   DLOG ("Duplicated quest_tss:");
   DLOG ("  name: %s, task_id: 0x%X, affinity: %d, CR3: 0x%X",
@@ -97,11 +130,23 @@ abort:
 int
 attach_task (quest_tss * new_tss)
 {
+  uint64 now;
+
   /* Add new quest_tss to per-sandbox quest_tss list */
   tss_add_tail (new_tss);
   /* TODO: Find a VCPU or create a new one for the process */
-  /* Let's do a wakeup for now without considering VCPU */
-  wakeup (new_tss->tid);
+  /* Let's do a wakeup or sleep for now without considering VCPU */
+  RDTSC (now);
+  if (new_tss->time == 0 || now >= new_tss->time) {
+    /* Not sleeping or sleep expires already. Wake up directly. */
+    DLOG ("Waking up task in destination sandbox");
+    wakeup (new_tss->tid);
+    new_tss->time = 0;
+  } else {
+    /* The migrating task is still sleeping */
+    DLOG ("Adding task in destination sandbox sleep queue");
+    sleepqueue_append (new_tss->tid);
+  }
 
 #ifdef DEBUG_MIGRATION
   check_copied_threads ();
@@ -257,10 +302,16 @@ int
 request_migration (int sandbox)
 {
   int cpu = get_pcpu_id ();
+  uint64 now;
   if (cpu == sandbox) {
     DLOG ("Ignored migration request to local sandbox %d", cpu);
     return 0;
   }
+  /* Put current TSC into remote_tsc of "sandbox" */
+  /* This is used to fix time difference. */
+  /* TODO: Also add IPI overhead into the tsc? */
+  RDTSC (now);
+  shm->remote_tsc[sandbox] = now;
   return LAPIC_send_ipi (0x1 << sandbox,
                          LAPIC_ICR_LEVELASSERT
                          | LAPIC_ICR_DM_LOGICAL
@@ -285,8 +336,32 @@ trap_and_migrate (void * phy_tss)
 static uint32
 receive_migration_request (uint8 vector)
 {
-  int cpu = get_pcpu_id ();
   quest_tss * new_tss = NULL;
+  int cpu = 0;
+  uint64 now;
+
+  /* --YL-- This is ugly. Let's think of some trick later. For now, do it the
+   * save way for easier debugging.
+   */
+
+  /* Get the tsc difference at this time between remote and local sandboxes. We
+   * need to minimize the cycles spent doing this offset calculation or somehow
+   * compensate for it by considering the overhead in the final calculation.
+   */
+  RDTSC (now);
+  cpu = get_pcpu_id ();
+  DLOG ("Local TSC: 0x%llX Remote TSC: 0x%llX", now, shm->remote_tsc[cpu]);
+
+  if (now <= shm->remote_tsc[cpu]) {
+    shm->remote_tsc[cpu] -= now;
+    shm->remote_tsc_diff[cpu] = FALSE;
+  } else {
+    shm->remote_tsc[cpu] = now - shm->remote_tsc[cpu];
+    shm->remote_tsc_diff[cpu] = TRUE;
+  }
+
+  DLOG ("TSC Diff: 0x%llx Flag: %d",
+        shm->remote_tsc[cpu], shm->remote_tsc_diff[cpu]);
 
   DLOG ("Received migration request in sandbox kernel %d!", cpu);
   /* What is the request on the queue? */

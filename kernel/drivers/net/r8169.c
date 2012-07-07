@@ -3823,7 +3823,7 @@ r8169_init (void)
 
 //  r8169_bh_id[0] = create_kernel_thread_args ((u32) r8169_bh_thread,
 //                                              (u32) &r8169_bh_stack[0][1023],
-//                                              FALSE, 0);
+//                                              "Realtek r8169", FALSE, 0);
 //  set_iovcpu (r8169_bh_id[0], IOVCPU_CLASS_NET);
 
 #ifdef USE_VMX
@@ -3858,7 +3858,7 @@ r8169_init (void)
 
 #ifdef TX_TIMING
   timing_id =
-    start_kernel_thread ((u32) timing_thread, (u32) &timing_stack[1023]);
+    start_kernel_thread ((u32) timing_thread, (u32) &timing_stack[1023], "r8169 timing");
 #endif
 
   r8169_initialized = TRUE;
@@ -3920,7 +3920,7 @@ r8169_register (void)
   r8169_bh_id[cpu] =
       create_kernel_thread_args ((u32) r8169_bh_thread,
                                  (u32) &r8169_bh_stack[cpu][1023],
-                                 FALSE, 0);
+                                 "Realtek r8169", FALSE, 0);
   set_iovcpu (r8169_bh_id[cpu], IOVCPU_CLASS_NET);
 
 #ifdef USE_VMX

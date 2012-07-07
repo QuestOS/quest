@@ -703,6 +703,7 @@ vcpu_schedule (void)
         if (tss->sandbox_affinity != current_cpu) {
           logger_printf ("Migration Request: taskid=0x%X, src=%d, dest=%d, vcpu=%d\n",
               str (), current_cpu, tss->sandbox_affinity, tss->cpu);
+          logger_printf ("Current task: 0x%X, Next task: 0x%X\n", str (), next);
           mvcpu = vcpu_lookup (tss->cpu);
           if (!mvcpu) {
             logger_printf ("No VCPU (%d) associated with Task 0x%X\n", tss->cpu, tss->tid);

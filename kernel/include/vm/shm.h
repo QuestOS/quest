@@ -67,6 +67,10 @@ typedef struct _shm_info {
   uint32 num_sandbox;
   /* The migration request queue storing the physical address of its first quest_tss */
   void * migration_queue[SHM_MAX_SANDBOX];
+  /* Time stamp counter value of other sandbox used to fix scheduling time */
+  uint64 remote_tsc[SHM_MAX_SANDBOX];
+  /* If TRUE, local tsc is leading. If FALSE, local tsc is falling behind */
+  bool remote_tsc_diff[SHM_MAX_SANDBOX];
   bool bsp_booted;
 } shm_info;
 

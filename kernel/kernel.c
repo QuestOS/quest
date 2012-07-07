@@ -305,12 +305,13 @@ check_copied_threads (void)
   task_id q = 0;
   vcpu * queue = NULL;
   logger_printf ("Checking threads in sandbox %d\n", cpu);
+  logger_printf ("Current Task: 0x%X\n", str ());
 
   /* Check global (per-sandbox) queue headed by init_tss */
   logger_printf ("Checking threads in global queue...\n");
   for (t = &init_tss; ((t = t->next_tss) != &init_tss);) {
-    logger_printf ("  name: %s, task_id: 0x%X, affinity: %d\n",
-                   t->name, t->tid, t->sandbox_affinity);
+    logger_printf ("  name: %s, task_id: 0x%X, affinity: %d, vcpu: %d\n",
+                   t->name, t->tid, t->sandbox_affinity, t->cpu);
   }
 
   /* Check wait queue headed by kernel_thread_waitq */
@@ -318,8 +319,8 @@ check_copied_threads (void)
   q = kernel_thread_waitq;
   while (q) {
     t = lookup_TSS (q);
-    logger_printf ("  name: %s, task_id: 0x%X, affinity: %d\n",
-                   t->name, t->tid, t->sandbox_affinity);
+    logger_printf ("  name: %s, task_id: 0x%X, affinity: %d, vcpu: %d\n",
+                   t->name, t->tid, t->sandbox_affinity, t->cpu);
     q = t->next;
   }
 
@@ -332,13 +333,13 @@ check_copied_threads (void)
     if (queue->tr) {
       logger_printf ("  vcpu 0x%X has current task:\n", queue);
       t = lookup_TSS (queue->tr);
-      logger_printf ("    name: %s, task_id: 0x%X, affinity: %d, vcpu: 0x%X\n",
-                     t->name, t->tid, t->sandbox_affinity, queue);
+      logger_printf ("    name: %s, task_id: 0x%X, affinity: %d, vcpu: 0x%X (%d)\n",
+                     t->name, t->tid, t->sandbox_affinity, queue, t->cpu);
     }
     while (q) {
       t = lookup_TSS (q);
-      logger_printf ("  name: %s, task_id: 0x%X, affinity: %d, vcpu: 0x%X\n",
-                     t->name, t->tid, t->sandbox_affinity, queue);
+      logger_printf ("  name: %s, task_id: 0x%X, affinity: %d, vcpu: 0x%X (%d)\n",
+                     t->name, t->tid, t->sandbox_affinity, queue, t->cpu);
       q = t->next;
     }
     queue = queue->next;
