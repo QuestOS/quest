@@ -195,7 +195,7 @@ print_itd_info(ehci_hcd_t* ehci_hcd, itd_t* itd ,char* msg)
   
 #define PRINT_ITD_MEMBER(member) DLOGV(#member ": 0x%X", itd->member)
 
-  //#define ITD_PRINT_VERBOSE
+  #define ITD_PRINT_VERBOSE
 
   PRINT_ITD_MEMBER(next_link_pointer);
   PRINT_ITD_MEMBER(transaction[0]);

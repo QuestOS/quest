@@ -26,10 +26,53 @@
 #include <drivers/usb/usb.h>
 #include <util/list.h>
 #include <util/cassert.h>
+#include "smp/spinlock.h"
 
 
 #define hcd_to_ehci_hcd(hcd) container_of((hcd), ehci_hcd_t, usb_hcd)
 #define ehci_hcd_to_hcd(ehci_hcd) (&((ehci_hcd)->usb_hcd))
+
+
+
+/*
+ * -- EM -- So here is the deal with EHCI irq handling.  For most
+ * interrupts the chip is suppose to set the interrupt's bit in the
+ * status register and then when the time passed for the interrupt
+ * threshold has passed if any bits that are turned on in the
+ * interrupt enable register have their corresponding status bits set
+ * then an interrupt is generated.  For the interrupts that it does
+ * not do this it does not wait for the interrupt threshold, it just
+ * sets the status bit and generates the interrupt if the
+ * corresponding interrupt enable bit is set.  However some EHCI
+ * controllers do not seem to set the status bit but just generate an
+ * interrupt for interrupt on complete/short packet.  The same code
+ * has caused the status bit 0 to be set for some EHCI chips and not
+ * set for others.  This could be because some EHCI implementations
+ * are more lenient then others and there is something wrong with the
+ * code but I have spent two days working on this "bug" and Linux has
+ * a watchdog timer that goes off and causes it to do the work that
+ * would normally occur for an interrupt on complete/short packet so I
+ * am going to assume that it is a problem with some EHCI chips.  What
+ * this means is that every time an interrupt occurs just assume that
+ * it was caused by an interrupt on complete/short packet.  Since most
+ * of the time the interrupt handler will only be called for interrupt
+ * on complete/short packets this assumption should not affect
+ * performance by much.  Also the same chips that do not set the
+ * status bit for completion/short packet also do not reliably
+ * generate an interrupt to fix this I am create a kernel thread that
+ * performs similar duties to the interrupt handler.  This kernel
+ * thread will sleep for INTERRUPT_THRESHOLD * 150.  It would be
+ * better to do what Linux does and use a watchdog timer that is set
+ * to go off a little bit after the transaction should finish so it
+ * never goes off if the chip does not have the bug and will go off
+ * shorter after the irq would go off if it does.  We don't have
+ * watchdog timers yet so a periodic tick will have to do.  To disable
+ * all the extra software for the hardware bug comment out the macro
+ * declaration below
+ */
+
+#define EHCI_IOC_BUG
+
 
 
 /*
@@ -52,13 +95,10 @@
 
 typedef uint32_t ehci_port_t;
 
-
-
 #define TYPE_ITD  0
 #define TYPE_QH   1
 #define TYPE_SITD 2
 #define TYPE_FSTN 3
-
 
 typedef struct
 {
@@ -121,9 +161,6 @@ typedef struct
   
 #define HALTED (1<<12)
 #define EHCI_IS_HALTED(hcd) ((hcd)->regs->status & HALTED)
-#define EHCI_ACK_INTERRUPTS(hcd) ((hcd)->regs->status |= USBINTR_MASK)
-#define EHCI_ASYNC_DOORBELL_RUNG(hcd) ((hcd)->regs->status & USBINTR_IAA)
-#define EHCI_ACK_DOORBELL(hcd) ((hcd)->regs->status |= USBINTR_IAA)
   
   
   
@@ -136,11 +173,15 @@ typedef struct
 #define USBINTR_ERR  (1<<1)          /* "error" completion (overflow, ...) */
 #define USBINTR_INT  (1<<0)          /* "normal" completion (short, ...)   */
 #define USBINTR_MASK (USBINTR_IAA | USBINTR_HSE | USBINTR_PCD | USBINTR_ERR | USBINTR_INT )
-
+#define USBINTR_ALL  (USBINTR_IAA | USBINTR_HSE | USBINTR_PCD | USBINTR_ERR | USBINTR_INT | USBINTR_FLR )
+  
 #define EHCI_ENABLE_INTR(hcd, intr) ((hcd)->regs->interrupt_enable |= (intr))
 #define EHCI_SET_INTRS(hcd) EHCI_ENABLE_INTR((hcd), USBINTR_MASK)
 #define EHCI_DISABLE_INTR(hcd, intr) ((hcd)->regs->interrupt_enable &= ~(intr))
 #define EHCI_INTR_ENABLED(hcd, intr) ((hcd)->regs->interrupt_enable & (intr))
+#define EHCI_ASYNC_DOORBELL_RUNG(hcd) ((hcd)->regs->status & USBINTR_IAA)
+#define EHCI_ACK_INTERRUPTS(hcd, intrs) ((hcd)->regs->status |= (intrs))
+#define EHCI_ACK_DOORBELL(hcd) ((hcd)->regs->status |= USBINTR_IAA)
   
   uint32_t frame_index;
 
@@ -201,7 +242,7 @@ typedef struct
     __port &= ~PORT_ENABLED;                    \
     port = __port;                              \
   } while(0)
-
+  
 #define PORT_LEAVE_RESET(port) port &= ~PORT_RESET
   
 } PACKED ehci_regs_t;
@@ -475,6 +516,9 @@ typedef struct {
       uint32_t offset:12;
       uint32_t page_selector:3;
       uint32_t ioc:1;
+
+#define ITD_IOC (1 << 15)
+      
       uint32_t length:12;
       uint32_t status:4;
     } PACKED;
@@ -527,6 +571,13 @@ typedef struct
   qh_t* queue_heads[2][16];
 } ehci_dev_info_t;
 
+typedef struct {
+  list_head_t tds;
+  struct urb* urb;
+  int pipe_type;
+  list_head_t chain_list;
+} ehci_completion_element_t;
+
 typedef struct
 {
   usb_hcd_t usb_hcd;
@@ -547,23 +598,20 @@ typedef struct
   frm_lst_lnk_ptr_t* frame_list;
   uint32_t           frame_list_size;
 
-  qh_t*       qh_pool;
-  phys_addr_t qh_pool_phys_addr;
-  uint32_t    qh_pool_size;
-  uint32_t*   used_qh_bitmap;
-  uint32_t    used_qh_bitmap_size;
-  
-  qtd_t*      qtd_pool;
-  phys_addr_t qtd_pool_phys_addr;
-  uint32_t    qtd_pool_size;
-  uint32_t*   used_qtd_bitmap;
-  uint32_t    used_qtd_bitmap_size;
-  
-  itd_t*      itd_pool;
-  phys_addr_t itd_pool_phys_addr;
-  uint32_t    itd_pool_size;
-  uint32_t*   used_itd_bitmap;
-  uint32_t    used_itd_bitmap_size;
+#define EHCI_DECLARE_POOL(type)                 \
+  type##_t*   type##_pool;                      \
+  phys_addr_t type##_pool_phys_addr;            \
+  uint32_t    type##_pool_size;                 \
+  uint32_t*   used_##type##_bitmap;             \
+  uint32_t    used_##type##_bitmap_size;        
+
+
+  EHCI_DECLARE_POOL(qh)
+  EHCI_DECLARE_POOL(qtd)
+  EHCI_DECLARE_POOL(itd)
+  EHCI_DECLARE_POOL(ehci_completion_element)
+
+#undef EHCI_DECLARE_POOL
   
   uint32_t interrupt_threshold;
   uint32_t num_ports;
@@ -572,8 +620,24 @@ typedef struct
 
   qh_t* async_head;
   list_head_t reclaim_list;
+
+  spinlock completion_lock; /* Protects both completion list and the
+                             * completion_element pool related
+                             * items */
+  list_head_t completion_list;
+
+#ifdef EHCI_IOC_BUG
+
+#define IOC_BACKUP_THREAD_STACK_SIZE 1024
+  
+  uint32_t ioc_backup_thread_stack[IOC_BACKUP_THREAD_STACK_SIZE];
+
+#endif // EHCI_IOC_BUG
   
 } ehci_hcd_t;
+
+
+
 
 #define EHCI_GET_DEVICE_QH(ehci_hcd, addr, is_input, endpoint)          \
   ((ehci_hcd)->ehci_devinfo[(addr)]                                     \
@@ -584,30 +648,6 @@ typedef struct
    .queue_heads[(is_input) && ((endpoint) != 0)][(endpoint)] = qh)
 
 
-int
-ehci_control_transfer(ehci_hcd_t* ehci_hcd, 
-                      uint8_t address,
-                      addr_t setup_req,    /* Use virtual address here */
-                      uint32_t setup_len,
-                      addr_t setup_data,   /* Use virtual address here */
-                      uint32_t data_len,
-                      uint32_t packet_len);
-
-int
-ehci_bulk_transfer(ehci_hcd_t* ehci_hcd,
-                   uint8_t address,
-                   uint8_t endpoint,
-                   addr_t data,
-                   int data_len,
-                   int packet_len,
-                   uint8_t direction,
-                   uint32_t *act_len);
-
-int ehci_isochronous_transfer(ehci_hcd_t* ehci_hcd, uint8_t address,
-                              uint8_t endpoint, int packet_len,
-                              uint8_t direction, addr_t data,
-                              usb_iso_packet_descriptor_t* packets,
-                              int num_packets);
 
 
 #define calc_bitmap_size(hcd, pool_size)                        \
@@ -622,6 +662,9 @@ int ehci_isochronous_transfer(ehci_hcd_t* ehci_hcd, uint8_t address,
 
 #define calc_used_itd_bitmap_size(hcd)          \
   calc_bitmap_size(hcd, itd_pool_size)
+
+#define calc_used_ehci_completion_element_bitmap_size(hcd)    \
+  calc_bitmap_size(hcd, ehci_completion_element_pool_size)
 
 #endif // _EHCI_H_
 

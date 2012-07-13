@@ -25,37 +25,215 @@
 #include <arch/i386-div64.h>
 #include <kernel.h>
 #include "sched/sched.h"
+#include <mem/pow2.h>
 
 
-#define DEFAULT_FRM_LST_SIZE 1024 /*
-                                   * Default frame list size specified
-                                   * by EHCI Specs
-                                   */
+static int
+ehci_async_transfer(ehci_hcd_t* ehci_hcd, struct urb* urb);
+
+
+
+static int
+ehci_isochronous_transfer(ehci_hcd_t* ehci_hcd, struct urb* urb);
+
+/*
+ * Default frame list size specified by EHCI Specs
+ */
+#define DEFAULT_FRM_LST_SIZE 1024 
 
 #define FRM_LIST_SIZE DEFAULT_FRM_LST_SIZE  /* Frame list size used in Quest */
-#define DEFAULT_INT_THRESHOLD 4
+#define DEFAULT_INT_THRESHOLD 8
 #define QH_POOL_SIZE  256
 #define QTD_POOL_SIZE 256
 #define ITD_POOL_SIZE 1024
+#define EHCI_COMPLETION_ELEMENT_POOL_SIZE 128
 
-CASSERT( (QH_POOL_SIZE % 32) == 0, ehci_qh_pool_size)
+CASSERT((QH_POOL_SIZE  % 32) == 0, ehci_qh_pool_size )
 CASSERT((QTD_POOL_SIZE % 32) == 0, ehci_qtd_pool_size)
 CASSERT((ITD_POOL_SIZE % 32) == 0, ehci_itd_pool_size)
+CASSERT((EHCI_COMPLETION_ELEMENT_POOL_SIZE % 32) == 0,
+        ehci_completion_element_pool_size)
 
 static ehci_hcd_t ehci_hcd;
 static frm_lst_lnk_ptr_t frame_list[FRM_LIST_SIZE] ALIGNED(0x1000);
 
 static qh_t qh_pool[QH_POOL_SIZE] ALIGNED(0x1000);
-static uint32_t used_qh_bitmap [(QH_POOL_SIZE + EHCI_ELEMENTS_PER_BITMAP_ENTRY - 1) /
-                                EHCI_ELEMENTS_PER_BITMAP_ENTRY];
+static uint32_t used_qh_bitmap [(QH_POOL_SIZE  + EHCI_ELEMENTS_PER_BITMAP_ENTRY - 1)
+                                / EHCI_ELEMENTS_PER_BITMAP_ENTRY];
 
 static qtd_t qtd_pool[QTD_POOL_SIZE] ALIGNED(0x1000);
-static uint32_t used_qtd_bitmap[(QTD_POOL_SIZE + EHCI_ELEMENTS_PER_BITMAP_ENTRY - 1) /
-                                EHCI_ELEMENTS_PER_BITMAP_ENTRY];
+static uint32_t used_qtd_bitmap[(QTD_POOL_SIZE + EHCI_ELEMENTS_PER_BITMAP_ENTRY - 1)
+                                / EHCI_ELEMENTS_PER_BITMAP_ENTRY];
 
 static itd_t itd_pool[ITD_POOL_SIZE] ALIGNED(0x1000);
-static uint32_t used_itd_bitmap[(ITD_POOL_SIZE + EHCI_ELEMENTS_PER_BITMAP_ENTRY - 1) /
-                                EHCI_ELEMENTS_PER_BITMAP_ENTRY];
+static uint32_t used_itd_bitmap[(ITD_POOL_SIZE + EHCI_ELEMENTS_PER_BITMAP_ENTRY - 1)
+                                / EHCI_ELEMENTS_PER_BITMAP_ENTRY];
+
+static ehci_completion_element_t
+ehci_completion_element_pool[EHCI_COMPLETION_ELEMENT_POOL_SIZE] ALIGNED(0x1000);
+
+static uint32_t
+used_ehci_completion_element_bitmap[(EHCI_COMPLETION_ELEMENT_POOL_SIZE +
+                                     EHCI_ELEMENTS_PER_BITMAP_ENTRY - 1)
+                                    / EHCI_ELEMENTS_PER_BITMAP_ENTRY];
+
+
+static void ehci_check_for_urb_completions(ehci_hcd_t* ehci_hcd)
+{
+  ehci_completion_element_t* comp_element;
+  ehci_completion_element_t* temp_comp_element;
+  int i;
+  bool done;
+  itd_t* itd;
+  itd_t* temp_itd;
+  qtd_t* qtd;
+  qtd_t* temp_qtd;
+  int packets_traversed;
+  struct urb* urb;
+  
+  spinlock_lock(&ehci_hcd->completion_lock);
+
+  list_for_each_entry_safe(comp_element, temp_comp_element,
+                           &ehci_hcd->completion_list, chain_list) {
+    urb = comp_element->urb;
+    if(urb->active) {
+
+      done = FALSE;
+      
+      switch(comp_element->pipe_type) {
+      case PIPE_ISOCHRONOUS:
+        itd = list_entry(comp_element->tds.prev, itd_t, chain_list);
+        for(i = 0; i < 8; ++i) {
+          if(itd->transaction[i].raw & ITD_ACTIVE) {
+            break;
+          }
+        }
+        done = i == 8;
+      
+        break;
+      
+      case PIPE_CONTROL:
+      case PIPE_BULK:
+        panic("async not implemented for ehci_check_for_urb_completions");
+        DLOG("async not implemented for ehci_check_for_urb_completions");
+        break;
+
+      case PIPE_INTERRUPT:
+        DLOG("Interrupt case in ehci_check_for_urb_completions not implemented");
+        panic("Interrupt case in ehci_check_for_urb_completions not implemented");
+        break;
+
+      default:
+        DLOG("Default case reached in %s", __FUNCTION__);
+        panic("Default case reached in ehci_check_for_urb_completions");
+      }
+
+      if(done) {
+        urb->active = FALSE;
+        list_del(&comp_element->chain_list);
+        
+        /*
+         * -- EM -- Since this function is called in the context of
+         * the interrupt handler (and in the hardware bug backup
+         * thread) the better thing to do would be wake up a
+         * thread/IOVCPU to handle the URB completion function (maybe
+         * might not be worth it since completion callbacks are
+         * usually very small, this is something we can compare for a
+         * performance/predictability trade-off) but for right now just
+         * call it here
+         */
+        if(urb->complete != NULL) {
+          urb->complete(comp_element->urb);
+        }
+
+
+        /*
+         * Do URB bookkeeping and cleanup EHCI resources
+         */
+
+        switch(comp_element->pipe_type) {
+
+        case PIPE_ISOCHRONOUS:
+          
+          packets_traversed = 0;
+          list_for_each_entry(itd, &comp_element->tds, chain_list) {
+            for(i = 0; (i < 8) && (packets_traversed < urb->number_of_packets);
+                ++i, ++packets_traversed) {
+              urb->iso_frame_desc[packets_traversed].actual_length
+                = (itd->transaction[i].raw >> 16) & 0xFFF;
+              
+              urb->iso_frame_desc[packets_traversed].status
+                = itd->transaction[i].status;
+              
+              if(itd->transaction[i].raw & ITD_ACTIVE) {
+        
+                DLOG("itd should be done but is not");
+                panic("itd should be done but is not");
+              }
+            }
+          }
+           
+          list_for_each_entry_safe(itd, temp_itd, &comp_element->tds, chain_list) {
+            free_itd(ehci_hcd, itd);
+          }
+          break;
+          
+        case PIPE_CONTROL:
+        case PIPE_BULK:
+          panic("async not implemented for ehci_check_for_urb_completions");
+          DLOG("async not implemented for ehci_check_for_urb_completions");
+          break;
+          
+        case PIPE_INTERRUPT:
+          DLOG("Interrupt case in ehci_check_for_urb_completions not implemented");
+          panic("Interrupt case in ehci_check_for_urb_completions not implemented");
+        break;
+
+        default:
+          DLOG("Default case reached in %s", __FUNCTION__);
+          panic("Default case reached in ehci_check_for_urb_completions");
+        }
+        
+        
+      }
+    }
+    else {
+      list_del(&comp_element->chain_list);
+    }
+    
+  }
+  
+
+  spinlock_unlock(&ehci_hcd->completion_lock);
+}
+
+
+
+#ifdef EHCI_IOC_BUG
+
+
+static void ioc_backup_thread(ehci_hcd_t* ehci_hcd)
+{
+  unlock_kernel();
+  sti();
+  
+  while(1) {
+
+    /*
+     * Need to get the kernel lock since sched_usleep will call
+     * schedule
+     */
+    lock_kernel(); 
+    // 18750 = 150 * 125
+    sched_usleep(18750 * DEFAULT_INT_THRESHOLD );
+    unlock_kernel();
+
+    ehci_check_for_urb_completions(ehci_hcd);
+  }
+}
+
+#endif // EHCI_IOC_BUG
+
 
 
 static bool
@@ -76,24 +254,29 @@ handshake(uint32_t *ptr, uint32_t mask, uint32_t done, uint32_t usec)
 }
 
 
+
 static uint32_t
 ehci_irq_handler(uint8 vec)
 {
-  uint8_t status;
-  print_caps_and_regs_info(&ehci_hcd, "In ehci_irq_handler");
+  
+  uint32_t status;
+  lock_kernel();
 
   if(vec != ehci_hcd.handler_vector) {
     DLOG("%s called but not for the EHCI chip", __FUNCTION__);
     panic("ehci_irq_handler called but not for the EHCI chip");
   }
-
+  
   status = ehci_hcd.regs->status;
-  EHCI_ACK_INTERRUPTS(&ehci_hcd);
-  DLOG("acknowledging interrupts");
 
+  EHCI_ACK_INTERRUPTS(&ehci_hcd, status & USBINTR_ALL);
+
+  if(status & USBINTR_INT) { /* "normal" completion (short, ...) */
+    ehci_check_for_urb_completions(&ehci_hcd);
+  }
+  
   if(status & USBINTR_IAA) { /* Interrupted on async advance */
     DLOG("USBINTR_IAA case in %s unhandled status = 0x%X", __FUNCTION__, status);
-    print_caps_and_regs_info(&ehci_hcd, "In ehci_irq_handler");
     panic("USBINTR_IAA case unhandled");
   }
 
@@ -116,15 +299,11 @@ ehci_irq_handler(uint8 vec)
     DLOG("USBINTR_ERR case in %s unhandled status = 0x%X", __FUNCTION__, status);
     panic("USBINTR_ERR case unhandled");
   }
-
-  if(status & USBINTR_INT) { /* "normal" completion (short, ...) */
-    DLOG("USBINTR_INT case in %s unhandled status = 0x%X", __FUNCTION__, status);
-    panic("USBINTR_INT case unhandled");
-  }
-    
+  
+  unlock_kernel();
+  
   return 0;
 }
-
 
 // Restart the EHCI 
 static inline bool
@@ -260,6 +439,7 @@ set_ehci_on(ehci_hcd_t* ehci_hcd)
 
 static inline void enable_interrupts(ehci_hcd_t* ehci_hcd)
 {
+  EHCI_ACK_INTERRUPTS(ehci_hcd, USBINTR_ALL);
   EHCI_SET_INTRS(ehci_hcd);
 }
 
@@ -276,7 +456,7 @@ reset_root_port(ehci_hcd_t* ehci_hcd, ehci_port_t* port)
   }
 
   /*
-   * --??-- I don't know if it is necessary to check if a port
+   * -- EM -- I don't know if it is necessary to check if a port
    * was successfully powered on or if there should be delay.
    * Right now all the ports I'm using the host controller
    * does not have port power control switches so I can't test it
@@ -296,7 +476,7 @@ reset_root_port(ehci_hcd_t* ehci_hcd, ehci_port_t* port)
    * sleep before restarting port, time specified in USB 2 Specs
    * section 7.1.7.5
    */
-  sched_usleep(50 * 1000);
+  sched_usleep(50000);
 
   PORT_LEAVE_RESET(*port);
 
@@ -304,7 +484,7 @@ reset_root_port(ehci_hcd_t* ehci_hcd, ehci_port_t* port)
    * Software must wait 2 ms for port to end reset, EHCI Specs page 28
    */
   
-  if(!handshake(port, PORT_RESET, 0, 2 * 1000)) return FALSE;
+  if(!handshake(port, PORT_RESET, 0, 2000)) return FALSE;
   
   DLOG("Port after leave reset 0x%X", *port);
   
@@ -314,13 +494,14 @@ reset_root_port(ehci_hcd_t* ehci_hcd, ehci_port_t* port)
 bool ehci_post_enumeration(usb_hcd_t* usb_hcd)
 {
   
-  //ehci_hcd_t* ehci_hcd = hcd_to_ehci_hcd(usb_hcd);
-  //enable_interrupts(ehci_hcd);
+  ehci_hcd_t* ehci_hcd = hcd_to_ehci_hcd(usb_hcd);
+  enable_interrupts(ehci_hcd);
   print_caps_and_regs_info(hcd_to_ehci_hcd(usb_hcd), "In ehci_post_enumeration");
+  
   return TRUE;
 }
 
-bool
+static bool
 ehci_reset_root_ports(usb_hcd_t* usb_hcd)
 {
   uint32_t num_ports;
@@ -344,11 +525,47 @@ ehci_reset_root_ports(usb_hcd_t* usb_hcd)
   return TRUE;
 }
 
+static int ehci_submit_urb(struct urb* urb,
+                           gfp_t mem_flags)
+{
+  uint32_t pipe = urb->pipe;
+  ehci_hcd_t* ehci_hcd = hcd_to_ehci_hcd(urb->dev->hcd);
+  uint16_t packet_len = usb_maxpacket(urb->dev, urb->pipe);
+  
+  if(packet_len == 0) {
+    DLOG("packet_len == 0");
+    panic("packet_len == 0");
+  }
+  register uint32_t pipe_type = usb_pipetype(pipe);
+  switch(pipe_type) {
+  case PIPE_ISOCHRONOUS:
+    return ehci_isochronous_transfer(ehci_hcd, urb);
+  case PIPE_INTERRUPT:
+    
+    DLOG("EHCI Interrupt not implemented");
+    panic("EHCI Interrupt not implemented");
+    
+  case PIPE_CONTROL:
+  case PIPE_BULK:
+    return ehci_async_transfer(ehci_hcd, urb);
+  }
+
+  return -1;
+}
+
+void ehci_kill_urb(struct urb* urb)
+{
+  //ehci_hcd_t* ehci_hcd = hcd_to_ehci_hcd(urb->dev->hcd);
+  DLOG("ehci_kill_urb not implemented");
+  panic("ehci_kill_urb not implemented");
+}
+
 /*
  * Host controller initiailization sequence taken from page 53 of the
  * EHCI Specs
  */
 
+static u32 temp_stack[1024] ALIGNED (0x1000);
 static bool
 initialise_ehci_hcd(uint32_t usb_base,
                     ehci_hcd_t* ehci_hcd,
@@ -363,11 +580,16 @@ initialise_ehci_hcd(uint32_t usb_base,
                     itd_t* itd_pool,
                     uint32_t itd_pool_size,
                     uint32_t* used_itd_bitmap,
+                    ehci_completion_element_t* ehci_completion_element_pool,
+                    uint32_t ehci_completion_element_pool_size,
+                    uint32_t* used_ehci_completion_element_bitmap,
                     uint32_t int_threshold)
 { 
   if(!initialise_usb_hcd(ehci_hcd_to_hcd(ehci_hcd),
                          USB_TYPE_HC_EHCI, ehci_reset_root_ports,
-                         ehci_post_enumeration)) {
+                         ehci_post_enumeration,
+                         ehci_submit_urb,
+                         ehci_kill_urb)) {
     return FALSE;
   }
   
@@ -376,30 +598,30 @@ initialise_ehci_hcd(uint32_t usb_base,
   ehci_hcd->caps = ehci_hcd->base_virtual_address;
   ehci_hcd->regs = (ehci_regs_t*)(ehci_hcd->base_virtual_address
                                   + ehci_hcd->caps->cap_length);
+  
 
   memset(ehci_hcd->ehci_devinfo, 0, sizeof(ehci_hcd->ehci_devinfo));
   
   ehci_hcd->frame_list      = frm_lst;
   ehci_hcd->frame_list_size = frm_lst_size;
 
-  ehci_hcd->qh_pool           = qh_pool;
-  ehci_hcd->qh_pool_phys_addr = (phys_addr_t)get_phys_addr(qh_pool);
-  ehci_hcd->qh_pool_size      = qh_pool_size;
-  ehci_hcd->used_qh_bitmap    = used_qh_bitmap;
-  memset(qh_pool, 0, qh_pool_size * sizeof(qh_t));
 
-  ehci_hcd->qtd_pool           = qtd_pool;
-  ehci_hcd->qtd_pool_phys_addr = (phys_addr_t)get_phys_addr(qtd_pool);
-  ehci_hcd->qtd_pool_size      = qtd_pool_size;
-  ehci_hcd->used_qtd_bitmap    = used_qtd_bitmap;
-  memset(qtd_pool, 0, qtd_pool_size * sizeof(qtd_t));
+#define INIT_EHCI_POOL(type)                                            \
+  do {                                                                  \
+    ehci_hcd->type##_pool = type##_pool;                                \
+    ehci_hcd->type##_pool_phys_addr = (phys_addr_t)get_phys_addr(type##_pool); \
+    ehci_hcd->type##_pool_size = type##_pool_size;                      \
+    ehci_hcd->used_##type##_bitmap = used_##type##_bitmap;              \
+    memset(type##_pool, 0, type##_pool_size * sizeof(type##_t));        \
+  }                                                                     \
+  while(0)
 
-  ehci_hcd->itd_pool           = itd_pool;
-  ehci_hcd->itd_pool_phys_addr = (phys_addr_t)get_phys_addr(itd_pool);
-  ehci_hcd->itd_pool_size      = itd_pool_size;
-  ehci_hcd->used_itd_bitmap    = used_itd_bitmap;
-  memset(itd_pool, 0, itd_pool_size * sizeof(itd_t));
-  
+  INIT_EHCI_POOL(qh);
+  INIT_EHCI_POOL(qtd);
+  INIT_EHCI_POOL(itd);
+  INIT_EHCI_POOL(ehci_completion_element);
+
+#undef INIT_EHCI_POOL
   
   ehci_hcd->interrupt_threshold = int_threshold;
   ehci_hcd->num_ports           = GET_NUM_PORTS(ehci_hcd);
@@ -421,7 +643,7 @@ initialise_ehci_hcd(uint32_t usb_base,
   memset(used_qtd_bitmap, 0,
          ehci_hcd->used_qtd_bitmap_size * sizeof(*used_qtd_bitmap));
 
-   ehci_hcd->used_itd_bitmap_size =
+  ehci_hcd->used_itd_bitmap_size =
     calc_used_itd_bitmap_size(ehci_hcd);
 
   memset(used_itd_bitmap, 0,
@@ -431,7 +653,7 @@ initialise_ehci_hcd(uint32_t usb_base,
   if(!initialise_frame_list(ehci_hcd)) return FALSE;
   if(!initialise_async_head(ehci_hcd)) return FALSE;
 
-
+  INIT_LIST_HEAD(&ehci_hcd->completion_list);
   
   // Set desired interrupt threshold
   if(!set_interrupt_threshold(ehci_hcd)) return FALSE;
@@ -446,6 +668,14 @@ initialise_ehci_hcd(uint32_t usb_base,
   // Set all ports to route to EHCI chip
   EHCI_SET_CONFIG_FLAG(ehci_hcd, 1);
 
+#ifdef EHCI_IOC_BUG
+  
+  create_kernel_thread_args((u32)ioc_backup_thread,
+                            (u32) &temp_stack[1023],
+                            TRUE, 1, ehci_hcd);
+  
+#endif // EHCI_IOC_BUG
+  
   return TRUE;
 }
 
@@ -461,12 +691,6 @@ ehci_init(void)
   uint i, device_index, irq_pin;
   pci_device ehci_device;
   pci_irq_t irq;
-
-  DLOGV("***************************************************");
-  DLOGV("Entering %s compiled at %s", __FUNCTION__, __TIMESTAMP__);
-
-  DLOGV("size of qtd = %d", sizeof(qtd_t));
-  DLOGV("size of qh = %d", sizeof (qh_t));
 
   if(mp_ISA_PC) {
     DLOG("Cannot operate without PCI");
@@ -498,6 +722,18 @@ ehci_init(void)
 
   if(device_index == ~0) {
     while (pci_find_device (0x8086, 0x24CD, 0x0C, 0x03, i, &i)) { 
+      if (pci_get_device (i, &ehci_device)) { 
+        if (ehci_device.progIF == 0x20) {
+          device_index = i;
+          break;
+        }
+        i++;
+      } else break;
+    }
+  }
+
+  if(device_index == ~0) {
+    while (pci_find_device (0x8086, 0x1c26, 0x0C, 0x03, i, &i)) { 
       if (pci_get_device (i, &ehci_device)) { 
         if (ehci_device.progIF == 0x20) {
           device_index = i;
@@ -565,7 +801,7 @@ ehci_init(void)
     return FALSE;
   }
 
-  DLOG("usb base from BAR0= 0x%.04X", usb_base);
+  DLOG("usb base from BAR0 = 0x%.04X", usb_base);
 
   
   if(!initialise_ehci_hcd(usb_base, &ehci_hcd, frame_list,
@@ -579,6 +815,10 @@ ehci_init(void)
                           itd_pool,
                           sizeof(itd_pool)/sizeof(itd_t),
                           used_itd_bitmap,
+                          ehci_completion_element_pool,
+                          sizeof(ehci_completion_element_pool)
+                            / sizeof(ehci_completion_element_t),
+                          used_ehci_completion_element_bitmap,
                           DEFAULT_INT_THRESHOLD)) {
     EHCI_DEBUG_HALT();
     return FALSE;
@@ -588,6 +828,8 @@ ehci_init(void)
     EHCI_DEBUG_HALT();
     return FALSE;
   }
+
+
   
   DLOG("Successfully initialised and registered ehci hcd");
   return TRUE;
@@ -669,8 +911,6 @@ create_qtd_chain(ehci_hcd_t* ehci_hcd,
   
   list_add_tail(&current_qtd->chain_list, qtd_list);
   
-
-
   if(pipe_type == PIPE_CONTROL) {
     if(qtd_fill(current_qtd, (phys_addr_t)get_phys_addr(setup_req),
                 setup_len, packet_len, token | QTD_SETUP) != setup_len) {
@@ -704,7 +944,6 @@ create_qtd_chain(ehci_hcd_t* ehci_hcd,
   while(1) {
     int this_qtd_length
       = qtd_fill(current_qtd, data_phys_addr, data_len, packet_len, token);
-
     data_phys_addr += this_qtd_length;
 
     if(is_input) {
@@ -746,6 +985,8 @@ create_qtd_chain(ehci_hcd_t* ehci_hcd,
    * Sections 5.5 and 5.8 (respectively) and section 8.5
    */
 
+  
+
   if(data_len != 0) {
     bool send_one_more = FALSE;
 
@@ -764,6 +1005,8 @@ create_qtd_chain(ehci_hcd_t* ehci_hcd,
       //send_one_more = TRUE;
     }
 
+    
+
     if(send_one_more) {
       previous_qtd = current_qtd;
       current_qtd = allocate_qtd(ehci_hcd);
@@ -775,6 +1018,7 @@ create_qtd_chain(ehci_hcd_t* ehci_hcd,
         = EHCI_QTD_VIRT_TO_PHYS(ehci_hcd, current_qtd);
 
       qtd_fill(current_qtd, 0, 0, 0, token);
+      
     }
   }
 
@@ -934,28 +1178,15 @@ static void qh_prep(ehci_hcd_t* ehci_hcd, qh_t* qh, uint32_t endpoint,
 }
 
 
-void qh_append_qtds(ehci_hcd_t* ehci_hcd, qh_t* qh, list_head_t* qtd_list, uint32_t pipe_type)
+void qh_append_qtds(ehci_hcd_t* ehci_hcd, qh_t* qh, list_head_t* qtd_list,
+                    uint32_t pipe_type)
 {
-  static int bulk_count = -1;
+  
   qtd_t* qtd;
   qtd_t* dummy;
   uint32_t token;
   phys_addr_t new_dummy_phys_addr;
   if(list_empty(qtd_list)) return;
-
-  if(pipe_type == PIPE_BULK) {
-    bulk_count++;
-  }
-
-  if(bulk_count == 2) {
-    int count = 0;
-    qtd_t* print_qtd;
-    print_qh_info(ehci_hcd, qh, TRUE, "In qh_append_qtds Before link");
-    list_for_each_entry(print_qtd, qtd_list, chain_list) {
-      DLOG("Qtd #%d", count++);
-      print_qtd_info(ehci_hcd, print_qtd, "");
-    }
-  }
 
   qtd = list_entry(qtd_list->next, qtd_t, chain_list);
 
@@ -997,8 +1228,6 @@ void link_qh_to_async(ehci_hcd_t* ehci_hcd, qh_t* qh, bool ioc_enabled,
                       uint32_t pipe_type, uint32_t address,
                       uint16_t endpoint, bool is_input, bool save_qh)
 {
-
-
   if(qh->state == QH_STATE_NOT_LINKED) {
     qh_refresh(ehci_hcd, qh);
   }
@@ -1010,7 +1239,8 @@ void link_qh_to_async(ehci_hcd_t* ehci_hcd, qh_t* qh, bool ioc_enabled,
 }
 
 static sint32 spin_for_transfer_completion(ehci_hcd_t* ehci_hcd,
-                                           qh_t* qh, uint8_t address, uint32_t endpoint,
+                                           qh_t* qh, uint8_t address,
+                                           uint32_t endpoint,
                                            uint8_t pipe_type, bool is_input,
                                            bool save_qh)
 {
@@ -1021,7 +1251,7 @@ static sint32 spin_for_transfer_completion(ehci_hcd_t* ehci_hcd,
   }
 
   /*
-   * -- !! -- I am not sure if wait spinning on the last qtd is
+   * -- EM -- I am not sure if wait spinning on the last qtd is
    * sufficient to make sure the queue head is done (besides the
    * fact that we might not detect errors on qtds that don't occur
    * at the end), if it is not this could result in some nasty
@@ -1068,13 +1298,13 @@ static sint32 spin_for_transfer_completion(ehci_hcd_t* ehci_hcd,
   uint32_t spin_tick = 0;
   while(last_qtd->token & QTD_ACTIVE) {
     tsc_delay_usec(100);
-    if(++spin_tick == 50000) {
+    if(++spin_tick == 100000) {
       print_qh_info(ehci_hcd, qh, TRUE, "In Spin");
       print_caps_and_regs_info(ehci_hcd, "In Spin");
       while(1);
     }
   }
-
+  
   if(pipe_type == PIPE_BULK) {
     USB_DEVICE_INFO* dev_info = &ehci_hcd_to_hcd(ehci_hcd)->devinfo[address];
     SET_ENDPOINT_TOGGLE(dev_info, endpoint, is_input, qh->data_toggle );
@@ -1105,6 +1335,7 @@ static sint32 spin_for_transfer_completion(ehci_hcd_t* ehci_hcd,
   if(save_qh) {
     qtd_t* qtd_to_remove;
     qtd_t* qtd_tmp;
+  
     list_for_each_entry_safe(qtd_to_remove, qtd_tmp, &qh->qtd_list, chain_list) {
       if(EHCI_QTD_VIRT_TO_PHYS(ehci_hcd, qtd_to_remove) == qh->current_qtd_ptr_raw) {
         break;
@@ -1114,6 +1345,7 @@ static sint32 spin_for_transfer_completion(ehci_hcd_t* ehci_hcd,
         free_qtd(ehci_hcd, qtd_to_remove);
       }
     }
+  
     if(list_empty(&qh->qtd_list)) {
       /*
        * -- EM -- ALL QTDS REMOVED this can happen because a silicon
@@ -1137,14 +1369,13 @@ static sint32 spin_for_transfer_completion(ehci_hcd_t* ehci_hcd,
     add_qh_to_reclaim_list(ehci_hcd, qh);
     qh->state = QH_STATE_RECLAIM;
     
-      
   }
-
+  
   if(pci_get_status(ehci_hcd->bus, ehci_hcd->dev,ehci_hcd->func) & 0x2000) {
     DLOG("EHCI PCI master abort: function %s line %d", __FUNCTION__, __LINE__);
     panic("PCI master abort");
   }
-
+  
   return 0;
 }
 
@@ -1166,89 +1397,62 @@ static sint32 submit_async_qtd_chain(ehci_hcd_t* ehci_hcd, qh_t** qh,
   }
   
   qh_append_qtds(ehci_hcd, *qh, qtd_list, pipe_type);
-
   if((*qh)->state == QH_STATE_NOT_LINKED) {
     link_qh_to_async(ehci_hcd, *qh, ioc_enabled, pipe_type,
                      device_addr, endpoint, is_input, save_qh);
   }
-  
   if(ioc_enabled) {
-    DLOG("Must do ioc not enabled, ioc enabled is not done");
-    panic("Must do ioc not enabled, ioc enabled is not done");
+    print_caps_and_regs_info(ehci_hcd, "just turned doorbell on");
+    return 0;
   }
   else {
+    
     if((result = spin_for_transfer_completion(ehci_hcd, *qh, device_addr,
                                               endpoint, pipe_type, is_input,
                                               save_qh)) < 0) {
+
+      DLOG("spin_for_transfer_completion returned %d", result);
       return result;
     }
   }
+  
   return 0;
 }
 
-int ehci_async_transfer(ehci_hcd_t* ehci_hcd, uint8_t pipe_type,
-                        uint8_t address, uint8_t endpoint,
-                        addr_t setup_req, /* Use virtual address here */
-                        uint32_t setup_len,
-                        addr_t data, /* Use virtual address here */
-                        int data_len, int packet_len,
-                        bool is_input, bool ioc_enabled,
-                        uint32 *act_len, bool save_qh)
+static int
+ehci_async_transfer(ehci_hcd_t* ehci_hcd, struct urb* urb)
 {
-
+  unsigned int pipe = urb->pipe;
+  uint8_t address = usb_pipedevice(pipe);
+  bool is_input = usb_pipein(pipe);
+  uint8_t endpoint = usb_pipeendpoint(pipe);
   qh_t* qh  = EHCI_GET_DEVICE_QH(ehci_hcd, address, is_input, endpoint);
   list_head_t qtd_list;
+  uint8_t pipe_type = usb_pipetype(pipe);
+  int packet_len = usb_maxpacket(urb->dev, urb->pipe);
   
   
-  if(!create_qtd_chain(ehci_hcd, address, setup_req, setup_len,
-                       data, data_len, packet_len,
+  if(!create_qtd_chain(ehci_hcd, address, urb->setup_packet, sizeof(USB_DEV_REQ),
+                       urb->transfer_buffer,
+                       urb->transfer_buffer_length, packet_len,
                        pipe_type, is_input,
-                       ioc_enabled, &qtd_list)) {
+                       mp_enabled, &qtd_list)) {
     return -1;
   }
-
+  
   submit_async_qtd_chain(ehci_hcd, &qh, endpoint, address,
                          USB_SPEED_HIGH, pipe_type, packet_len,
-                         is_input, ioc_enabled,
-                         &qtd_list, save_qh);
-
-  return 0;
-}
-
-int ehci_bulk_transfer(ehci_hcd_t* ehci_hcd, uint8_t address,
-                       uint8_t endpoint, addr_t data,
-                       int data_len, int packet_len,
-                       uint8_t direction, uint32_t *act_len)
-{
-  return ehci_async_transfer(ehci_hcd, PIPE_BULK, address, endpoint,
-                             NULL, 0, data, data_len, packet_len,
-                             direction == USB_DIR_IN, FALSE, act_len, TRUE);
-}
-
-int ehci_control_transfer(ehci_hcd_t* ehci_hcd, uint8_t address,
-                          addr_t setup_req,    /* Use virtual address here */
-                          uint32_t setup_len,
-                          addr_t setup_data,   /* Use virtual address here */
-                          uint32_t data_len, uint32_t packet_len)
-{
-  /*
-   * -- EM -- Right now I am assuming the speed is USB_SPEED_HIGH.
-   * Also our USB core assumes ALL control transfers are to endpoint 0
-   * (which is a fair assumption) so the endpoint is being hardcoded
-   * in as well
-   */
+                         is_input, mp_enabled,
+                         &qtd_list, TRUE);
   
-  return ehci_async_transfer(ehci_hcd, PIPE_CONTROL, address, 0,
-                             setup_req, setup_len,
-                             setup_data, data_len, 8,
-                             IS_INPUT_USB_DEV_REQ(setup_req),
-                             FALSE, NULL, TRUE);
+  return 0;
 }
 
 int itd_fill(itd_t* itd, uint8_t address, uint8_t endpoint,
-             int packet_len, bool is_input, phys_addr_t data_phys,
+             int max_packet_len, bool is_input, phys_addr_t data_phys,
              usb_iso_packet_descriptor_t* packets, int num_packets)
 {
+  
   int i;
   uint32_t mult = 1;
   int cur_buf_ptr = 0;
@@ -1272,7 +1476,7 @@ int itd_fill(itd_t* itd, uint8_t address, uint8_t endpoint,
   itd->buf_ptr[0] = data_phys & ~0x0FFF;
   itd->buf_ptr[0] |= address;
   itd->buf_ptr[0] |= (endpoint << 8);
-  itd->buf_ptr[1] = packet_len;
+  itd->buf_ptr[1] = max_packet_len;
   
   if(is_input) {
     itd->buf_ptr[1] |= ITD_INPUT;
@@ -1308,14 +1512,14 @@ int itd_fill(itd_t* itd, uint8_t address, uint8_t endpoint,
       cur_buf_ptr++;
       ITD_SET_BUF_PTR(itd, cur_buf_ptr, data_phys);
     }
-
     
     itd->transaction[i].raw = ITD_ACTIVE;
     itd->transaction[i].offset = data_phys & 0x0FFF;
     itd->transaction[i].length = packets[i].length;
     itd->transaction[i].page_selector = cur_buf_ptr;
-    
   }
+    
+  
   return 0;
 }
 
@@ -1323,17 +1527,17 @@ static int create_itd_chain(ehci_hcd_t* ehci_hcd, uint8_t address,
                             uint8_t endpoint, addr_t data,
                             usb_iso_packet_descriptor_t* packets,
                             int num_packets, 
-                            int packet_len, bool is_input,
-                            list_head_t* itd_list)
+                            int max_packet_len, bool is_input,
+                            list_head_t* itd_list, bool ioc)
 {
   int i;
   phys_addr_t data_phys = (phys_addr_t)get_phys_addr(data);
   INIT_LIST_HEAD(itd_list);
-
+  
   i = 0;
   while(i < num_packets) {
     
-    int packets_this_itd = 8 < num_packets - i ? 8 : num_packets - i;
+    int packets_this_itd = 8 < (num_packets - i) ? 8 : num_packets - i;
     itd_t* current_itd = allocate_itd(ehci_hcd);
     usb_iso_packet_descriptor_t* itd_packets = &(packets[i]);
     
@@ -1345,14 +1549,20 @@ static int create_itd_chain(ehci_hcd_t* ehci_hcd, uint8_t address,
     
     list_add_tail(&current_itd->chain_list, itd_list);
     
-    if(itd_fill(current_itd, address, endpoint, packet_len,
+    if(itd_fill(current_itd, address, endpoint, max_packet_len,
                 is_input, data_phys, itd_packets, packets_this_itd) < 0) {
       return -1;
     }
 
     i += packets_this_itd;
-    
   }
+  if(ioc) {
+    itd_t* ioc_itd = list_entry(itd_list->prev, itd_t, chain_list);
+    int packets_last_itd = num_packets & 0x7; // num_packets % 8
+    if(packets_last_itd == 0) packets_last_itd = 8;
+    ioc_itd->transaction[packets_last_itd-1].raw |= ITD_IOC;
+  }
+  
   return 0;
 }
 
@@ -1379,21 +1589,28 @@ static int submit_itd_chain(ehci_hcd_t* ehci_hcd, list_head_t* itd_list)
   return 0;
 }
 
-int ehci_isochronous_transfer(ehci_hcd_t* ehci_hcd, uint8_t address,
-                              uint8_t endpoint, int packet_len,
-                              uint8_t direction, addr_t data,
-                              usb_iso_packet_descriptor_t* packets,
-                              int num_packets)
+
+ehci_completion_element_t iso_completion_element;
+
+static int
+ehci_isochronous_transfer(ehci_hcd_t* ehci_hcd, struct urb* urb)
 {
+  unsigned int pipe = urb->pipe;
   list_head_t itd_list;
   itd_t* itd;
   itd_t* temp_itd;
   bool done = FALSE;
   int j, i;
   int packets_traversed;
-
-  if(create_itd_chain(ehci_hcd, address, endpoint, data, packets, num_packets,
-                      packet_len, direction == USB_DIR_IN, &itd_list) < 0) {
+  int num_packets = urb->number_of_packets;
+  usb_iso_packet_descriptor_t* packets = urb->iso_frame_desc;
+  
+  if(create_itd_chain(ehci_hcd, usb_pipedevice(pipe),
+                      usb_pipeendpoint(pipe), urb->transfer_buffer,
+                      packets,
+                      num_packets,
+                      usb_maxpacket(urb->dev, urb->pipe), usb_pipein(pipe),
+                      &itd_list, mp_enabled) < 0) {
     DLOG("create_itd_chain failed");
     panic("create_itd_chain failed");
     return -1;
@@ -1404,52 +1621,118 @@ int ehci_isochronous_transfer(ehci_hcd_t* ehci_hcd, uint8_t address,
     panic("submit_itd_chain failed");
     return -1;
   }
-  
 
-  itd = list_entry(itd_list.prev, itd_t, chain_list);
-  
-  j = 0;
-  while(!done) {
-    for(i = 0; i < 8; ++i) {
-      if(itd->transaction[i].raw & ITD_ACTIVE) {
-        break;
+  if(mp_enabled) {
+
+    /*
+     * -- EM -- Should put element in completion list, not doing that right now
+     */
+
+    iso_completion_element.urb = urb;
+    INIT_LIST_HEAD(&iso_completion_element.tds);
+    list_splice(&itd_list, &iso_completion_element.tds); 
+    
+    
+    iso_completion_element.pipe_type = PIPE_ISOCHRONOUS;
+    spinlock_lock(&ehci_hcd->completion_lock);
+    list_add_tail(&iso_completion_element.chain_list, &ehci_hcd->completion_list);
+    spinlock_unlock(&ehci_hcd->completion_lock);
+
+    return 0;
+    itd = list_entry(itd_list.prev, itd_t, chain_list);
+    
+    j = 0;
+    while(!done) {
+      for(i = 0; i < 8; ++i) {
+        if(itd->transaction[i].raw & ITD_ACTIVE) {
+          break;
+        }
+      }
+      done = i == 8;
+      ++j;
+      tsc_delay_usec(10);
+      //DLOG("in spin wait");
+      if(j == 3000000) {
+        DLOG("stuck in spin");
+        list_for_each_entry(itd, &itd_list, chain_list) {
+          print_itd_info(ehci_hcd, itd, "In Spin");
+        }
+        print_caps_and_regs_info(ehci_hcd, "In Spin");
+      
+        DLOG("pci status in spin = 0x%X",
+             pci_get_status(ehci_hcd->bus, ehci_hcd->dev,ehci_hcd->func));
+        DLOG("pci command in spin = 0x%X",
+             pci_get_command(ehci_hcd->bus, ehci_hcd->dev,ehci_hcd->func));
       }
     }
-    done = i == 8;
-    ++j;
-    tsc_delay_usec(10);
-    //DLOG("in spin wait");
-    if(j == 3000000) {
-      DLOG("stuck in spin");
-      list_for_each_entry(itd, &itd_list, chain_list) {
-        print_itd_info(ehci_hcd, itd, "In Spin");
-      }
-      print_caps_and_regs_info(ehci_hcd, "In Spin");
-      
-    DLOG("pci status in spin = 0x%X",
-         pci_get_status(ehci_hcd->bus, ehci_hcd->dev,ehci_hcd->func));
-    DLOG("pci command in spin = 0x%X",
-         pci_get_command(ehci_hcd->bus, ehci_hcd->dev,ehci_hcd->func));
-    }
-  }
 
-  packets_traversed = 0;
-  list_for_each_entry(itd, &itd_list, chain_list) {
-    for(i = 0; (i < 8) && (packets_traversed < num_packets);
-        ++i, ++packets_traversed) {
+    packets_traversed = 0;
+    list_for_each_entry(itd, &itd_list, chain_list) {
+      for(i = 0; (i < 8) && (packets_traversed < num_packets);
+          ++i, ++packets_traversed) {
       
-      packets[packets_traversed].actual_length = (itd->transaction[i].raw >> 16) & 0xFFF;
-      packets[packets_traversed].status = itd->transaction[i].status;
-      if(itd->transaction[i].raw & ITD_ACTIVE) {
+        packets[packets_traversed].actual_length = (itd->transaction[i].raw >> 16) & 0xFFF;
+        packets[packets_traversed].status = itd->transaction[i].status;
+        if(itd->transaction[i].raw & ITD_ACTIVE) {
         
-        DLOG("itd should be done but is not");
-        panic("itd should be done but is not");
+          DLOG("itd should be done but is not");
+          panic("itd should be done but is not");
+        }
       }
     }
-  }
   
-  list_for_each_entry_safe(itd, temp_itd, &itd_list, chain_list) {
-    free_itd(ehci_hcd, itd);
+    list_for_each_entry_safe(itd, temp_itd, &itd_list, chain_list) {
+      free_itd(ehci_hcd, itd);
+    }
+    
+  }
+  else {
+
+    itd = list_entry(itd_list.prev, itd_t, chain_list);
+  
+    j = 0;
+    while(!done) {
+      for(i = 0; i < 8; ++i) {
+        if(itd->transaction[i].raw & ITD_ACTIVE) {
+          break;
+        }
+      }
+      done = i == 8;
+      ++j;
+      tsc_delay_usec(10);
+      //DLOG("in spin wait");
+      if(j == 3000000) {
+        DLOG("stuck in spin");
+        list_for_each_entry(itd, &itd_list, chain_list) {
+          print_itd_info(ehci_hcd, itd, "In Spin");
+        }
+        print_caps_and_regs_info(ehci_hcd, "In Spin");
+      
+        DLOG("pci status in spin = 0x%X",
+             pci_get_status(ehci_hcd->bus, ehci_hcd->dev,ehci_hcd->func));
+        DLOG("pci command in spin = 0x%X",
+             pci_get_command(ehci_hcd->bus, ehci_hcd->dev,ehci_hcd->func));
+      }
+    }
+
+    packets_traversed = 0;
+    list_for_each_entry(itd, &itd_list, chain_list) {
+      for(i = 0; (i < 8) && (packets_traversed < num_packets);
+          ++i, ++packets_traversed) {
+      
+        packets[packets_traversed].actual_length = (itd->transaction[i].raw >> 16) & 0xFFF;
+        packets[packets_traversed].status = itd->transaction[i].status;
+        if(itd->transaction[i].raw & ITD_ACTIVE) {
+        
+          DLOG("itd should be done but is not");
+          panic("itd should be done but is not");
+        }
+      }
+    }
+  
+    list_for_each_entry_safe(itd, temp_itd, &itd_list, chain_list) {
+      free_itd(ehci_hcd, itd);
+    }
   }
   
   return 0;

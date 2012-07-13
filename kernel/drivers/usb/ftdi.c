@@ -206,7 +206,7 @@ ftdi_init (USB_DEVICE_INFO *dev, USB_CFG_DESC *cfg, USB_IF_DESC *ifd)
   uint8_t latency = 0;
   USB_EPT_DESC *ftdiept;
 
-  ftdi_dev = *(dev);
+  memcpy(&ftdi_dev, dev, sizeof(USB_DEVICE_INFO));
   memset (tmp, 0, 50);
 
   /* Parsing endpoints */

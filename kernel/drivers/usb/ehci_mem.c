@@ -80,6 +80,14 @@ inline bool initialise_itd(ehci_hcd_t* ehci_hcd, itd_t* itd)
   return TRUE;
 }
 
+inline bool initialise_ehci_completion_element(ehci_hcd_t* ehci_hcd,
+                                               ehci_completion_element_t* element)
+{
+  memset(element, 0, sizeof(*element));
+  INIT_LIST_HEAD(&element->chain_list);
+  return TRUE;
+}
+
 /* End of initialisation functions */
 
 /*
@@ -91,7 +99,7 @@ inline bool initialise_itd(ehci_hcd_t* ehci_hcd, itd_t* itd)
  * simpler since all these static pools will go away
  */
 
-#define RESOURCE_MEMORY_FUNCS(res)                                      \
+#define EHCI_RESOURCE_MEMORY_FUNCS(res)                                      \
   uint32_t allocate_##res##s(ehci_hcd_t* ehci_hcd, res##_t** items, uint32_t num) \
   {                                                                     \
     uint32_t  count       = 0;                                          \
@@ -150,17 +158,14 @@ inline bool initialise_itd(ehci_hcd_t* ehci_hcd, itd_t* itd)
   }
   
 
-RESOURCE_MEMORY_FUNCS(qtd)
-RESOURCE_MEMORY_FUNCS(itd)
-RESOURCE_MEMORY_FUNCS(qh)
+EHCI_RESOURCE_MEMORY_FUNCS(qtd)
+EHCI_RESOURCE_MEMORY_FUNCS(itd)
+EHCI_RESOURCE_MEMORY_FUNCS(qh)
+EHCI_RESOURCE_MEMORY_FUNCS(ehci_completion_element)
+
+#undef EHCI_RESOURCE_MEMORY_FUNCS
 
 
-
-
-
-
-
-/* End of functions related to qh_t memory management */
 
 /*
  * Local Variables:

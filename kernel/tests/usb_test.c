@@ -23,11 +23,14 @@
 int
 main ()
 {
+  int i = 0;
+  while(1) {
+    usb_read(0, 0, 33);
+    printf("%d\n", i++);
+  }
 
-  printf("In usb user test program\n");
-  usb_read(0, 0, 33);
 
-  printf("spinning in usb test program");
+  printf("leaving usb test program");
   while(1);
 }
 

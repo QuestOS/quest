@@ -23,6 +23,7 @@
 #include "drivers/usb/ehci.h"
 #include "kernel.h"
 
+
 #define USB_MASS_STORAGE_CLASS 0x8
 #define UMSC_PROTOCOL 0x50
 
@@ -84,7 +85,7 @@ umsc_bulk_scsi (USB_DEVICE_INFO* info, uint ep_out, uint ep_in,
   UMSC_CBW cbw;
   UMSC_CSW csw;
   sint status;
-  uint32 act_len;
+  int act_len;
 
 
   DLOG ("cmd: %.02X %.02X %.02X %.02X %.02X %.02X %.02X %.02X %.02X %.02X %.02X %.02X %.02X %.02X %.02X %.02X",
@@ -101,17 +102,20 @@ umsc_bulk_scsi (USB_DEVICE_INFO* info, uint ep_out, uint ep_in,
   cbw.bmCBWFlags.direction = dir;
   cbw.bCBWCBLength = 16;            /* cmd length */
   memcpy (cbw.CBWCB, cmd, 16);
-  status = usb_bulk_transfer (info, ep_out, &cbw, 0x1f,
-                              maxpkt, USB_DIR_OUT, &act_len);
+  status = usb_bulk_msg(info, usb_sndbulkpipe(info, ep_out), &cbw, 0x1F,
+                        &act_len, USB_DEFAULT_CONTROL_MSG_TIMEOUT);
+  
 
   DLOG ("status=%d", status);
 
   if (data_len > 0) {
     if (dir) {
-      status = usb_bulk_transfer (info, ep_in, data, data_len, maxpkt, USB_DIR_IN, &act_len);
+      status = usb_bulk_msg(info, usb_rcvbulkpipe(info, ep_in), data, data_len, &act_len,
+                                 USB_DEFAULT_CONTROL_MSG_TIMEOUT);
     }
     else {
-      status = usb_bulk_transfer (info, ep_out, data, data_len, maxpkt, USB_DIR_OUT, &act_len);
+      status = usb_bulk_msg(info, usb_sndbulkpipe(info, ep_out), data, data_len, &act_len,
+                                 USB_DEFAULT_CONTROL_MSG_TIMEOUT);
     }
 
     DLOG ("status=%d", status);
@@ -121,8 +125,9 @@ umsc_bulk_scsi (USB_DEVICE_INFO* info, uint ep_out, uint ep_in,
     DLOG ("data=%.02X %.02X %.02X %.02X", data[0], data[1], data[2], data[3]);
 
   }
+  status = usb_bulk_msg(info, usb_rcvbulkpipe(info, ep_in), &csw, 0x0d, &act_len,
+                        USB_DEFAULT_CONTROL_MSG_TIMEOUT);
 
-  status = usb_bulk_transfer (info, ep_in, (addr_t) &csw, 0x0d, maxpkt, USB_DIR_IN, &act_len);
 
   DLOG ("status=%d", status);
 
@@ -216,6 +221,50 @@ umsc_read_sector (uint dev_index, u32 lba, u8 *sector, uint len)
   return res;
 }
 
+extern void
+umsc_tmr_test (void)
+{
+  #if 1
+  uint8 conf[16];
+  USB_DEVICE_INFO* info = testinfo;
+  uint  ep_out = testepout, ep_in = testepin, maxpkt=512;
+  uint last_lba, sector_size;
+  
+  {
+    uint8 cmd[16] = {0x25,0,0,0,0,0,0,0,0,0,0,0};
+    DLOG ("SENDING READ CAPACITY");
+    umsc_bulk_scsi (info, ep_out, ep_in, cmd, 1, conf, 0x8, maxpkt);
+    last_lba = conf[3] | conf[2] << 8 | conf[1] << 16 | conf[0] << 24;
+    sector_size = conf[7] | conf[6] << 8 | conf[5] << 16 | conf[4] << 24;
+    DLOG ("sector_size=0x%x last_lba=0x%x total_size=%d bytes",
+            sector_size, last_lba, sector_size * (last_lba + 1));
+    
+  }
+  #endif
+}
+
+static int umsc_read(USB_DEVICE_INFO* device, char* buf, int data_len)
+{
+  DLOG("umsc_read called");
+  umsc_tmr_test ();
+  return -1;
+}
+
+static int umsc_write(USB_DEVICE_INFO* device, char* buf, int data_len)
+{
+  umsc_tmr_test ();
+  return -1;
+}
+
+static bool
+umsc_probe (USB_DEVICE_INFO *info, USB_CFG_DESC *cfgd, USB_IF_DESC *ifd);
+
+static USB_DRIVER umsc_driver = {
+  .probe = umsc_probe,
+  .read = umsc_read,
+  .write = umsc_write
+};
+
 static bool
 umsc_probe (USB_DEVICE_INFO *info, USB_CFG_DESC *cfgd, USB_IF_DESC *ifd)
 {
@@ -240,6 +289,9 @@ umsc_probe (USB_DEVICE_INFO *info, USB_CFG_DESC *cfgd, USB_IF_DESC *ifd)
     DLOG ("endpoint packet sizes don't match!");
     return FALSE;
   }
+
+  usb_register_device(info, &umsc_driver);
+  
   DLOG("endpoint packet size = %d", ep[0].wMaxPacketSize);
   maxpkt = ep[0].wMaxPacketSize;
   //maxpkt = 64;
@@ -261,6 +313,9 @@ umsc_probe (USB_DEVICE_INFO *info, USB_CFG_DESC *cfgd, USB_IF_DESC *ifd)
 
   DLOG ("detected device=%d ep_in=%d ep_out=%d maxpkt=%d",
         addr, ep_in, ep_out, maxpkt);
+
+  info->ep_in[ep_in].desc.wMaxPacketSize = maxpkt;
+  info->ep_out[ep_out].desc.wMaxPacketSize = maxpkt;
 
   usb_set_configuration (info, cfgd->bConfigurationValue);
   delay (50);
@@ -362,9 +417,9 @@ umsc_probe (USB_DEVICE_INFO *info, USB_CFG_DESC *cfgd, USB_IF_DESC *ifd)
   return TRUE;
 }
 
-static USB_DRIVER umsc_driver = {
-  .probe = umsc_probe
-};
+
+
+
 
 extern bool
 usb_mass_storage_driver_init (void)
@@ -373,27 +428,7 @@ usb_mass_storage_driver_init (void)
 }
 
 
-extern void
-umsc_tmr_test (void)
-{
-  #if 1
-  uint8 conf[16];
-  USB_DEVICE_INFO* info = testinfo;
-  uint  ep_out = testepout, ep_in = testepin, maxpkt=512;
-  uint last_lba, sector_size;
-  
-  {
-    uint8 cmd[16] = {0x25,0,0,0,0,0,0,0,0,0,0,0};
-    DLOG ("SENDING READ CAPACITY");
-    umsc_bulk_scsi (info, ep_out, ep_in, cmd, 1, conf, 0x8, maxpkt);
-    last_lba = conf[3] | conf[2] << 8 | conf[1] << 16 | conf[0] << 24;
-    sector_size = conf[7] | conf[6] << 8 | conf[5] << 16 | conf[4] << 24;
-    DLOG ("sector_size=0x%x last_lba=0x%x total_size=%d bytes",
-            sector_size, last_lba, sector_size * (last_lba + 1));
-    
-  }
-  #endif
-}
+
 
 
 #include "module/header.h"

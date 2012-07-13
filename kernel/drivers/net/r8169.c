@@ -3292,7 +3292,7 @@ static void rtl8169_rx_clear(struct rtl8169_private *tp)
   }
 }
 
-typedef int gfp_t;
+
 
 static struct sk_buff *rtl8169_alloc_rx_skb(struct pci_dev *pdev,
                                             struct net_device *dev,

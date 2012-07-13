@@ -16,15 +16,13 @@
  */
 
 #include <drivers/usb/usb.h>
-#include <drivers/usb/uhci.h>
-#include <drivers/usb/ehci.h>
 #include <arch/i386.h>
 #include <util/printf.h>
 #include <kernel.h>
 #include "sched/sched.h"
 #include <mem/pow2.h>
 
-#define DEBUG_USB
+//#define DEBUG_USB
 
 #ifdef DEBUG_USB
 #define DLOG(fmt,...) DLOG_PREFIX("USB", fmt, ##__VA_ARGS__)
@@ -46,36 +44,47 @@ static uint num_devices = 0;
 
 int usb_syscall_handler(int device_id, int operation, char* buf, int data_len)
 {
+  int result;
   USB_DEVICE_INFO* device = usb_get_device(device_id);
+
+  DLOG("entering %s", __FUNCTION__);
   if(device == NULL) {
     DLOG("Unknown device id");
     return -1;
   }
-
+  
   switch(operation) {
   case USB_USER_READ:
 
-    return device->driver->read(device, buf, data_len);
+    result = device->driver->read(device, buf, data_len);
+    break;
     
   case USB_USER_WRITE:
     
-    return device->driver->write(device, buf, data_len);
+    result = device->driver->write(device, buf, data_len);
+    break;
 
   default:
     DLOG("Unknown usb user operation %d", operation);
     return -1;
   }
-  
+
+  DLOG("Leaving %s result = %d", __FUNCTION__, result);
+  return result;
 }
 
 bool
 initialise_usb_hcd(usb_hcd_t* usb_hcd, uint32_t usb_hc_type,
                    usb_reset_root_ports_func reset_root_ports,
-                   usb_post_enumeration_func post_enumeration)
+                   usb_post_enumeration_func post_enumeration,
+                   usb_submit_urb_func usb_submit_urb,
+                   usb_kill_urb_func usb_kill_urb)
 {
   usb_hcd->usb_hc_type = usb_hc_type;
   usb_hcd->reset_root_ports = reset_root_ports;
   usb_hcd->post_enumeration = post_enumeration;
+  usb_hcd->usb_submit_urb   = usb_submit_urb;
+  usb_hcd->usb_kill_urb     = usb_kill_urb;
   usb_hcd->next_address = 1;
   return TRUE;
 }
@@ -113,125 +122,329 @@ get_usb_hcd(uint32_t index)
   return NULL;
 }
 
-
-int
-usb_control_transfer(
-    USB_DEVICE_INFO* dev,
-    addr_t setup_req,
-    uint16_t req_len,
-    addr_t data,
-    uint16_t data_len)
+/*
+ * -- EM -- Currently mem_flags does not do anything, just have it
+ * here for now for portability with Linux
+ */
+int usb_submit_urb (struct urb *urb, gfp_t mem_flags)
 {
-  if ((dev->devd).bMaxPacketSize0 == 0) {
-        DLOG("USB_DEVICE_INFO is probably not initialized!");
-        return -1;
+  urb->active = TRUE;
+  if(mem_flags != 0) {
+    /*
+     * -- EM -- mem_flags can only be zero for right now.  Panic if it
+     * is not to avoid when we copy over drivers that start using the
+     * full functionality of usb_submit_urb
+     */
+    DLOG("mem_flags can only be zero for right now");
+    panic("mem_flags != 0 in usb_submit_urb");
   }
-  switch (dev->host_type)
-  {
-    case USB_TYPE_HC_UHCI :
-      panic("UHCI Broken: usb_control_transfer");
-      
-      return uhci_control_transfer(dev->address, setup_req,
-                                   req_len, data, data_len,
-                                   (dev->devd).bMaxPacketSize0);
-      
-      
-    case USB_TYPE_HC_EHCI :
-     
-      return ehci_control_transfer(hcd_to_ehci_hcd(dev->hcd),
-                                   dev->address, setup_req,
-                                   req_len, data, data_len,
-                                   (dev->devd).bMaxPacketSize0);
-      
-
-    case USB_TYPE_HC_OHCI :
-      DLOG("OHCI Host Controller is not supported now!");
-      return -1;
-
-    default :
-      DLOG("Unknown Host Controller request!");
-      return -1;
-  }
-  return -1;
+  return urb->dev->hcd->usb_submit_urb(urb, mem_flags);
 }
 
-int
-usb_bulk_transfer(
-    USB_DEVICE_INFO* dev,
-    uint8_t endp,
-    addr_t data,
-    uint16_t len,
-    uint16_t packet_len,
-    uint8_t dir,
-    uint32_t *act_len)
+/*
+ * -- EM -- This function just calls the appropriate HCD kill_urb
+ * function, it would be better if this some of this was abstracted
+ * out into the core but for now it is all host controller specific
+ */
+void usb_kill_urb(struct urb *urb)
 {
-  if ((dev->devd).bMaxPacketSize0 == 0) {
-        DLOG("USB_DEVICE_INFO is probably not initialized!");
-        return -1;
+  if(urb->active) {
+    urb->dev->hcd->usb_kill_urb(urb);
   }
-  switch (dev->host_type)
-  {
-    case USB_TYPE_HC_UHCI :
-      panic("UHCI Broken: usb_bulk_transfer");
-      
-      return uhci_bulk_transfer(dev->address, endp, data,
-                                len, packet_len, dir, act_len);
-      
-
-    case USB_TYPE_HC_EHCI :
-      
-      return ehci_bulk_transfer(hcd_to_ehci_hcd(dev->hcd),
-                                dev->address, endp, data,
-                                len, packet_len, dir, act_len);
-      
-
-    case USB_TYPE_HC_OHCI :
-      DLOG("OHCI Host Controller is not supported now!");
-      return -1;
-
-    default :
-      DLOG("Unknown Host Controller request!");
-      return -1;
-  }
-  return -1;
 }
 
 
-int usb_isochronous_transfer(USB_DEVICE_INFO* dev,
-                             uint8_t endpoint,
-                             uint16_t packet_len,
-                             uint8_t direction, addr_t data,
-                             usb_iso_packet_descriptor_t* packets,
-                             int num_packets)
+
+struct urb *usb_alloc_urb(int iso_packets, gfp_t mem_flags)
 {
+  struct urb *urb;
   
-  if ((dev->devd).bMaxPacketSize0 == 0) {
-        DLOG("USB_DEVICE_INFO is probably not initialized!");
-        return -1;
+  pow2_alloc(sizeof(struct urb) +
+             iso_packets * sizeof(struct usb_iso_packet_descriptor),
+                   (uint8_t**)&urb);
+  if (!urb) {
+    DLOG("Failed to allocate urb");
+    return NULL;
   }
-  switch (dev->host_type)
-  {
-    case USB_TYPE_HC_UHCI :
-      panic("UHCI Broken: usb_bulk_transfer");
-      
-      
+  usb_init_urb(urb);
+  return urb;
+}
 
-    case USB_TYPE_HC_EHCI :
-      return ehci_isochronous_transfer(hcd_to_ehci_hcd(dev->hcd),
-                                       dev->address, endpoint,
-                                       packet_len, direction, data,
-                                       packets, num_packets);
+static void usb_core_blocking_completion(struct urb* urb)
+{
+  *((bool*)urb->context) = TRUE;
+}
 
 
-    case USB_TYPE_HC_OHCI :
-      DLOG("OHCI Host Controller is not supported now!");
-      return -1;
+int usb_isochronous_msg(struct usb_device *dev, unsigned int pipe,
+                        void* data, int packet_size, int num_packets,
+                        unsigned int* actual_lens, int* statuses,
+                        int timeout)
+{
+  /*
+   * -- EM -- It should be okay to put these on the stack because this
+   * function won't complete until the callback is called
+   */
+  struct urb* urb;
+  bool done = FALSE;
 
-    default :
-      DLOG("Unknown Host Controller request!");
-      return -1;
+  int i;
+  int ret;
+  usb_complete_t complete_callback;
+  struct usb_host_endpoint *ep;
+
+  ep = usb_pipe_endpoint(dev, pipe);
+
+  urb = usb_alloc_urb(num_packets, 0);
+
+  memset(actual_lens, 0, sizeof(*actual_lens) * num_packets);
+  memset(statuses,    0, sizeof(*statuses) * num_packets);
+
+  if(urb == NULL) {
+    return -1;
   }
-  return -1;
+  
+  if(mp_enabled) {
+    complete_callback = usb_core_blocking_completion;
+    
+    /*
+     * -- EM -- So the best way to do this would have the processes
+     * sleep the entire time until either woken up or a timeout
+     * occurred.  Quest does not have this functionality yet (or maybe
+     * it does and I just don't know) so just going to do a spin/sleep
+     * combo looking at a boolean to see if the completion has
+     * finished
+     */
+  }
+  else {
+    complete_callback  = NULL;
+    urb->timeout = timeout;
+  }
+  
+  usb_fill_iso_urb(urb, dev, pipe, data, complete_callback, &done,
+                   ep->desc.bInterval, num_packets, packet_size);
+  
+  ret = usb_submit_urb(urb, 0);
+  
+  if(ret < 0) goto usb_isochronous_msg_out;
+  
+  if(mp_enabled) {
+    /*
+     * -- EM -- Timeout is specified in jiffies, right now assuming
+     * the Linux default of 4ms
+     */
+
+    /* add one for integer rounding*/
+    
+    for(i = 0; (!done) && (i < (timeout / USB_MSG_SLEEP_INTERVAL) + 1 ); ++i) {
+      sched_usleep(4000 * USB_MSG_SLEEP_INTERVAL);
+      
+    }
+
+    ret = done ? 0 : -1;
+
+  }
+
+ usb_isochronous_msg_out:
+  
+  for(i = 0; i < num_packets; ++i) {
+    actual_lens[i] = urb->iso_frame_desc[i].actual_length;
+    statuses[i] = urb->iso_frame_desc[i].status;
+  }
+  usb_free_urb(urb);
+  return ret;
+}
+
+int usb_interrupt_msg(struct usb_device *usb_dev, unsigned int pipe,
+                      void *data, int len, int *actual_length,
+                      int timeout)
+{
+  /*
+   * -- EM -- It should be okay to put these on the stack because this
+   * function won't complete until the callback is called
+   */
+
+  struct urb urb;
+  task_id current_task;
+
+  
+  int ret;
+  usb_complete_t complete_callback;
+  void* context;
+  struct usb_host_endpoint *ep;
+
+  ep = usb_pipe_endpoint(usb_dev, pipe);
+
+  if(mp_enabled) {
+    complete_callback = usb_core_blocking_completion;
+    current_task = str();
+
+    /*
+     * -- EM -- The context will most likely have to be more
+     * complicated than this
+     */
+    context = &current_task;
+    
+    DLOG("mp_enabled usb_interrupt_msg not finished");
+    panic("mp_enabled usb_interrupt_msg not finished");
+  }
+  else {
+    complete_callback = context = NULL;
+    urb.timeout = timeout;
+  }
+
+  usb_fill_int_urb(&urb, usb_dev, pipe, data, len, complete_callback, context,
+                   ep->desc.bInterval);
+  urb.actual_length = 0;
+
+  ret = usb_submit_urb(&urb, 0);
+
+  if(ret < 0) goto usb_interrupt_msg_out;
+  
+  if(mp_enabled) {
+    /*
+     * -- EM -- should sleep here after, need some way to check for
+     * race condition where urb finishes before getting here
+     */
+  }
+
+  /*
+   * -- EM -- Set the ret val from the context passed to the callback
+   */
+  
+ usb_interrupt_msg_out:
+
+  *actual_length = urb.actual_length;
+
+  return ret;
+
+}
+
+int usb_bulk_msg(struct usb_device *usb_dev, unsigned int pipe,
+                 void *data, int len, int *actual_length,
+                 int timeout)
+{
+  /*
+   * -- EM -- It should be okay to put these on the stack because this
+   * function won't complete until the callback is called
+   */
+  struct urb urb;
+  task_id current_task;
+
+  
+  int ret;
+  usb_complete_t complete_callback;
+  void* context;
+
+  if(mp_enabled) {
+    complete_callback = usb_core_blocking_completion;
+    current_task = str();
+
+    /*
+     * -- EM -- The context will most likely have to be more
+     * complicated than this
+     */
+    context = &current_task;
+    
+    DLOG("mp_enabled usb_bulk_msg not finished");
+    panic("mp_enabled usb_bulk_msg not finished");
+  }
+  else {
+    complete_callback = context = NULL;
+    urb.timeout = timeout;
+  }
+
+  usb_fill_bulk_urb(&urb, usb_dev, pipe, data, len, complete_callback, context);
+  urb.actual_length = 0;
+
+  ret = usb_submit_urb(&urb, 0);
+
+  if(ret < 0) goto usb_bulk_msg_out;
+  
+  if(mp_enabled) {
+    /*
+     * -- EM -- should sleep here after, need some way to check for
+     * race condition where urb finishes before getting here
+     */
+  }
+
+  /*
+   * -- EM -- Set the ret val from the context passed to the callback
+   */
+  
+ usb_bulk_msg_out:
+
+  *actual_length = urb.actual_length;
+
+  return ret;
+}
+
+
+int usb_control_msg(struct usb_device *dev, unsigned int pipe,
+                    uint8_t request, uint8_t requesttype,
+                    uint16_t value, uint16_t index,
+                    void *data, uint16_t size, int timeout)
+{
+  /*
+   * -- EM -- It should be okay to put these on the stack because this
+   * function won't complete until the callback is called
+   */
+  struct urb urb;
+  task_id current_task;
+
+  
+  USB_DEV_REQ cmd;
+  int ret;
+  usb_complete_t complete_callback;
+  void* context;
+  
+  
+  cmd.bmRequestType = requesttype;
+  cmd.bRequest = request;
+  cmd.wValue = cpu_to_le16(value);
+  cmd.wIndex = cpu_to_le16(index);
+  cmd.wLength = cpu_to_le16(size);
+  
+  if(mp_enabled) {
+    complete_callback = usb_core_blocking_completion;
+    current_task = str();
+
+    /*
+     * -- EM -- The context will most likely have to be more
+     * complicated than this
+     */
+    context = &current_task;
+    
+    DLOG("mp_enabled usb_control_msg not finished");
+    panic("mp_enabled usb_control_msg not finished");
+  }
+  else {
+    complete_callback = context = NULL;
+    urb.timeout = timeout;
+  }
+  
+  usb_fill_control_urb(&urb, dev, pipe, (unsigned char *)&cmd, data,
+                       size, complete_callback, context);
+
+  
+  ret = usb_submit_urb(&urb, 0);
+
+  if(ret < 0) goto usb_control_msg_out;
+
+  if(mp_enabled) {
+    /*
+     * -- EM -- should sleep here after, need some way to check for
+     * race condition where urb finishes before getting here
+     */
+  }
+
+  /*
+   * -- EM -- Set the ret val from the context passed to the callback
+   */
+  
+ usb_control_msg_out:
+  
+  return ret;  
 }
 
 int
@@ -242,27 +455,9 @@ usb_get_descriptor(USB_DEVICE_INFO* dev,
                    uint16_t length,
                    addr_t desc)
 {
-  USB_DEV_REQ setup_req;
-  
-  if ((dev->devd).bMaxPacketSize0 == 0) {
-    DLOG("USB_DEVICE_INFO is probably not initialized!");
-    return -1;
-  }
-
-  setup_req.bmRequestType = 0x80;  /*
-                                    * Characteristics of request,
-                                    * see spec, P183, Rev 1.1
-                                    */
-  
-  setup_req.bRequest = USB_GET_DESCRIPTOR;
-  setup_req.wValue = (dtype << 8) + dindex;
-  setup_req.wIndex = index;
-  setup_req.wLength = length;
-  
-  return usb_control_transfer(dev,
-                              (addr_t) & setup_req,
-                              sizeof (USB_DEV_REQ),
-                              desc, length);
+  return usb_control_msg(dev, usb_rcvctrlpipe(dev,0), USB_GET_DESCRIPTOR,
+                         USB_DIR_IN, (dtype << 8) + dindex, index, desc, length,
+                         USB_DEFAULT_CONTROL_MSG_TIMEOUT);
 }
 
 
@@ -270,53 +465,23 @@ int
 usb_set_address (USB_DEVICE_INFO* dev, uint8_t new_addr)
 {
   sint status;
-  USB_DEV_REQ setup_req;
-  
-  setup_req.bmRequestType = 0x0;
-  setup_req.bRequest = USB_SET_ADDRESS;
-  setup_req.wValue = new_addr;
-  setup_req.wIndex = 0;
-  setup_req.wLength = 0;
 
-  status = usb_control_transfer (dev, (addr_t) & setup_req,
-                                 sizeof (USB_DEV_REQ), 0, 0);
-  if (status == 0) {
+
+  status = usb_control_msg(dev, usb_sndctrlpipe(dev, 0), USB_SET_ADDRESS, USB_DIR_OUT,
+                           new_addr, 0, NULL, 0, USB_DEFAULT_CONTROL_MSG_TIMEOUT);
+  
+  if (status >= 0) {
     dev->endpoint_toggles = 0;
   }
   return status;
-  /*
-  switch (dev->host_type)
-  {
-    case USB_TYPE_HC_UHCI :
-      if ((dev->devd).bMaxPacketSize0 == 0) {
-        DLOG("USB_DEVICE_INFO is probably not initialized!");
-        return -1;
-      } else {
-        return uhci_set_address(dev->address, new_addr,
-            (dev->devd).bMaxPacketSize0);
-      }
-
-    case USB_TYPE_HC_EHCI :
-      DLOG("EHCI Host Controller is not supported now! usb_set_address");
-      return -1;
-
-    case USB_TYPE_HC_OHCI :
-      DLOG("OHCI Host Controller is not supported now!");
-      return -1;
-
-    default :
-      DLOG("Unknown Host Controller request!");
-      return -1;
-  }
-  return -1;
-  */
+  
 }
 
 int
 usb_get_configuration(USB_DEVICE_INFO* dev)
 {
   switch (dev->host_type)
-  {
+    {
     case USB_TYPE_HC_UHCI :
       panic("UHCI broken: usb_get_configuration");
       if ((dev->devd).bMaxPacketSize0 == 0) {
@@ -324,7 +489,7 @@ usb_get_configuration(USB_DEVICE_INFO* dev)
         return -1;
       } else {
         return uhci_get_configuration(dev->address,
-            (dev->devd).bMaxPacketSize0);
+                                      (dev->devd).bMaxPacketSize0);
       }
 
     case USB_TYPE_HC_EHCI :
@@ -339,7 +504,7 @@ usb_get_configuration(USB_DEVICE_INFO* dev)
     default :
       DLOG("Unknown Host Controller request!");
       return -1;
-  }
+    }
   return -1;
   
 }
@@ -347,55 +512,15 @@ usb_get_configuration(USB_DEVICE_INFO* dev)
 int
 usb_set_configuration(USB_DEVICE_INFO * dev, uint8_t conf)
 {
-  
-  USB_DEV_REQ setup_req;
-  setup_req.bmRequestType = 0x0;
-  setup_req.bRequest = USB_SET_CONFIGURATION;
-  setup_req.wValue = conf;
-  setup_req.wIndex = 0;
-  setup_req.wLength = 0;
-  /*
-   * A bulk endpoint's toggle is initialized to DATA0 when any
-   * configuration event is experienced
-   */
-  dev->endpoint_toggles = 0;
-
-  return usb_control_transfer (dev, (addr_t) & setup_req,
-                                 sizeof (USB_DEV_REQ), 0, 0);
-  /*
-  switch (dev->host_type)
-  {
-    case USB_TYPE_HC_UHCI :
-      if ((dev->devd).bMaxPacketSize0 == 0) {
-        DLOG("USB_DEVICE_INFO is probably not initialized!");
-        return -1;
-      } else {
-        return uhci_set_configuration(dev->address, conf,
-            (dev->devd).bMaxPacketSize0);
-      }
-
-    case USB_TYPE_HC_EHCI :
-      DLOG("EHCI Host Controller is not supported now! usb_set_configuration");
-      panic("usb_set_configuration not implemented");
-      return -1;
-
-    case USB_TYPE_HC_OHCI :
-      DLOG("OHCI Host Controller is not supported now!");
-      return -1;
-
-    default :
-      DLOG("Unknown Host Controller request!");
-      return -1;
-  }
-  return -1;
-  */
+  return usb_control_msg(dev, usb_sndctrlpipe(dev, 0), USB_SET_CONFIGURATION,
+                         USB_DIR_OUT, conf, 0, NULL, 0, USB_DEFAULT_CONTROL_MSG_TIMEOUT);
 }
 
 int
 usb_get_interface(USB_DEVICE_INFO * dev, uint16_t interface)
 {
   switch (dev->host_type)
-  {
+    {
     case USB_TYPE_HC_UHCI :
       panic("UHCI broken: usb_get_interface");
       if ((dev->devd).bMaxPacketSize0 == 0) {
@@ -403,7 +528,7 @@ usb_get_interface(USB_DEVICE_INFO * dev, uint16_t interface)
         return -1;
       } else {
         return uhci_get_interface(dev->address, interface,
-            (dev->devd).bMaxPacketSize0);
+                                  (dev->devd).bMaxPacketSize0);
       }
 
     case USB_TYPE_HC_EHCI :
@@ -418,22 +543,15 @@ usb_get_interface(USB_DEVICE_INFO * dev, uint16_t interface)
     default :
       DLOG("Unknown Host Controller request!");
       return -1;
-  }
+    }
   return -1;
 }
 
 int
 usb_set_interface(USB_DEVICE_INFO * dev, uint16_t alt, uint16_t interface)
 {
-  
-  USB_DEV_REQ setup_req;
-  setup_req.bmRequestType = 0x01;
-  setup_req.bRequest = USB_SET_INTERFACE;
-  setup_req.wValue = alt;
-  setup_req.wIndex = interface;
-  setup_req.wLength = 0;
-  
-  return usb_control_transfer(dev, (addr_t) & setup_req, sizeof (USB_DEV_REQ), 0, 0);
+  return usb_control_msg(dev, usb_sndctrlpipe(dev, 0), USB_SET_INTERFACE,
+                         0x01, alt, interface, NULL, 0, USB_DEFAULT_CONTROL_MSG_TIMEOUT);
 }
 
 
@@ -530,6 +648,9 @@ usb_enumerate(usb_hcd_t* usb_hcd)
   info->host_type = usb_hcd->usb_hc_type;
   info->hcd = usb_hcd;
   info->endpoint_toggles = 0;
+  info->ep_in[0].desc.wMaxPacketSize = 64;
+  info->ep_out[0].desc.wMaxPacketSize = 64;
+  
 
   /* --WARN-- OK, here is the deal. The spec says you should use the
    * maximum packet size in the data phase of control transfer if the

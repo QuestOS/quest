@@ -24,6 +24,14 @@ PROGS = quest \
 
 ##################################################
 
+
+# The following we removed because I changed the USB interface and broke them
+# drivers/usb/ftdi.o drivers/usb/pl2303.o 
+# drivers/usb/rtl8187b.o 
+# drivers/usb/net.o drivers/usb/asix.o
+# drivers/usb/uhci_hcd.o
+# drivers/usb/usb_test.o
+
 OBJS =  boot/boot.o boot/init.o kernel.o module/loader.o \
 	interrupt.o interrupt_handler.o \
 	smp/boot-smp.o smp/smp.o smp/intel.o smp/acpi.o smp/apic.o smp/semaphore.o \
@@ -49,12 +57,9 @@ OBJS =  boot/boot.o boot/init.o kernel.o module/loader.o \
 	drivers/sb16/sound.o \
 	drivers/acpi/quest-acpica.o \
 	drivers/eeprom/93cx6.o \
-	drivers/usb/uhci_hcd.o drivers/usb/uvc.o drivers/usb/umsc.o \
-	drivers/usb/hub.o drivers/usb/net.o drivers/usb/asix.o \
+	drivers/usb/umsc.o \
+	drivers/usb/hub.o drivers/usb/uvc.o \
 	drivers/usb/ehci_hcd.o drivers/usb/ehci_mem.o drivers/usb/ehci_debug.o \
-	drivers/usb/ftdi.o drivers/usb/pl2303.o \
-	drivers/usb/rtl8187b.o \
-	drivers/usb/usb_tests.o \
 	drivers/usb/usb.o drivers/usb/enumeration.o \
 	kdb/i386-stub.o
 

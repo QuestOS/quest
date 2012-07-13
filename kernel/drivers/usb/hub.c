@@ -63,16 +63,11 @@ static uint16
 hub_port_status (USB_DEVICE_INFO* info, uint port)
 {
   sint status;
-  USB_DEV_REQ req;
   uint8 data[4];
 
-  req.bmRequestType = 0xA3;
-  req.bRequest = USB_GET_STATUS;
-  req.wValue = 0;
-  req.wIndex = port;
-  req.wLength = 4;
   /* We assume this is a full speed device, use the maximum, 64 bytes */
-  status = usb_control_transfer (info, &req, sizeof (req), data, 4);
+  status = usb_control_msg(info, usb_rcvctrlpipe(info, 0), USB_GET_STATUS, 0xA3,
+                           0, port, data, 4, USB_DEFAULT_CONTROL_MSG_TIMEOUT);
   DLOG ("GET_PORT_STATUS: status=%d port status: %.04X",
         status, *((uint16 *)data));
 
@@ -83,15 +78,9 @@ static bool
 hub_set_port_feature (USB_DEVICE_INFO* info, uint port, uint feature)
 {
   sint status;
-  USB_DEV_REQ req;
-
-  req.bmRequestType = 0x23;
-  req.bRequest = USB_SET_FEATURE;
-  req.wValue = feature;
-  req.wIndex = port;
-  req.wLength = 0;
   /* We assume this is a full speed device, use the maximum, 64 bytes */
-  status = usb_control_transfer (info, &req, sizeof (req), NULL, 0);
+  status = usb_control_msg(info, usb_sndctrlpipe(info, 0), USB_SET_FEATURE,
+                           0x23, feature, port, NULL, 0, USB_DEFAULT_CONTROL_MSG_TIMEOUT);
   DLOG ("SET_PORT_FEATURE: status=%d", status);
 
   return status == 0;
@@ -109,7 +98,8 @@ hub_clr_port_feature (USB_DEVICE_INFO* info, uint port, uint feature)
   req.wIndex = port;
   req.wLength = 0;
   /* We assume this is a full speed device, use the maximum, 64 bytes */
-  status = usb_control_transfer (info, &req, sizeof (req), NULL, 0);
+  status = usb_control_msg(info, usb_sndctrlpipe(info, 0), USB_CLEAR_FEATURE,
+                           0x23, feature, port, NULL, 0, USB_DEFAULT_CONTROL_MSG_TIMEOUT);
   DLOG ("CLEAR_PORT_FEATURE: status=%d", status);
 
   return status == 0;
@@ -141,7 +131,10 @@ probe_hub (USB_DEVICE_INFO* info, USB_CFG_DESC *cfgd, USB_IF_DESC *ifd)
   req.wIndex = 0;
   req.wLength = sizeof (USB_HUB_DESC);
   /* We assume this is a full speed device, use the maximum, 64 bytes */
-  status = usb_control_transfer (info, &req, sizeof (req), &hubd, sizeof (hubd));
+
+  status = usb_control_msg(info, usb_rcvctrlpipe(info, 0), USB_GET_DESCRIPTOR, 0xA0,
+                           0x29 << 8, 0, &hubd, sizeof(hubd),
+                           USB_DEFAULT_CONTROL_MSG_TIMEOUT);
   DLOG ("GET_HUB_DESCRIPTOR: status=%d len=%d nbrports=%d delay=%d",
         status, hubd.bDescLength, hubd.bNbrPorts, hubd.bPwrOn2PwrGood);
 

@@ -15,15 +15,15 @@
  *  along with this program.  If not, see <http://www.gnu.org/licenses/>.
  */
 
+#include <arch/i386.h>
 #include <drivers/usb/usb.h>
 #include <drivers/usb/uvc.h>
-#include <arch/i386.h>
 #include <util/printf.h>
 #include <kernel.h>
 #include <sched/sched.h>
 
-#define DEBUG_UVC
-#define DEBUG_UVC_VERBOSE
+//#define DEBUG_UVC
+//#define DEBUG_UVC_VERBOSE
 
 #ifdef DEBUG_UVC
 
@@ -51,6 +51,11 @@
 
 #define BUF_SIZE        (403600 * 1)
 #define PACKET_SIZE     192
+
+#define GET_FRAME_NUM_PACKETS ((BUF_SIZE / PACKET_SIZE) - 1)
+
+unsigned int get_frame_actual_lens[GET_FRAME_NUM_PACKETS];
+int          get_frame_statuses   [GET_FRAME_NUM_PACKETS];
 
 struct iso_data_source
 {
@@ -86,13 +91,46 @@ static USB_DEVICE_INFO gdev; // --??-- Remove after test
 
 static int uvc_read(USB_DEVICE_INFO* device, char* buf, int data_len)
 {
+  
+  uint32_t frm_len;
+  int i = 0;
+  uint32_t *dump = (uint32_t*)jpeg_frame;
+
   DLOG("%s called\n   buf = 0x%X\n   data_len = %d", __FUNCTION__, buf, data_len);
+
+  memset(frame_buf, 0, BUF_SIZE);
+  memset(jpeg_frame, 0, BUF_SIZE);
+  uvc_get_frame (&gdev, &iso_src, frame_buf, PACKET_SIZE, jpeg_frame, &frm_len);
+  DLOG("Getting a frame : %d bytes", frm_len);
+
+#if 1
+  DLOG("Dumping the frame:");
+  
+  for(i = 1; i <= (frm_len / 4 + 1); i++) {
+    putx(*dump);
+    dump++;
+    if ((i % 6) == 0) putchar('\n');
+    if ((i % 96) == 0) putchar('\n');
+  }
+  putchar('\n');
+  putchar('\n');
+  putchar('\n');
+  putchar('\n');
+#endif
   return -1;
+  
 }
 
 static int uvc_write(USB_DEVICE_INFO* device, char* buf, int data_len)
 {
-  DLOG("%s called\n\tbuf = 0x%X\n\tdata_len = %d", __FUNCTION__, buf, data_len);
+  UVC_VS_CTL_PAR_BLOCK par;
+  //DLOG("%s called", __FUNCTION__);
+  memset(&par, 0, sizeof(UVC_VS_CTL_PAR_BLOCK));
+  if (video_probe_controls (device, GET_CUR, 1, &par)) {
+    DLOG("Getting current state during probe failed");
+  }
+  DLOG("done with write about to dump par");
+  para_block_dump (&par);
   return -1;
 }
 
@@ -141,82 +179,70 @@ uvc_test (void)
 }
 
 int
-uvc_get_frame (
-               USB_DEVICE_INFO * dev,
+uvc_get_frame (USB_DEVICE_INFO * dev,
                ISO_DATA_SRC * iso_src,
                uint8_t * buf,
                uint32_t transfer_len,
                uint8_t * frame,
                uint32_t * frm_len)
 {
-#define GET_FRAME_NUM_PACKETS ((BUF_SIZE / PACKET_SIZE) - 1)
-  //#define GET_FRAME_NUM_PACKETS 40
-  usb_iso_packet_descriptor_t iso_packets[GET_FRAME_NUM_PACKETS];
+
   int status = 0, i = 0, j = 0;
   int counter = 0, header_len = 0;
   uint8_t header_bitfield;
   bool saving_data = FALSE;
-  
-  //transfer_len = PACKET_SIZE;
-
-  DLOG("buffer_phys 0x%X", get_phys_addr(buf));
-  
-  for(i = 0; i < GET_FRAME_NUM_PACKETS; ++i) {
-    if((i+1) * transfer_len >= BUF_SIZE) {
-      DLOG("buffer too small");
-      while(1);
-    }
-    iso_packets[i].length = transfer_len;
-    iso_packets[i].offset = i * transfer_len;
-  }
-  
-  //DLOG("In uvc_get_frame!");
+  //DLOG("uvc_get_frame called");
+    
+  DLOG("In uvc_get_frame!");
   *frm_len = 0;
-  
-  
-  if(usb_isochronous_transfer(dev, iso_src->endp, transfer_len, USB_DIR_IN,
-                              buf, iso_packets, GET_FRAME_NUM_PACKETS) < 0) {
+  DLOG("iso_src->endp = %d", iso_src->endp);
+  if(usb_isochronous_msg(dev, usb_rcvisocpipe(dev, iso_src->endp),
+                         buf, transfer_len, GET_FRAME_NUM_PACKETS,
+                         get_frame_actual_lens,
+                         get_frame_statuses,
+                         USB_DEFAULT_ISOCHRONOUS_MSG_TIMEOUT) < 0) {
     DLOG("uvc_get_frame: usb_isochronous_transfer failed");
     return -1;
   }
+  /*
+  if(usb_isochronous_transfer(dev, iso_src->endp, transfer_len, USB_DIR_IN,
+                              buf, iso_packets, GET_FRAME_NUM_PACKETS) < 0) {
+ 
+  }
+  */
   
   
+  
+  //DLOG("GET_FRAME_NUM_PACKETS = %d", GET_FRAME_NUM_PACKETS);
   
   for(i = 0; i < GET_FRAME_NUM_PACKETS; ++i) {
     //DLOG("loop iteration %d", i);
     //DLOG("packet %d virt addr = 0x%p", i, &(iso_packets[i]));
-    if(iso_packets[i].actual_length == 0) {
+    if(get_frame_actual_lens[i] == 0) {
       //DLOG("%d: received zero length frame", i);
     }
     else {
-       header_len = *(buf + iso_packets[i].offset);
-#if 0
-      
-      DLOG("%d: Actual length received : %d, header : %d, frame : %d", i,
-           iso_packets[i].actual_length, header_len, *frm_len);
-      DLOG("Header = 0x%X", *(buf + iso_packets[i].offset + 1) & 0xFF);
-#endif
-     
+      header_len = *(buf + (i * transfer_len));
       
       if(saving_data) {
-        if(iso_packets[i].actual_length > header_len) {
-          *frm_len += (iso_packets[i].actual_length - header_len);
+        if(get_frame_actual_lens[i] > header_len) {
+          *frm_len += (get_frame_actual_lens[i] - header_len);
           
           
-          if(iso_packets[i].actual_length > PACKET_SIZE ||
-             iso_packets[i].actual_length < 0) {
+          if(get_frame_actual_lens[i] > PACKET_SIZE ||
+             get_frame_actual_lens[i] < 0) {
             DLOG("error with transaction %d", i);
             while(1);
           }
-          for (j = 0; j < (iso_packets[i].actual_length - header_len); j++) {
-            *(frame + counter) = *(buf + iso_packets[i].offset + header_len + j);
+          for (j = 0; j < (get_frame_actual_lens[i] - header_len); j++) {
+            *(frame + counter) = *(buf + (i * transfer_len) + header_len + j);
             counter++;
           }
         }
         
         /* Now, we only retrieve one frame. Check EOF in the header */
       }
-      if ((*(buf + iso_packets[i].offset + 1)) & 0x02) {
+      if ((*(buf + (i * transfer_len) + 1)) & 0x02) {
         DLOG("End of frame reached!");
         if(saving_data) {
           DLOG("frm_len = %d", *frm_len);
@@ -242,7 +268,6 @@ uvc_init (USB_DEVICE_INFO * dev, USB_CFG_DESC * cfg)
   
   DLOG("Configuring UVC device ...");
   
-  gdev = *dev; // --??-- Remove after test
   
   if (uvc_device_cfg(dev, cfg, &iso_src) == -1) {
     DLOG("Device Configuration Failed!");
@@ -253,6 +278,10 @@ uvc_init (USB_DEVICE_INFO * dev, USB_CFG_DESC * cfg)
   iso_src.endp = 1;
   iso_src.max_packet = PACKET_SIZE;
   iso_src.sample_size = 0;
+  dev->ep_in[1].desc.wMaxPacketSize = PACKET_SIZE;
+
+  
+  memcpy(&gdev, dev, sizeof(USB_DEVICE_INFO)); // --??-- Remove after test
 
   memset(tmp, 0, 1300);
   memset(&par, 0, sizeof(UVC_VS_CTL_PAR_BLOCK));
@@ -307,9 +336,10 @@ uvc_init (USB_DEVICE_INFO * dev, USB_CFG_DESC * cfg)
   }
   para_block_dump (&par);
 
+
   /* Select Alternate Setting 1 for interface 1 (Std VS interface) */
   /* This is for an isochronous endpoint with MaxPacketSize 192 */
-  DLOG("Select Alternate Setting 11 for VS interface");
+  DLOG("Select Alternate Setting 1 for VS interface");
   if (usb_set_interface(dev, 1, 1)) {
     DLOG("Cannot configure interface setting for Std VS interface");
     return FALSE;
@@ -394,8 +424,9 @@ video_ctl_error_code (
   setup_req.wIndex = interface;
   setup_req.wLength = 1;
 
-  status = usb_control_transfer (dev, (addr_t) & setup_req,
-                                 sizeof (USB_DEV_REQ), (addr_t) & code, 1);
+  status = usb_control_msg(dev, usb_rcvctrlpipe(dev, 0), request, 0xA1,
+                           VC_REQUEST_ERROR_CODE_CONTROL << 8, interface,
+                           &code, 1, USB_DEFAULT_CONTROL_MSG_TIMEOUT);
 
   if (status) {DLOG("Getting error code failed!"); return 0xFF;}
 
@@ -403,47 +434,34 @@ video_ctl_error_code (
 }
 
 static int
-video_probe_controls (
-                      USB_DEVICE_INFO * dev,
+video_probe_controls (USB_DEVICE_INFO * dev,
                       uint8_t request,
                       uint8_t interface,
                       UVC_VS_CTL_PAR_BLOCK * par)
 {
-  USB_DEV_REQ setup_req;
-  if (request == SET_CUR)
-    setup_req.bmRequestType = 0x21;
-  else
-    setup_req.bmRequestType = 0xA1;
-  setup_req.bRequest = request;
-  setup_req.wValue = VS_PROBE_CONTROL << 8;
-  setup_req.wIndex = interface;
-  //setup_req.wLength = sizeof(UVC_VS_CTL_PAR_BLOCK);
-  setup_req.wLength = 26; // Why? It should be 34! Odd...
+  return usb_control_msg(dev,
+                         request == SET_CUR ?
+                         usb_sndctrlpipe(dev, 0) : usb_rcvctrlpipe(dev, 0),
+                         request,
+                         request == SET_CUR ? 0x21 : 0xA1,
+                         VS_PROBE_CONTROL << 8, interface, par, 26,
+                         USB_DEFAULT_CONTROL_MSG_TIMEOUT);
 
-  return usb_control_transfer (dev, (addr_t) & setup_req,
-                               sizeof (USB_DEV_REQ), (addr_t) par, setup_req.wLength);
 }
 
 static int
-video_commit_controls (
-                       USB_DEVICE_INFO * dev,
+video_commit_controls (USB_DEVICE_INFO * dev,
                        uint8_t request,
                        uint8_t interface,
                        UVC_VS_CTL_PAR_BLOCK * par)
 {
-  USB_DEV_REQ setup_req;
-  if (request == SET_CUR)
-    setup_req.bmRequestType = 0x21;
-  else
-    setup_req.bmRequestType = 0xA1;
-  setup_req.bRequest = request;
-  setup_req.wValue = VS_COMMIT_CONTROL << 8;
-  setup_req.wIndex = interface;
-  //setup_req.wLength = sizeof(UVC_VS_CTL_PAR_BLOCK);
-  setup_req.wLength = 26; // Why? It should be 34! Odd...
-
-  return usb_control_transfer (dev, (addr_t) & setup_req,
-                               sizeof (USB_DEV_REQ), (addr_t) par, setup_req.wLength);
+   return usb_control_msg(dev,
+                          request == SET_CUR ?
+                          usb_sndctrlpipe(dev, 0) : usb_rcvctrlpipe(dev, 0),
+                          request,
+                          request == SET_CUR ? 0x21 : 0xA1,
+                          VS_COMMIT_CONTROL << 8, interface, par, 26,
+                          USB_DEFAULT_CONTROL_MSG_TIMEOUT);
 }
 
 

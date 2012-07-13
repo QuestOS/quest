@@ -1175,10 +1175,15 @@ _sched_setparam (task_id pid, const struct sched_param *p)
 extern int
 _usb_syscall(int device_id, int operation, char* buf, int data_len)
 {
+  int ret;
+#if 0
   com1_printf("In %s called with arguments: (%d, %d, 0x%X, %d)\n", __FUNCTION__,
        device_id, operation, buf, data_len);
-
-  return usb_syscall_handler(device_id, operation, buf, data_len);
+#endif
+  lock_kernel();
+  ret = usb_syscall_handler(device_id, operation, buf, data_len);
+  unlock_kernel();
+  return ret;
 }
 
 #if 0

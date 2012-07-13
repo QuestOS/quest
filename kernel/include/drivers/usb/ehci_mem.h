@@ -29,6 +29,7 @@
 
 #define EHCI_ELEMENTS_PER_BITMAP_ENTRY (sizeof(uint32_t) * 8)
 
+  
 
 
 
@@ -57,51 +58,23 @@
   (itd_t*)__EHCI_POOL_PHYS_TO_VIRT(hcd, itd_phys_addr, itd_pool)
 
 
-/* Start of functions related to qtd_t memory management*/
+#define DECLARE_EHCI_MEM_FUNCTIONS(type)                                \
+  inline bool initialise_##type(ehci_hcd_t* ehci_hcd, type##_t* item);        \
+  uint32_t allocate_##type##s(ehci_hcd_t* ehci_hcd, type##_t** items,   \
+                              uint32_t num_items);                      \
+  inline type##_t* allocate_##type(ehci_hcd_t* ehci_hcd);               \
+  void free_##type##s(ehci_hcd_t* ehci_hcd, type##_t** items,           \
+                      uint32_t num_items);                              \
+  inline void free_##type(ehci_hcd_t* ehci_hcd, type##_t* item);
 
-inline bool initialise_qtd(ehci_hcd_t* ehci_hcd, qtd_t* qtd);
-
-uint32_t allocate_qtds(ehci_hcd_t* ehci_hcd, qtd_t** qtds, uint32_t num_qtd);
-
-inline qtd_t* allocate_qtd(ehci_hcd_t* ehci_hcd);
-
-void free_qtds(ehci_hcd_t* ehci_hcd, qtd_t** qtds, uint32_t num_qtd);
-
-inline void free_qtd(ehci_hcd_t* ehci_hcd, qtd_t* qtd);
-
-/* End of functions related to qtd_t memory management */
-
-
-
-/* Start of functions related to qh_t memory management */
-
-inline bool initialise_qh(ehci_hcd_t* ehci_hcd, qh_t* qh);
-
-uint32_t allocate_qhs(ehci_hcd_t* ehci_hcd, qh_t** qhs, uint32_t num_qh);
-
-inline qh_t* allocate_qh(ehci_hcd_t* ehci_hcd);
-
-void free_qhs(ehci_hcd_t* ehci_hcd, qh_t** qhs, uint32_t num_qh);
-
-inline void free_qh(ehci_hcd_t* ehci_hcd, qh_t* qh);
-
-/* End of functions related to qh_t memory management */
+DECLARE_EHCI_MEM_FUNCTIONS(qtd)
+DECLARE_EHCI_MEM_FUNCTIONS(qh)
+DECLARE_EHCI_MEM_FUNCTIONS(itd)
+DECLARE_EHCI_MEM_FUNCTIONS(ehci_completion_element)
 
 
 
-/* Start of functions related to itd_t memory management*/
-
-inline bool initialise_itd(ehci_hcd_t* ehci_hcd, itd_t* itd);
-
-uint32_t allocate_itds(ehci_hcd_t* ehci_hcd, itd_t** itds, uint32_t num_itd);
-
-inline itd_t* allocate_itd(ehci_hcd_t* ehci_hcd);
-
-void free_itds(ehci_hcd_t* ehci_hcd, itd_t** itds, uint32_t num_itd);
-
-inline void free_itd(ehci_hcd_t* ehci_hcd, itd_t* itd);
-
-/* End of functions related to itd_t memory management */
+#undef DECLARE_EHCI_MEM_FUNCTIONS
 
 #endif // _EHCI_MEM_H_
 

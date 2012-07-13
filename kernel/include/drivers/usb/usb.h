@@ -73,18 +73,26 @@
 #define PIPE_CONTROL      2
 #define PIPE_BULK         3
 
-#define USB_SPEED_LOW  1
-#define USB_SPEED_FULL 2
-#define USB_SPEED_HIGH 3
+#define USB_SPEED_LOW      1
+#define USB_SPEED_FULL     2
+#define USB_SPEED_HIGH     3
+#define USB_SPEED_WIRELESS 4
+#define USB_SPEED_SUPER    5
 
-#define USB_DIR_IN  0
-#define USB_DIR_OUT 1
+#define USB_DIR_IN  0x80
+#define USB_DIR_OUT 0
 
 
 #define USB_USER_READ  0
 #define USB_USER_WRITE 1
 
+#define USB_DEFAULT_CONTROL_MSG_TIMEOUT     1250
+#define USB_DEFAULT_BULK_MSG_TIMEOUT        1250
+#define USB_DEFAULT_INTERRUPT_MSG_TIMEOUT   1250
+#define USB_DEFAULT_ISOCHRONOUS_MSG_TIMEOUT 1250
 
+
+#define USB_MSG_SLEEP_INTERVAL 25 // sleep for (4 * USB_MSG_SLEEP_INTERVAL) ms
 
 //struct _usb_hcd_t;
 
@@ -240,13 +248,48 @@ typedef struct usb_str_desc USB_STR_DESC;
 
 /* ************************************************** */
 
+/*
+ * ********************************************************************
+ * The following is copied from Linux but needs to be put here for
+ * compiler reasons
+ * ********************************************************************
+ */
+
+struct usb_host_endpoint {
+  USB_EPT_DESC desc;
+  
+  /*
+   * -- EM -- Removing the below data structures because I do not
+   * need them and do not know what some are for
+   */
+  
+  //struct list_head                urb_list;
+  //void                            *hcpriv;
+  //struct ep_device                *ep_dev;        /* For sysfs info */
+  //struct usb_host_ss_ep_comp      *ss_ep_comp;    /* For SS devices */
+  
+  //unsigned char *extra;   /* Extra descriptors */
+  //int extralen;
+  //int enabled;
+};
+
+typedef struct usb_host_endpoint USB_HOST_ENDPOINT;
+
+
+/*
+ * ********************************************************************
+ * End of functions copied from Linux
+ * ********************************************************************
+ */
+
 struct _USB_DRIVER;
 
-typedef struct 
+typedef struct usb_device
 {
   uint8 address;
   USB_DEV_DESC devd;
   uint8 host_type;
+  uint8 speed;
   usb_hcd_t* hcd;
   uint8 *configurations;
   struct _USB_DRIVER* driver;
@@ -257,7 +300,58 @@ typedef struct
    *  number can be shared by 2 endpoints one IN and one OUT
    */
   uint32 endpoint_toggles;
+  
+  USB_HOST_ENDPOINT ep_in[16];
+  USB_HOST_ENDPOINT ep_out[16];
 } USB_DEVICE_INFO;
+
+/*
+ * ********************************************************************
+ * The following is copied from Linux but needs to be put here for
+ * compiler reasons
+ * ********************************************************************
+ */
+
+
+static inline uint32_t
+__create_pipe(struct usb_device *dev, unsigned int endpoint)
+{
+  return (dev->address << 8) | (endpoint << 15);
+}
+
+/* Create various pipes... */
+#define usb_sndctrlpipe(dev, endpoint)  \
+        ((PIPE_CONTROL << 30) | __create_pipe(dev, endpoint))
+#define usb_rcvctrlpipe(dev, endpoint)  \
+        ((PIPE_CONTROL << 30) | __create_pipe(dev, endpoint) | USB_DIR_IN)
+#define usb_sndisocpipe(dev, endpoint)  \
+        ((PIPE_ISOCHRONOUS << 30) | __create_pipe(dev, endpoint))
+#define usb_rcvisocpipe(dev, endpoint)  \
+        ((PIPE_ISOCHRONOUS << 30) | __create_pipe(dev, endpoint) | USB_DIR_IN)
+#define usb_sndbulkpipe(dev, endpoint)  \
+        ((PIPE_BULK << 30) | __create_pipe(dev, endpoint))
+#define usb_rcvbulkpipe(dev, endpoint)  \
+        ((PIPE_BULK << 30) | __create_pipe(dev, endpoint) | USB_DIR_IN)
+#define usb_sndintpipe(dev, endpoint)   \
+        ((PIPE_INTERRUPT << 30) | __create_pipe(dev, endpoint))
+#define usb_rcvintpipe(dev, endpoint)   \
+        ((PIPE_INTERRUPT << 30) | __create_pipe(dev, endpoint) | USB_DIR_IN)
+
+
+static inline uint16_t
+usb_maxpacket(struct usb_device *udev, int pipe)
+{
+  unsigned epnum = usb_pipeendpoint(pipe);
+  return usb_pipein(pipe) ? udev->ep_in[epnum].desc.wMaxPacketSize :
+    udev->ep_out[epnum].desc.wMaxPacketSize;
+}
+
+/*
+ * ********************************************************************
+ * End of functions copied from Linux
+ * ********************************************************************
+ */
+
 
 #define IS_ENDPOINT_TOGGLED(dev_info, endpoint, is_input)               \
   (!!(((dev_info)->endpoint_toggles) & (1 << (endpoint + ( (!!(is_input)) << 4)))))
@@ -293,6 +387,10 @@ USB_DEVICE_INFO* usb_get_device(int device_id);
 int usb_syscall_handler(int device_id, int operation, char* buf, int data_len);
 
 /* Generic USB operations */
+
+
+
+/*
 extern int usb_control_transfer(USB_DEVICE_INFO* dev, addr_t setup_req,
                                 uint16_t req_len, addr_t data,
                                 uint16_t data_len);
@@ -308,11 +406,13 @@ extern int usb_isochronous_transfer(USB_DEVICE_INFO* dev,
                                     uint8_t direction, addr_t data,
                                     usb_iso_packet_descriptor_t* packets,
                                     int num_packets);
-
+*/
 
 extern int usb_get_descriptor(USB_DEVICE_INFO* dev, uint16_t dtype,
                               uint16_t dindex, uint16_t index,
                               uint16_t length, addr_t desc);
+
+
 
 extern int usb_set_address(USB_DEVICE_INFO * dev, uint8_t new_addr);
 
@@ -325,10 +425,179 @@ extern int usb_get_interface(USB_DEVICE_INFO* dev, uint16_t interface);
 extern int usb_set_interface(USB_DEVICE_INFO* dev, uint16_t alt, uint16_t interface);
 
 
+/*
+ * ********************************************************************
+ * The following is copied from Linux but needs to be put here for
+ * compiler reasons or for convenience
+ * ********************************************************************
+ */
+
+
+int usb_submit_urb (struct urb *urb, gfp_t mem_flags);
+
+void usb_kill_urb(struct urb *urb);
+
+
+/*
+ * -- EM -- The implementation of the four usb_*_msg functions is
+ * annoyingly similar with a few minor differences. It would be best
+ * to find a way to abstract out these minor differences and have 1
+ * main function/macro that is the major guts of the implementation so
+ * future changes do not have to be copied across all functions.
+ */
+
+int usb_bulk_msg(struct usb_device *usb_dev, unsigned int pipe,
+                 void *data, int len, int *actual_length,
+                 int timeout);
+
+/*
+ * Linux provides this function but in our system it breaks the idea
+ * of a RT-USB system. It is however useful for testing device drivers
+ * and therefore it exists for that purpose
+ */
+int usb_interrupt_msg(struct usb_device *usb_dev, unsigned int pipe,
+                      void *data, int len, int *actual_length,
+                      int timeout);
+
+
+int usb_control_msg(struct usb_device *dev, unsigned int pipe,
+                    uint8_t request, uint8_t requesttype,
+                    uint16_t value, uint16_t index,
+                    void *data, uint16_t size, int timeout);
+
+
+/*
+ * This function should never really be used since it breaks all the
+ * principles of isochronous transfers, especially in our RT-USB
+ * system.  It is however useful for testing device drivers and
+ * therefore it exists for that purpose
+ */
+int usb_isochronous_msg(struct usb_device *dev, unsigned int pipe,
+                        void* data, int packet_size, int num_packets,
+                        unsigned int* actual_lens, int* statuses,
+                        int timeout);
+
+static inline void
+usb_fill_bulk_urb(struct urb *urb,
+                       struct usb_device *dev,
+                       unsigned int pipe,
+                       void *transfer_buffer,
+                       int buffer_length,
+                       usb_complete_t complete_fn,
+                       void *context)
+{
+  urb->dev = dev;
+  urb->pipe = pipe;
+  urb->transfer_buffer = transfer_buffer;
+  urb->transfer_buffer_length = buffer_length;
+  urb->complete = complete_fn;
+  urb->context = context;
+}
+
+static inline void
+usb_fill_control_urb(struct urb *urb,
+                     struct usb_device *dev,
+                     unsigned int pipe,
+                     unsigned char *setup_packet,
+                     void *transfer_buffer,
+                     int buffer_length,
+                     usb_complete_t complete_fn,
+                     void *context)
+{
+  urb->dev = dev;
+  urb->pipe = pipe;
+  urb->setup_packet = setup_packet;
+  urb->transfer_buffer = transfer_buffer;
+  urb->transfer_buffer_length = buffer_length;
+  urb->complete = complete_fn;
+  urb->context = context;
+}
+
+static inline void
+usb_fill_int_urb(struct urb *urb,
+                 struct usb_device *dev,
+                 unsigned int pipe,
+                 void *transfer_buffer,
+                 int buffer_length,
+                 usb_complete_t complete_fn,
+                 void *context,
+                 int interval)
+{
+  urb->dev = dev;
+  urb->pipe = pipe;
+  urb->transfer_buffer = transfer_buffer;
+  urb->transfer_buffer_length = buffer_length;
+  urb->complete = complete_fn;
+  urb->context = context;
+  if (dev->speed == USB_SPEED_HIGH || dev->speed == USB_SPEED_SUPER) {
+    urb->interval = 1 << (interval - 1);
+  }
+  else {
+    urb->interval = interval;
+  }
+  urb->start_frame = -1;
+}
+
+/*
+ * We are nicer than Linux we provide a usb_fill_iso_urb function ;-)
+ */
+
+static inline void usb_fill_iso_urb(struct urb* urb,
+                                    struct usb_device *dev,
+                                    unsigned int pipe,
+                                    void *transfer_buffer,
+                                    usb_complete_t complete_fn,
+                                    void *context,
+                                    int interval,
+                                    int num_packets,
+                                    int packet_len)
+{
+  int i;
+   
+  urb->dev = dev;
+  urb->pipe = pipe;
+  urb->transfer_buffer = transfer_buffer;
+  urb->complete = complete_fn;
+  urb->context = context;
+  urb->number_of_packets = num_packets;
+  /* -- EM -- Not sure if this is the correct way to set interval,
+   * currently not using the interval member of urb, mimicking the way
+   * usb_fill_int_urb works
+   */
+  if (dev->speed == USB_SPEED_HIGH || dev->speed == USB_SPEED_SUPER) {
+    urb->interval = 1 << (interval - 1);
+  }
+  else {
+    urb->interval = interval;
+  }
+
+  for(i = 0; i < num_packets; ++i) {
+    urb->iso_frame_desc[i].length = packet_len;
+    urb->iso_frame_desc[i].offset = i * packet_len;
+  }
+}
+
+
+static inline struct usb_host_endpoint *
+usb_pipe_endpoint(struct usb_device *dev, unsigned int pipe)
+{
+  return usb_pipein(pipe) ? &(dev->ep_in[usb_pipeendpoint(pipe)]) :
+    &(dev->ep_out[usb_pipeendpoint(pipe)]);
+}
+
+/*
+ * ********************************************************************
+ * End of functions copied from Linux
+ * ********************************************************************
+ */
+
+
 bool usb_enumerate(usb_hcd_t* usb_hcd);
 
 typedef bool (*usb_reset_root_ports_func) (usb_hcd_t* usb_hcd);
 typedef bool (*usb_post_enumeration_func)(usb_hcd_t* usb_hcd);
+typedef int  (*usb_submit_urb_func)(struct urb* urb, gfp_t mem_flags);
+typedef void (*usb_kill_urb_func)(struct urb* urb);
 
 /*
  * Generic USB Host controller Device object 
@@ -340,22 +609,29 @@ struct _usb_hcd_t
   uint32_t usb_hc_type;
   usb_reset_root_ports_func reset_root_ports;
   usb_post_enumeration_func post_enumeration;
+  usb_submit_urb_func       usb_submit_urb;
+  usb_kill_urb_func         usb_kill_urb;
   uint32_t next_address;
-  USB_DEVICE_INFO devinfo[USB_MAX_DEVICES+1];  // +1 so device address corresponds to index
+
+  
+  USB_DEVICE_INFO devinfo[USB_MAX_DEVICES+1];  
   
 };
 
-int usb_syscall_handler(int device_id, int operation, char* buf, int data_len);
 
 bool initialise_usb_hcd(usb_hcd_t* usb_hcd, uint32_t usb_hc_type,
                         usb_reset_root_ports_func reset_root_ports,
-                        usb_post_enumeration_func post_enumeration);
+                        usb_post_enumeration_func post_enumeration,
+                        usb_submit_urb_func usb_submit_urb,
+                        usb_kill_urb_func usb_kill_urb);
 
 bool add_usb_hcd(usb_hcd_t* usb_hcd);
 
 usb_hcd_t* get_usb_hcd(uint32_t index);
 
 void dlog_usb_hcd(usb_hcd_t* usb_hcd);
+
+int usb_syscall_handler(int device_id, int operation, char* buf, int data_len);
 
 #endif
 

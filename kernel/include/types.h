@@ -56,6 +56,9 @@ typedef uint64 uint64_t, u64, __le64;
 
 typedef void *addr_t;
 
+
+typedef int gfp_t;
+
 #endif // [#ifndef __ASSEMBLER__]
 
 #endif
