@@ -836,6 +836,8 @@ vcpu_wakeup (task_id task)
     //com1_printf ("vcpu: task 0x%x now bound to vcpu=%d\n", task, tssp->cpu);
   }
 
+  sleepqueue_detach (task);
+
   vcpu *v = vcpu_lookup (tssp->cpu);
 
   /* put task on vcpu runqueue (2nd level) */
@@ -1259,6 +1261,78 @@ vcpu_init (void)
 }
 
 #ifdef USE_VMX
+/* Fix replenishment queue */
+bool
+vcpu_fix_replenishment (quest_tss * tss, vcpu * v, replenishment r[])
+{
+  int i = 0, cpu = 0;
+  repl_queue * rq = NULL;
+  replenishment * rp = NULL;
+
+#ifdef DEBUG_VCPU
+  /* What is the current replenishment queue of v? */
+  rq = &v->main.Q;
+  rp = rq->head;
+  com1_printf ("Target VCPU Replenishment Queue:\n");
+  while (rp) {
+    com1_printf ("  b=0x%llX, t=0x%llX\n", rp->b, rp->t);
+    rp = rp->next;
+  }
+#endif
+
+  /* Assume this is a new VCPU with no task binded. */
+  /* This is always true is we create a new VCPU for migrating task */
+  /* Now, restore VCPU parameters */
+  if ((tss->C_bak != v->C) || (tss->T_bak != v->T)) {
+    /* VCPU in destination sandbox is not compatible with original one */
+    logger_printf ("VCPU in destination is not compatible!\n");
+    logger_printf ("  C=0x%llX, T=0x%llX, Cn=0x%llX, Tn=0x%llX\n",
+                 tss->C_bak, tss->T_bak, v->C, v->T);
+    return FALSE;
+  } else {
+    /* Clear the current replenishment queue */
+    rq = &v->main.Q;
+    rp = rq->head;
+    while (rp) {
+      repl_queue_pop (rq);
+      rp = rq->head;
+    }
+    /* Add fixed new replenishments */
+    for (i = 0; i < MAX_REPL; i++) {
+      if (tss->vcpu_backup[i].t == 0) break;
+      /* Fix timestamp values */
+      cpu = get_pcpu_id ();
+      if (shm->remote_tsc_diff[cpu]) {
+        /* Local TSC is faster */
+        repl_queue_add (rq, tss->vcpu_backup[i].b,
+                        tss->vcpu_backup[i].t + shm->remote_tsc[cpu]);
+      } else {
+        /* Local TSC is slower */
+        repl_queue_add (rq, tss->vcpu_backup[i].b,
+                        tss->vcpu_backup[i].t - shm->remote_tsc[cpu]);
+      }
+    }
+    v->b = tss->b_bak;
+    v->usage = tss->usage_bak;
+
+#ifdef DEBUG_VCPU
+    /* Check the updated replenishment queue of v */
+    rq = &v->main.Q;
+    rp = rq->head;
+    com1_printf ("Updated VCPU Replenishment Queue (b=0x%llX, usage=0x%llX):\n",
+                 v->b, v->usage);
+    while (rp) {
+      com1_printf ("  b=0x%llX, t=0x%llX\n", rp->b, rp->t);
+      rp = rp->next;
+    }
+#endif
+
+    return TRUE;
+  }
+
+  return FALSE;
+}
+
 /* For sandbox to reset scheduler after vm fork. */
 void
 vcpu_reset (void)

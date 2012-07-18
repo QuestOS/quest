@@ -39,8 +39,46 @@
 #define DLOG(fmt,...) ;
 #endif
 
+static task_id migration_thread_id = 0;
+static u32 migration_stack[1024] ALIGNED (0x1000);
+static bool mig_working_flag = FALSE;
+
 extern bool sleepqueue_detach (task_id);
 extern void sleepqueue_append (task_id);
+
+/* Back up the (main) VCPU replenishment queue into quest_tss. This makes it
+ * easier for remote side since accessing a local VCPU there is not easy. For
+ * now only main VCPU is considered in that IOVCPU migration is a totally
+ * different story and another mechanism is needed outside of this interface.
+ */
+static void
+backup_vcpu_replenishment (quest_tss * tss)
+{
+  int i = 0;
+  repl_queue * rq;
+  replenishment * r;
+  vcpu * v = vcpu_lookup (tss->cpu);
+  if (!v) return;
+  /* Clear backup array */
+  memset (tss->vcpu_backup, 0, sizeof(struct _replenishment) * MAX_REPL);
+  /* Go through the VCPU replenishment queue */
+  rq = &v->main.Q;
+  r = rq->head;
+  DLOG ("VCPU %d Replenishment Queue (b=0x%llX, usage=0x%llX):",
+        tss->cpu, v->b, v->usage);
+  while (r) {
+    DLOG ("  (%d) b=0x%llX, t=0x%llX", i, r->b, r->t);
+    tss->vcpu_backup[i].t = r->t;
+    tss->vcpu_backup[i].b = r->b;
+    r = r->next;
+    i++;
+  }
+  /* Backup common VCPU scheduling parameters */
+  tss->C_bak = v->C;
+  tss->T_bak = v->T;
+  tss->b_bak = v->b;
+  tss->usage_bak = v->usage;
+}
 
 void *
 detach_task (task_id tid)
@@ -67,9 +105,8 @@ detach_task (task_id tid)
        * sandbox knows it won't need to put it to its sleep queue.
        */
       if (!sleepqueue_detach (tid)) tss->time = 0;
-      return get_phys_addr ((void *) tss);
+      goto success;
     }
-    return NULL;
   } else {
     /* Remove migrating quest_tss from its VCPU run queue */
     vcpu_remove_from_runqueue (v, tid);
@@ -79,10 +116,17 @@ detach_task (task_id tid)
         v->runnable = FALSE;
       }
     }
-    /* Return the physical address of the detached quest_tss */
-    return get_phys_addr ((void *) tss);
+    goto success;
   }
   return NULL;
+
+success:
+  /* Back up the replenishment queue of the local VCPU in quest_tss. This
+   * makes it easier for the remote sandbox to restore and fix the queue.
+   */
+  backup_vcpu_replenishment (tss);
+  /* Return the physical address of the detached quest_tss */
+  return get_phys_addr ((void *) tss);
 }
 
 quest_tss *
@@ -131,15 +175,38 @@ int
 attach_task (quest_tss * new_tss)
 {
   uint64 now;
+  vcpu * v = NULL;
 
   /* Add new quest_tss to per-sandbox quest_tss list */
   tss_add_tail (new_tss);
+
   /* TODO: Find a VCPU or create a new one for the process */
-  /* Let's do a wakeup or sleep for now without considering VCPU */
+
+  /* Fix the replenishment queue */
+#ifdef DEBUG_MIGRATION
+  int i = 0;
+  DLOG ("Replenishment queue to be fixed:");
+  for (i = 0; i < MAX_REPL; i++) {
+    if (new_tss->vcpu_backup[i].t == 0) break;
+    DLOG ("  (%d) b=0x%llX, t=0x%llX", i,
+          new_tss->vcpu_backup[i].b, new_tss->vcpu_backup[i].t);
+  }
+#endif
+  v = vcpu_lookup (new_tss->cpu);
+  if (!v) {
+    logger_printf ("Cannot find VCPU to be attached to!\n");
+  } else {
+    if (!vcpu_fix_replenishment (new_tss, v, new_tss->vcpu_backup)) {
+      logger_printf ("Replenishment Queue Fix Failed\n");
+    }
+  }
+
+  /* Let's do a wakeup or sleep depending on the original state of the task */
   RDTSC (now);
   if (new_tss->time == 0 || now >= new_tss->time) {
     /* Not sleeping or sleep expires already. Wake up directly. */
     DLOG ("Waking up task in destination sandbox");
+   
     wakeup (new_tss->tid);
     new_tss->time = 0;
   } else {
@@ -333,10 +400,14 @@ trap_and_migrate (void * phy_tss)
   return (quest_tss *) vm_exit_return_val;
 }
 
+#define USE_MIGRATION_THREAD
+
 static uint32
 receive_migration_request (uint8 vector)
 {
+#ifndef USE_MIGRATION_THREAD
   quest_tss * new_tss = NULL;
+#endif
   int cpu = 0;
   uint64 now;
 
@@ -348,6 +419,7 @@ receive_migration_request (uint8 vector)
    * need to minimize the cycles spent doing this offset calculation or somehow
    * compensate for it by considering the overhead in the final calculation.
    */
+  lock_kernel ();
   RDTSC (now);
   cpu = get_pcpu_id ();
   DLOG ("Local TSC: 0x%llX Remote TSC: 0x%llX", now, shm->remote_tsc[cpu]);
@@ -366,8 +438,15 @@ receive_migration_request (uint8 vector)
   DLOG ("Received migration request in sandbox kernel %d!", cpu);
   /* What is the request on the queue? */
   if (shm->migration_queue[cpu]) {
+#ifdef USE_MIGRATION_THREAD
+    mig_working_flag = TRUE;
+    wakeup (migration_thread_id);
+    /* If we put migration thread on the highest priority VCPU in the sandbox,
+     * it should be scheduled after this call.
+     */
+    schedule ();
+#else
     DLOG ("Process quest_tss to be migrated: 0x%X", (uint32) shm->migration_queue[cpu]);
-    /* TODO: Wake up the migration thread here */
     /* Trap to monitor now for convenience */
     new_tss = trap_and_migrate (shm->migration_queue[cpu]);
     if (new_tss) {
@@ -382,15 +461,71 @@ receive_migration_request (uint8 vector)
       }
     } else {
       DLOG ("trap_and_migrate failed!");
-      return 0;
+      goto abort;
     }
+#endif
   } else {
     /* No request in queue! */
     DLOG ("No request found in migration queue!");
-    return 0;
+    goto abort;
   }
 
+abort:
+  unlock_kernel ();
   return 0;
+}
+
+static uint64 stat_start = 0, stat_end = 0;
+
+/* Migration thread which is responsible for duplicating the address space should
+ * be placed on a VCPU that has the highest priority in each sandbox kernel with
+ * the budget big enough for the worst case execution time.
+ */
+static void
+migration_thread (void)
+{
+  int cpu = 0;
+  quest_tss * new_tss = NULL;
+  cpu = get_pcpu_id ();
+  logger_printf ("Migration thread started in sandbox %d\n", cpu);
+
+  for (;;) {
+    if ((!shm->migration_queue[cpu]) && (!mig_working_flag)) {
+      sched_usleep (1000000);
+    } else {
+      /* Work needed */
+      DLOG ("Process quest_tss to be migrated: 0x%X", (uint32) shm->migration_queue[cpu]);
+      //asm volatile ("wbinvd");
+      RDTSC (stat_start);
+      /* Trap to monitor now for convenience */
+      new_tss = trap_and_migrate (shm->migration_queue[cpu]);
+      RDTSC (stat_end);
+      com1_printf ("trap_and_migrate time: 0x%llX\n", stat_end - stat_start);
+      if (new_tss) {
+        DLOG ("New quest_tss:");
+        DLOG ("  name: %s, task_id: 0x%X, affinity: %d, CR3: 0x%X",
+              new_tss->name, new_tss->tid, new_tss->sandbox_affinity, new_tss->CR3);
+        //asm volatile ("wbinvd");
+        RDTSC (stat_start);
+        /* Add new (migrated) process to local sandbox scheduler */
+        if (!attach_task (new_tss)) {
+          DLOG ("Attaching task failed!");
+          /* Destroy task */
+          destroy_task (new_tss->tid);
+        }
+        RDTSC (stat_end);
+        com1_printf ("attach_task time: 0x%llX\n", stat_end - stat_start);
+        /* --YL-- OK, this is not a clean way to avoid contention if we can have a
+         * migration queue of multiple tasks. But for now, we assume there is only
+         * one task allowed in the queue.
+         */
+        shm->migration_queue[cpu] = 0;
+        mig_working_flag = FALSE;
+      } else {
+        DLOG ("trap_and_migrate failed!");
+      }
+    }
+  }
 }
 
 static uint32
@@ -425,6 +560,11 @@ migration_init (void)
     set_vector_handler (MIGRATION_CLEANUP_VECTOR, &receive_cleanup_request);
   }
 
+  /* --YL-- Put migration thread on VCPU 1 for now */
+  migration_thread_id =
+    create_kernel_thread_vcpu_args ((u32) migration_thread, (u32) &migration_stack[1023],
+                                    "Migration Thread", 1, TRUE, 0);
+  DLOG ("Migration thread 0x%X created in sandbox %d", migration_thread_id, cpu);
 
   DLOG ("Migration subsystem initialized in sandbox kernel %d", cpu);
 

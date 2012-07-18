@@ -37,12 +37,15 @@ typedef enum {
   IOVCPU_CLASS_CDROM = (1<<4),
 } iovcpu_class;
 
+#ifndef _SCHED_VCPU_REPL_
+#define _SCHED_VCPU_REPL_
 typedef struct _replenishment {
   u64 t, b;
   struct _replenishment *next;
 } replenishment;
-
 #define MAX_REPL 32
+#endif
+
 typedef struct {
   replenishment array[MAX_REPL];
   replenishment *head;
@@ -134,6 +137,7 @@ extern vcpu * vcpu_lookup (int);
 extern bool vcpu_in_runqueue (vcpu *, task_id);
 extern void vcpu_remove_from_runqueue (vcpu *, task_id);
 #ifdef USE_VMX
+extern bool vcpu_fix_replenishment (quest_tss*, vcpu*, replenishment[]);
 extern void vcpu_reset (void);
 #endif
 

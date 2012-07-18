@@ -4,17 +4,23 @@
 #include <string.h>
 #include "canny.h"
 
+/* 
+ * Quest doesn't provide much user space memory. 
+ * In order to reduce memory usage, some buffers are shared 
+ */
 extern unsigned char buf[];
+//int a_buf[WIDTH * HEIGHT * 2];
+//unsigned char img_buf[256 * 256 * 3];
 unsigned char * img_buf = buf;
-int dat_buf[256 * 256];
-int mag_buf[256 * 256];
-float xC_buf[256 * 256];
-float xG_buf[256 * 256];
-float yC_buf[256 * 256];
-float yG_buf[256 * 256];
+//int edg_buf[256 * 256];
+int dat_buf[WIDTH * HEIGHT];
+int mag_buf[WIDTH * HEIGHT];
+float xC_buf[WIDTH * HEIGHT];
+float xG_buf[WIDTH * HEIGHT];
+float yC_buf[WIDTH * HEIGHT];
+float yG_buf[WIDTH * HEIGHT];
 
-float kkk;
-int bbb;
+
 
 void
 I_init(Image *img, int width, int height, int type)
@@ -62,78 +68,14 @@ I_setData(Image *img, int *pixels)
 void 
 C_init(CEDetector *detect)
 {
-  bzero(xC_buf, 256 * 256 * sizeof(float));
-  bzero(xG_buf, 256 * 256 * sizeof(float));
-  bzero(yC_buf, 256 * 256 * sizeof(float));
-  bzero(yG_buf, 256 * 256 * sizeof(float));
-  bzero(dat_buf, 256 * 256 * sizeof(int));
-  bzero(mag_buf, 256 * 256 * sizeof(int));
-
-  int i, flag = 0;
-  for(i = 0; i < 256 * 256; i++){
-    if(*((int*)&xC_buf[i]) != 0){
-      if(flag == 0) {flag = 1;printf("error! From: xC_buf[%d]:0x%x\n", i, &xC_buf[i]);}
-    }
-    else{
-      if(flag == 1) {flag = 0;printf("error! End: xC_buf[%d]:0x%x\n", i, &xC_buf[i]);}
-    }
-  }
-  if (flag == 1) {flag = 0;printf("error! End: xC_buf[%d]:0x%x\n", i, &xC_buf[i]);}
-
-  flag = 0;
-  for(i = 0; i < 256 * 256; i++){
-    if(*((int*)&yC_buf[i]) != 0){
-      if(flag == 0) {flag = 1;printf("error! From: yC_buf[%d]:0x%x\n", i, &yC_buf[i]);}
-    }
-    else{
-      if(flag == 1) {flag = 0;printf("error! End: yC_buf[%d]:0x%x\n", i, &yC_buf[i]);}
-    }
-  }
-  if(flag == 1) {flag = 0;printf("error! End: yC_buf[%d]:0x%x\n", i, &yC_buf[i]);}
-
-  flag = 0;
-  for(i = 0; i < 256 * 256; i++){
-    if(*((int*)&xG_buf[i]) != 0){
-      if(flag == 0) {flag = 1;printf("error! From: xG_buf[%d]:0x%x\n", i, &xG_buf[i]);}
-    }
-    else{
-      if(flag == 1) {flag = 0;printf("error! End: xG_buf[%d]:0x%x\n", i, &xG_buf[i]);}
-    }
-  }
-  if(flag == 1) {flag = 0;printf("error! End: xG_buf[%d]:0x%x\n", i, &xG_buf[i]);}
-
-  flag = 0;
-  for(i = 0; i < 256 * 256; i++){
-    if(*((int*)&yG_buf[i]) != 0){
-      if(flag == 0) {flag = 1;printf("error! From: yG_buf[%d]:0x%x\n", i, &yG_buf[i]);}
-    }
-    else{
-      if(flag == 1) {flag = 0;printf("error! End: yG_buf[%d]:0x%x\n", i, &yG_buf[i]);}
-    }
-  }
-  if(flag == 1) {flag = 0;printf("error! End: yG_buf[%d]:0x%x\n", i, &yG_buf[i]);}
-
-  flag = 0;
-  for(i = 0; i < 256 * 256; i++){
-    if(*((int*)&dat_buf[i]) != 0){
-      if(flag == 0) {flag = 1;printf("error! From: dat_buf[%d]:0x%x\n", i, &dat_buf[i]);}
-    }
-    else{
-      if(flag == 1) {flag = 0;printf("error! End: dat_buf[%d]:0x%x\n", i, &dat_buf[i]);}
-    }
-  }
-  if(flag == 1) {flag = 0;printf("error! End: dat_buf[%d]:0x%x\n", i, &dat_buf[i]);}
-
-  flag = 0;
-  for(i = 0; i < 256 * 256; i++){
-    if(*((int*)&mag_buf[i]) != 0){
-      if(flag == 0) {flag = 1;printf("error! From: mag_buf[%d]:0x%x\n", i, &mag_buf[i]);}
-    }
-    else{
-      if(flag == 1) {flag = 0;printf("error! End: mag_buf[%d]:0x%x\n", i, &mag_buf[i]);}
-    }
-  }
-  if(flag == 1) {flag = 0;printf("error! End: mag_buf[%d]:0x%x\n", i, &mag_buf[i]);}
+  int s = WIDTH * HEIGHT;
+  bzero(xC_buf, s * sizeof(float));
+  bzero(xG_buf, s * sizeof(float));
+  bzero(yC_buf, s * sizeof(float));
+  bzero(yG_buf, s * sizeof(float));
+//  bzero(edg_buf, 256 * 256 * sizeof(int));
+  bzero(dat_buf, s * sizeof(int));
+  bzero(mag_buf, s * sizeof(int));
 
   detect->lowThreshold = (float)2.5;
   detect->highThreshold = (float)7.5;
@@ -241,7 +183,7 @@ C_computeGradients(CEDetector *detect, float kernelRadius, int kernelWidth)
     kernel[kwidth] = (g1 + g2 + g3) / (float)3 / ((float)2 * PI * kernelRadius * kernelRadius);
     diffKernel[kwidth] = g3 - g2;
 
-printf("kwidth:%d ,kernel:%x ,diffKernel:%x\n", kwidth, *((int*)&kernel[kwidth]), *((int*)&diffKernel[kwidth]));
+//printf("kwidth:%d ,kernel:%x ,diffKernel:%x\n", kwidth, *((int*)&kernel[kwidth]), *((int*)&diffKernel[kwidth]));
   }
 
   int initX = kwidth - 1;
@@ -265,19 +207,11 @@ printf("kwidth:%d ,kernel:%x ,diffKernel:%x\n", kwidth, *((int*)&kernel[kwidth])
         yOffset += detect->width;
         xOffset++;
 
-//if(index == 8352){
-//printf("data[%d]:%d, data[%d]:%d\n", index - yOffset, detect->data[index - yOffset], index + yOffset, detect->data[index + yOffset]);
-//printf("data[%d]:%d, data[%d]:%d\n", index - xOffset, detect->data[index - xOffset], index + xOffset, detect->data[index + xOffset]);
-//}
       }
 
       detect->yConv[index] = sumY;
       detect->xConv[index] = sumX;
 
-//if(index == 8352){
-//printf("sumY:%x, sumX:%x\n", *((int*)&sumY), *((int*)&sumX));
-//printf("data:%d, yConv:%x, xConv:%x\n", detect->data[index], *((int*)&detect->yConv[index]), *((int*)&detect->xConv[index]));
-//}
     }
   }
 
@@ -291,9 +225,6 @@ printf("kwidth:%d ,kernel:%x ,diffKernel:%x\n", kwidth, *((int*)&kernel[kwidth])
         sum += diffKernel[i] * (detect->yConv[index - i] - detect->yConv[index + i]);
 
       detect->xGradient[index] = sum;
-//if(index == 7830){
-//printf("xGrad:%x\n", *((int*)&sum));
-//}
     }
   }
 
@@ -305,9 +236,6 @@ printf("kwidth:%d ,kernel:%x ,diffKernel:%x\n", kwidth, *((int*)&kernel[kwidth])
       for(i = 1; i < kwidth; i++){
         sum += diffKernel[i] * (detect->xConv[index - yOffset] - detect->xConv[index + yOffset]);
         yOffset += detect->width;
-//if(index == 7830){
-//printf("xConv[%d]: %x, xConv[%d]: %x\n", index - yOffset, *((int*)&detect->xConv[index - yOffset]), index + yOffset, *((int*)&detect->xConv[index + yOffset]));
-//}
       }
 
       detect->yGradient[index] = sum;
@@ -346,46 +274,26 @@ printf("kwidth:%d ,kernel:%x ,diffKernel:%x\n", kwidth, *((int*)&kernel[kwidth])
       swMag = q_hypot(detect->xGradient[indexSW], detect->yGradient[indexSW]);
       nwMag = q_hypot(detect->xGradient[indexNW], detect->yGradient[indexNW]);
 
-if(index == 8352){
-printf("xGrad:%x, yGrad:%x, gradMag:%x\n", *((int *)&xGrad), *((int *)&yGrad), *((int *)&gradMag));
-printf("nMag:%x, sMag:%x, wMag:%x, eMag:%x\n, neMag:%x, seMag:%x, swMag:%x, nwMag:%x\n", *((int*)&nMag), *((int*)&sMag), *((int*)&wMag), *((int*)&eMag), *((int*)&neMag), *((int*)&seMag), *((int*)&swMag), *((int*)&nwMag));
-}
-int test = 0;
-float tmp_buf;
       if(xGrad * yGrad <= (float)0 
         ? q_fabsf(xGrad) >= q_fabsf(yGrad)
           ? (tmp = q_fabsf(xGrad * gradMag)) >= q_fabsf(yGrad * neMag - (xGrad + yGrad) * eMag)
-            && tmp > q_fabsf(yGrad * swMag - (xGrad + yGrad) * wMag) && !!(test = 1)
+            && tmp > q_fabsf(yGrad * swMag - (xGrad + yGrad) * wMag)
           : (tmp = q_fabsf(yGrad * gradMag)) >= q_fabsf(xGrad * neMag - (yGrad + xGrad) * nMag)
-            && tmp > q_fabsf(xGrad * swMag - (yGrad + xGrad) * sMag) && !!(test = 2)
+            && tmp > q_fabsf(xGrad * swMag - (yGrad + xGrad) * sMag)
         : q_fabsf(xGrad) >= q_fabsf(yGrad)
           ? (tmp = q_fabsf(xGrad * gradMag)) >= q_fabsf(yGrad * seMag + (xGrad - yGrad) * eMag)
-            && tmp > q_fabsf(yGrad * nwMag + (xGrad - yGrad) * wMag) && !!(test = 3)
+            && tmp > q_fabsf(yGrad * nwMag + (xGrad - yGrad) * wMag)
           : (tmp = q_fabsf(yGrad * gradMag)) >= q_fabsf(xGrad * seMag + (yGrad - xGrad) * sMag)
-            && tmp > q_fabsf(xGrad * nwMag + (yGrad - xGrad) * nMag) && !!(test = 4)
+            && tmp > q_fabsf(xGrad * nwMag + (yGrad - xGrad) * nMag)
         ){
         if(gradMag >= MAGNITUDE_LIMIT){
           detect->magnitude[index] = MAGNITUDE_MAX;
-          test = 5;
         }
         else{
-          //tmp_buf = MAGNITUDE_SCALE * gradMag;
           detect->magnitude[index] = (int)(MAGNITUDE_SCALE * gradMag);
-          //detect->magnitude[index] = *((int*)&tmp_buf);
-          test = 6;
-          if(index == 8352) {
-            kkk = MAGNITUDE_SCALE * gradMag;
-            bbb = *((int*)&kkk);
-            printf("kkk:%x, bbb:%x, mag:%x, tmp_buf:%x\n",
-                   *((int*)&kkk), bbb, detect->magnitude[index], *((int *) &tmp_buf));
-          }
-        }
-//        detect->magnitude[index] = gradMag >= MAGNITUDE_LIMIT ? MAGNITUDE_MAX : (int)(MAGNITUDE_SCALE * gradMag);
-
-if(index == 8352) printf("test: %d, tmp: %x, mag: %u\n", test, *((int*)&tmp), detect->magnitude[index]); 
+        } 
       }
       else{
-        if(index == 8352) printf("A\n");
         detect->magnitude[index] = 0;
       }
     }
@@ -407,9 +315,7 @@ C_performHysteresis(CEDetector *detect, int low, int high)
   int offset = 0, y, x;
   for(y = 0; y < detect->height; y++){
     for(x = 0; x < detect->width; x++){
-      if(offset == 8352) printf("%u %u\n", detect->data[offset], detect->magnitude[offset]);
       if(detect->data[offset] == 0 && detect->magnitude[offset] >= high){
-        if(offset == 8352) printf("B\n");
         C_follow(detect, x, y, offset, low);
       }
       offset++;
@@ -531,11 +437,9 @@ C_writeEdges(CEDetector *detect, int *pixels)
     detect->edgesImage->height = detect->height;
     detect->edgesImage->type = TYPE_INT_ARGB;
     detect->edgesImage->data = (unsigned char *)mag_buf;
-    bzero(mag_buf, 256 * 256 * sizeof(int));
+    bzero(mag_buf, WIDTH * HEIGHT * sizeof(int));
   }
   I_setData(detect->edgesImage, pixels);
 }
-
-
 
 /* vi: set et sw=2 sts=2: */

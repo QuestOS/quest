@@ -5,7 +5,7 @@
 #include <arpa/inet.h>
 #include <netinet/in.h>
 
-unsigned char buf[256 * 256 * 3];
+unsigned char buf[WIDTH * HEIGHT * 3];
 
 #define PACK_SIZE 1024 * 4
 
@@ -44,7 +44,7 @@ int main(void)
 
   int slen = sizeof(cli_name);
   printf("listening on port %d\n", port);
-  if(recvfrom(sd, &temp, sizeof(temp), 0, &cli_name, &slen) < 0){
+  if(recvfrom(sd, &temp, sizeof(temp), 0, (struct sockaddr *) &cli_name, &slen) < 0){
     printf("receive h/w fails!\n");
     exit(-1);
   }
@@ -52,25 +52,25 @@ int main(void)
   int width = temp.w, height = temp.h;
 
   //int length = sizeof(char) * width * height * 3;
-  int length = 256 * 256 * 3;
+  int length = WIDTH * HEIGHT * 3;
   //char *buf = (char *)malloc(length), *ptr = buf;
   unsigned char *ptr = buf;
 
   int ttt = length;
   while(ttt > 0){
-    if(recvfrom(sd, ptr, ttt < PACK_SIZE ? ttt : PACK_SIZE, 0, &cli_name, &slen) < 0){
+    if(recvfrom(sd, ptr, ttt < PACK_SIZE ? ttt : PACK_SIZE, 0,
+                (struct sockaddr *) &cli_name, &slen) < 0){
       printf("receive pixels fails!\n");
       exit(-1);
     }
     ttt -= PACK_SIZE;
     ptr += PACK_SIZE;
   }
-printf("data received\n");
+  printf("data received\n");
 
   /* image processing */
   Image img;
   I_init(&img, width, height, TYPE_3BYTE_BGR);
-printf("after init\n");
 
   int i, j, index;
 /*
@@ -89,14 +89,24 @@ printf("after init\n");
 printf("after loop\n");
 */
 
-    CEDetector detect;
-    C_init(&detect);
-printf("after detect init\n");
-    detect.lowThreshold = 0.5;
-    detect.highThreshold = 1.0;
-    detect.sourceImage = &img;
+  CEDetector detect;
+  C_init(&detect);
+  detect.lowThreshold = 4.0;
+  detect.highThreshold = 7.5;
+  detect.sourceImage = &img;
+  i = 0;
+  struct sched_param param;
+  for (;;) {
     C_process(&detect);
-printf("after process\n");
+    if (++i % 30 == 0) {
+      printf ("30 frame mark\n");
+    }
+    time ();
+    if (i == 120) {
+      param.affinity = 1;
+      sched_setparam (-1, &param);
+    }
+  }
 
   /* convert from BGRA to RGB */
   for(i = 0; i < height; i++){
@@ -107,8 +117,8 @@ printf("after process\n");
       buf[index * 3 + 2] = detect.edgesImage->data[index * 4];
     }
   }
-  printf("data processed\n");
-  
+
+#if 0
   /* send result */
   ttt = length;
   ptr = buf;
@@ -119,16 +129,13 @@ printf("after process\n");
     }
     ttt -= PACK_SIZE;
     ptr += PACK_SIZE;
-//    printf("sent\n");
-//    printf("sent\n");
-//    printf("sent\n");
-//    printf("sent\n");
   }
+#endif
 
   /* clean up */
   C_deinit(&detect);
   I_deinit(&img);
-//    free(buf);
+  //free(buf);
   close(sd);
   return 0;
 }

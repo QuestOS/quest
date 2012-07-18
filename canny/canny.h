@@ -29,6 +29,9 @@
 #define TYPE_USHORT_GRAY 4
 #define TYPE_3BYTE_BGR 5
 
+#define WIDTH   30
+#define HEIGHT  30
+
 /* image origin is in the upper-left corner */
 typedef struct
 {

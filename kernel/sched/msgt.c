@@ -212,8 +212,10 @@ ipc_recv_thread (void)
 extern bool
 msgt_init (void)
 {
+#ifdef DEBUG_MSGT
   int sandbox = 0;
   sandbox = get_pcpu_id ();
+#endif
 
   msgt_id = start_kernel_thread ((u32) msg_thread, (u32) &msgt_stack[1023], "MSGT init");
   lookup_TSS (msgt_id)->cpu = 1;
@@ -225,8 +227,10 @@ msgt_init (void)
 extern bool
 ipc_send_init (void)
 {
+#ifdef DEBUG_MSGT
   int sandbox = 0;
   sandbox = get_pcpu_id ();
+#endif
   task_id ipc_id = 0;
 
   ipc_id = start_kernel_thread ((u32) ipc_send_thread, (u32) &ipc_stack[1023], "IPC send");
@@ -240,8 +244,10 @@ ipc_send_init (void)
 extern bool
 ipc_recv_init (void)
 {
+#ifdef DEBUG_MSGT
   int sandbox = 0;
   sandbox = get_pcpu_id ();
+#endif
   task_id ipc_id = 0;
 
   ipc_id = start_kernel_thread ((u32) ipc_recv_thread, (u32) &ipc_stack[1023], "IPC recv");

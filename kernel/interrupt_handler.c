@@ -1234,7 +1234,9 @@ _sched_setparam (task_id pid, const struct sched_param *p)
   quest_tss *ptss;
 
   lock_kernel ();
-
+  
+  /* PID is self? */
+  if (pid == -1) pid = str ();
   ptss = lookup_TSS (pid);
 
   if (ptss) {
@@ -1242,6 +1244,9 @@ _sched_setparam (task_id pid, const struct sched_param *p)
       ptss->priority = (p->k * p->T) / p->m;
     else
       ptss->priority = p->sched_priority;
+
+    if (p->affinity != -1)
+      ptss->sandbox_affinity = p->affinity;
 
     wakeup (str ());
 

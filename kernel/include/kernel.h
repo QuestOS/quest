@@ -74,6 +74,7 @@ struct sched_param
   int T;                        /* period */
   int m;                        /* mandatory instance count in a window */
   int k;                        /* window of requests  */
+  int affinity;                 /* CPU (or Quest-V sandbox affinity) */
 };
 
 extern char *kernel_version;
@@ -108,8 +109,12 @@ void stacktrace (void);
 void tsc_delay_usec (uint32 usec);
 
 task_id start_kernel_thread (uint eip, uint esp, const char * name);
-task_id create_kernel_thread_args (uint eip, uint esp, const char * name,
-                                   bool run, uint n, ...);
+task_id create_kernel_thread_vcpu_args (uint eip, uint esp, const char * name,
+                                        u16 vcpu, bool run, uint n, ...);
+
+#define create_kernel_thread_args(eip, esp, name, run, n, ...)    \
+        create_kernel_thread_vcpu_args(eip, esp, name, 0xFFFF, run, n, ##__VA_ARGS__)
+
 void exit_kernel_thread (void);
 
 #ifdef USE_VMX

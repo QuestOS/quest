@@ -32,6 +32,7 @@ struct sched_param
   int T;                        /* period */
   int m;                        /* mandatory instance count in a window */
   int k;                        /* window of requests  */
+  int affinity;                 /* CPU (or Quest-V sandbox) affinity */
 };
 
 #define CLOBBERS1 "memory","cc","%ebx","%ecx","%edx","%esi","%edi"

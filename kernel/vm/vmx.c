@@ -578,7 +578,11 @@ vmx_create_pmode_VM (virtual_machine *vm, u32 rip0, u32 rsp0)
   return -1;
 }
 
-/* --??-- We use two global variables for input and output of vm_exit routine */
+/* --YL-- We use two global variables for input and output of vm_exit routine. These
+ * variables should be placed in sandbox kernel memory instead of monitor and some
+ * more secure method should be prefered. For now, we just place them in monitor
+ * for convenience.
+ */
 void * vm_exit_input_param = NULL;
 void * vm_exit_return_val = NULL;
 

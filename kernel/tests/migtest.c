@@ -23,10 +23,12 @@ int
 main ()
 {
   int i = 0;
+  struct sched_param param;
   for (;;) {
     if (i == 5) {
       printf ("Set sandbox affinity to 1!\n");
-      time ();
+      param.affinity = 1;
+      sched_setparam (-1, &param);
     }
     printf ("Migration Test Process, counter = %d\n", i);
     usleep (1000000);

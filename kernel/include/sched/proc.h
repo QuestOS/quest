@@ -44,6 +44,16 @@ typedef struct _fd_table_entry {
   void * entry;
 } fd_table_entry_t;
 
+/* --YL-- We have a cyclic include in kernel.h involves proc.h and vcpu.h */
+#ifndef _SCHED_VCPU_REPL_
+#define _SCHED_VCPU_REPL_
+typedef struct _replenishment {
+  u64 t, b;
+  struct _replenishment *next;
+} replenishment;
+#define MAX_REPL 32
+#endif
+
 /* A Quest TSS is a software-only construct, a.k.a Thread Control
  * Block (TCB). */
 typedef struct _quest_tss
@@ -85,6 +95,10 @@ typedef struct _quest_tss
   char * name[32];              /* A simple description or the path of the process */
   uint sandbox_affinity;        /* Sandbox binding. Change this to migrate. */
   fd_table_entry_t fd_table[MAX_FD];
+  /* Array used to back up (main) VCPU replenishment queue if necessary during migration */
+  replenishment vcpu_backup[MAX_REPL];
+  /* common VCPU scheduling parameters backup */
+  u64 C_bak, T_bak, b_bak, usage_bak;
 } quest_tss;
 
 static inline int

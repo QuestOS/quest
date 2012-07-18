@@ -189,7 +189,8 @@ static bool kernel_threads_running = FALSE;
 static task_id kernel_thread_waitq = 0;
 
 task_id
-create_kernel_thread_args (uint eip, uint esp, const char * name, bool run, uint n, ...)
+create_kernel_thread_vcpu_args (uint eip, uint esp, const char * name,
+                                u16 vcpu, bool run, uint n, ...)
 {
   task_id pid;
   uint32 eflags;
@@ -225,6 +226,9 @@ create_kernel_thread_args (uint eip, uint esp, const char * name, bool run, uint
 
   tss = lookup_TSS (pid);
   tss->priority = 0x1f;
+  if (vcpu != 0xFFFF) {
+    tss->cpu = vcpu;
+  }
   if (name) {
     c = strlen (name);
     if (c > 31) c = 31;
@@ -265,8 +269,8 @@ exit_kernel_thread (void)
   task_id tid;
   task_id waiter;
 
-  for (;;)
-    sched_usleep (1000000);
+  //for (;;)
+  //  sched_usleep (1000000);
 
   tid = str ();
   tss = lookup_TSS (tid);

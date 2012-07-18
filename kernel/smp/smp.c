@@ -307,6 +307,7 @@ ap_init (void)
   { extern bool netsetup_init (void); netsetup_init (); }
   { extern bool vfs_init (void); vfs_init (); }
   { extern bool migration_init (void); migration_init (); }
+  { extern bool logger_init (void); logger_init (); }
   //{ extern bool udp_bandwidth_init (void); udp_bandwidth_init (); }
   //{ extern bool ipc_recv_init (void); ipc_recv_init (); }
   //{ extern bool msgt_init (void); msgt_init (); }
