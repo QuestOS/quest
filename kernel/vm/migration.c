@@ -477,8 +477,6 @@ abort:
   return 0;
 }
 
-static uint64 stat_start = 0, stat_end = 0;
-
 /* Migration thread which is responsible for duplicating the address space should
  * be placed on a VCPU that has the highest priority in each sandbox kernel with
  * the budget big enough for the worst case execution time.
@@ -497,26 +495,18 @@ migration_thread (void)
     } else {
       /* Work needed */
       DLOG ("Process quest_tss to be migrated: 0x%X", (uint32) shm->migration_queue[cpu]);
-      //asm volatile ("wbinvd");
-      RDTSC (stat_start);
       /* Trap to monitor now for convenience */
       new_tss = trap_and_migrate (shm->migration_queue[cpu]);
-      RDTSC (stat_end);
-      com1_printf ("trap_and_migrate time: 0x%llX\n", stat_end - stat_start);
       if (new_tss) {
         DLOG ("New quest_tss:");
         DLOG ("  name: %s, task_id: 0x%X, affinity: %d, CR3: 0x%X",
               new_tss->name, new_tss->tid, new_tss->sandbox_affinity, new_tss->CR3);
-        //asm volatile ("wbinvd");
-        RDTSC (stat_start);
         /* Add new (migrated) process to local sandbox scheduler */
         if (!attach_task (new_tss)) {
           DLOG ("Attaching task failed!");
           /* Destroy task */
           destroy_task (new_tss->tid);
         }
-        RDTSC (stat_end);
-        com1_printf ("attach_task time: 0x%llX\n", stat_end - stat_start);
         /* --YL-- OK, this is not a clean way to avoid contention if we can have a
          * migration queue of multiple tasks. But for now, we assume there is only
          * one task allowed in the queue.
