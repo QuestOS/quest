@@ -600,6 +600,7 @@ vmx_process_exit (uint32 status)
 
   switch (status) {
     case VM_EXIT_REASON_MIGRATION:
+#ifdef USE_VMX
       /* Begin migration by first pulling the whole address space over */
       ret_tss = pull_quest_tss (vm_exit_input_param);
       if (ret_tss) {
@@ -628,6 +629,7 @@ vmx_process_exit (uint32 status)
         vm_exit_return_val = NULL;
         logger_printf ("pull_quest_tss failed!\n");
       }
+#endif
       break;
     case VM_EXIT_REASON_GET_HPA:
       vm_exit_return_val = (void *) get_host_phys_addr ((uint32) vm_exit_input_param);

@@ -693,6 +693,7 @@ vcpu_schedule (void)
       percpu_write (vcpu_current, NULL);
     }
 
+#ifdef USE_VMX
     /* Check migration request */
     if (str () != next) {
       quest_tss * tss = lookup_TSS (str ());
@@ -747,6 +748,7 @@ vcpu_schedule (void)
         }
       }
     }
+#endif
 
     /* find time of next important event */
     if (vcpu)

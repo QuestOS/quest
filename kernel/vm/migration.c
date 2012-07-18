@@ -14,6 +14,8 @@
  *  You should have received a copy of the GNU General Public License
  *  along with this program.  If not, see <http://www.gnu.org/licenses/>.
  */
+#ifdef USE_VMX
+
 #include "vm/vmx.h"
 #include "vm/ept.h"
 #include "vm/shm.h"
@@ -570,6 +572,8 @@ migration_init (void)
 
   return TRUE;
 }
+
+#endif
 
 /* 
  * Local Variables:
