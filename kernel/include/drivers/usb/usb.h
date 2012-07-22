@@ -89,7 +89,7 @@
 #define USB_DEFAULT_CONTROL_MSG_TIMEOUT     1250
 #define USB_DEFAULT_BULK_MSG_TIMEOUT        1250
 #define USB_DEFAULT_INTERRUPT_MSG_TIMEOUT   1250
-#define USB_DEFAULT_ISOCHRONOUS_MSG_TIMEOUT 1250
+#define USB_DEFAULT_ISOCHRONOUS_MSG_TIMEOUT 2250
 
 
 #define USB_MSG_SLEEP_INTERVAL 25 // sleep for (4 * USB_MSG_SLEEP_INTERVAL) ms
@@ -293,7 +293,7 @@ typedef struct usb_device
   usb_hcd_t* hcd;
   uint8 *configurations;
   struct _USB_DRIVER* driver;
-  void* device_data; /* A place for a device to put its own private data */
+  void* device_priv; /* A place for a device to put its own private data */
 
   /*
    *  device can have 32 endpoints (16 endpoint numbers and each
@@ -422,7 +422,12 @@ extern int usb_set_configuration(USB_DEVICE_INFO* dev, uint8_t conf);
 
 extern int usb_get_interface(USB_DEVICE_INFO* dev, uint16_t interface);
 
-extern int usb_set_interface(USB_DEVICE_INFO* dev, uint16_t alt, uint16_t interface);
+extern int usb_set_interface(USB_DEVICE_INFO* dev, uint16_t alt,
+                             uint16_t interface);
+
+extern int usb_iso_payload_size(USB_DEVICE_INFO* dev,
+                                USB_EPT_DESC* endpoint);
+
 
 
 /*
@@ -560,11 +565,9 @@ static inline void usb_fill_iso_urb(struct urb* urb,
   urb->complete = complete_fn;
   urb->context = context;
   urb->number_of_packets = num_packets;
-  /* -- EM -- Not sure if this is the correct way to set interval,
-   * currently not using the interval member of urb, mimicking the way
-   * usb_fill_int_urb works
-   */
-  if (dev->speed == USB_SPEED_HIGH || dev->speed == USB_SPEED_SUPER) {
+  if (dev->speed == USB_SPEED_HIGH ||
+      dev->speed == USB_SPEED_SUPER ||
+      USB_SPEED_FULL) {
     urb->interval = 1 << (interval - 1);
   }
   else {

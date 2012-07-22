@@ -63,6 +63,20 @@ spinlock_lock (spinlock * lock)
   }
 }
 
+static inline bool spinlock_attempt_lock(spinlock * lock)
+{
+  if (mp_enabled) {
+
+    int x = 1;
+    uint32 *addr = &lock->lock;
+    asm volatile ("lock xchgl %1,(%0)":"=r" (addr),
+                  "=ir" (x):"0" (addr), "1" (x));
+    
+    return x == 0;
+  }
+  return TRUE;
+}
+
 static inline void
 spinlock_unlock (spinlock * lock)
 {

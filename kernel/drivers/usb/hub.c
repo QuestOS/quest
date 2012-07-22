@@ -90,13 +90,7 @@ static bool
 hub_clr_port_feature (USB_DEVICE_INFO* info, uint port, uint feature)
 {
   sint status;
-  USB_DEV_REQ req;
 
-  req.bmRequestType = 0x23;
-  req.bRequest = USB_CLEAR_FEATURE;
-  req.wValue = feature;
-  req.wIndex = port;
-  req.wLength = 0;
   /* We assume this is a full speed device, use the maximum, 64 bytes */
   status = usb_control_msg(info, usb_sndctrlpipe(info, 0), USB_CLEAR_FEATURE,
                            0x23, feature, port, NULL, 0, USB_DEFAULT_CONTROL_MSG_TIMEOUT);
@@ -109,7 +103,6 @@ static bool
 probe_hub (USB_DEVICE_INFO* info, USB_CFG_DESC *cfgd, USB_IF_DESC *ifd)
 {
   sint status, i;
-  USB_DEV_REQ req;
   USB_HUB_DESC hubd;
 
 
@@ -125,11 +118,6 @@ probe_hub (USB_DEVICE_INFO* info, USB_CFG_DESC *cfgd, USB_IF_DESC *ifd)
 
   DLOG ("Probing hub @ %d", info->address);
   delay (100);
-  req.bmRequestType = 0xA0;
-  req.bRequest = USB_GET_DESCRIPTOR;
-  req.wValue = 0x29 << 8;
-  req.wIndex = 0;
-  req.wLength = sizeof (USB_HUB_DESC);
   /* We assume this is a full speed device, use the maximum, 64 bytes */
 
   status = usb_control_msg(info, usb_rcvctrlpipe(info, 0), USB_GET_DESCRIPTOR, 0xA0,

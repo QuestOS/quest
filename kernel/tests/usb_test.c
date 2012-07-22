@@ -19,13 +19,17 @@
 #include <stdio.h>
 #include <usb.h>
 
+#define ARENA_START (0x400000 * 10)
 
 int
 main ()
 {
   int i = 0;
+  void* arena = ARENA_START;
+
+  
   while(1) {
-    usb_read(0, 0, 33);
+    usb_read(0, arena, 0x200000);
     printf("%d\n", i++);
   }
 

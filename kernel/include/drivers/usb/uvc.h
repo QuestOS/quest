@@ -332,6 +332,71 @@ struct uvc_mjpeg_frame_desc
 
 typedef struct uvc_mjpeg_frame_desc UVC_MJPEG_FRAME_DESC;
 
+/*
+ * Uncompressed Video Payload Format Descriptor
+ *
+ * Reference USB Device Class Definition for Video Devices: Uncompressed Payload
+ */
+struct uvc_uncompressed_format_desc
+{
+  uint8_t bLength;
+  uint8_t bDescriptorType;
+  uint8_t bDescriptorSubtype;
+  uint8_t bFormatIndex;
+  uint8_t bNumFrameDescriptors;
+  uint8_t guidFormat[16];
+  uint8_t bBitsPerPixel;
+  uint8_t bDefaultFrameIndex;
+  uint8_t bAspectRatioX;
+  uint8_t bAspectRatioY;
+  uint8_t bmInterlaceFlags;
+  uint8_t bCopyProtect;
+} PACKED;
+
+typedef struct uvc_uncompressed_format_desc UVC_UNCOMPRESSED_FORMAT_DESC;
+
+/*
+ * Uncompressed Video Payload Frame Descriptor
+ *
+ * Reference USB Device Class Definition for Video Devices: Uncompressed Payload
+ */
+
+struct uvc_uncompressed_frame_desc
+{
+  uint8_t bLength;
+  uint8_t bDescriptorType;
+  uint8_t bDescriptorSubType;
+  uint8_t bFrameIndex;
+  uint8_t bmCapabilities;
+  uint16_t wWidth;
+  uint16_t wHeight;
+  uint32_t dwMinBitRate;
+  uint32_t dwMaxBitRate;
+  uint32_t dwMaxVideoFrameBufferSize;
+  uint32_t dwDefaultFrameInterval;
+  uint8_t bFrameIntervalType;
+} PACKED;
+
+typedef struct uvc_uncompressed_frame_desc UVC_UNCOMPRESSED_FRAME_DESC;
+
+#define UVC_MAX_NUM_MJPEG_FRAME_DESC 20
+#define UVC_MAX_DESC                 20
+
+typedef struct 
+{
+  bool initialised;
+  int mjpeg_format_index;
+  UVC_MJPEG_FRAME_DESC mjpeg_frame_desc[UVC_MAX_NUM_MJPEG_FRAME_DESC];
+  int num_mjpeg_frame_desc;
+  USB_IF_DESC interfaces[UVC_MAX_DESC];
+  USB_EPT_DESC endpoints[UVC_MAX_DESC];
+  int num_interfaces;
+  int num_endpoints;
+  int transaction_size;
+} PACKED uvc_device_info_t;
+
+
+
 extern bool usb_uvc_driver_init (void);
 
 #endif

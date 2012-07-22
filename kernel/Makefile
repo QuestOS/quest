@@ -65,7 +65,10 @@ OBJS =  boot/boot.o boot/init.o kernel.o module/loader.o \
 
 CFILES = $(patsubst %.o,%.c,$(OBJS))
 DFILES = $(patsubst %.o,%.d,$(OBJS))
+DFILES += $(patsubst %,%.d,$(PROGS))
 MAPFILES = $(patsubst %.o,%.map,$(OBJS))
+MAPFILES += $(patsubst %,%.map,$(PROGS))
+PROG_OBJS = $(patsubst %,%.o,$(PROGS))
 
 ##################################################
 
@@ -162,7 +165,7 @@ tags:
 	find . -name '*.[ch]' | xargs ctags -o tags
 
 clean:
-	-rm -f $(OBJS) $(DFILES) $(MAPFILES) $(PROGS) quest.iso quest.map
+	-rm -f $(OBJS) $(DFILES) $(MAPFILES) $(PROGS) $(PROG_OBJS) quest.iso quest.map
 	-rm -rf iso tftp
 
 cleanacpi:

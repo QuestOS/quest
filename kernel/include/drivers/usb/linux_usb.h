@@ -106,6 +106,14 @@ struct urb {
   int timeout;
 
   /*
+   * This is only for isochronous endpoints (might extend it to
+   * interrupt endpoints), tells the usb core to keep the requests in
+   * the system, continually polling for more data,
+   */
+  bool repeat;
+  
+
+  /*
    * iso_frame_desc has to be last because we use it has a variable
    * size array
    */

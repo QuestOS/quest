@@ -22,7 +22,7 @@
 #include "sched/sched.h"
 #include <mem/pow2.h>
 
-//#define DEBUG_USB
+#define DEBUG_USB
 
 #ifdef DEBUG_USB
 #define DLOG(fmt,...) DLOG_PREFIX("USB", fmt, ##__VA_ARGS__)
@@ -648,6 +648,7 @@ usb_enumerate(usb_hcd_t* usb_hcd)
   info->host_type = usb_hcd->usb_hc_type;
   info->hcd = usb_hcd;
   info->endpoint_toggles = 0;
+  info->speed = USB_SPEED_HIGH;
   info->ep_in[0].desc.wMaxPacketSize = 64;
   info->ep_out[0].desc.wMaxPacketSize = 64;
   
@@ -799,6 +800,26 @@ void dlog_usb_hcd(usb_hcd_t* usb_hcd)
 {
   DLOG("usb_hc_type:  %d", usb_hcd->usb_hc_type);
   DLOG("next_address: %d", usb_hcd->next_address);
+}
+
+
+int usb_iso_payload_size(USB_DEVICE_INFO* dev,
+                              USB_EPT_DESC* endpoint)
+{
+  int wMaxPacketSize = endpoint->wMaxPacketSize;
+  
+  switch(dev->speed) {
+  case USB_SPEED_LOW:
+  case USB_SPEED_FULL:
+    return wMaxPacketSize & 0x07FF;
+
+  case USB_SPEED_HIGH:
+    
+    return (1 + (((wMaxPacketSize) >> 11) & 0x03)) * ((wMaxPacketSize) & 0x07ff);
+  default:
+    DLOG("Unhandled USB speed %d for %s", dev->speed, __FUNCTION__);
+    return -1;
+  }
 }
 
 bool
