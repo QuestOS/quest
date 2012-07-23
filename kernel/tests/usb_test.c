@@ -29,7 +29,7 @@ main ()
 
   
   while(1) {
-    usb_read(0, arena, 0x200000);
+    usb_read(0, arena, 0x3C0000);
     printf("%d\n", i++);
   }
 

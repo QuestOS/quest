@@ -196,7 +196,8 @@ static void ehci_check_for_urb_completions(ehci_hcd_t* ehci_hcd)
 
             if(urb->repeat) {
               list_for_each_entry(itd, &comp_element->tds, chain_list) {
-                itd_restore(itd);
+                /* -- EM -- commenting it out to get it to compile */
+                //itd_restore(itd);
               }
             }
             else {
@@ -318,7 +319,7 @@ ehci_irq_handler(uint8 vec)
   EHCI_ACK_INTERRUPTS(&ehci_hcd, status & USBINTR_ALL);
 
   if(status & USBINTR_INT) { /* "normal" completion (short, ...) */
-    ehci_check_for_urb_completions(&ehci_hcd);
+    //ehci_check_for_urb_completions(&ehci_hcd);
   }
   
   if(status & USBINTR_IAA) { /* Interrupted on async advance */
@@ -333,7 +334,7 @@ ehci_irq_handler(uint8 vec)
   
   if(status & USBINTR_FLR) { /* frame list rolled over */
     DLOG("USBINTR_FLR case in %s unhandled status = 0x%X", __FUNCTION__, status);
-    panic("USBINTR_FLR case unhandled");
+    //panic("USBINTR_FLR case unhandled");
   }
 
   if(status & USBINTR_PCD) { /* port change detect */
@@ -1695,7 +1696,7 @@ ehci_isochronous_transfer(ehci_hcd_t* ehci_hcd, struct urb* urb)
       }
       done = i == 8;
       ++j;
-      tsc_delay_usec(10);
+      tsc_delay_usec(100);
       //DLOG("in spin wait");
       if(j == 3000000) {
         DLOG("stuck in spin");
@@ -1745,7 +1746,7 @@ ehci_isochronous_transfer(ehci_hcd_t* ehci_hcd, struct urb* urb)
       }
       done = i == 8;
       ++j;
-      tsc_delay_usec(10);
+      tsc_delay_usec(100);
       //DLOG("in spin wait");
       if(j == 3000000) {
         DLOG("stuck in spin");

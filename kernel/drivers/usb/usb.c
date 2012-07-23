@@ -175,6 +175,8 @@ static void usb_core_blocking_completion(struct urb* urb)
   *((bool*)urb->context) = TRUE;
 }
 
+uint8_t iso_urb_temp[sizeof(struct urb) +
+                     12000 * sizeof(struct usb_iso_packet_descriptor)];
 
 int usb_isochronous_msg(struct usb_device *dev, unsigned int pipe,
                         void* data, int packet_size, int num_packets,
@@ -185,6 +187,7 @@ int usb_isochronous_msg(struct usb_device *dev, unsigned int pipe,
    * -- EM -- It should be okay to put these on the stack because this
    * function won't complete until the callback is called
    */
+  DLOG("num_packets = %d", num_packets);
   struct urb* urb;
   bool done = FALSE;
 
@@ -195,8 +198,10 @@ int usb_isochronous_msg(struct usb_device *dev, unsigned int pipe,
 
   ep = usb_pipe_endpoint(dev, pipe);
 
-  urb = usb_alloc_urb(num_packets, 0);
+  //urb = usb_alloc_urb(num_packets, 0);
 
+  urb = iso_urb_temp;
+  
   memset(actual_lens, 0, sizeof(*actual_lens) * num_packets);
   memset(statuses,    0, sizeof(*statuses) * num_packets);
 
