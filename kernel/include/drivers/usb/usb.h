@@ -384,7 +384,7 @@ bool usb_register_driver (USB_DRIVER *driver);
 
 USB_DEVICE_INFO* usb_get_device(int device_id);
 
-int usb_syscall_handler(int device_id, int operation, char* buf, int data_len);
+int usb_syscall_handler(uint32_t device_id, uint32_t operation, char* buf, uint32_t data_len);
 
 /* Generic USB operations */
 
@@ -634,7 +634,7 @@ usb_hcd_t* get_usb_hcd(uint32_t index);
 
 void dlog_usb_hcd(usb_hcd_t* usb_hcd);
 
-int usb_syscall_handler(int device_id, int operation, char* buf, int data_len);
+
 
 #endif
 

@@ -42,7 +42,7 @@ static uint num_drivers = 0;
 static USB_DEVICE_INFO* devices[USB_CORE_MAX_DEVICES];
 static uint num_devices = 0;
 
-int usb_syscall_handler(int device_id, int operation, char* buf, int data_len)
+int usb_syscall_handler(uint32_t device_id, uint32_t operation, char* buf, uint32_t data_len)
 {
   int result;
   USB_DEVICE_INFO* device = usb_get_device(device_id);

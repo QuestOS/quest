@@ -385,7 +385,7 @@ splash_screen (void)
 
 /* Syscalls */
 static u32
-syscall_putchar (u32 eax, u32 ebx)
+syscall_putchar (u32 eax, u32 ebx, u32 ecx, u32 edx, u32 esi)
 {
   static bool first = TRUE;
 
@@ -395,28 +395,52 @@ syscall_putchar (u32 eax, u32 ebx)
 }
 
 static u32
-syscall_usleep (u32 eax, u32 ebx)
+syscall_usleep (u32 eax, u32 ebx, u32 ecx, u32 edx, u32 esi)
 {
   sched_usleep (ebx);
   return ebx;
 }
 
+
+/*
+ * Syscall: _usb_syscall This is just a hack right now to give user
+ * space access to usb devices
+ */
+static int
+syscall_usb (u32 eax, u32 ebx, u32 ecx, u32 edx, u32 esi)
+{
+  u32 device_id = (int)ebx;
+  u32 operation = (int)ecx;
+  char* buf = (char*)edx;
+  u32 data_len = (int)esi;
+  int ret;
+#if 0
+  com1_printf("In %s called with arguments: (%d, %d, %d, %d, %d)\n", __FUNCTION__,
+              eax, ebx, ecx, edx, esi);
+
+  com1_printf("buf = 0x%X\n", buf);
+#endif
+  ret = usb_syscall_handler(device_id, operation, buf, data_len);
+  return ret;
+}
+
 struct syscall {
-  u32 (*func) (u32, u32);
+  u32 (*func) (u32, u32, u32, u32, u32);
 };
 struct syscall syscall_table[] = {
   { .func = syscall_putchar },
   { .func = syscall_usleep },
+  { .func = syscall_usb },
 };
 #define NUM_SYSCALLS (sizeof (syscall_table) / sizeof (struct syscall))
 
 u32
-handle_syscall0 (u32 eax, u32 ebx)
+handle_syscall0 (u32 eax, u32 ebx, u32 ecx, u32 edx, u32 esi)
 {
   u32 res;
   lock_kernel ();
   if (eax < NUM_SYSCALLS)
-    res = syscall_table[eax].func (eax, ebx);
+    res = syscall_table[eax].func (eax, ebx, ecx, edx, esi);
   else
     res = 0;
   unlock_kernel ();
@@ -1168,23 +1192,7 @@ _sched_setparam (task_id pid, const struct sched_param *p)
   return -1;
 }
 
-/*
- * Syscall: _usb_syscall This is just a hack right now to give user
- * space access to usb devices
- */
-extern int
-_usb_syscall(int device_id, int operation, char* buf, int data_len)
-{
-  int ret;
-#if 0
-  com1_printf("In %s called with arguments: (%d, %d, 0x%X, %d)\n", __FUNCTION__,
-       device_id, operation, buf, data_len);
-#endif
-  lock_kernel();
-  ret = usb_syscall_handler(device_id, operation, buf, data_len);
-  unlock_kernel();
-  return ret;
-}
+
 
 #if 0
 static void *tlb_shootdown_page = NULL;

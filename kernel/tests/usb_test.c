@@ -28,8 +28,12 @@ main ()
   void* arena = ARENA_START;
 
   
+  
+  printf("Entering usb test program\n");
+  
   while(1) {
-    usb_read(0, arena, 0x3C0000);
+    usleep(10000000);
+    printf("usb read returned %d\n", usb_read(0, arena, 0x3C0000));
     printf("%d\n", i++);
   }
 

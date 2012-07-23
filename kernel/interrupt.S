@@ -80,7 +80,6 @@
         .globl syscalla
         .globl syscallb
         .globl syscallc
-        .globl syscalld
         .globl timer
         .globl soundcard
         
@@ -320,13 +319,15 @@ interrupt13:
 /* syscall0 is a putchar style call to a video server */ 
 syscall0:
         SREGS_SAVE
-        
+
+        pushl %esi
+        pushl %edx
+        pushl %ecx
         pushl %ebx
         pushl %eax
         call handle_syscall0
-        popl  %eax
-        popl  %ebx              /* preserve */
-
+        addl $20, %esp
+        
         SREGS_RESTORE
 
 /* For now, this is the fork syscall - will move to a fork server */
@@ -465,22 +466,6 @@ syscallc:
         call _sched_setparam
         addl $4, %esp
         popl  %ebx              /* preserve */
-        
-        SREGS_RESTORE
-
-/* usb_syscall */    
-syscalld:
-        SREGS_SAVE
-
-        pushl %edx
-        pushl %ecx
-        pushl %ebx
-        pushl %eax
-        call _usb_syscall
-        addl $4, %esp
-        popl  %ebx              /* preserve */
-        popl  %ecx
-        popl  %edx
         
         SREGS_RESTORE   
 

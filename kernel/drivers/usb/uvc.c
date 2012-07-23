@@ -112,7 +112,7 @@ static int uvc_read(USB_DEVICE_INFO* device, char* buf, int data_len)
   if(uvc_get_frame (device, buf, data_len, transfer_len,
                     &frm_len) < 0) {
     DLOG("Didn't get full frame");
-    return -1;
+    return 10;
     
   }
   full_image_count++;
@@ -141,7 +141,7 @@ static int uvc_read(USB_DEVICE_INFO* device, char* buf, int data_len)
     while(1);
 #endif
   }
-  return -1;
+  return 9;
   
 }
 
@@ -305,7 +305,7 @@ static int select_interface_setting(USB_DEVICE_INFO* dev,
   int i;
   uvc_device_info_t* uvc_dev = dev->device_priv;
   int num_interfaces = uvc_dev->num_interfaces;
-  return 2;
+  
   for(i = 0; i < num_interfaces; ++i) {
     
     int payload_size = usb_iso_payload_size(dev, &uvc_dev->endpoints[i]);
