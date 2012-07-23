@@ -28,6 +28,12 @@
 #include "util/printf.h"
 #include "util/perfmon.h"
 #include "sched/sched.h"
+#ifdef USE_VMX
+#include "vm/ept.h"
+#include "vm/shm.h"
+#include "vm/vmx.h"
+#include "sched/vcpu.h"
+#endif
 
 //#define DEBUG_SMP 1
 
@@ -254,7 +260,12 @@ ap_init (void)
 
   /* Setup the LAPIC */
   LAPIC_init();
+#ifdef USE_VMX
+  /* In order to broadcast interrupts */
+  LAPIC_set_task_priority(0x00); /* task priority = 0x00 */
+#else
   LAPIC_set_task_priority(0x20); /* task priority = 0x20 */
+#endif
 
   phys_id = get_pcpu_id ();
 
@@ -277,14 +288,89 @@ ap_init (void)
   lock_kernel ();
 
   /* Performance monitoring */
-  perfmon_init ();
+  //perfmon_init ();
 
   /* Load the per-CPU TSS for this AP */
   hw_ltr (cpuTSS_selector[phys_id]);
 
+#ifdef USE_VMX
   /* Initialize virtual machine per-processor infrastructure */
   { void vmx_processor_init (void); vmx_processor_init (); }
+  spinlock_lock (&(shm->global_lock));
 
+  while (!shm->bsp_booted)
+    asm volatile ("pause");
+
+  { extern bool vcpu_init (void); vcpu_init (); }
+  { extern void net_init (void); net_init (); }
+  { extern bool r8169_register (void); r8169_register (); }
+  { extern bool netsetup_init (void); netsetup_init (); }
+  { extern bool vfs_init (void); vfs_init (); }
+  { extern bool migration_init (void); migration_init (); }
+  { extern bool logger_init (void); logger_init (); }
+  //{ extern bool udp_bandwidth_init (void); udp_bandwidth_init (); }
+  //{ extern bool ipc_recv_init (void); ipc_recv_init (); }
+  //{ extern bool msgt_init (void); msgt_init (); }
+
+  /*
+   * For SeQuest, each sandbox kernel will have a shell running
+   * using the per-sandbox virtual screen buffer as output.
+   */
+  /* A hack! Fix the shell tss for sandboxes. */
+  //print ("Sandbox ");
+  //putx (phys_id);
+  //print (" Loading Shell...\n");
+  extern task_id shell_tss;
+  int mod_num = NR_MODS - 1;
+  quest_tss * usr_mod = lookup_TSS (shell_tss);
+  //quest_tss * usr_mod = (quest_tss *) ul_tss[mod_num];
+  uint32 * plPageDirectory = get_phys_addr (pg_dir[mod_num]);
+  uint32 * plPageTable = get_phys_addr (pg_table[mod_num]);
+  void * pStack = get_phys_addr (ul_stack[mod_num]);
+  int i = 0;
+  uint32 * vpdbr = map_virtual_page ((uint32) get_pdbr () | 3);
+
+  /* Populate ring 3 page directory with kernel mappings */
+  memcpy (&pg_dir[mod_num][1023], (void *) (((uint32) vpdbr) + 4092), 4);
+  /* LAPIC/IOAPIC mappings */
+  memcpy (&pg_dir[mod_num][1019], (void *) (((uint32) vpdbr) + 4076), 4);
+
+  unmap_virtual_page (vpdbr);
+
+  /* Populate ring 3 page directory with entries for its private address
+     space */
+  pg_dir[mod_num][0] = (uint32) plPageTable | 7;
+
+  pg_dir[mod_num][1022] = (uint32) get_phys_addr (kls_pg_table[mod_num]) | 3;
+  kls_pg_table[mod_num][0] = (uint32) get_phys_addr (kl_stack[mod_num]) | 3;
+
+  for (i = 0; i < 1024; i++) {
+    if (pg_table[mod_num][i]) {
+      if (((pg_table[mod_num][i] & 0xFFFFF000) >> 12) <
+           ((SANDBOX_KERN_OFFSET >> 12) + 256 /* BIOS */)) {
+          pg_table[mod_num][i] =
+              ((pg_table[mod_num][i] & 0xFFFFF000) + SANDBOX_KERN_OFFSET * phys_id) |
+              (pg_table[mod_num][i] & 0xF);
+      }
+    }
+  }
+
+  pg_table[mod_num][1023] = (uint32) pStack | 7;
+
+  usr_mod->CR3 = (uint32) plPageDirectory;
+  usr_mod->ESP = 0x400000 - 100;
+  usr_mod->EBP = 0x400000 - 100;
+  usr_mod->sandbox_affinity = phys_id;
+
+  ltr (shell_tss);
+  check_copied_threads ();
+  /* We don't switch to idle task initially. So, unlock the kernel. */
+  unlock_kernel ();
+  spinlock_unlock (&(shm->global_lock));
+
+  /* task-switch to shell module */
+  asm volatile ("jmp _sw_init_user_task"::"D" (usr_mod));
+#else
   /* The IDLE task runs in kernelspace, therefore it is capable of
    * unlocking the kernel and manually enabling interrupts.  This
    * makes it safe to use lock_kernel() above.  */
@@ -299,6 +385,7 @@ ap_init (void)
   /* task-switch to IDLE task */
   asm volatile ("jmp _sw_init_task":
                 :"D" (lookup_TSS (idleTSS_selector[phys_id])));
+#endif
 
   /* never return */
 

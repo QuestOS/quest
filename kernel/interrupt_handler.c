@@ -38,6 +38,13 @@
 #include "sched/sched.h"
 #include "sched/vcpu.h"
 #include "drivers/usb/usb.h"
+#include "lwip/pbuf.h"
+#include "lwip/tcp.h"
+#include "lwip/udp.h"
+#ifdef USE_VMX
+#include "vm/shm.h"
+#include "vm/spow2.h"
+#endif
 
 //#define DEBUG_SYSCALL
 //#define DEBUG_PIT
@@ -102,6 +109,12 @@ dispatch_vector (uint32 vec)
   return v;
 }
 
+bool
+vector_used (uint8 vec)
+{
+  return (get_vector_handler (vec) != (&default_vector_handler));
+}
+
 u8
 find_unused_vector (u8 min_prio)
 {
@@ -115,92 +128,7 @@ find_unused_vector (u8 min_prio)
   return (vector_handlers[i] == default_vector_handler ? i : 0);
 }
 
-/* Duplicate parent TSS -- used with fork */
-uint16
-duplicate_TSS (uint32 ebp,
-               uint32 *esp,
-               uint32 child_eip,
-               uint32 child_ebp,
-               uint32 child_esp,
-               uint32 child_eflags, 
-               uint32 child_directory)
-{
 
-  int i;
-  descriptor *ad = (descriptor *) KERN_GDT;
-  quest_tss *pTSS;
-  uint32 pa;
-
-  pa = alloc_phys_frame (); /* --??-- For now, whole page per tss */
-  /* --??-- Error checking in the future */
-
-  /* Establish space for a new TSS: +3 declares present and r/w */
-
-  /* Note, we rely on page being initialised to 0 since EAX contains
-   * return value for child
-   */
-
-  pTSS = map_virtual_page (pa + 3);
-
-  /* Clear virtual page before use. */
-  memset (pTSS, 0, 4096);
-
-  /* Search 2KB GDT for first free entry */
-  for (i = 1; i < 256; i++)
-    if (!(ad[i].fPresent))
-      break;
-
-  if (i == 256)
-    panic ("No free selector for TSS");
-#ifdef DEBUG_SYSCALL
-  logger_printf ("duplicate_TSS: pTSS=%p i=0x%x esp=%p ebp=%p\n",
-                 pTSS, i << 3,
-                 child_esp, child_ebp);
-#endif
-  /* See pp 6-7 in IA-32 vol 3 docs for meanings of these assignments */
-  ad[i].uLimit0 = 0xFFF;        /* --??-- Right now, a page per TSS */
-  ad[i].uLimit1 = 0;
-  ad[i].pBase0 = (u32) pTSS & 0xFFFF;
-  ad[i].pBase1 = ((u32) pTSS >> 16) & 0xFF;
-  ad[i].pBase2 = (u32) pTSS >> 24;
-  ad[i].uType = 0x09;           /* 32-bit tss */
-  ad[i].uDPL = 0;               /* Only let kernel perform task-switching */
-  ad[i].fPresent = 1;
-  ad[i].f0 = 0;
-  ad[i].fX = 0;
-  ad[i].fGranularity = 0;       /* Set granularity of tss in bytes */
-
-  pTSS->CR3 = (u32) child_directory;
-
-  /* The child will begin running at the specified EIP */
-  pTSS->initial_EIP = child_eip;
-
-  /* modify stack in child space */
-  linear_address_t esp_la; esp_la.raw = child_esp;
-  pgdir_t child_pgdir;
-  child_pgdir.dir_pa = child_directory;
-  child_pgdir.dir_va = map_virtual_page (child_directory | 3);
-  if (child_pgdir.dir_va == NULL)
-    panic ("child_pgdir: out of memory");
-  frame_t esp_frame = pgdir_get_frame (child_pgdir, (void *) (child_esp & (~0xFFF)));
-  u32 *esp_virt = map_virtual_page (esp_frame | 3);
-  if (esp_virt == NULL)
-    panic ("esp_virt: out of memory");
-  esp_virt[esp_la.offset >> 2] = pTSS->initial_EIP;
-  unmap_virtual_page (child_pgdir.dir_va);
-  unmap_virtual_page (esp_virt);
-
-  pTSS->EFLAGS = child_eflags & 0xFFFFBFFF;   /* Disable NT flag */
-  pTSS->ESP = child_esp;
-  pTSS->EBP = child_ebp;
-
-  semaphore_init (&pTSS->Msem, 1, 0);
-
-  pTSS->cpu = 0xFF;
-
-  /* Return the index into the GDT for the segment */
-  return i << 3;
-}
 
 char *exception_messages[] = {
   "Division Error",
@@ -320,34 +248,109 @@ user_putchar (int ch, int attribute)
 {
   static int x, y;
 
+#ifdef USE_VMX
+  uint32 cpu;
+  cpu = get_pcpu_id ();
+#endif
+
   if (ch == '\n') {
     x = 0;
     y++;
 
     if (y > 24) {
+#ifdef USE_VMX
+      if (shm_screen_initialized) {
+        if (shm->virtual_display.cur_screen == cpu) {
+          memcpy (pchVideo, pchVideo + 160, 24 * 160);
+          memset (pchVideo + (24 * 160), 0, 160);
+        }
+        memcpy (shm_screen, shm_screen + 160, 24 * 160);
+        memset (shm_screen + (24 * 160), 0, 160);
+        y = 24;
+        shm->virtual_display.cursor[cpu].x = x;
+        shm->virtual_display.cursor[cpu].y = y;
+      } else {
+        memcpy (pchVideo, pchVideo + 160, 24 * 160);
+        memset (pchVideo + (24 * 160), 0, 160);
+        y = 24;
+      }
+#else
       memcpy (pchVideo, pchVideo + 160, 24 * 160);
       memset (pchVideo + (24 * 160), 0, 160);
       y = 24;
+#endif
     }
     return (int) (unsigned char) ch;
   }
 
   if (y * 160 + x * 2 >= 0x1000) return ch;
 
+#ifdef USE_VMX
+  if (shm_screen_initialized) {
+    if (shm->virtual_display.cur_screen == cpu) {
+      pchVideo[y * 160 + x * 2] = ch;
+      pchVideo[y * 160 + x * 2 + 1] = attribute;
+    }
+    shm_screen[y * 160 + x * 2] = ch;
+    shm_screen[y * 160 + x * 2 + 1] = attribute;
+    x++;
+    shm->virtual_display.cursor[cpu].x = x;
+    shm->virtual_display.cursor[cpu].y = y;
+  } else {
+    pchVideo[y * 160 + x * 2] = ch;
+    pchVideo[y * 160 + x * 2 + 1] = attribute;
+    x++;
+  }
+#else
   pchVideo[y * 160 + x * 2] = ch;
   pchVideo[y * 160 + x * 2 + 1] = attribute;
   x++;
+#endif
 
   if (y * 160 + x * 2 >= 0x1000) return ch;
 
+#ifdef USE_VMX
+  if (shm_screen_initialized) {
+    if (shm->virtual_display.cur_screen == cpu) {
+      pchVideo[y * 160 + x * 2] = ' ';
+      pchVideo[y * 160 + x * 2 + 1] = attribute;
+      shm_screen[y * 160 + x * 2] = ' ';
+      shm_screen[y * 160 + x * 2 + 1] = attribute;
+    }
+    shm->virtual_display.cursor[cpu].x = x;
+    shm->virtual_display.cursor[cpu].y = y;
+  } else {
+    pchVideo[y * 160 + x * 2] = ' ';
+    pchVideo[y * 160 + x * 2 + 1] = attribute;
+  }
+#else
   pchVideo[y * 160 + x * 2] = ' ';
   pchVideo[y * 160 + x * 2 + 1] = attribute;
+#endif
 
+#ifdef USE_VMX
+  if (shm_screen_initialized) {
+    if (shm->virtual_display.cur_screen == cpu) {
+      /* Move cursor */
+      outb (0x0E, 0x3D4);           /* CRTC Cursor location high index */
+      outb ((y * 80 + x) >> 8, 0x3D5);      /* CRTC Cursor location high data */
+      outb (0x0F, 0x3D4);           /* CRTC Cursor location low index */
+      outb ((y * 80 + x) & 0xFF, 0x3D5);    /* CRTC Cursor location low data */
+    }
+  } else {
+    /* Move cursor */
+    outb (0x0E, 0x3D4);           /* CRTC Cursor location high index */
+    outb ((y * 80 + x) >> 8, 0x3D5);      /* CRTC Cursor location high data */
+    outb (0x0F, 0x3D4);           /* CRTC Cursor location low index */
+    outb ((y * 80 + x) & 0xFF, 0x3D5);    /* CRTC Cursor location low data */
+  }
+#else
   /* Move cursor */
   outb (0x0E, 0x3D4);           /* CRTC Cursor location high index */
   outb ((y * 80 + x) >> 8, 0x3D5);      /* CRTC Cursor location high data */
   outb (0x0F, 0x3D4);           /* CRTC Cursor location low index */
   outb ((y * 80 + x) & 0xFF, 0x3D5);    /* CRTC Cursor location low data */
+#endif
 
   return (int) (unsigned char) ch;
 }
@@ -363,24 +366,48 @@ splash_screen (void)
 {
   int _uname (char *);
   u32 _meminfo (u32, u32);
+#ifdef USE_VMX
+  u32 cpu = get_pcpu_id ();
+#else
   u32 free = _meminfo (0, 0);
+#endif
   char vers[80];
 
   _uname (vers);
 
+#ifdef USE_VMX
+  fun_printf (_user_putchar_attr_4,
+              "**** SeQuest kernel version: %s ***"
+              "  //--\\ //-- //---\\ \\\\  \\ //-- //--\\ \\\\---\\ \n",
+              vers);
+#else
   fun_printf (_user_putchar_attr_4,
               "**** Quest kernel version: %s *****"
               "   //---\\ \\\\  \\ //-- //--\\ \\\\---\\ \n",
               vers);
+#endif
 
+#ifdef USE_VMX
   fun_printf (_user_putchar_attr_4,
-              "* Copyright Boston University, 2010 *"
+              "* Copyright Boston University, 2011 *"
+              "  \\\\--\\ ||-- ||   | ||  | ||-- \\\\--\\   || \n");
+#else
+  fun_printf (_user_putchar_attr_4,
+              "* Copyright Boston University, 2011 *"
               "   ||   | ||  | ||-- \\\\--\\   || \n");
+#endif
 
+#ifdef USE_VMX
+  fun_printf (_user_putchar_attr_4,
+              "****** Current Output: 0x%.04X *******"
+              "  \\\\__/ \\\\__ \\\\__\\_  \\\\_/ \\\\__ \\\\__/   || \n",
+              cpu);
+#else
   fun_printf (_user_putchar_attr_4,
               "******** 0x%.08X bytes free ******"
               "   \\\\__\\_  \\\\_/ \\\\__ \\\\__/   || \n",
               free);
+#endif
 }
 
 /* Syscalls */
@@ -389,7 +416,24 @@ syscall_putchar (u32 eax, u32 ebx, u32 ecx, u32 edx, u32 esi)
 {
   static bool first = TRUE;
 
+#ifdef USE_VMX
+  uint32 cpu;
+  cpu = get_pcpu_id ();
+  if (shm_screen_initialized) {
+    if ((shm->virtual_display.cursor[cpu].x == -1) &&
+        (shm->virtual_display.cursor[cpu].y == -1)) {
+          splash_screen ();
+          shm->virtual_display.cursor[cpu].x = 0;
+          shm->virtual_display.cursor[cpu].y = 0;
+          first = FALSE;
+        }
+  } else if (first) {
+    splash_screen ();
+    first = FALSE;
+  }
+#else
   if (first) { splash_screen (); first = FALSE; }
+#endif
   user_putchar (ebx, 7);
   return 0;
 }
@@ -457,7 +501,7 @@ task_id
 _fork (uint32 ebp, uint32 *esp)
 {
 
-  uint16 child_gdt_index;
+  task_id child_tid;
   void *phys_addr;
   uint32 *virt_addr;
   uint32 priority;
@@ -515,20 +559,20 @@ _fork (uint32 ebp, uint32 *esp)
   /* Create a child task which is the same as this task except that it will
    * begin running at the program point after `call 1f' in the above inline asm. */
 
-  child_gdt_index =
+  child_tid =
     duplicate_TSS (ebp, esp, eip, this_ebp, this_esp, eflags, childpgd.dir_pa);
 
   /* Inherit priority from parent */
-  priority = lookup_TSS (child_gdt_index)->priority =
+  priority = lookup_TSS (child_tid)->priority =
     lookup_TSS (str ())->priority;
 
-  wakeup (child_gdt_index);
+  wakeup (child_tid);
 
   /* --??-- Duplicate any other parent resources as necessary */
 
   unlock_kernel ();
 
-  return child_gdt_index;       /* Use this index for child ID for now */
+  return child_tid;       /* Use this index for child ID for now */
 }
 
 
@@ -573,6 +617,7 @@ _exec (char *filename, char *argv[], uint32 *curr_stack)
   int i, j, c;
   char command_args[80];
   char filename_bak[256];
+  quest_tss * tss;
 
   if (!argv || !argv[0]) {
     BITMAP_SET (mm_table, phys_addr >> 12);
@@ -598,6 +643,11 @@ _exec (char *filename, char *argv[], uint32 *curr_stack)
    * and will already be gone with the old stack at that time.
    */
   strncpy (filename_bak, filename, 256);
+  c = strlen (filename);
+  if (c > 31) c = 31;
+  tss = lookup_TSS (str ());
+  memcpy (tss->name, filename, c);
+  tss->name[c] = '\0';
 
 #ifdef DEBUG_SYSCALL
   com1_printf ("_exec: vfs_dir\n");
@@ -620,7 +670,13 @@ _exec (char *filename, char *argv[], uint32 *curr_stack)
 #endif
   for (i = 0; i < 1019; i++) {  /* Skip freeing kernel pg table mapping and
                                    kernel stack space. */
-    if (plPageDirectory[i]) {   /* Present in currrent address space */
+#ifdef USE_VMX
+    if (plPageDirectory[i] && (i < (PHY_SHARED_MEM_POOL_START >> 22) ||
+        i >= ((PHY_SHARED_MEM_POOL_START + SHARED_MEM_POOL_SIZE) >> 22))) {
+#else
+    if (plPageDirectory[i]) {
+#endif
+      /* Present in currrent address space */
       tmp_page = map_virtual_page (plPageDirectory[i] | 3);
       for (j = 0; j < 1024; j++) {
         if (tmp_page[j]) {      /* Present in current address space */
@@ -728,8 +784,8 @@ _exec (char *filename, char *argv[], uint32 *curr_stack)
   }
 
   /* --??-- temporarily map video memory into exec()ed process */
-  for (i = 0; i < 16; i++)
-    plPageTable[0x200 + i] = 0xA0000 | (i << 12) | 7;
+  //for (i = 0; i < 16; i++)
+  //  plPageTable[0x200 + i] = 0xA0000 | (i << 12) | 7;
 
   /* map stack and clear its contents -- Here, setup 16 pages for stack */
   for (i = 0; i < 16; i++) {
@@ -843,7 +899,8 @@ _read (char *pathname, void *buf, int count)
 {
   lock_kernel ();
   //logger_printf ("_read (\"%s\", %p, 0x%x)\n", pathname, buf, count);
-  int res = vfs_read (pathname, buf, count);
+  int act_len = vfs_dir (pathname);
+  int res = vfs_read (pathname, buf, count < act_len ? count : act_len);
   unlock_kernel ();
   return res;
 }
@@ -946,6 +1003,28 @@ uint32
 _time (void)
 {
 
+#if 0
+  static uint64 last = 0;
+  uint64 now;
+  RDTSC (now);
+  if (last) {
+    com1_printf ("Time (TSC counts): %llX\n", now - last);
+    last = 0;
+  } else {
+    last = now;
+  }
+#endif
+
+#if 0
+  int i = 0;
+  uint32 *paddr = NULL;
+
+  for (i = 0; i < 1024; i++) {
+    paddr = get_phys_addr ((void*) (i << 12));
+    com1_printf ("0x%X mapped to: 0x%X\n", i << 12, (uint32) paddr);
+  }
+#endif
+
   return tick;
 }
 
@@ -1009,7 +1088,7 @@ _timer (void)
     /* check sleeping processes */
     process_sleepqueue ();
 
-#if 1
+#if 0
     extern void vcpu_dump_stats (void);
     if ((tick & 0x1FF) == 0)
       vcpu_dump_stats ();
@@ -1040,6 +1119,9 @@ _timer (void)
     if (!mp_enabled)
       com1_printf ("timer: enabling scheduling\n");
     mp_enabled = 1;
+#ifdef USE_VMX
+    if (shm_initialized) shm->bsp_booted = TRUE;
+#endif
     begin_kernel_threads ();
   } else {
     begin_kernel_threads ();    /* has internal flag */
@@ -1068,10 +1150,8 @@ __exit (int status)
   uint32 *tmp_page;
   int i, j;
   task_id tss;
-  descriptor *ad = (descriptor *) KERN_GDT;
-  uint32 *kern_page_table = (uint32 *) KERN_PGT;
   quest_tss *ptss;
-  int waiter;
+  task_id waiter;
 
   lock_kernel ();
 
@@ -1118,17 +1198,30 @@ __exit (int status)
      address of where it is in memory from the TSS descriptor */
   ptss = lookup_TSS (tss);
 
+  for (i = 3; i < MAX_FD; i++) {
+    if (ptss->fd_table[i].entry) {
+      switch (ptss->fd_table[i].type) {
+        case FD_TYPE_UDP :
+          udp_remove ((struct udp_pcb *) ptss->fd_table[i].entry);
+          break;
+        case FD_TYPE_TCP :
+          if (tcp_close ((struct tcp_pcb *) ptss->fd_table[i].entry) != ERR_OK) {
+            logger_printf ("TCP PCB close failed in exit\n");
+          }
+          break;
+        default :
+          break;
+      }
+    }
+  }
+
   /* All tasks waiting for us now belong on the runqueue. */
   while ((waiter = queue_remove_head (&ptss->waitqueue)))
     wakeup (waiter);
 
-  BITMAP_SET (mm_table,
-              kern_page_table[((uint32) ptss >> 12) & 0x3FF] >> 12);
-
-  /* Remove tss descriptor entry in GDT */
-  memset (ad + (tss >> 3), 0, sizeof (descriptor));
-
-  unmap_virtual_page (ptss);
+  /* Remove quest_tss */
+  tss_remove (tss);
+  free_quest_tss (ptss);
 
   schedule ();
   /* never return */
@@ -1170,7 +1263,9 @@ _sched_setparam (task_id pid, const struct sched_param *p)
   quest_tss *ptss;
 
   lock_kernel ();
-
+  
+  /* PID is self? */
+  if (pid == -1) pid = str ();
   ptss = lookup_TSS (pid);
 
   if (ptss) {
@@ -1178,6 +1273,9 @@ _sched_setparam (task_id pid, const struct sched_param *p)
       ptss->priority = (p->k * p->T) / p->m;
     else
       ptss->priority = p->sched_priority;
+
+    if (p->affinity != -1)
+      ptss->sandbox_affinity = p->affinity;
 
     wakeup (str ());
 
@@ -1192,7 +1290,56 @@ _sched_setparam (task_id pid, const struct sched_param *p)
   return -1;
 }
 
+#ifdef USE_VMX
+extern int
+_switch_screen (int dir)
+{
+  char * vscreen = NULL;
+  int i;
 
+  vscreen = map_virtual_page (
+      (uint32) shm->virtual_display.screen[shm->virtual_display.cur_screen] | 3);
+  memcpy (vscreen, pchVideo, 0x1000);
+  unmap_virtual_page (vscreen);
+
+  if ((shm->virtual_display.cur_screen == 0) && dir == 0) {
+    spinlock_lock (&(shm->shm_lock));
+    shm->virtual_display.cur_screen = shm->num_sandbox - 1;
+    spinlock_unlock (&(shm->shm_lock));
+    logger_printf ("Switch to virtual output %d\n",
+                   shm->virtual_display.cur_screen);
+  } else if ((shm->virtual_display.cur_screen == (shm->num_sandbox - 1)) && dir == 1) {
+    spinlock_lock (&(shm->shm_lock));
+    shm->virtual_display.cur_screen = 0;
+    spinlock_unlock (&(shm->shm_lock));
+    logger_printf ("Switch to virtual output %d\n",
+                   shm->virtual_display.cur_screen);
+  } else {
+    spinlock_lock (&(shm->shm_lock));
+    (dir == 0) ? shm->virtual_display.cur_screen-- :
+                 shm->virtual_display.cur_screen++;
+    spinlock_unlock (&(shm->shm_lock));
+    logger_printf ("Switch to virtual output %d\n",
+                   shm->virtual_display.cur_screen);
+  }
+
+  vscreen = map_virtual_page (
+      (uint32) shm->virtual_display.screen[shm->virtual_display.cur_screen] | 3);
+  memcpy (pchVideo, vscreen, 0x1000);
+  unmap_virtual_page (vscreen);
+
+  i = shm->virtual_display.cur_screen;
+  /* Move cursor */
+  outb (0x0E, 0x3D4);                                   /* CRTC Cursor location high index */
+  outb ((shm->virtual_display.cursor[i].y * 80 +
+         shm->virtual_display.cursor[i].x) >> 8, 0x3D5);/* CRTC Cursor location high data */
+  outb (0x0F, 0x3D4);                                   /* CRTC Cursor location low index */
+  outb ((shm->virtual_display.cursor[i].y * 80 +
+         shm->virtual_display.cursor[i].x) & 0xFF, 0x3D5);/* CRTC Cursor location low data */
+
+  return 0;
+}
+#endif
 
 #if 0
 static void *tlb_shootdown_page = NULL;

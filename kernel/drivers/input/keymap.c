@@ -22,7 +22,7 @@
 static char lcase_scancode[128] =
     "\0\e1234567890-=\177\tqwertyuiop[]\n\0asdfghjkl;'`\0\\zxcvbnm,./\0*\0 \0\0\0\0\0\0\0\0\0\0\0\0\000789-456+1230.\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0";
 static char ucase_scancode[128] =
-    "\0\e1234567890-=\177\tQWERTYUIOP[]\n\0ASDFGHJKL;'`\0\\ZXCVBNM,./\0*\0 \0\0\0\0\0\0\0\0\0\0\0\0\000789-456+1230.\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0";
+    "\0\e1234567890-=\177\tQWERTYUIOP[]\n\0ASDFGHJKL;'`\0\\ZXCVBNM<>/\0*\0 \0\0\0\0\0\0\0\0\0\0\0\0\000789-456+1230.\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0";
 
 /* Retrieve the next keyboard event and translate it into an ASCII
  * char, or block. */
@@ -39,7 +39,13 @@ keymap_getchar (void)
 
     shiftmod = ctrlmod = altmod = FALSE;  
     for (i=0; i<KEY_EVENT_MAX; i++) {
+      /* FIXME */
+      /* --!!-- Hack! Fix this for VMX later */
+#ifdef USE_VMX
+      if (e.keys[i].present && e.keys[i].release) {
+#else
       if (e.keys[i].present && e.keys[i].pressed) {
+#endif
         switch (e.keys[i].scancode) {
         case 0x2A:              /* LSHIFT */
         case 0x36:              /* RSHIFT */

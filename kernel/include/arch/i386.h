@@ -558,6 +558,7 @@ div_u64_u32_u32 (u64 a, u32 b)
   return c;
 }
 
+#define gccmb()    asm volatile ("" : : : "memory")
 
 /* from Linux */
 

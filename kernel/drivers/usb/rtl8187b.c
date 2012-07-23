@@ -1257,13 +1257,13 @@ status_thread (void)
 static void
 init_urbs (void)
 {
-  start_kernel_thread ((u32) rx_thread, (u32) &rx_stack[2047]);
+  start_kernel_thread ((u32) rx_thread, (u32) &rx_stack[2047], "USB rtl8187b");
 }
 
 static void
 init_status_urb (void)
 {
-  //start_kernel_thread ((u32) status_thread, (u32) &status_stack[1023]);
+  //start_kernel_thread ((u32) status_thread, (u32) &status_stack[1023], NULL);
 }
 
 static bool
@@ -1280,7 +1280,7 @@ start (struct ieee80211_hw *hw)
   //init_usb_anchor(&priv->anchored);
 
   circular_init (&tx_circ, tx_circ_buf, TX_BUF_LEN, sizeof (tx_qbuf_t));
-  start_kernel_thread ((u32) tx_thread, (u32) &tx_stack[1023]);
+  start_kernel_thread ((u32) tx_thread, (u32) &tx_stack[1023], "USB rtl8187b TX");
 
   if (is_rtl8187b) {
     reg = RTL818X_RX_CONF_MGMT |

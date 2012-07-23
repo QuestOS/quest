@@ -24,6 +24,7 @@
  */
 uint32 mm_table[PHYS_INDEX_MAX] __attribute__ ((aligned (4096)));
 uint32 mm_limit;                /* Actual physical page limit */
+uint32 mm_begin = 0;
 
 /* Find free page in mm_table 
  *
@@ -36,7 +37,7 @@ alloc_phys_frame (void)
 
   int i;
 
-  for (i = 0; i < mm_limit; i++)
+  for (i = mm_begin; i < mm_limit; i++)
     if (BITMAP_TST (mm_table, i)) {     /* Free page */
       BITMAP_CLR (mm_table, i);
       return (i << 12);         /* physical byte address of free page/frame */
@@ -45,13 +46,32 @@ alloc_phys_frame (void)
   return -1;                    /* Error -- no free page? */
 }
 
+/*
+ * Allocate free physical page from high address.
+ */
+uint32
+alloc_phys_frame_high (void)
+{
+
+  int i;
+
+  for (i = mm_limit - 1; i >= mm_begin; i--) {
+    if (BITMAP_TST (mm_table, i)) {
+      BITMAP_CLR (mm_table, i);
+      return (i << 12);
+    }
+  }
+
+  return -1;
+}
+
 uint32
 alloc_phys_frames (uint32 count)
 {
 
   int i, j;
 
-  for (i = 0; i < mm_limit - count + 1; i++) {
+  for (i = mm_begin; i < mm_limit - count + 1; i++) {
     for (j = 0; j < count; j++) {
       if (!BITMAP_TST (mm_table, i + j)) {      /* Is not free page? */
         i = i + j;

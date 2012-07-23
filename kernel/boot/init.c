@@ -31,6 +31,13 @@
 #include "util/perfmon.h"
 #include "drivers/input/keyboard.h"
 #include "sched/sched.h"
+#include "sched/proc.h"
+#ifdef USE_VMX
+#include "vm/ept.h"
+#include "vm/shm.h"
+#include "drivers/net/ethernet.h"
+#include "vm/spow2.h"
+#endif
 
 extern descriptor idt[];
 
@@ -73,100 +80,9 @@ alloc_CPU_TSS (tss *tssp)
   return i << 3;
 
 }
-static uint16
-alloc_idle_TSS (int cpu_num)
-{
-  int i;
-  descriptor *ad = (descriptor *)KERN_GDT;
-  quest_tss *pTSS = (quest_tss *) (&idleTSS[cpu_num]);
-  void idle_task (void);
-
-  /* Search 2KB GDT for first free entry */
-  for (i = 1; i < 256; i++)
-    if (!(ad[i].fPresent))
-      break;
-
-  if (i == 256)
-    panic ("No free selector for TSS");
-
-  ad[i].uLimit0 = sizeof (idleTSS[cpu_num]) - 1;
-  ad[i].uLimit1 = 0;
-  ad[i].pBase0 = (u32) pTSS & 0xFFFF;
-  ad[i].pBase1 = ((u32) pTSS >> 16) & 0xFF;
-  ad[i].pBase2 = (u32) pTSS >> 24;
-  ad[i].uType = 0x09;           /* 32-bit tss */
-  ad[i].uDPL = 0;               /* Only let kernel perform task-switching */
-  ad[i].fPresent = 1;
-  ad[i].f0 = 0;
-  ad[i].fX = 0;
-  ad[i].fGranularity = 0;       /* Set granularity of tss in bytes */
-
-  u32 *stk = map_virtual_page (alloc_phys_frame () | 3);
-
-  pTSS->CR3 = (u32) get_pdbr ();
-  pTSS->initial_EIP = (u32) & idle_task;
-  stk[1023] = pTSS->initial_EIP;
-  pTSS->EFLAGS = F_1 | F_IOPL0;
-
-  pTSS->ESP = (u32) &stk[1023];
-  pTSS->EBP = pTSS->ESP;
-
-  /* Return the index into the GDT for the segment */
-  return i << 3;
-}
-
-
-
-/* Allocate a basic TSS */
-static uint16
-alloc_TSS (void *pPageDirectory, void *pEntry, int mod_num)
-{
-
-  int i;
-  descriptor *ad = (idt + 256); /* Get address of GDT from IDT address */
-  quest_tss *pTSS = (quest_tss *) ul_tss[mod_num];
-
-  /* Search 2KB GDT for first free entry */
-  for (i = 1; i < 256; i++)
-    if (!(ad[i].fPresent))
-      break;
-
-  if (i == 256)
-    panic ("No free selector for TSS");
-
-  ad[i].uLimit0 = sizeof (ul_tss[mod_num]) - 1;
-  ad[i].uLimit1 = 0;
-  ad[i].pBase0 = (u32) pTSS & 0xFFFF;
-  ad[i].pBase1 = ((u32) pTSS >> 16) & 0xFF;
-  ad[i].pBase2 = (u32) pTSS >> 24;
-  ad[i].uType = 0x09;           /* 32-bit tss */
-  ad[i].uDPL = 0;               /* Only let kernel perform task-switching */
-  ad[i].fPresent = 1;
-  ad[i].f0 = 0;
-  ad[i].fX = 0;
-  ad[i].fGranularity = 0;       /* Set granularity of tss in bytes */
-
-  pTSS->CR3 = (u32) pPageDirectory;
-  pTSS->initial_EIP = (u32) pEntry;
-
-  if (mod_num != 1)
-    pTSS->EFLAGS = F_1 | F_IF | F_IOPL0;
-  else
-    pTSS->EFLAGS = F_1 | F_IF | F_IOPL;       /* Give terminal server access to
-                                               * screen memory */
-
-  pTSS->ESP = 0x400000 - 100;
-  pTSS->EBP = 0x400000 - 100;
-
-  semaphore_init (&pTSS->Msem, 1, 0);
-
-  /* Return the index into the GDT for the segment */
-  return i << 3;
-}
-
 
 /* Create an address space for boot modules */
-static uint16
+static task_id
 load_module (multiboot_module * pmm, int mod_num)
 {
 
@@ -201,6 +117,13 @@ load_module (multiboot_module * pmm, int mod_num)
   /* LAPIC/IOAPIC mappings */
   memcpy (&plPageDirectory[1019], (void *) (((uint32) get_pdbr ()) + 4076),
           4);
+#ifdef USE_VMX
+  /* Shared component memory pool */
+  for (i = (PHY_SHARED_MEM_POOL_START >> 22);
+       i < ((PHY_SHARED_MEM_POOL_START + SHARED_MEM_POOL_SIZE) >> 22); i++) {
+    plPageDirectory[i] = ((i << 22) + 0x83);
+  }
+#endif
 
   /* Populate ring 3 page directory with entries for its private address
      space */
@@ -260,12 +183,12 @@ load_module (multiboot_module * pmm, int mod_num)
   unmap_virtual_page (stack_virt_addr);
   unmap_virtual_pages (pe, page_count);
 
-  u16 pid = alloc_TSS (plPageDirectory, pEntry, mod_num);
-  com1_printf ("module %d loaded: task_id=0x%x\n", mod_num, pid);
+  task_id tid = alloc_TSS (plPageDirectory, pEntry, mod_num);
+  com1_printf ("module %d loaded: task_id=0x%x\n", mod_num, tid);
 #if QUEST_SCHED==vcpu
-  lookup_TSS (pid)->cpu = 0;
+  lookup_TSS (tid)->cpu = 0;
 #endif
-  return pid;
+  return tid;
 }
 
 
@@ -359,17 +282,48 @@ parse_root_type (char *cmdline)
 }
 
 u32 root_type, boot_device=0;
+#ifdef USE_VMX
+task_id shell_tss = 0;
+#endif
+
+void
+mem_check (void)
+{
+  int i = 0;
+  int uflag = 0;
+
+  /* Only test first 4GB */
+  for (i = 0; i < 0x100000; i++) {
+    if (BITMAP_TST (mm_table, i)) {
+      /* Free frame */
+      if (uflag) {
+        com1_printf ("Used frame end: 0x%X\n", (i << 12) - 1);
+        uflag = 0;
+      }
+    } else {
+      /* Allocated frame */
+      if (uflag == 0) {
+        com1_printf ("Used frame begin: 0x%X\n", i << 12);
+        uflag = 1;
+      }
+    }
+  }
+  if (uflag) {
+    com1_printf ("Used frame end: 0x%X\n", (i << 12) - 1);
+    uflag = 0;
+  }
+}
 
 void
 init (multiboot * pmb)
 {
   int i, j, k, c, num_cpus;
-  uint16 tss[NR_MODS];
   memory_map_t *mmap;
   uint32 limit;
   Elf32_Phdr *pph;
   Elf32_Ehdr *pe;
   char brandstring[I386_CPUID_BRAND_STRING_LENGTH];
+  uint16 tss[NR_MODS];
 
   /* Initialize Bochs I/O debugging */
   outw (0x8A00, 0x8A00);
@@ -440,6 +394,11 @@ init (multiboot * pmb)
       }
     }
   }
+
+#ifdef USE_VMX
+  mm_limit = 256 + (SANDBOX_KERN_OFFSET >> 12);
+  mm_begin = 0;
+#endif
 
   /*
    * Clear bitmap entries for kernel and bootstrap memory areas,
@@ -536,6 +495,20 @@ init (multiboot * pmb)
     lookup_TSS (tss[i])->priority = MIN_PRIO;
   }
 
+  /* --??-- Assume the first is shell here */
+  char * name = "/boot/shell";
+  memcpy (lookup_TSS (tss[0])->name, name, strlen (name));
+  lookup_TSS (tss[0])->name[strlen(name)] = '\0';
+  
+#ifdef USE_VMX
+  /* Back up shell module for sandboxes */
+  shell_tss = load_module (pmb->mods_addr, NR_MODS - 1);
+  lookup_TSS (shell_tss)->priority = MIN_PRIO;
+  lookup_TSS (shell_tss)->EFLAGS = F_1 | F_IF | F_IOPL0;
+  memcpy (lookup_TSS (shell_tss)->name, name, strlen (name));
+  lookup_TSS (shell_tss)->name[strlen(name)] = '\0';
+#endif
+
   /* Remove identity mapping of first 4MB */
   *((uint32 *)get_pdbr()) = 0;
   flush_tlb_all ();
@@ -548,8 +521,52 @@ init (multiboot * pmb)
    * to utilize the dummy TSS without locking the kernel yet. */
   smp_secondary_init ();
 
+  mem_check ();
+
+#ifdef USE_VMX
+  { extern bool vmx_init (void); vmx_init (); }
+#endif
+
+  /* Shared component initialization in Quest-V */
+  { extern bool init_keyboard_8042 (void); init_keyboard_8042 (); }
+  { extern bool pci_init (void); pci_init (); }
+  { extern bool r8169_init (void); r8169_init (); }
+  //{ extern bool msgt_mem_init (void); msgt_mem_init (); }
+
+/*
+ * --??-- In current boot-strap framework, all the things that need to
+ *  be shared across multiple kernels in Quest-V should be initialized
+ *  before this point. The private system components can still be
+ *  initialized by the module loader on BSP.
+ *
+ *  We will come up with some convenient module initialization framework
+ *  in the future.
+ */
+#ifdef USE_VMX
+  spinlock_lock (&(shm->global_lock));
+  print ("Waiting for VM-Forks...\n");
+  mp_enabled = 1;
+  while (shm->num_sandbox != num_cpus);
+  mp_enabled = 0;
+  print ("All sandboxes forked\n");
+#endif
+
   /* Load all modules, chasing dependencies */
   { extern bool module_load_all (void); module_load_all (); }
+#ifdef USE_VMX
+  { extern bool migration_init (void); migration_init (); }
+#endif
+  //{ extern bool udp_bandwith_init (void); udp_bandwith_init (); }
+  //{ extern bool ipc_send_init (void); ipc_send_init (); }
+  //{ extern bool msgt_init (void); msgt_init (); }
+  //{
+  //  extern bool netsetup_custom_init (struct ip_addr, struct ip_addr, struct ip_addr, int);
+  //  struct ip_addr ipaddr, netmask, gw;
+  //  IP4_ADDR(&ipaddr, 192, 168, 2, 20);
+  //  IP4_ADDR(&netmask, 255, 255, 255, 0);
+  //  IP4_ADDR(&gw, 192, 168, 2, 1);
+  //  netsetup_custom_init (ipaddr, netmask, gw, 1);
+  //}
 
   /* count free pages for informational purposes */
   u32 *page_table = (u32 *) KERN_PGT;
@@ -571,6 +588,10 @@ init (multiboot * pmb)
     BREAKPOINT ();
 #endif
   }
+#endif
+
+#ifdef USE_VMX
+  spinlock_unlock (&(shm->global_lock));
 #endif
 
   /* The Shell module is in userspace and therefore interrupts will be

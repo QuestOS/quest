@@ -29,6 +29,8 @@
 #include "util/debug.h"
 #include "util/printf.h"
 #include "mem/pow2.h"
+#include "vm/migration.h"
+#include "vm/shm.h"
 
 #define UNITS_PER_SEC 1000
 
@@ -421,8 +423,8 @@ vcpu_dump_stats (void)
   u32 atapi_bps = atapi_sample_bps ();
   u64 now; RDTSC (now);
 
-  logger_printf ("vcpu_dump_stats n=%d t=0x%llX ms=0x%X\n",
-                 dump_count++, now, tsc_freq_msec);
+  logger_printf ("cpu %d vcpu_dump_stats n=%d t=0x%llX ms=0x%X\n",
+                 get_pcpu_id (), dump_count++, now, tsc_freq_msec);
 
   now -= vcpu_init_time;
   RDTSC (vcpu_init_time);
@@ -622,6 +624,7 @@ vcpu_schedule (void)
     *queue = percpu_read (vcpu_queue),
     *cur   = percpu_read (vcpu_current),
     *vcpu  = NULL,
+    *mvcpu = NULL,
     **ptr,
     **vnext = NULL;
   u64 tprev = percpu_read64 (pcpu_tprev);
@@ -689,6 +692,63 @@ vcpu_schedule (void)
 
       percpu_write (vcpu_current, NULL);
     }
+
+#ifdef USE_VMX
+    /* Check migration request */
+    if (str () != next) {
+      quest_tss * tss = lookup_TSS (str ());
+      uint32 * ph_tss = NULL;
+      task_id waiter;
+      uint current_cpu = get_pcpu_id ();
+      if (tss) {
+        if (tss->sandbox_affinity != current_cpu) {
+          logger_printf ("Migration Request: taskid=0x%X, src=%d, dest=%d, vcpu=%d\n",
+              str (), current_cpu, tss->sandbox_affinity, tss->cpu);
+          logger_printf ("Current task: 0x%X, Next task: 0x%X\n", str (), next);
+          mvcpu = vcpu_lookup (tss->cpu);
+          if (!mvcpu) {
+            logger_printf ("No VCPU (%d) associated with Task 0x%X\n", tss->cpu, tss->tid);
+          } else {
+            /* Located the migrating quest_tss and its VCPU */
+            /* Detach the migrating task from local scheduler */
+            ph_tss = detach_task (tss->tid);
+            logger_printf ("Process quest_tss to be migrated: 0x%X\n", ph_tss);
+
+            /* Add the migrating process to migration queue of destination sandbox */
+            if (shm->migration_queue[tss->sandbox_affinity]) {
+              /* TODO:
+               * Assume the queue can have only one element for now. In case of queued
+               * requests, quest_tss should be chained as usual.
+               */
+              logger_printf ("Migration queue in sandbox %d is not empty\n",
+                             tss->sandbox_affinity);
+            } else {
+              shm->migration_queue[tss->sandbox_affinity] = ph_tss;
+            }
+
+            /* All tasks waiting for us now belong on the runqueue. */
+            /* TODO:
+             * For now, we wake up all the waiting processes. This
+             * is not really a solution for the shared resource problem.
+             * Some more specific mechanisms must be devised for this
+             * issue in the future.
+             */
+            while ((waiter = queue_remove_head (&tss->waitqueue)))
+              wakeup (waiter);
+
+            if (ph_tss) {
+              /* Request migration */
+              if (!request_migration (tss->sandbox_affinity))
+                logger_printf ("Failed to send migration request to sandbox %d\n",
+                               tss->sandbox_affinity);
+            } else {
+              logger_printf ("Failed to detach task 0x%X from local scheduler\n", tss->tid);
+            }
+          }
+        }
+      }
+    }
+#endif
 
     /* find time of next important event */
     if (vcpu)
@@ -775,8 +835,10 @@ vcpu_wakeup (task_id task)
       if (next_vcpu_binding >= NUM_VCPUS)
         next_vcpu_binding = 0;
     } while (vcpu_lookup (tssp->cpu)->type != MAIN_VCPU);
-    com1_printf ("vcpu: task 0x%x now bound to vcpu=%d\n", task, tssp->cpu);
+    //com1_printf ("vcpu: task 0x%x now bound to vcpu=%d\n", task, tssp->cpu);
   }
+
+  sleepqueue_detach (task);
 
   vcpu *v = vcpu_lookup (tssp->cpu);
 
@@ -1163,9 +1225,18 @@ vcpu_init (void)
     u32 T = init_params[vcpu_i].T;
     vcpu_type type = init_params[vcpu_i].type;
     vcpu = vcpu_lookup (vcpu_i);
+#ifdef USE_VMX
+    /* All VCPUs bind to current sandbox.
+     * Initialization function will be called after forking
+     * VM by each sandbox again.
+     */
+    cpu_i = get_pcpu_id ();
+    vcpu->cpu = cpu_i;
+#else
     vcpu->cpu = cpu_i++;
     if (cpu_i >= mp_num_cpus)
       cpu_i = 0;
+#endif
     vcpu->quantum = div_u64_u32_u32 (tsc_freq, QUANTUM_HZ);
     vcpu->C = C * tsc_unit_freq;
     vcpu->T = T * tsc_unit_freq;
@@ -1190,6 +1261,91 @@ vcpu_init (void)
   }
   return TRUE;
 }
+
+#ifdef USE_VMX
+/* Fix replenishment queue */
+bool
+vcpu_fix_replenishment (quest_tss * tss, vcpu * v, replenishment r[])
+{
+  int i = 0, cpu = 0;
+  repl_queue * rq = NULL;
+  replenishment * rp = NULL;
+
+#ifdef DEBUG_VCPU
+  /* What is the current replenishment queue of v? */
+  rq = &v->main.Q;
+  rp = rq->head;
+  com1_printf ("Target VCPU Replenishment Queue:\n");
+  while (rp) {
+    com1_printf ("  b=0x%llX, t=0x%llX\n", rp->b, rp->t);
+    rp = rp->next;
+  }
+#endif
+
+  /* Assume this is a new VCPU with no task binded. */
+  /* This is always true is we create a new VCPU for migrating task */
+  /* Now, restore VCPU parameters */
+  if ((tss->C_bak != v->C) || (tss->T_bak != v->T)) {
+    /* VCPU in destination sandbox is not compatible with original one */
+    logger_printf ("VCPU in destination is not compatible!\n");
+    logger_printf ("  C=0x%llX, T=0x%llX, Cn=0x%llX, Tn=0x%llX\n",
+                 tss->C_bak, tss->T_bak, v->C, v->T);
+    return FALSE;
+  } else {
+    /* Clear the current replenishment queue */
+    rq = &v->main.Q;
+    rp = rq->head;
+    while (rp) {
+      repl_queue_pop (rq);
+      rp = rq->head;
+    }
+    /* Add fixed new replenishments */
+    for (i = 0; i < MAX_REPL; i++) {
+      if (tss->vcpu_backup[i].t == 0) break;
+      /* Fix timestamp values */
+      cpu = get_pcpu_id ();
+      if (shm->remote_tsc_diff[cpu]) {
+        /* Local TSC is faster */
+        repl_queue_add (rq, tss->vcpu_backup[i].b,
+                        tss->vcpu_backup[i].t + shm->remote_tsc[cpu]);
+      } else {
+        /* Local TSC is slower */
+        repl_queue_add (rq, tss->vcpu_backup[i].b,
+                        tss->vcpu_backup[i].t - shm->remote_tsc[cpu]);
+      }
+    }
+    v->b = tss->b_bak;
+    v->usage = tss->usage_bak;
+
+#ifdef DEBUG_VCPU
+    /* Check the updated replenishment queue of v */
+    rq = &v->main.Q;
+    rp = rq->head;
+    com1_printf ("Updated VCPU Replenishment Queue (b=0x%llX, usage=0x%llX):\n",
+                 v->b, v->usage);
+    while (rp) {
+      com1_printf ("  b=0x%llX, t=0x%llX\n", rp->b, rp->t);
+      rp = rp->next;
+    }
+#endif
+
+    return TRUE;
+  }
+
+  return FALSE;
+}
+
+/* For sandbox to reset scheduler after vm fork. */
+void
+vcpu_reset (void)
+{
+  vcpu_init ();
+ 
+  percpu_write (vcpu_queue, NULL);
+  percpu_write (vcpu_current, NULL);
+  percpu_write (vcpu_idle_task, 0);
+}
+#endif
 
 /* ************************************************** */
 

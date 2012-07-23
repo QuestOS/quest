@@ -24,6 +24,9 @@
 #include <arch/i386-div64.h>
 #include <kernel.h>
 #include "sched/sched.h"
+#ifdef SHARED_UHCI
+#include <vm/shm.h>
+#endif
 
 #define DEBUG_UHCI
 //#define DEBUG_UHCI_VERBOSE
@@ -76,22 +79,66 @@ static task_id uhci_waitq = 0;  /* Tasks waiting for IRQ */
 #define DEPTH_FIRST 4
 #define LINK_MASK (~0xFL)
 
+static spinlock usb_sched_lock ALIGNED(LOCK_ALIGNMENT) = SPINLOCK_INIT;
+static spinlock usb_lock ALIGNED(LOCK_ALIGNMENT) = SPINLOCK_INIT;
 
-/*
- * This is non-reentrant! Fortunately, we do not have concurrency yet:-)
- * This function returns the available Queue Head or Transfer Descriptor.
- * It will probably be removed later.
- */
+#ifdef SHARED_UHCI
+static spinlock * global_sched_lock = NULL, * global_usb_lock = NULL;
+#endif
+
+static inline void
+sched_alloc_lock (void)
+{
+  spinlock_lock (&usb_sched_lock);
+
+#ifdef SHARED_UHCI
+  spinlock_lock (global_sched_lock);
+#endif
+}
+
+static inline void
+sched_alloc_unlock (void)
+{
+  spinlock_unlock (&usb_sched_lock);
+
+#ifdef SHARED_UHCI
+  spinlock_unlock (global_sched_lock);
+#endif
+}
+
+static inline void
+sched_lock (void)
+{
+  spinlock_lock (&usb_lock);
+
+#ifdef SHARED_UHCI
+  spinlock_lock (global_usb_lock);
+#endif
+}
+
+static inline void
+sched_unlock (void)
+{
+  spinlock_unlock (&usb_lock);
+
+#ifdef SHARED_UHCI
+  spinlock_unlock (global_usb_lock);
+#endif
+}
+
 static void *
 sched_alloc (int type)
 {
   int i = 0;
+
+  sched_alloc_lock ();
 
   switch (type) {
     case TYPE_TD:
       for (i = 0; i < TD_POOL_SIZE; i++) {
         if (td[i].link_ptr == 0) {
           td[i].link_ptr = TERMINATE;
+          sched_alloc_unlock ();
           return &td[i];
         }
       }
@@ -101,6 +148,7 @@ sched_alloc (int type)
       for (i = 0; i < QH_POOL_SIZE; i++) {
         if (qh[i].qh_ptr == 0 && qh[i].qe_ptr == 0) {
           qh[i].qh_ptr = qh[i].qe_ptr = TERMINATE;
+          sched_alloc_unlock ();
           return &qh[i];
         }
       }
@@ -108,9 +156,12 @@ sched_alloc (int type)
 
     default:
       DLOG("Unsupported Descriptor Type: %d", type);
+      sched_alloc_unlock ();
       return (void *) 0;
 
   }
+
+  sched_alloc_unlock ();
 
   DLOG("Error! Not enough descriptor in the pool! (type=%s)",
        (type == TYPE_TD ? "TD" : "QH"));
@@ -122,6 +173,8 @@ sched_free (int type, void *res)
 {
   UHCI_TD *res_td;
   UHCI_QH *res_qh;
+
+  sched_alloc_lock ();
 
   switch (type) {
     case TYPE_TD:
@@ -141,8 +194,11 @@ sched_free (int type, void *res)
       break;
 
     default:
+      sched_alloc_unlock ();
       return -1;
   }
+
+  sched_alloc_unlock ();
 
   return 0;
 }
@@ -181,7 +237,7 @@ disable_ehci (void)
   unsigned long eecp = 0;
   uint32_t va_ubase = 0;
   uint32_t opregs = 0;
-  uint32_t config_flag = 0;
+  //uint32_t config_flag = 0;
   uint8_t hcbiossem = 0;
 
   DLOG ("EHCI: Routing all ports to companion controllers...");
@@ -217,7 +273,7 @@ disable_ehci (void)
   DLOG ("Quest got ownership of EHCI!");
 
   opregs = va_ubase + *(char *) va_ubase;
-  config_flag = *((uint32_t *) ((char *) opregs + 0x40));
+  //config_flag = *((uint32_t *) ((char *) opregs + 0x40));
 
   /* Clear bit 0 of CONFIGFLAG to route all ports */
   *((uint32_t *) ((char *) opregs + 0x40)) = 0x0;
@@ -319,6 +375,19 @@ fixup_tds (u32 *p_tdp)
 {
   while (!(*p_tdp & TERMINATE) && *p_tdp) {
     UHCI_TD *t = TD_P2V (UHCI_TD *, (*p_tdp) & LINK_MASK);
+
+    /* Unfortunately, this is another workaround of the "workaround"
+     * above. It seems that the UHCI HC behaves differently on different
+     * machines. In some cases, the fixup_tds is not needed at all. And
+     * to make it worse, the pointer can be filled in with some weird
+     * data that causes page fault. So, here is the ugly code that makes
+     * sure the TD is actually a valid TD.
+     */
+    if (((uint32)t < (uint32)(&td[0])) ||
+        ((uint32)t > (uint32)(&td[TD_POOL_SIZE - 1]))) {
+      break;
+    }
+
     if (t->status == 0)
       *p_tdp = t->link_ptr & (~DEPTH_FIRST);
     else
@@ -380,10 +449,12 @@ check_tds (UHCI_QH *tx_qh, UHCI_TD *tx_tds, uint32 *act_len)
     fixup_tds (&tx_qh->qe_ptr);
 
     /* wait for IRQ if interrupts enabled */
-    if (mp_enabled) {
+    if (0/*mp_enabled*/) {
       DLOGV ("wait %d", status_count);
       queue_append (&uhci_waitq, str ());
+      sched_unlock ();
       schedule ();
+      sched_lock ();
     }
 
     len = 0;
@@ -776,7 +847,8 @@ uhci_init (void)
 
   if (pci_irq_find (bus, dev, irq_pin, &irq)) {
     /* use PCI routing table */
-    DLOG ("Found PCI routing entry irq.gsi=0x%x", irq.gsi);
+    DLOG ("Found PCI routing entry irq.gsi=0x%x, irq.trigger=0x%x", irq.gsi, irq.trigger);
+    //irq.trigger = TRIGGER_EDGE;
     if (!pci_irq_map_handler (&irq, uhci_irq_handler, 0x01,
                               IOAPIC_DESTINATION_LOGICAL,
                               IOAPIC_DELIVERY_FIXED)) {
@@ -806,6 +878,24 @@ uhci_init (void)
   }
 
   DLOG ("usb_base=0x%.04X", usb_base);
+
+#ifdef SHARED_UHCI
+  global_usb_lock = shm_alloc_drv_lock ();
+  global_sched_lock = shm_alloc_drv_lock ();
+
+  if ((global_sched_lock == NULL) ||
+      (global_usb_lock == NULL)) {
+    DLOG ("Driver lock allocation failed!\n");
+    if (global_sched_lock != NULL)
+      shm_free_drv_lock (global_sched_lock);
+    if (global_usb_lock != NULL)
+      shm_free_drv_lock (global_usb_lock);
+    return FALSE;
+  }
+
+  spinlock_init (global_usb_lock);
+  spinlock_init (global_sched_lock);
+#endif
 
   /* Initiate UHCI internal data structure */
   init_schedule ();
@@ -850,6 +940,9 @@ uhci_isochronous_transfer (
   iso_td->buf_vptr = data;
   iso_td->call_back = func;
 
+  /* Lock the USB schedule */
+  sched_lock ();
+
   entry = frame_list[frm];
 
   if (!(entry & TERMINATE) && !(entry & SELECT_QH)) {
@@ -874,6 +967,10 @@ uhci_isochronous_transfer (
 
   *act_len = iso_td->act_len + 1;
   frame_list[frm] = iso_td->link_ptr;
+
+  /* Unlock the USB schedule */
+  sched_unlock ();
+
   sched_free (TYPE_TD, iso_td);
 
 #if 0
@@ -984,11 +1081,16 @@ uhci_bulk_transfer(
   DLOG ("... done");
 #endif
 
+  /* Lock the USB schedule */
+  sched_lock ();
+
   /* Initiate our bulk transactions */
   act_qh = link_td_to_free_qh (blk_qh, tx_tds);
 
   if (act_qh == NULL) {
     DLOG ("act_qh == NULL");
+    /* Unlock the USB schedule */
+    sched_unlock ();
     return -1;
   }
 
@@ -998,6 +1100,7 @@ uhci_bulk_transfer(
 
   /* Check the status of all the packets in the transaction */
   return_status = check_tds(act_qh, tx_tds, act_len);
+
   if (return_status != 0) {
     DLOG ("bulk: return_status != 0");
   } else {
@@ -1014,6 +1117,9 @@ uhci_bulk_transfer(
   /* unlink any remaining active TDs if short packet was detected */
   if (*act_len != data_len)
     act_qh->qe_ptr = TERMINATE;
+
+  /* Unlock the USB schedule */
+  sched_unlock ();
 
   free_tds(tx_tds, num_data_packets);
 
@@ -1119,12 +1225,16 @@ uhci_control_transfer (uint8_t address,
 
   /* debug_dump_sched (tx_tds); */
 
+  sched_lock ();
+
   /* Initiate our control transaction */
   ctl_qh->qe_ptr =
     (((uint32_t) get_phys_addr ((void *) tx_tds)) & LINK_MASK) + 0x0;
 
   /* Check the status of all the packets in the transaction */
   return_status = check_tds (ctl_qh, tx_tds, &act_len);
+
+  sched_unlock ();
 
   free_tds (tx_tds, num_data_packets + 2);
 
@@ -1275,12 +1385,12 @@ uhci_get_interface (uint8_t addr, uint16_t interface, uint8_t packet_size)
 static uint32
 uhci_irq_handler (uint8 vec)
 {
-  uint64 v;
   uint16 status;
 
   lock_kernel ();
 
 #if 0
+  uint64 v;
   v = IOAPIC_read64 (0x10 + (irq_line * 2));
   DLOG ("(1) IOAPIC (irq_line=0x%x) says %p %p",
         irq_line, (uint32) (v >> 32), (uint32) v);
@@ -1572,6 +1682,7 @@ uhci_show_regs (void)
 static const struct module_ops mod_ops = {
   .init = uhci_init
 };
+
 
 // Remove UHCI as it crashes with the gigabyte mini-itx board
 //DEF_MODULE (usb___uhci, "UHCI driver", &mod_ops, {"usb", "pci"});

@@ -32,6 +32,7 @@
 
 static USB_DEVICE_INFO pl2303_dev;
 static uint8_t in_ept = 0, out_ept = 0;
+bool pl2303_initialized = FALSE;
 
 int usb_pl2303_write (unsigned char *, uint32_t);
 void usb_pl2303_putc (char);
@@ -202,6 +203,8 @@ test ()
   usb_pl2303_putc ('e');
   usb_pl2303_putc ('s');
   usb_pl2303_putc ('t');
+  usb_pl2303_putc ('\r');
+  usb_pl2303_putc ('\n');
 #endif
 }
 
@@ -229,6 +232,8 @@ pl2303_probe (USB_DEVICE_INFO *dev, USB_CFG_DESC *cfg, USB_IF_DESC *ifd)
 
   test();
 
+  pl2303_initialized = TRUE;
+
   return TRUE;
 }
 
@@ -240,10 +245,9 @@ usb_pl2303_putc (char c)
 
   buf[0] = c;
 
-  if ((count = usb_pl2303_write (buf, 1)) != 1)
-    DLOG ("usb_pl2303_putc failed, %d bytes sent", count);
-  else
-    DLOG ("usb_pl2303_putc done, %d bytes sent", count);
+  if ((count = usb_pl2303_write (buf, 1)) != 1) {
+    _print ("PL2302 write failed\n");
+  }
 }
 
 int
@@ -266,7 +270,7 @@ usb_pl2303_getc (void)
   int act_len = 0;
 
   if ((act_len = usb_pl2303_read (buf, 1)) != 1) {
-    DLOG ("usb_ftdi_read () failed. %d bytes returned.", act_len);
+    _print ("PL2302 read failed\n");
     return '\0';
   }
 

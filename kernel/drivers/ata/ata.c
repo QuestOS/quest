@@ -88,9 +88,9 @@ ata_info pata_drives[4];
 /* ata_current_task has exclusive access to ATA.  If an ATA IRQ comes
  * in, we assume that ata_current_task is waiting on it and needs to
  * be woken. */
-static uint16 ata_current_task = 0;
+static task_id ata_current_task = 0;
 /* waitqueue of tasks that want to use ATA. */
-static uint16 ata_waitqueue = 0;
+static task_id ata_waitqueue = 0;
 
 /* technically I think there could be separate queues for each bus,
  * but, whatever. */

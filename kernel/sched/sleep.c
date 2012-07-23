@@ -126,6 +126,41 @@ process_sleepqueue (void)
   }
 }
 
+/* Detach a task from sleep queue. This is used in migration. */
+/* Must hold lock */
+extern bool
+sleepqueue_detach (task_id tid)
+{
+  task_id * q = NULL, next = 0;
+  quest_tss *tssp;
+
+  if (sleepqueue == 0)
+    return FALSE;
+
+  q = &sleepqueue;
+  tssp = lookup_TSS (sleepqueue);
+
+  for (;;) {
+    next = tssp->next;
+    if (*q == tid) {
+      *q = next;
+      return TRUE;
+    }
+    
+    if (next == 0)
+      return FALSE;
+    q = &tssp->next;
+    tssp = lookup_TSS (*q);
+  }
+
+  return FALSE;
+}
+
+extern void
+sleepqueue_append (task_id tid)
+{
+  queue_append (&sleepqueue, tid);
+}
 /*
  * Local Variables:
  * indent-tabs-mode: nil

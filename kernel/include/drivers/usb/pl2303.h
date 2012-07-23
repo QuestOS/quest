@@ -39,9 +39,10 @@ struct pl2303_config
 } __attribute__ ((packed));
 
 typedef struct pl2303_config PL2303_CONFIG;
+extern bool pl2303_initialized;
 
-extern char getc (void);
-extern void putc (char);
+extern char usb_pl2303_getc (void);
+extern void usb_pl2303_putc (char);
 
 #endif
 

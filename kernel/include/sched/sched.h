@@ -22,12 +22,12 @@
 #include "arch/i386-percpu.h"
 #include "sched/sched-defs.h"
 
-extern void runqueue_append (uint32 prio, uint16 selector);
-extern void queue_append (uint16 * queue, uint16 selector);
-extern uint16 queue_remove_head (uint16 * queue);
+extern void runqueue_append (uint32 prio, task_id selector);
+extern void queue_append (task_id * queue, task_id selector);
+extern task_id queue_remove_head (task_id * queue);
 extern void (*schedule) (void);
-extern void (*wakeup) (uint16);
-extern void wakeup_queue (uint16 *);
+extern void (*wakeup) (task_id);
+extern void wakeup_queue (task_id *);
 
 extern void sched_usleep (uint32);
 extern void process_sleepqueue (void);
@@ -47,7 +47,7 @@ ltr (task_id id)
 static inline void
 software_context_switch (task_id next)
 {
-  u16 tr = percpu_read (current_task);
+  task_id tr = percpu_read (current_task);
   tss *cur_TSS = (tr == 0 ? NULL : (tss *) lookup_TSS (tr));
   tss *nxt_TSS = (tss *) lookup_TSS (next);
 

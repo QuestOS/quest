@@ -24,7 +24,7 @@
 
 struct _spinlock
 {
-  uint32 lock;
+  volatile uint32 lock;
 };
 typedef struct _spinlock spinlock;
 
@@ -38,28 +38,26 @@ spinlock_lock (spinlock * lock)
   extern void com1_putx (uint32);
   uint8 LAPIC_get_physical_ID (void);
 
-  if (mp_enabled) {
 #ifdef DEBUG_SPINLOCK
-    int count = 0;
-    extern void panic (char *);
-    extern void com1_printf (const char *, ...);
+  int count = 0;
+  extern void panic (char *);
+  extern void com1_printf (const char *, ...);
 #endif
-    int x = 1;
-    uint32 *addr = &lock->lock;
-    for (;;) {
-      asm volatile ("lock xchgl %1,(%0)":"=r" (addr),
-                    "=ir" (x):"0" (addr), "1" (x));
-      if (x == 0)
-        break;
-      asm volatile ("pause");
+  int x = 1;
+  volatile uint32 *addr = &lock->lock;
+  for (;;) {
+    asm volatile ("lock xchgl %1,(%0)":"=r" (addr),
+        "=ir" (x):"0" (addr), "1" (x));
+    if (x == 0)
+      break;
+    asm volatile ("pause");
 #ifdef DEBUG_SPINLOCK
-      count++;
-      if (count > DEBUG_MAX_SPIN) {
-        com1_printf ("DEADLOCK (CPU %d)\n", LAPIC_get_physical_ID ());
-        panic ("DEADLOCK\n");
-      }
-#endif
+    count++;
+    if (count > DEBUG_MAX_SPIN) {
+      com1_printf ("DEADLOCK (CPU %d)\n", LAPIC_get_physical_ID ());
+      panic ("DEADLOCK\n");
     }
+#endif
   }
 }
 
@@ -68,7 +66,7 @@ static inline bool spinlock_attempt_lock(spinlock * lock)
   if (mp_enabled) {
 
     int x = 1;
-    uint32 *addr = &lock->lock;
+    volatile uint32 *addr = &lock->lock;
     asm volatile ("lock xchgl %1,(%0)":"=r" (addr),
                   "=ir" (x):"0" (addr), "1" (x));
     
@@ -81,7 +79,7 @@ static inline void
 spinlock_unlock (spinlock * lock)
 {
   uint32 x = 0;
-  uint32 *addr = &lock->lock;
+  volatile uint32 *addr = &lock->lock;
   extern void com1_putc (char);
   extern void com1_puts (char *);
   extern void com1_putx (uint32);

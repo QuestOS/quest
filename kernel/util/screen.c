@@ -18,6 +18,9 @@
 #include "smp/spinlock.h"
 #include "util/screen.h"
 #include "util/debug.h"
+#ifdef USE_VMX
+#include "vm/shm.h"
+#endif
 
 spinlock screen_lock = { 0 };
 
@@ -37,9 +40,34 @@ _putchar (int ch)
     return (int) (uint8) ch;
   }
 
+#ifdef USE_VMX
+  uint32 cpu;
+  
+  cpu = get_pcpu_id ();
+
+  if (shm_screen_first && (cpu != 0)) {
+    x = y = 0;
+    shm_screen_first = FALSE;
+  }
+
+  if (shm_screen_initialized) {
+    if (shm->virtual_display.cur_screen == cpu) {
+      pchVideo[y * 160 + x * 2] = ch;
+      pchVideo[y * 160 + x * 2 + 1] = 7;
+    }
+    shm_screen[y * 160 + x * 2] = ch;
+    shm_screen[y * 160 + x * 2 + 1] = 7;
+    x++;
+  } else {
+    pchVideo[y * 160 + x * 2] = ch;
+    pchVideo[y * 160 + x * 2 + 1] = 7;
+    x++;
+  }
+#else
   pchVideo[y * 160 + x * 2] = ch;
   pchVideo[y * 160 + x * 2 + 1] = 7;
   x++;
+#endif
 
   return (int) (uint8) ch;
 }

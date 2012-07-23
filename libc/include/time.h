@@ -15,12 +15,17 @@
  *  along with this program.  If not, see <http://www.gnu.org/licenses/>.
  */
 
+#ifndef _TIME_H_
+#define _TIME_H_
 
 #define CLOCKS_PER_SEC 1000000
 
 typedef unsigned long clock_t;
 
 clock_t clock( void );
+
+
+#endif
 
 /* 
  * Local Variables:

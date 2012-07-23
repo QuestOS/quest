@@ -23,7 +23,7 @@
 #include "smp/apic.h"
 #include "kernel.h"
 
-#define DEBUG_PCI
+//#define DEBUG_PCI
 
 #ifdef DEBUG_PCI
 #define DLOG(fmt,...) DLOG_PREFIX("PCI",fmt,##__VA_ARGS__)

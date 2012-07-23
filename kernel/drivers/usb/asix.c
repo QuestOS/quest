@@ -488,10 +488,11 @@ probe (USB_DEVICE_INFO *info, USB_CFG_DESC *cfgd, USB_IF_DESC *ifd)
     return FALSE;
   }
 
-  irq_pid = start_kernel_thread ((uint) irq_loop, (uint) &irq_stack[1023]);
+  irq_pid = start_kernel_thread ((uint) irq_loop, (uint) &irq_stack[1023], "USB ASIX");
 #if 0
   status_pid = start_kernel_thread ((uint) status_loop,
-                                    (uint) &status_stack[1023]);
+                                    (uint) &status_stack[1023],
+                                    "USB ASIX");
 #endif
 
   return TRUE;

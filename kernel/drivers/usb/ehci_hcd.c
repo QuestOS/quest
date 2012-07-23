@@ -718,8 +718,9 @@ initialise_ehci_hcd(uint32_t usb_base,
 #ifdef EHCI_IOC_BUG
   
   create_kernel_thread_args((u32)ioc_backup_thread,
-    (u32) &temp_stack[1023],
-    TRUE, 1, ehci_hcd);
+                            (u32) &temp_stack[1023],
+                            "EHCI Backup",
+                            TRUE, 1, ehci_hcd);
   
 #endif // EHCI_IOC_BUG
   
@@ -1793,7 +1794,7 @@ static const struct module_ops mod_ops = {
   .init = ehci_init
 };
 
-DEF_MODULE (usb___ehci, "EHCI driver", &mod_ops, {"usb", "pci"});
+//DEF_MODULE (usb___ehci, "EHCI driver", &mod_ops, {"usb", "pci"});
 
 /*
  * Local Variables:

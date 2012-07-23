@@ -18,7 +18,9 @@
 #ifndef __TYPES_H__
 #define __TYPES_H__
 
+#ifndef INT_MAX
 #define INT_MAX 0xFFFFFFFF
+#endif
 
 #ifndef __ASSEMBLER__
 
@@ -49,15 +51,22 @@ typedef signed char bool;
 typedef unsigned long uint;
 typedef signed long sint;
 
-typedef uint8 uint8_t, u8;
-typedef uint16 uint16_t, u16, __le16;
-typedef uint32 uint32_t, u32, __le32, __be32, dma_addr_t, frame_t, framenum_t, phys_addr_t;
-typedef uint64 uint64_t, u64, __le64;
+#ifndef _STDINT_
+#define _STDINT_
+typedef uint8 uint8_t;
+typedef uint16 uint16_t;
+typedef uint32 uint32_t;
+typedef uint64 uint64_t;
+#endif
 
+typedef uint8 u8;
+typedef uint16 u16, __le16;
+typedef uint32 u32, __le32, __be32, dma_addr_t, frame_t, framenum_t, phys_addr_t;
+typedef uint64 u64, __le64;
 typedef void *addr_t;
 
-
 typedef int gfp_t;
+typedef uint32 task_id;
 
 #endif // [#ifndef __ASSEMBLER__]
 

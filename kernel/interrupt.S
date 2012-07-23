@@ -80,6 +80,10 @@
         .globl syscalla
         .globl syscallb
         .globl syscallc
+        .globl interrupt3d
+#ifdef USE_VMX
+        .globl syscalld
+#endif
         .globl timer
         .globl soundcard
         
@@ -469,6 +473,32 @@ syscallc:
         
         SREGS_RESTORE   
 
+/* Socket related syscalls */
+interrupt3d:
+        SREGS_SAVE
+
+        pushl %edi
+        pushl %esi
+        pushl %edx
+        pushl %ecx
+        pushl %ebx
+        call *_socket_syscall_table(, %eax, 4)
+        addl $20, %esp
+
+        SREGS_RESTORE
+
+#ifdef USE_VMX
+/* switch_screen */
+syscalld:
+        SREGS_SAVE
+
+        pushl %eax
+        call _switch_screen
+        addl $4, %esp                   
+        
+        SREGS_RESTORE
+#endif
+
 /* IRQ0 - system timer */
 timer:  
         pushal
@@ -605,7 +635,6 @@ INT(39)
 INT(3a)
 INT(3b)
 INT(3c)
-INT(3d)
 INT(3f)
 
 INT(40)

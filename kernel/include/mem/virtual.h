@@ -144,6 +144,7 @@ typedef struct {
  * postcondition: return has valid VA, PA
  * failure result is (0, 0) */
 pgdir_t clone_page_directory (pgdir_t dir);
+pgtbl_t clone_page_table (pgtbl_t tbl);
 /* precondition: dir PA and VA are valid, va is aligned */
 /* postcondition: returned frame is aligned */
 /* failure: -1 */

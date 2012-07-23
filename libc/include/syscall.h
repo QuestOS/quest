@@ -15,10 +15,14 @@
  *  along with this program.  If not, see <http://www.gnu.org/licenses/>.
  */
 
-
 #ifndef _SYSCALL_H_
 #define _SYSCALL_H_
 
+
+#include "types.h"
+#include "sys/socket.h"
+#include "sys/select.h"
+#include "netinet/in.h"
 
 struct sched_param
 {
@@ -29,6 +33,7 @@ struct sched_param
   int T;                        /* period */
   int m;                        /* mandatory instance count in a window */
   int k;                        /* window of requests  */
+  int affinity;                 /* CPU (or Quest-V sandbox) affinity */
 };
 
 #define CLOBBERS1 "memory","cc","%ebx","%ecx","%edx","%esi","%edi"
@@ -82,6 +87,18 @@ fork (void)
   return (unsigned short) retval;
 }
 
+static inline int
+get_time (void *tp)
+{
+  int ret;
+
+  asm volatile ("int $0x3D\n"
+                :"=a" (ret)
+                :"a" (10), "b" (tp), "c" (0), "d" (0), "S" (0), "D" (0)
+                :"memory", "cc");
+
+  return ret;
+}
 
 static inline void
 switch_to (unsigned pid)
@@ -256,9 +273,176 @@ sched_setparam (int pid, const struct sched_param *p)
   return ret;
 }
 
+static inline int
+open_socket (int domain, int type, int protocol)
+{
+  int ret;
 
+  asm volatile ("int $0x3D\n"
+                :"=a" (ret)
+                :"a" (0), "b" (domain), "c" (type), "d" (protocol), "S" (0), "D" (0)
+                :"memory", "cc");
 
-#endif //_SYSCALL_H_
+  return ret;
+}
+
+static inline int
+close (int filedes)
+{
+  int ret;
+
+  asm volatile ("int $0x3D\n"
+                :"=a" (ret)
+                :"a" (1), "b" (filedes), "c" (0), "d" (0), "S" (0), "D" (0)
+                :"memory", "cc");
+
+  return ret;
+}
+
+static inline int
+socket_bind (int sockfd, uint32_t addr, uint16_t port)
+{
+  int ret;
+
+  asm volatile ("int $0x3D\n"
+                :"=a" (ret)
+                :"a" (2), "b" (sockfd), "c" (addr), "d" (port), "S" (0), "D" (0)
+                :"memory", "cc");
+
+  return ret;
+}
+
+static inline int
+socket_connect (int sockfd, uint32_t addr, uint16_t port)
+{
+  int ret;
+
+  asm volatile ("int $0x3D\n"
+                :"=a" (ret)
+                :"a" (3), "b" (sockfd), "c" (addr), "d" (port), "S" (0), "D" (0)
+                :"memory", "cc");
+
+  return ret;
+}
+
+static inline int
+socket_listen (int sockfd, int backlog)
+{
+  int ret;
+
+  asm volatile ("int $0x3D\n"
+                :"=a" (ret)
+                :"a" (4), "b" (sockfd), "c" (backlog), "d" (0), "S" (0), "D" (0)
+                :"memory", "cc");
+
+  return ret;
+}
+
+static inline int
+socket_accept (int sockfd, void *addr, void *len)
+{
+  int ret;
+
+  asm volatile ("int $0x3D\n"
+                :"=a" (ret)
+                :"a" (5), "b" (sockfd), "c" (addr), "d" (len), "S" (0), "D" (0)
+                :"memory", "cc");
+
+  return ret;
+}
+
+static inline ssize_t
+write (int fd, const void *buf, size_t nbytes)
+{
+  int ret;
+
+  asm volatile ("int $0x3D\n"
+                :"=a" (ret)
+                :"a" (6), "b" (fd), "c" (buf), "d" (nbytes), "S" (0), "D" (0)
+                :"memory", "cc");
+
+  return ret;
+}
+
+static inline ssize_t
+socket_sendto (int sockfd, const void *buf, size_t nbytes, uint32_t destaddr, uint16_t port)
+{
+  ssize_t ret;
+
+  asm volatile ("int $0x3D\n"
+                :"=a" (ret)
+                :"a" (7), "b" (sockfd), "c" (buf), "d" (nbytes), "S" (destaddr), "D" (port)
+                :"memory", "cc");
+
+  return ret;
+}
+
+static inline ssize_t
+socket_recv (int sockfd, void *buf, size_t nbytes, void *addr, void *addrlen)
+{
+  int ret;
+
+  asm volatile ("int $0x3D\n"
+                :"=a" (ret)
+                :"a" (8), "b" (sockfd), "c" (buf), "d" (nbytes), "S" (addr), "D" (addrlen)
+                :"memory", "cc");
+
+  return ret;
+}
+
+static inline int
+socket_select (int maxfdp1, fd_set * readfds, fd_set * writefds,
+               fd_set * exceptfds, struct timeval * tvptr)
+{
+  int ret;
+
+  asm volatile ("int $0x3D\n"
+                :"=a" (ret)
+                :"a" (9), "b" (maxfdp1), "c" (readfds), "d" (writefds), "S" (exceptfds), "D" (tvptr)
+                :"memory", "cc");
+
+  return ret;
+}
+
+static inline int
+socket_get_sb_id ()
+{
+  int ret;
+
+  asm volatile ("int $0x3D\n"
+                :"=a" (ret)
+                :"a" (11), "b" (0), "c" (0), "d" (0), "S" (0), "D" (0)
+                :"memory", "cc");
+
+  return ret;
+}
+
+static inline int
+socket_getsockname (int sockfd, void *addr, void *len)
+{
+  int ret;
+
+  asm volatile ("int $0x3D\n"
+                :"=a" (ret)
+                :"a" (12), "b" (sockfd), "c" (addr), "d" (len), "S" (0), "D" (0)
+                :"memory", "cc");
+
+  return ret;
+}
+
+#ifdef USE_VMX
+static inline int
+switch_screen (int dir)
+{
+  int ret;
+
+  asm volatile ("int $0x3F\n":"=a" (ret):"a" (dir):CLOBBERS1);
+  
+  return ret;
+}
+#endif
+
+#endif
 
 /* 
  * Local Variables:

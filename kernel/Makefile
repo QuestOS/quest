@@ -8,17 +8,19 @@ TAR = tar
 ATSCC = atscc 
 ATSOPT = atsopt
 CFLAGS = -m32 -march=i586 -fno-builtin -fno-stack-protector -fno-strict-aliasing -fno-delete-null-pointer-checks -nostdinc -g -Wall -Wno-attributes -O$(OPT) $(CFG) $(EXTRA_CFLAGS)
-CPPFLAGS = -D_QUEST -Wa,--32 -MMD -Iinclude -Iinclude/drivers/acpi -I. -I../libc/include 
+CPPFLAGS = $(CFG) -D_QUEST -Wa,--32 -MMD -Iinclude -Iinclude/drivers/acpi -I. -I../libc/include 
 ATSFLAGS = -IATS include -I. -Iinclude -Iinclude/drivers/acpi -I../libc/include -g -O$(OPT) -D_ATS_PRELUDE_NONE -D_ATS_DYNLOADFUN_NONE -D_ATS_STALOADFUN_NONE -DATS_TYPES_H -DATS_EXCEPTION_H -DATS_MEMORY_H -D_QUEST
 INDENT = indent
 INDENTFLAGS = -gnu -br -ce --no-tabs
 
 ##################################################
 
-MNT_POINT=/mnt/quest
+MNT_POINT=/tftp
 PROGS = quest \
 	sysprogs/shell sysprogs/spinner sysprogs/iotest sysprogs/ipctest \
-	tests/exec tests/race tests/test1 tests/test2 \
+	sysprogs/udpclient sysprogs/udpserver sysprogs/tcpserver \
+	sysprogs/tcpclient sysprogs/webserver \
+	tests/exec tests/race tests/test1 tests/test2 tests/migtest \
 	tests/test3 tests/test4 tests/test5 tests/test6 tests/test7 \
 	tests/usb_test
 
@@ -33,11 +35,11 @@ PROGS = quest \
 # drivers/usb/usb_test.o
 
 OBJS =  boot/boot.o boot/init.o kernel.o module/loader.o \
-	interrupt.o interrupt_handler.o \
+	interrupt.o interrupt_handler.o socket.o \
 	smp/boot-smp.o smp/smp.o smp/intel.o smp/acpi.o smp/apic.o smp/semaphore.o \
 	arch/i386/percpu.o arch/i386/measure.o \
-	vm/vmx.o vm/vm86.o vm/code16.o \
-	sched/task.o sched/sched.o sched/sleep.o sched/vcpu.o sched/ipc.o \
+	vm/vmx.o vm/vm86.o vm/code16.o vm/ept.o vm/shm.o vm/shdr.o vm/migration.o \
+	sched/task.o sched/sched.o sched/sleep.o sched/vcpu.o sched/ipc.o sched/msgt.o sched/proc.o \
 	mem/physical.o mem/virtual.o mem/pow2.o \
 	util/cpuid.o util/printf.o util/screen.o util/debug.o util/circular.o \
 	util/crc32.o util/bitrev.o util/logger.o util/perfmon.o \
@@ -46,7 +48,7 @@ OBJS =  boot/boot.o boot/init.o kernel.o module/loader.o \
 	drivers/pci/pci.o drivers/pci/pci_irq.o \
 	drivers/net/ethernetif.o drivers/net/pcnet.o \
 	drivers/net/e1000.o drivers/net/e1000e.o \
-	drivers/net/bnx2.o drivers/net/r8169.o \
+	drivers/net/bnx2.o \
 	drivers/net/mac80211.o drivers/net/netsetup.o \
 	drivers/serial/mcs9922.o \
 	fs/fsys.o \
@@ -75,6 +77,17 @@ PROG_OBJS = $(patsubst %,%.o,$(PROGS))
 ACPI_SRCS = $(shell ls drivers/acpica/*.c)
 ACPI_OBJS = $(patsubst %.c,%.o,$(ACPI_SRCS))
 ACPI_DEPS = $(patsubst %.c,%.d,$(ACPI_SRCS))
+
+##################################################
+
+SHARED_COMPS = shared.o
+
+SHARED_COMPS_CFILES = \
+  vm/spow2.c \
+  drivers/net/r8169.c
+
+SHARED_COMPS_OBJS = $(patsubst %.c,%.o,$(SHARED_COMPS_CFILES))
+SHARED_COMPS_DEPS = $(patsubst %.c,%.d,$(SHARED_COMPS_CFILES))
 
 ##################################################
 
@@ -125,7 +138,7 @@ LWIP_DEPS = $(patsubst %.c,%.d,$(LWIP_CFILES))
 
 all: $(PROGS)
 
-quest: $(OBJS) $(ACPI_OBJS) $(LWIP_OBJS)
+quest: $(OBJS) $(ACPI_OBJS) $(LWIP_OBJS) $(SHARED_COMPS)
 	rm -f quest
 	$(LD) -Map quest.map -T ldscripts/quest.ld -o $@ $^ 
 
@@ -140,6 +153,7 @@ quest: $(OBJS) $(ACPI_OBJS) $(LWIP_OBJS)
 install: $(PROGS)
 	cp $(PROGS) welcome.raw $(MNT_POINT)/boot
 	sync
+	quest_turn_on
 
 vmware: install quest.iso
 	qemu-img convert c.img -O vmdk c-img.vmdk
@@ -171,7 +185,7 @@ clean:
 cleanacpi:
 	-rm -f $(ACPI_OBJS) $(ACPI_DEPS)
 
-cleanall: clean cleanacpi cleanlwip
+cleanall: clean cleanacpi cleanlwip cleanshared
 
 define ACPI_template
 $(1): $(patsubst %.o,%.c,$(1))
@@ -196,6 +210,15 @@ $(LIBLWIP): $(LWIP_OBJS)
 
 cleanlwip:
 	-rm -f $(LWIP_OBJS) $(LWIP_DEPS) $(LIBLWIP)
+
+##################################################
+# Shared System Components
+
+$(SHARED_COMPS): $(SHARED_COMPS_OBJS)
+	$(LD) -r $(SHARED_COMPS_OBJS) -o $@
+
+cleanshared:
+	-rm -f $(SHARED_COMPS_OBJS) $(SHARED_COMPS) $(SHARED_COMPS_DEPS)
 
 ##################################################
 

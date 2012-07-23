@@ -119,7 +119,6 @@ void
 acpi_secondary_init(void)
 {
   ACPI_STATUS Status;
-  //ACPI_HANDLE SysBusHandle;
   ACPI_STATUS DisplayOneDevice (ACPI_HANDLE, UINT32, void *, void **);
   /* Complete the ACPICA initialization sequence */
 
@@ -188,6 +187,7 @@ acpi_secondary_init(void)
    * found. */
 
 #if 0
+  ACPI_HANDLE SysBusHandle;
   AcpiGetHandle (ACPI_ROOT_OBJECT, ACPI_NS_SYSTEM_BUS, &SysBusHandle);
   AcpiWalkNamespace (ACPI_TYPE_ANY, SysBusHandle, INT_MAX,
                      DisplayOneDevice, NULL, NULL);
@@ -538,8 +538,8 @@ DisplayOneDevice (ACPI_HANDLE ObjHandle, UINT32 Level, void *Context,
     int i;
 
     /* Check if ObjHandle refers to a non-root PCI bus */
-    if (READ (0, addr, 0, 0, dword) != 0xFFFFFFFF) {
-      u8 hdrtype = READ (0, addr, 0, 0x0E, byte);
+    if (READ (0, addr, fun, 0, dword) != 0xFFFFFFFF) {
+      u8 hdrtype = READ (0, addr, fun, 0x0E, byte);
       if ((hdrtype & 0x7F) == 1) {
         /* PCI-to-PCI bridge headerType == 1 */
         busnum = READ (0, addr, fun, 0x19, byte);

@@ -22,6 +22,10 @@
 #include "smp/apic.h"
 #include "util/circular.h"
 #include "util/printf.h"
+#ifdef USE_VMX
+#include "vm/shm.h"
+#include "vm/vmx.h"
+#endif
 
 /* Enable kernel debugging hotkeys */
 //#define DEBUG_KEYS
@@ -109,6 +113,15 @@ kbd_irq_handler (uint8 vec)
   uint8 code;
   int i;
 
+#ifdef USE_VMX
+  uint32 cpu;
+  cpu = get_pcpu_id ();
+  if (shm_initialized && shm_screen_initialized &&
+      (shm->virtual_display.cur_screen != cpu)) {
+    return 0;
+  }
+#endif
+
   code = inb (KEYBOARD_DATA_PORT);
 
   if (escape) {
@@ -121,7 +134,6 @@ kbd_irq_handler (uint8 vec)
     escape = code;
   else if (code & 0x80) {
     /* Release key */
-
     code &= (~0x80);          /* unset "release" bit */
 
     /* If a key is released, there should be a Press event in the
@@ -250,7 +262,7 @@ static const struct module_ops mod_ops = {
   .init = init_keyboard_8042
 };
 
-DEF_MODULE (input___kb8042, "Keyboard (i8042) driver", &mod_ops, {});
+//DEF_MODULE (input___kb8042, "Keyboard (i8042) driver", &mod_ops, {});
 
 /*
  * Local Variables:

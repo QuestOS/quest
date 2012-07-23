@@ -37,12 +37,15 @@ typedef enum {
   IOVCPU_CLASS_CDROM = (1<<4),
 } iovcpu_class;
 
+#ifndef _SCHED_VCPU_REPL_
+#define _SCHED_VCPU_REPL_
 typedef struct _replenishment {
   u64 t, b;
   struct _replenishment *next;
 } replenishment;
-
 #define MAX_REPL 32
+#endif
+
 typedef struct {
   replenishment array[MAX_REPL];
   replenishment *head;
@@ -70,8 +73,8 @@ typedef struct _vcpu
       struct _vcpu *next;       /* next vcpu in a queue */
       bool runnable, running;
       u16 cpu;                  /* cpu affinity for vcpu */
-      u16 tr;                   /* task register */
-      u16 runqueue;             /* per-VCPU runqueue */
+      task_id tr;               /* task register */
+      task_id runqueue;         /* per-VCPU runqueue */
       u32 quantum;              /* internal VCPU scheduling quantum */
       u64 next_schedule;        /* when to trigger internal schedule */
       u64 prev_tsc;             /* when started running */
@@ -130,8 +133,16 @@ extern void iovcpu_job_completion (void);
 extern uint lowest_priority_vcpu (void);
 extern uint select_iovcpu (iovcpu_class);
 extern void set_iovcpu (task_id, iovcpu_class);
+extern vcpu * vcpu_lookup (int);
+extern bool vcpu_in_runqueue (vcpu *, task_id);
+extern void vcpu_remove_from_runqueue (vcpu *, task_id);
+#ifdef USE_VMX
+extern bool vcpu_fix_replenishment (quest_tss*, vcpu*, replenishment[]);
+extern void vcpu_reset (void);
+#endif
 
 extern DEF_PER_CPU (vcpu*, vcpu_current);
+extern DEF_PER_CPU (vcpu*, vcpu_queue);
 
 #endif
 

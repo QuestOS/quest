@@ -27,7 +27,7 @@
 #include "util/debug.h"
 #include "util/circular.h"
 
-#define DEBUG_TFTP
+//#define DEBUG_TFTP
 
 #define TFTP_PORT 69
 #define TFTP_BLOCK_SIZE 512

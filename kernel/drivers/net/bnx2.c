@@ -4726,8 +4726,10 @@ bnx2_init (void)
     goto abort_status_virt;
   }
 
-  create_kernel_thread_args ((u32) bnx2_test_thread, (u32) &bnx2_test_stack[1023], TRUE, 0);
-  create_kernel_thread_args ((u32) bnx2_timer, (u32) &bnx2_timer_stack[1023], TRUE, 1, bp);
+  create_kernel_thread_args ((u32) bnx2_test_thread, (u32) &bnx2_test_stack[1023],
+                             "bnx2 test", TRUE, 0);
+  create_kernel_thread_args ((u32) bnx2_timer, (u32) &bnx2_timer_stack[1023],
+                             "bnx2 timer", TRUE, 1, bp);
 
   return TRUE;
 

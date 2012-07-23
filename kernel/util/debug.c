@@ -17,6 +17,10 @@
 
 #include "kernel.h"
 #include "util/printf.h"
+#ifdef USE_PL2303
+#include "drivers/usb/pl2303.h"
+#include "vm/vmx.h"
+#endif
 
 #ifndef GDBSTUB_TCP
 void putDebugChar (int c)
@@ -44,8 +48,17 @@ com1_putc (char c)
     outb ('\r', serial_port1);
   }
 
+
   while (!(inb (serial_port1 + 5) & 0x20));    /* check line status register, empty transmitter bit */
   outb (c, serial_port1);
+#ifdef USE_PL2303
+  if (pl2303_initialized && shared_driver_available) {
+    if (c == '\n') {
+      usb_pl2303_putc ('\r');
+    }
+    usb_pl2303_putc (c);
+  }
+#endif
 #endif
 }
 

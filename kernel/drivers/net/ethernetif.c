@@ -73,6 +73,7 @@
 #include "sched/sched.h"
 #include "module/header.h"
 #include "kernel.h"
+#include "arch/i386-div64.h"
 
 //#define DEBUG_NETIF
 
@@ -425,6 +426,107 @@ echo_init (void)
 
 /* ************************************************** */
 
+/* Demo UDP echo server on port UDP_SERVER_PORT */
+
+#define UDP_SERVER_PORT  1538
+
+static void
+udp_echo_recv (void * arg,
+               struct udp_pcb * upcb,
+               struct pbuf * p,
+               struct ip_addr * ipaddr,
+               u16_t port)
+{
+  err_t err;
+  struct ip_addr addr;
+  
+  logger_printf ("udp echo server got packet from : %s:%d\n",
+                 inet_ntoa (* ((struct in_addr *) ipaddr)), port);
+  logger_printf ("Buffer Chain Total: %d, Buffer Length: %d\n", p->tot_len, p->len);
+
+  memcpy (&addr, ipaddr, sizeof (struct ip_addr));
+  err = udp_sendto (upcb, p, &addr, port);
+
+  if (err != ERR_OK)
+    logger_printf ("UDP packet sent failed\n");
+  else
+    logger_printf ("UDP packet sent to: %s:%d\n",
+                   inet_ntoa (* ((struct in_addr *) &addr)), port);
+
+  return;
+}
+
+
+static void
+udp_echo_init (void)
+{
+  struct udp_pcb * udp_echo_pcb = udp_new ();
+  udp_bind (udp_echo_pcb, IP_ADDR_ANY, UDP_SERVER_PORT);
+  udp_recv (udp_echo_pcb, udp_echo_recv, NULL);
+}
+
+/* ************************************************** */
+
+/* UDP Bandwith Test Client */
+
+extern uint64 tsc_freq;         /* timestamp counter frequency */
+static u32 udp_band_stack[1024] ALIGNED (0x1000);
+#define UDP_BSIZE  (4096 * 6)
+
+static void
+udp_bandwidth_thread (void)
+{
+  sched_usleep (15000000LL);
+  struct udp_pcb * udp_band_pcb = udp_new ();
+  struct pbuf *p;
+  err_t err;
+  struct ip_addr server;
+  uint64 start, end, sec;
+  IP4_ADDR (&server, 192, 168, 2, 1);
+
+  unlock_kernel ();
+  sti ();
+  RDTSC (start);
+  logger_printf ("UDP Test Started\n");
+
+  p = pbuf_alloc (PBUF_TRANSPORT, UDP_BSIZE, PBUF_RAM);
+  logger_printf ("pbuf.tot_len=%d\n", p->tot_len);
+send:
+  cli ();
+  err = udp_sendto (udp_band_pcb, p, &server, 1548);
+  sti ();
+  if (err != ERR_OK) {
+    logger_printf ("UDP send failed: %d\n", err);
+  }
+  RDTSC (end);
+
+  sec = div64_64 (end - start, tsc_freq);
+  if (sec >= 10) {
+    logger_printf ("UDP Test Ended\n");
+    pbuf_free (p);
+    exit_kernel_thread ();
+  } else {
+    //logger_printf ("Time: %d\n", sec);
+    goto send;
+  }
+
+  return;
+}
+
+bool
+udp_bandwidth_init (void)
+{
+  task_id udpt = start_kernel_thread ((uint32) udp_bandwidth_thread, (uint32) &udp_band_stack,
+                                      "UDP Bandwidth Test");
+  lookup_TSS (udpt)->cpu = 0;
+
+  logger_printf ("UDP Bandwidth Test Thread Started on sandbox %d...\n", get_pcpu_id ());
+
+  return TRUE;
+}
+
+/* ************************************************** */
+
 /* Demo HTTP server on port 80 */
 
 #define KHTTPD_CPU 2
@@ -536,7 +638,7 @@ khttpd_init (void)
                  KHTTPD_STR_SIZ);
 
   khttpd_id =
-    start_kernel_thread ((u32) khttpd_thread, (u32) &khttpd_stack[1023]);
+    start_kernel_thread ((u32) khttpd_thread, (u32) &khttpd_stack[1023], "khttpd");
   lookup_TSS (khttpd_id)->cpu = KHTTPD_CPU;
   struct tcp_pcb* khttpd_pcb = tcp_new ();
   tcp_bind (khttpd_pcb, IP_ADDR_ANY, 80);
@@ -699,7 +801,7 @@ static uint32 net_tmr_stack[1024] ALIGNED (0x1000);
 static void
 net_tmr_thread (void)
 {
-  DLOG ("net_tmr_thread id=0x%x", str ());
+  DLOG ("net_tmr_thread id=0x%x, cpu=%d", str (), get_pcpu_id ());
   for (;;) {
     void net_tmr_process (void);
     net_tmr_process ();
@@ -707,17 +809,22 @@ net_tmr_thread (void)
   }
 }
 
+static uint ethernet_device_count = 0;
+
 bool
 net_init(void)
 {
   lwip_init ();
-  echo_init ();
-  khttpd_init ();
+  //echo_init ();
+  //khttpd_init ();
+  //udp_echo_init ();
 
   net_tmr_pid = start_kernel_thread ((uint) net_tmr_thread,
-                                     (uint) &net_tmr_stack[1023]);
+                                     (uint) &net_tmr_stack[1023],
+                                     "Network Timer Thread");
   uint select_iovcpu (u32);
   lookup_TSS (net_tmr_pid)->cpu = select_iovcpu (0);
+  ethernet_device_count = 0;
 
 #ifdef GDBSTUB_TCP
   {
@@ -730,8 +837,6 @@ net_init(void)
   return TRUE;
 }
 
-static uint ethernet_device_count = 0;
-
 bool
 net_register_device (ethernet_device *dev)
 {
@@ -743,20 +848,35 @@ net_register_device (ethernet_device *dev)
     return FALSE;
   }
 
-  dev->num = ethernet_device_count++;
+  static bool recover_flag = FALSE;
+  static struct netif * rtl_if = NULL;
+  if (!recover_flag)
+    dev->num = ethernet_device_count++;
+  else
+    dev->num = ethernet_device_count - 1;
   dev->recv_func = dispatch;
 
   DLOG ("net_register_device num=%d", dev->num);
 
   ethernetif->dev = dev;
 
-  if (netif_add (&dev->netif, IP_ADDR_ANY, IP_ADDR_ANY, IP_ADDR_ANY,
-                 (void *)ethernetif, ethernetif_init, ethernet_input) == NULL) {
+  if (recover_flag) {
+    netif_remove (rtl_if);
+  }
+
+  if ((rtl_if = netif_add (&dev->netif, IP_ADDR_ANY, IP_ADDR_ANY, IP_ADDR_ANY,
+                 (void *)ethernetif, ethernetif_init, ethernet_input)) == NULL) {
     ethernet_device_count--;
     mem_free (ethernetif);
     DLOG ("netif_add failed");
     return FALSE;
   }
+
+  /* --!!-- NOTICE
+   * This is a hack! We have to set the flag to true inorder to commence recovery.
+   * This should be done in some fault detection code.
+   */
+  //recover_flag = TRUE;
 
   return TRUE;
 }

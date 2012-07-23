@@ -26,7 +26,7 @@
  * information that is typically supplied by ACPI or Intel
  * Multiprocessor Specification tables. */
 
-#define DEBUG_PCI_IRQ
+//#define DEBUG_PCI_IRQ
 
 #ifdef DEBUG_PCI_IRQ
 #define DLOG(fmt,...) DLOG_PREFIX("PCI_IRQ",fmt,##__VA_ARGS__)
