@@ -31,7 +31,7 @@
  */
 
 /*                    The Quest Operating System
- *  Portions Copyright (C) 2005-2010  Richard West, Boston University
+ *  Portions Copyright (C) 2005-2012  Richard West, Boston University
  *
  *  This program is free software: you can redistribute it and/or modify
  *  it under the terms of the GNU General Public License as published by
