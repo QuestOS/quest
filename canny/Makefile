@@ -15,12 +15,16 @@ CFLAGS = -m32 -march=i586 -fno-builtin -fno-stack-protector -fno-strict-aliasing
 
 OBJS = canny.o test.o
 
+PROGS = canny
+
 #mame:  $(OBJS) /../libc/libc.a
 #	$(LD) -o mame $(OBJS) $(LIBS.$(ARCH))
 #obj/%.o: src/%.c
 #	 $(CC) $(DEFS.$(ARCH)) $(MS) $(CFLAGS) -O3 -o $@ -c $<
 
-all:  $(OBJS) ../libc/libc.a 
+all:  $(PROGS)
+
+canny: $(OBJS)
 	$(LD) -o canny $(OBJS) $(LIBS)
 
 
@@ -29,21 +33,3 @@ all:  $(OBJS) ../libc/libc.a
 
 clean:
 	rm -f *.o *.d *~ canny
-
-../libc/libc.a:
-	cd ../libc; $(MAKE)
-
-../softfloat/libsoftfloat.a:
-	cd ../softfloat; $(MAKE)
-
-#install:
-#	cp netperf /scratch/tftp/boot/
-#	sync
-#	quest_turn_on
-
-
-on:
-	quest_turn_on
-
-off:
-	quest_turn_off
