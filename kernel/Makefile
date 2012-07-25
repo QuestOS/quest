@@ -5,24 +5,15 @@ TFTPDIR=tftp
 LD = ld -melf_i386
 CC = gcc
 TAR = tar
-ATSCC = atscc 
-ATSOPT = atsopt
 CFLAGS = -m32 -march=i586 -fno-builtin -fno-stack-protector -fno-strict-aliasing -fno-delete-null-pointer-checks -nostdinc -g -Wall -Wno-attributes -O$(OPT) $(CFG) $(EXTRA_CFLAGS)
 CPPFLAGS = $(CFG) -D_QUEST -Wa,--32 -MMD -Iinclude -Iinclude/drivers/acpi -I. -I../libc/include 
-ATSFLAGS = -IATS include -I. -Iinclude -Iinclude/drivers/acpi -I../libc/include -g -O$(OPT) -D_ATS_PRELUDE_NONE -D_ATS_DYNLOADFUN_NONE -D_ATS_STALOADFUN_NONE -DATS_TYPES_H -DATS_EXCEPTION_H -DATS_MEMORY_H -D_QUEST
 INDENT = indent
 INDENTFLAGS = -gnu -br -ce --no-tabs
 
 ##################################################
 
 MNT_POINT=/tftp
-PROGS = quest \
-	sysprogs/shell sysprogs/spinner sysprogs/iotest sysprogs/ipctest \
-	sysprogs/udpclient sysprogs/udpserver sysprogs/tcpserver \
-	sysprogs/tcpclient sysprogs/webserver \
-	tests/exec tests/race tests/test1 tests/test2 tests/migtest \
-	tests/test3 tests/test4 tests/test5 tests/test6 tests/test7 \
-	tests/usb_test
+PROGS = quest
 
 ##################################################
 
@@ -70,7 +61,7 @@ DFILES = $(patsubst %.o,%.d,$(OBJS))
 DFILES += $(patsubst %,%.d,$(PROGS))
 MAPFILES = $(patsubst %.o,%.map,$(OBJS))
 MAPFILES += $(patsubst %,%.map,$(PROGS))
-PROG_OBJS = $(patsubst %,%.o,$(PROGS))
+
 
 ##################################################
 
@@ -134,7 +125,7 @@ LWIP_DEPS = $(patsubst %.c,%.d,$(LWIP_CFILES))
 
 ##################################################
 
-.PHONY: all tags clean cleanacpi cleanlwip vmware cleanall indent netboot
+.PHONY: all tags clean cleanacpi cleanlwip vmware indent netboot
 
 all: $(PROGS)
 
@@ -146,9 +137,6 @@ quest: $(OBJS) $(ACPI_OBJS) $(LWIP_OBJS) $(SHARED_COMPS)
 	$(LD) -o $@ $< -T ldscripts/module.ld -Map $@.map
 
 %: %.c
-
-%.o: %.dats
-	$(ATSCC) $(ATSFLAGS) -fno-builtin -m32 -o $@ -c $^
 
 install: $(PROGS)
 	cp $(PROGS) welcome.raw $(MNT_POINT)/boot
@@ -178,14 +166,12 @@ tags:
 	find . -name '*.[ch]' | xargs etags -o TAGS 
 	find . -name '*.[ch]' | xargs ctags -o tags
 
-clean:
+clean: cleanacpi cleanlwip cleanshared
 	-rm -f $(OBJS) $(DFILES) $(MAPFILES) $(PROGS) $(PROG_OBJS) quest.iso quest.map
 	-rm -rf iso tftp
 
 cleanacpi:
 	-rm -f $(ACPI_OBJS) $(ACPI_DEPS)
-
-cleanall: clean cleanacpi cleanlwip cleanshared
 
 define ACPI_template
 $(1): $(patsubst %.o,%.c,$(1))
@@ -225,4 +211,4 @@ cleanshared:
 config.mk: default-config.mk
 	cp -f default-config.mk config.mk
 
-#-include $(shell find . -name '*.d')
+-include $(DFILES)

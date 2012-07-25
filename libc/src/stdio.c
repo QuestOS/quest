@@ -425,6 +425,15 @@ extern char *strdup(const char *s) {
   return dup;
 }
 
+strncmp (const char *a, const char *b, int n)
+{
+  int i = 0;
+  while (*a && *b && n-- > 0) {
+    i = *(a++) - *(b++);
+    if (i != 0) return i;
+  }
+  return i;
+}
 
 int strcmp(const char *s1, const char *s2) {
 

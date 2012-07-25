@@ -44,15 +44,7 @@ netserver:  netserver.o $(OBJS) ../../libc/libc.a ../../softfloat/libsoftfloat.a
 
 clean:
 	rm -f *.o *.d *~ netperf netserver
-	cd mk_netperf_on_quest/; rm -f *.o *~
-	cd ../../libc; $(MAKE) clean
-	cd ../../softfloat; $(MAKE) clean
-
-../../libc/libc.a:
-	cd ../../libc; $(MAKE)
-
-../../softfloat/libsoftfloat.a:
-	cd ../../softfloat; $(MAKE)
+	cd mk_netperf_on_quest/; rm -f *.o *~ *.d *.map
 
 #install:
 #	cp netperf /scratch/tftp/boot/
