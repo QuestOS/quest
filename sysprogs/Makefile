@@ -2,6 +2,9 @@
 CC	= gcc
 LD	= ld -melf_i386 
 
+ifndef MNT_POINT
+MNT_POINT=/tftp
+endif
 
 LIBS   = -L../libc/ -L../libc/include -L../softfloat/ -lc -lsoftfloat
 INCS   = -I../libc/include -I../quest/include
@@ -24,3 +27,7 @@ all: $(PROGS)
 
 clean:
 	rm -f *.o *.d *.map *~ $(PROGS)
+
+install: $(PROGS)
+	cp $(PROGS) $(MNT_POINT)/boot
+	sync

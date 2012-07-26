@@ -17,6 +17,8 @@
 
 #include "syscall.h"
 
+#define AUTO_START_PROG
+
 void
 putx (unsigned long l)
 {
@@ -37,6 +39,18 @@ scanline (char *line)
   char c;
   int count = 0;
 
+#ifdef AUTO_START_PROG
+  char* p;
+  
+  for(p = "/boot/usb_test"; *p; ++p) {
+    *line++ = *p;
+  }
+
+  *line = '\0';
+
+  return 1;
+#endif
+  
   while ((c = getchar ()) != '\n' && count < 80) {
 #ifdef USE_VMX
     if (c == '.') {
@@ -63,24 +77,29 @@ scanline (char *line)
 void
 _start ()
 {
-
+  
   char line[80];
   char *command_line_args = line;
   char *p;
   unsigned child_pid;
-
+  
   while (1) {
-
+    
     /* The shell prompt */
-
+    
     putchar ('>');
 
     /* Wait for command line input */
     /* --??-- Assume user has entered command via keyboard */
-
+    
     if (scanline (line)) {      /* Got input */
       /* --??-- Parse input and verify it is meaningful */
-
+      
+      
+#ifdef AUTO_START_PROG
+      usleep(3000000);
+#endif
+      
       if (*line == '\0')
         continue;
 

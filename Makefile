@@ -2,6 +2,12 @@ DIRS = kernel libc canny netperf/src softfloat sysprogs tests
 # the sets of directories to do various things in
 BUILDDIRS = $(DIRS:%=build-%)
 CLEANDIRS = $(DIRS:%=clean-%)
+INSTALLDIRS = $(DIRS:%=install-%)
+
+# Uncomment the line below for parallel builds
+#MAKEFLAGS += -j
+
+export MNT_POINT = /tftp
 
 all: $(BUILDDIRS)
 $(DIRS): $(BUILDDIRS)
@@ -16,9 +22,9 @@ build-netperf/src: build-libc build-softfloat
 build-libc: build-softfloat
 build-kernel: build-libc
 
-test: $(TESTDIRS) all
-$(TESTDIRS): 
-	$(MAKE) -C $(@:test-%=%) test
+install: $(INSTALLDIRS)
+$(INSTALLDIRS) :
+	$(MAKE) -C $(@:install-%=%) install
 
 clean: $(CLEANDIRS)
 $(CLEANDIRS): 

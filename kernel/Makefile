@@ -12,7 +12,10 @@ INDENTFLAGS = -gnu -br -ce --no-tabs
 
 ##################################################
 
+ifndef MNT_POINT
 MNT_POINT=/tftp
+endif
+
 PROGS = quest
 
 ##################################################
@@ -141,7 +144,6 @@ quest: $(OBJS) $(ACPI_OBJS) $(LWIP_OBJS) $(SHARED_COMPS)
 install: $(PROGS)
 	cp $(PROGS) welcome.raw $(MNT_POINT)/boot
 	sync
-	quest_turn_on
 
 vmware: install quest.iso
 	qemu-img convert c.img -O vmdk c-img.vmdk

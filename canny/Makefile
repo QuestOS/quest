@@ -5,6 +5,10 @@ LD	= ld -melf_i386 -T../kernel/ldscripts/module.ld
 
 # *** architecture.
 
+ifndef MNT_POINT
+MNT_POINT=/tftp
+endif
+
 # quest
 
 LIBS   = -L../libc/ -L../libc/include -L../softfloat/ -lc -lsoftfloat
@@ -33,3 +37,7 @@ canny: $(OBJS)
 
 clean:
 	rm -f *.o *.d *~ canny
+
+install: $(PROGS)
+	cp $(PROGS) $(MNT_POINT)/boot
+	sync

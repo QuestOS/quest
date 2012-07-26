@@ -5,7 +5,13 @@ LD	= ld -melf_i386 -T../../kernel/ldscripts/module.ld
 
 # *** architecture.
 
+ifndef MNT_POINT
+MNT_POINT=/tftp
+endif
+
 # quest
+
+PROGS = netperf netserver
 
 LIBS   = -L../../libc/ -L../../libc/include -L../../softfloat/ -lc -lsoftfloat
 INCS   = -I../../libc/include -I../../quest/include -I./mk_netperf_on_quest
@@ -31,7 +37,7 @@ OBJS = netlib.o netsh.o nettest_bsd.o nettest_dlpi.o nettest_unix.o nettest_xti.
 #obj/%.o: src/%.c
 #	 $(CC) $(DEFS.$(ARCH)) $(MS) $(CFLAGS) -O3 -o $@ -c $<
 
-all: netperf netserver
+all: $(PROGS)
 
 netperf:  netperf.o $(OBJS) ../../libc/libc.a ../../softfloat/libsoftfloat.a
 	$(LD) -o netperf netperf.o $(OBJS) $(LIBS)
@@ -46,14 +52,7 @@ clean:
 	rm -f *.o *.d *~ netperf netserver
 	cd mk_netperf_on_quest/; rm -f *.o *~ *.d *.map
 
-#install:
-#	cp netperf /scratch/tftp/boot/
-#	sync
-#	quest_turn_on
 
-
-on:
-	quest_turn_on
-
-off:
-	quest_turn_off
+install: $(PROGS)
+	cp $(PROGS) $(MNT_POINT)/boot
+	sync

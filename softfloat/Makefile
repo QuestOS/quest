@@ -10,3 +10,6 @@ $(AR_FILE) : $(OBJS)
 
 clean :
 	rm -f *~ $(OBJS) src/*~ include/*~ $(AR_FILE)
+
+install:
+	@echo "Nothing to install for softfloat"
