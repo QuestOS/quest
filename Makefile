@@ -34,4 +34,4 @@ $(CLEANDIRS):
 .PHONY: subdirs $(DIRS)
 .PHONY: subdirs $(BUILDDIRS)
 .PHONY: subdirs $(CLEANDIRS)
-.PHONY: all clean
+.PHONY: all clean install

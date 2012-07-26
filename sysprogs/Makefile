@@ -16,6 +16,7 @@ CFLAGS = -m32 -march=i586 -fno-builtin -fno-stack-protector -fno-strict-aliasing
 PROGS = shell iotest ipctest spinner tcpclient tcpserver  \
 	udpclient udpserver webserver
 
+.PHONY: all clean install
 
 
 all: $(PROGS)

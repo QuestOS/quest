@@ -11,6 +11,8 @@ endif
 
 # quest
 
+.PHONY: all clean install
+
 LIBS   = -L../libc/ -L../libc/include -L../softfloat/ -lc -lsoftfloat
 INCS   = -I../libc/include -I../quest/include -I.
 CFLAGS = -m32 -march=i586 -fno-builtin -fno-stack-protector -fno-strict-aliasing \
