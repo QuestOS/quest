@@ -42,7 +42,8 @@ static uint num_drivers = 0;
 static USB_DEVICE_INFO* devices[USB_CORE_MAX_DEVICES];
 static uint num_devices = 0;
 
-int usb_syscall_handler(uint32_t device_id, uint32_t operation, char* buf, uint32_t data_len)
+int usb_syscall_handler(uint32_t device_id, uint32_t operation,
+                        char* buf, uint32_t data_len)
 {
   int result;
   USB_DEVICE_INFO* device = usb_get_device(device_id);
@@ -175,9 +176,6 @@ static void usb_core_blocking_completion(struct urb* urb)
   *((bool*)urb->context) = TRUE;
 }
 
-uint8_t iso_urb_temp[sizeof(struct urb) +
-                     12000 * sizeof(struct usb_iso_packet_descriptor)];
-
 int usb_isochronous_msg(struct usb_device *dev, unsigned int pipe,
                         void* data, int packet_size, int num_packets,
                         unsigned int* actual_lens, int* statuses,
@@ -198,9 +196,8 @@ int usb_isochronous_msg(struct usb_device *dev, unsigned int pipe,
 
   ep = usb_pipe_endpoint(dev, pipe);
 
-  //urb = usb_alloc_urb(num_packets, 0);
+  urb = usb_alloc_urb(num_packets, 0);
 
-  urb = iso_urb_temp;
   
   memset(actual_lens, 0, sizeof(*actual_lens) * num_packets);
   memset(statuses,    0, sizeof(*statuses) * num_packets);
@@ -489,6 +486,7 @@ usb_get_configuration(USB_DEVICE_INFO* dev)
     {
     case USB_TYPE_HC_UHCI :
       panic("UHCI broken: usb_get_configuration");
+      /*
       if ((dev->devd).bMaxPacketSize0 == 0) {
         DLOG("USB_DEVICE_INFO is probably not initialized!");
         return -1;
@@ -496,6 +494,7 @@ usb_get_configuration(USB_DEVICE_INFO* dev)
         return uhci_get_configuration(dev->address,
                                       (dev->devd).bMaxPacketSize0);
       }
+      */
 
     case USB_TYPE_HC_EHCI :
       DLOG("EHCI Host Controller is not supported now! usb_get_configuration");
@@ -528,6 +527,7 @@ usb_get_interface(USB_DEVICE_INFO * dev, uint16_t interface)
     {
     case USB_TYPE_HC_UHCI :
       panic("UHCI broken: usb_get_interface");
+      /*
       if ((dev->devd).bMaxPacketSize0 == 0) {
         DLOG("USB_DEVICE_INFO is probably not initialized!");
         return -1;
@@ -535,6 +535,7 @@ usb_get_interface(USB_DEVICE_INFO * dev, uint16_t interface)
         return uhci_get_interface(dev->address, interface,
                                   (dev->devd).bMaxPacketSize0);
       }
+      */
 
     case USB_TYPE_HC_EHCI :
       DLOG("EHCI Host Controller is not supported now! usb_get_interface");

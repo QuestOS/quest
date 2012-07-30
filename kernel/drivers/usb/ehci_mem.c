@@ -77,6 +77,7 @@ inline bool initialise_itd(ehci_hcd_t* ehci_hcd, itd_t* itd)
 {
   memset(itd, 0, sizeof(*itd));
   INIT_LIST_HEAD(&itd->chain_list);
+  INIT_LIST_HEAD(&itd->chain_list);
   return TRUE;
 }
 

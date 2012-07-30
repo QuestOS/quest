@@ -34,6 +34,8 @@
 
 
 
+#define EHCI_BYTES_PER_MICRO_FRAME 7500
+
 /*
  * -- EM -- So here is the deal with EHCI irq handling.  For most
  * interrupts the chip is suppose to set the interrupt's bit in the
@@ -92,6 +94,11 @@
 #define EHCI_TUNE_MULT_HS 1
 
 #define EHCI_TUNE_MULT_TT 1
+
+
+
+
+
 
 typedef uint32_t ehci_port_t;
 
@@ -186,18 +193,22 @@ typedef struct
   uint32_t frame_index;
 
   /*
-   * -- EM -- Right now being lazy and making an extremely safe
-   * (adding 40 (5 frames)) estimate of the safest frame index.  Fix
-   * this later to appropriately check how much the EHCI chip caches
-   * (or perhaps not since we will have a real-time system this should
-   * all be periodic this macro might never be used in the RT system)
+   * -- EM -- Right now being lazy and making an extremely safe (5
+   * frames) estimate of the safest frame index offset.  Fix this
+   * later to appropriately check how much the EHCI chip caches (or
+   * perhaps not since we will have a real-time system this should all
+   * be periodic this macro might never be used in the RT system)
    */
   /*
    * Should only call this macro right before adding itds to periodic
    * list, the value returned should be checked to see if it goes
    * beyond the frame list size
    */
-#define EHCI_GET_SAFE_FRAME_INDEX(hcd) (((hcd)->regs->frame_index  + 40) >> 3)
+
+#define EHCI_CURRENT_FRAME_INDEX(hcd) ( (((hcd)->regs->frame_index) >> 3) & ((hcd)->frame_list_size - 1) )
+#define EHCI_SAFE_FRAME_OFFSET(hcd) (5)
+
+#define EHCI_MAX_FRAME_LIST_LOOKAHEAD 40
   
   uint32_t segment;
   uint32_t frame_list;
@@ -509,6 +520,8 @@ typedef struct _qh_t{
   
 } PACKED ALIGNED(32) qh_t;
 
+CASSERT( (sizeof(qh_t) % 32) == 0, ehci_qh_size);
+
 typedef struct {
   union {
     uint32_t raw;
@@ -525,10 +538,20 @@ typedef struct {
   };
 } PACKED itd_transaction_t;
 
+/*
+ * This should always be a macro, inserting itds is time sensitive
+ */
+#define insert_itd_into_frame_list(list, index, itd)            \
+  do {                                                          \
+    itd->previous = &(list[index]);                             \
+    list[index].raw = ITD_NEXT(ehci_hcd, itd);                  \
+  } while(0)
+
+
 #define ITD_NEXT(hcd, itd_virt)                                 \
   ( (EHCI_ITD_VIRT_TO_PHYS(hcd, itd_virt) ) | (TYPE_ITD << 1) )
 
-CASSERT( (sizeof(qh_t) % 32) == 0, ehci_qh_size);
+
 
 typedef struct _itd_t {
   frm_lst_lnk_ptr_t next_link_pointer;
@@ -555,6 +578,12 @@ typedef struct _itd_t {
 
   list_head_t chain_list;
   uint32_t total_bytes_to_transfer;
+  uint32_t frame_index;
+  list_head_t uninserted_list;
+  /*
+   * previous is used when the itd is removed
+   */
+  frm_lst_lnk_ptr_t* previous;
 } PACKED ALIGNED(32) itd_t;
 
 CASSERT( (sizeof(itd_t) % 32) == 0, ehci_itd_size);
@@ -596,8 +625,14 @@ typedef struct
   ehci_regs_t*  regs;
 
   frm_lst_lnk_ptr_t* frame_list;
+  frm_lst_lnk_ptr_t* last_frame_list_entries;
   uint32_t           frame_list_size;
+  
+  uint32_t*          micro_frame_remaining_bytes;
 
+  spinlock uninserted_itd_lock;
+  list_head_t uninserted_itd_urb_list;
+  
 #define EHCI_DECLARE_POOL(type)                 \
   type##_t*   type##_pool;                      \
   phys_addr_t type##_pool_phys_addr;            \
@@ -637,7 +672,24 @@ typedef struct
 } ehci_hcd_t;
 
 
+typedef struct
+{
+  int interval_offset;
+  list_head_t uninserted_itds_list;
+  list_head_t uninserted_itd_urb_list;
+} ehci_iso_urb_priv_t;
 
+#define iso_urb_priv_to_urb(iso_urb_priv) container_of((void*)(iso_urb_priv), struct urb, hcpriv);
+
+static inline void
+initialise_iso_urb_priv(ehci_iso_urb_priv_t* iso_urb_priv)
+{
+  iso_urb_priv->interval_offset = 0;
+  INIT_LIST_HEAD(&iso_urb_priv->uninserted_itds_list);
+  INIT_LIST_HEAD(&iso_urb_priv->uninserted_itd_urb_list);
+}
+
+#define get_iso_urb_priv(urb) ((ehci_iso_urb_priv_t*)urb->hcpriv)
 
 #define EHCI_GET_DEVICE_QH(ehci_hcd, addr, is_input, endpoint)          \
   ((ehci_hcd)->ehci_devinfo[(addr)]                                     \
@@ -646,9 +698,6 @@ typedef struct
 #define EHCI_SET_DEVICE_QH(ehci_hcd, addr, is_input, endpoint, qh)      \
   ((ehci_hcd)->ehci_devinfo[(addr)]                                     \
    .queue_heads[(is_input) && ((endpoint) != 0)][(endpoint)] = qh)
-
-
-
 
 #define calc_bitmap_size(hcd, pool_size)                        \
   ((hcd)->pool_size + (EHCI_ELEMENTS_PER_BITMAP_ENTRY - 1))     \

@@ -86,6 +86,9 @@
 #define USB_USER_READ  0
 #define USB_USER_WRITE 1
 
+#define USB_JIFFIES_TO_USEC (4000)
+
+// timeout is specified in jiffies 1 jiffy = 4ms
 #define USB_DEFAULT_CONTROL_MSG_TIMEOUT     1250
 #define USB_DEFAULT_BULK_MSG_TIMEOUT        1250
 #define USB_DEFAULT_INTERRUPT_MSG_TIMEOUT   1250

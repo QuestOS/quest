@@ -52,7 +52,7 @@ struct urb {
   
   /* private: usb core and host controller only fields in the urb */
   //struct kref kref;               /* reference count of the URB */
-  //void *hcpriv;                   /* private data for host controller */
+  void *hcpriv;                   /* private data for host controller */
   //atomic_t use_count;             /* concurrent submissions counter */
   //atomic_t reject;                /* submissions will fail */
   //int unlinked;                   /* unlink error code */
@@ -127,12 +127,11 @@ struct urb {
   int timeout;
 
   /*
-   * This is only for isochronous endpoints (might extend it to
-   * interrupt endpoints), tells the usb core to keep the requests in
-   * the system, continually polling for more data,
+   * Used to mark urb as real-time, which means it will be handled
+   * differently than regular USB URBs (which are handled similar to
+   * the way Linux handles USB URBS)
    */
-  bool repeat;
-  
+  bool real_time;
 
   /*
    * iso_frame_desc has to be last because we use it has a variable
@@ -141,8 +140,6 @@ struct urb {
   
   struct usb_iso_packet_descriptor iso_frame_desc[0];
   /* (in) ISO ONLY */
-
- 
 };
 
 
