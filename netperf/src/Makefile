@@ -5,8 +5,8 @@ LD	= ld -melf_i386 -T../../kernel/ldscripts/module.ld
 
 # *** architecture.
 
-ifndef MNT_POINT
-MNT_POINT=/tftp
+ifndef INSTALL_DIR
+INSTALL_DIR=/tftp
 endif
 
 # quest
@@ -45,5 +45,5 @@ clean:
 
 
 install: $(PROGS)
-	cp $(PROGS) $(MNT_POINT)/boot
+	cp $(PROGS) $(INSTALL_DIR)/boot
 	sync

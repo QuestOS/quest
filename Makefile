@@ -1,3 +1,9 @@
+GRUB2 = grub2
+PWD := $(shell pwd)
+MNT_POINT = /tftp
+ISO_DIR = $(PWD)/iso
+TAR = tar
+
 DIRS = kernel libc canny netperf/src softfloat sysprogs tests
 # the sets of directories to do various things in
 BUILDDIRS = $(DIRS:%=build-%)
@@ -7,7 +13,12 @@ INSTALLDIRS = $(DIRS:%=install-%)
 # Uncomment the line below for parallel builds
 #MAKEFLAGS += -j
 
-export MNT_POINT = /tftp
+MAKEFLAGS += -k
+
+
+
+install: export INSTALL_DIR = $(MNT_POINT)
+quest.iso: export INSTALL_DIR = $(ISO_DIR)
 
 all: $(BUILDDIRS)
 $(DIRS): $(BUILDDIRS)
@@ -20,15 +31,31 @@ build-sysprogs: build-libc build-softfloat
 build-tests: build-libc build-softfloat
 build-netperf/src: build-libc build-softfloat
 build-libc: build-softfloat
-build-kernel: build-libc
+
+
 
 install: $(INSTALLDIRS)
-$(INSTALLDIRS) :
+$(INSTALLDIRS) : all
 	$(MAKE) -C $(@:install-%=%) install
 
 clean: $(CLEANDIRS)
+	rm -rf quest.iso iso
+
 $(CLEANDIRS): 
 	$(MAKE) -C $(@:clean-%=%) clean
+
+$(ISO_DIR)/boot/grub/eltorito.img:  iso-grub.cfg 
+	mkdir -p iso/boot/grub 
+	cp iso-grub.cfg iso/boot/grub/grub.cfg
+	cp $(GRUB2)/eltorito.img iso/boot/grub/
+	$(TAR) -C iso/boot/grub -jxf $(GRUB2)/mods.tar.bz2
+
+quest.iso: $(ISO_DIR)/boot/grub/eltorito.img all
+	$(MAKE) $(INSTALLDIRS);
+	mkisofs -quiet $(MSINFO) \
+		-R -b boot/grub/eltorito.img \
+		-no-emul-boot -boot-load-size 4 \
+		-boot-info-table -o $@ iso
 
 
 .PHONY: subdirs $(DIRS)

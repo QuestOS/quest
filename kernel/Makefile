@@ -1,6 +1,5 @@
 include config.mk
 GRUBLIB = grub/x86_64-pc
-GRUB2 = grub2
 TFTPDIR=tftp
 LD = ld -melf_i386
 CC = gcc
@@ -12,8 +11,8 @@ INDENTFLAGS = -gnu -br -ce --no-tabs
 
 ##################################################
 
-ifndef MNT_POINT
-MNT_POINT=/tftp
+ifndef INSTALL_DIR
+INSTALL_DIR=/tftp
 endif
 
 PROGS = quest
@@ -142,7 +141,7 @@ quest: $(OBJS) $(ACPI_OBJS) $(LWIP_OBJS) $(SHARED_COMPS)
 %: %.c
 
 install: $(PROGS)
-	cp $(PROGS) welcome.raw $(MNT_POINT)/boot
+	cp $(PROGS) welcome.raw $(INSTALL_DIR)/boot
 	sync
 
 vmware: install quest.iso
@@ -150,16 +149,7 @@ vmware: install quest.iso
 	cp c-img.vmdk /mnt/hgfs/shared/quest/
 	cp quest.iso /mnt/hgfs/shared/quest/
 
-quest.iso: quest $(PROGS) iso-grub.cfg
-	mkdir -p iso/boot/grub 
-	cp iso-grub.cfg iso/boot/grub/grub.cfg
-	cp $(GRUB2)/eltorito.img iso/boot/grub/
-	$(TAR) -C iso/boot/grub -jxf $(GRUB2)/mods.tar.bz2
-	cp $(PROGS) welcome.raw iso/boot/ 
-	mkisofs -quiet $(MSINFO) \
-		-R -b boot/grub/eltorito.img \
-		-no-emul-boot -boot-load-size 4 \
-		-boot-info-table -o $@ iso
+
 
 indent:
 	(for f in $(CFILES); do [ -f "$$f" ] && $(INDENT) $(INDENTFLAGS) "$$f"; done)
@@ -169,8 +159,8 @@ tags:
 	find . -name '*.[ch]' | xargs ctags -o tags
 
 clean: cleanacpi cleanlwip cleanshared
-	-rm -f $(OBJS) $(DFILES) $(MAPFILES) $(PROGS) $(PROG_OBJS) quest.iso quest.map
-	-rm -rf iso tftp
+	-rm -f $(OBJS) $(DFILES) $(MAPFILES) $(PROGS) $(PROG_OBJS) quest.map
+	-rm -rf tftp
 
 cleanacpi:
 	-rm -f $(ACPI_OBJS) $(ACPI_DEPS)
