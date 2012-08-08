@@ -33,14 +33,14 @@ struct usb_iso_packet_descriptor {
   unsigned int length;            /* expected length */
   unsigned int actual_length;
   int status;
+  volatile bool data_available;
 };
-
-struct urb;
 
 typedef struct usb_iso_packet_descriptor usb_iso_packet_descriptor_t;
 
-typedef void (*usb_complete_t)(struct urb *);
+struct urb;
 
+typedef void (*usb_complete_t)(struct urb *);
 
 struct _usb_hcd_t;
 
@@ -128,13 +128,22 @@ struct urb {
 
   /*
    * Used to mark urb as real-time, which means it will be handled
-   * differently than regular USB URBs (which are handled similar to
+   * differently than non-real-time USB URBs (which are handled similar to
    * the way Linux handles USB URBS)
    */
-  bool real_time;
+  bool realtime;
 
   /*
-   * iso_frame_desc has to be last because we use it has a variable
+   * Used for isochronous real-time urbs.  For USB 1.1 devices it is
+   * measured in frames for USB 2.0 devices it is measured in
+   * micro-frames
+   */
+  uint32_t realtime_complete_interval;
+  uint32_t interrupt_interval;
+  
+
+  /*
+   * iso_frame_desc has to be last because we use it is a variable
    * size array
    */
   
@@ -163,10 +172,8 @@ struct urb *usb_alloc_urb(int iso_packets, gfp_t mem_flags);
 
 static inline void usb_free_urb(struct urb *urb)
 {
-  if(urb)
-    pow2_free((uint8_t*)urb);
+  if(urb) pow2_free((uint8_t*)urb);
 }
-
 
 static inline void usb_init_urb(struct urb *urb) {
   memset(urb, 0, sizeof(*urb));

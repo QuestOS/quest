@@ -26,6 +26,10 @@
 #include <kernel.h>
 #include <sched/sched.h>
 
+#define EHCI_IS_INDEX_IN_CIRC_BUF_REGION(test_index, start_index, end_index) \
+  (start_index < end_index ?                                            \
+   start_index <= test_index && test_index <= end_index                 \
+   : test_index >= start_index || test_index <= end_index)
 
 /*
  * Following two macros were taken from Linux
@@ -53,13 +57,14 @@ static int ehci_is_rt_schedulable(ehci_hcd_t* ehci_hcd, struct urb* urb);
 #define DEFAULT_INT_THRESHOLD 8
 #define QH_POOL_SIZE  256
 #define QTD_POOL_SIZE 256
-#define ITD_POOL_SIZE 1024
+#define ITD_POOL_SIZE 2048
 #define EHCI_COMPLETION_ELEMENT_POOL_SIZE 128
 
 CASSERT((QH_POOL_SIZE  % 32) == 0, ehci_qh_pool_size )
 CASSERT((QTD_POOL_SIZE % 32) == 0, ehci_qtd_pool_size)
 CASSERT((ITD_POOL_SIZE % 32) == 0, ehci_itd_pool_size)
-CASSERT((EHCI_COMPLETION_ELEMENT_POOL_SIZE % 32) == 0, ehci_completion_element_pool_size)
+CASSERT((EHCI_COMPLETION_ELEMENT_POOL_SIZE % 32) == 0,
+        ehci_completion_element_pool_size)
 
 static ehci_hcd_t ehci_hcd;
 static frm_lst_lnk_ptr_t frame_list[FRM_LIST_SIZE] ALIGNED(0x1000);
@@ -87,6 +92,60 @@ used_ehci_completion_element_bitmap[(EHCI_COMPLETION_ELEMENT_POOL_SIZE +
                                      EHCI_ELEMENTS_PER_BITMAP_ENTRY - 1)
                                     / EHCI_ELEMENTS_PER_BITMAP_ENTRY];
 
+
+
+static int ehci_rt_iso_update_packets(struct urb* urb, int max_packets)
+{
+  int i;
+  ehci_iso_urb_priv_t* iso_urb_priv = get_iso_urb_priv(urb);
+  itd_t** urb_itds = iso_urb_priv->itds;
+  uint32_t urb_num_packets = urb->number_of_packets;
+  uint32_t microframe_offset = iso_urb_priv->interval_offset & 0x7;
+  uint32_t interval = urb->interval;
+  uint32_t packets_per_itd = interval < 8 ? 8 / interval : 1;
+  uint32_t packets_per_itd_mask = packets_per_itd - 1;
+  uint32_t next_packet_to_make_available =
+    iso_urb_priv->next_packet_to_make_available;
+    
+  for(i = 0; i < max_packets; ++i) {
+    usb_iso_packet_descriptor_t* packet =
+      &urb->iso_frame_desc[next_packet_to_make_available];
+    itd_t* itd;
+    int transaction_num;
+    if(packet->data_available) {
+      DLOG("Lost data!");
+      //while(1);
+      break;
+    }
+    
+    itd = urb_itds[next_packet_to_make_available / packets_per_itd];
+    transaction_num = microframe_offset +
+      ((next_packet_to_make_available & packets_per_itd_mask)
+       * interval);
+    EHCI_ASSERT(transaction_num < 8);
+        
+    if(itd->transaction[transaction_num].raw & ITD_ACTIVE) {
+      break;
+    }
+
+    packet->actual_length =
+      (itd->transaction[transaction_num].raw >> 16) & 0xFFF;
+    packet->status = itd->transaction[transaction_num].status;
+    
+    packet->data_available = TRUE;
+        
+    
+    packet->data_available = TRUE;
+        
+    if((++next_packet_to_make_available) == urb_num_packets) {
+      next_packet_to_make_available = 0;
+    }
+    
+  }
+
+  iso_urb_priv->next_packet_to_make_available = next_packet_to_make_available;
+  return i;
+}
 
 static void ehci_check_for_urb_completions(ehci_hcd_t* ehci_hcd, bool in_irq_handler)
 {
@@ -120,105 +179,39 @@ static void ehci_check_for_urb_completions(ehci_hcd_t* ehci_hcd, bool in_irq_han
   else {
     spinlock_lock(&ehci_hcd->completion_lock);
   }
+
+  // At this point we have the completion_lock lock
   
   list_for_each_entry_safe(comp_element, temp_comp_element,
                            &ehci_hcd->completion_list, chain_list) {
     urb = comp_element->urb;
     if(urb->active) {
-      
-      done = FALSE;
-      
-      switch(comp_element->pipe_type) {
-      case PIPE_ISOCHRONOUS:
-        itd = list_entry(comp_element->tds.prev, itd_t, chain_list);
-        for(i = 0; i < 8; ++i) {
-          if(itd->transaction[i].raw & ITD_ACTIVE) {
-            break;
-          }
-        }
-        done = i == 8;
-        
-        break;
-        
-      case PIPE_CONTROL:
-      case PIPE_BULK:
-        panic("async not implemented for ehci_check_for_urb_completions");
-        DLOG("async not implemented for ehci_check_for_urb_completions");
-        break;
-        
-      case PIPE_INTERRUPT:
-        DLOG("Interrupt case in ehci_check_for_urb_completions not implemented");
-        panic("Interrupt case in ehci_check_for_urb_completions not implemented");
-        break;
-        
-      default:
-        DLOG("Default case reached in %s", __FUNCTION__);
-        panic("Default case reached in ehci_check_for_urb_completions");
-      }
-      
-      if(done) {
-        urb->active = FALSE;
-        list_del(&comp_element->chain_list);
-        
-        /*
-         * -- EM -- Since this function is called in the context of
-         * the interrupt handler (and in the hardware bug backup
-         * thread) the better thing to do would be wake up a
-         * thread/IOVCPU to handle the URB completion function (maybe
-         * might not be worth it since completion callbacks are
-         * usually very small, this is something we can compare for a
-         * performance/predictability trade-off) but for right now just
-         * call it here
-         */
-        if(urb->complete != NULL) {
-          urb->complete(comp_element->urb);
-        }
-        
-        
-        /*
-         * Do URB bookkeeping and cleanup EHCI resources
-         */
+      if(urb->realtime) {
         
         switch(comp_element->pipe_type) {
           
         case PIPE_ISOCHRONOUS:
+        case PIPE_BULK:
+        case PIPE_CONTROL:
+        case PIPE_INTERRUPT:
+        default:
+          DLOG("Unhandled cases in %s line %d", __FUNCTION__, __LINE__);
+          panic("Unhandled case in ehci_check_for_urb_completions");
+        }
+      }
+      else {
+        done = FALSE;
+        
+        switch(comp_element->pipe_type) {
+        case PIPE_ISOCHRONOUS:
+          itd = list_entry(comp_element->tds.prev, itd_t, chain_list);
+          for(i = 0; i < 8; ++i) {
+            if(itd->transaction[i].raw & ITD_ACTIVE) {
+              break;
+            }
+          }
+          done = i == 8;
           
-          packets_traversed = 0;
-          list_for_each_entry(itd, &comp_element->tds, chain_list) {
-            for(i = 0; (i < 8) && (packets_traversed < urb->number_of_packets);
-                ++i, ++packets_traversed) {
-              urb->iso_frame_desc[packets_traversed].actual_length
-                = (itd->transaction[i].raw >> 16) & 0xFFF;
-              
-              urb->iso_frame_desc[packets_traversed].status
-                = itd->transaction[i].status;
-              
-              if(itd->transaction[i].raw & ITD_ACTIVE) {
-                print_itd_info(NULL, itd, "");
-                
-                DLOG("itd should be done but is not");
-                panic("itd should be done but is not");
-              }
-            }
-          }
-          
-          if(urb->real_time) {
-            list_for_each_entry(itd, &comp_element->tds, chain_list) {
-              /* -- EM -- commenting it out to get it to compile */
-              //itd_restore(itd);
-            }
-          }
-          else {
-            
-            list_for_each_entry(itd, &comp_element->tds, chain_list) {
-              itd_remove_from_periodic(itd);
-            }
-            
-            list_for_each_entry_safe(itd, temp_itd, &comp_element->tds,
-                                     chain_list) {
-              free_itd(ehci_hcd, itd);
-            }
-          }
           break;
           
         case PIPE_CONTROL:
@@ -228,23 +221,96 @@ static void ehci_check_for_urb_completions(ehci_hcd_t* ehci_hcd, bool in_irq_han
           break;
           
         case PIPE_INTERRUPT:
-          DLOG("Interrupt case in ehci_check_for_urb_completions not "
-               "implemented");
-          panic("Interrupt case in ehci_check_for_urb_completions "
-                "not implemented");
+          DLOG("Interrupt case in ehci_check_for_urb_completions not implemented");
+          panic("Interrupt case in ehci_check_for_urb_completions not implemented");
           break;
-          
+        
         default:
           DLOG("Default case reached in %s", __FUNCTION__);
           panic("Default case reached in ehci_check_for_urb_completions");
         }
+      
+        if(done) {
+          urb->active = FALSE;
+          list_del(&comp_element->chain_list);
+        
+          /*
+           * -- EM -- Since this function is called in the context of
+           * the interrupt handler (and in the hardware bug backup
+           * thread) the better thing to do would be wake up a
+           * thread/IOVCPU to handle the URB completion function (maybe
+           * might not be worth it since completion callbacks are
+           * usually very small, this is something we can compare for a
+           * performance/predictability trade-off) but for right now just
+           * call it here
+           */
+          if(urb->complete != NULL) {
+            urb->complete(comp_element->urb);
+          }
+        
+          
+          /*
+           * Do URB bookkeeping and cleanup EHCI resources
+           */
+        
+          switch(comp_element->pipe_type) {
+          
+          case PIPE_ISOCHRONOUS:
+          
+            packets_traversed = 0;
+            list_for_each_entry(itd, &comp_element->tds, chain_list) {
+              for(i = 0; (i < 8) && (packets_traversed < urb->number_of_packets);
+                  ++i, ++packets_traversed) {
+                urb->iso_frame_desc[packets_traversed].actual_length
+                  = (itd->transaction[i].raw >> 16) & 0xFFF;
+              
+                urb->iso_frame_desc[packets_traversed].status
+                  = itd->transaction[i].status;
+                
+                if(itd->transaction[i].raw & ITD_ACTIVE) {
+                  print_itd_info(NULL, itd, "");
+                  
+                  DLOG("itd should be done but is not");
+                  panic("itd should be done but is not");
+                }
+              }
+            }
+            
+            list_for_each_entry(itd, &comp_element->tds, chain_list) {
+              itd_remove_from_periodic(itd);
+            }
+            
+            list_for_each_entry_safe(itd, temp_itd, &comp_element->tds,
+                                     chain_list) {
+              free_itd(ehci_hcd, itd);
+            }
+            
+            break;
+          
+          case PIPE_CONTROL:
+          case PIPE_BULK:
+            panic("async not implemented for ehci_check_for_urb_completions");
+            DLOG("async not implemented for ehci_check_for_urb_completions");
+            break;
+          
+          case PIPE_INTERRUPT:
+            DLOG("Interrupt case in ehci_check_for_urb_completions not "
+                 "implemented");
+            panic("Interrupt case in ehci_check_for_urb_completions "
+                  "not implemented");
+            break;
+          
+          default:
+            DLOG("Default case reached in %s", __FUNCTION__);
+            panic("Default case reached in ehci_check_for_urb_completions");
+          }
         
         
+        }
       }
     }
-    else {
-      list_del(&comp_element->chain_list);
-    }
+    
+    list_del(&comp_element->chain_list);
     
   }
   
@@ -279,6 +345,7 @@ void insert_remaining_realtime_itds(ehci_hcd_t* ehci_hcd, bool in_irq_handler)
   else {
     spinlock_lock(&ehci_hcd->uninserted_itd_lock);
   }
+  // At this point we have the uninserted_itd_lock lock
 
   frame_list      = ehci_hcd->frame_list;
   frame_list_size = ehci_hcd->frame_list_size;
@@ -299,47 +366,52 @@ void insert_remaining_realtime_itds(ehci_hcd_t* ehci_hcd, bool in_irq_handler)
     if(frame_interval <= 1) {
       frame_interval = 1;
       current_frame_index = EHCI_CURRENT_FRAME_INDEX(ehci_hcd);
-      start_frame_index = current_frame_index + EHCI_SAFE_FRAME_OFFSET(ehci_hcd);
+      start_frame_index = current_frame_index + EHCI_SAFE_FRAME_INSERT_OFFSET(ehci_hcd);
     }
     else {
       current_frame_index = EHCI_CURRENT_FRAME_INDEX(ehci_hcd);
-      start_frame_index = ((current_frame_index + EHCI_SAFE_FRAME_OFFSET(ehci_hcd))
+      start_frame_index = ((current_frame_index + EHCI_SAFE_FRAME_INSERT_OFFSET(ehci_hcd))
                            | (frame_interval-1)) + 1 + frame_interval_offset;
     }
     
-    start_frame_index &=  frame_list_mask;
-    
+    start_frame_index &= frame_list_mask;
     looped_around = start_frame_index < current_frame_index;
     /*
      * If looped_around is TRUE we looped around by adding the safe
      * offset and interval offset
      */
-    list_for_each_entry_safe(itd, itd_temp, &iso_urb_priv->uninserted_itds_list, uninserted_list) {
+    list_for_each_entry_safe(itd, itd_temp, &iso_urb_priv->uninserted_itds_list,
+                             uninserted_list) {
       uint32_t frame_index = itd->frame_index;
       if(looped_around) {
 	if( (frame_index >= start_frame_index) && (frame_index < current_frame_index) ) {
+          //DLOG("adding %d", frame_index);
 	  insert_itd_into_frame_list(frame_list, frame_index, itd);
           list_del(&itd->uninserted_list);
 	}
 	else {
+          //DLOG("Did add item in backup thread");
           all_itds_added = FALSE;
         }
       }
       else {
-	if( (frame_index >= start_frame_index || frame_index < current_frame_index) ) {
+	if( (frame_index >= start_frame_index  ) ||
+            (frame_index <  current_frame_index) ) {
+          //DLOG("adding %d", frame_index);
 	  insert_itd_into_frame_list(frame_list, frame_index, itd);
           list_del(&itd->uninserted_list);
         }
 	else {
+          //DLOG("Did add item in backup thread");
           all_itds_added = FALSE;
 	}
       }
     }
-
+    
     if(all_itds_added) {
       list_del(&iso_urb_priv->uninserted_itd_urb_list);
     }
-  }  
+  }
   spinlock_unlock(&ehci_hcd->uninserted_itd_lock);
 }
 
@@ -394,7 +466,6 @@ handshake(uint32_t *ptr, uint32_t mask, uint32_t done, uint32_t usec)
 static uint32_t
 ehci_irq_handler(uint8 vec)
 {
-  
   uint32_t status;
   lock_kernel();
 
@@ -531,7 +602,7 @@ initialise_async_head(ehci_hcd_t* ehci_hcd)
   
   gccmb();
   EHCI_ENABLE_ASYNC(ehci_hcd);
-
+  
   //gccmb();
   //EHCI_INT_ASYNC_DOORBELL(ehci_hcd);
   
@@ -632,8 +703,7 @@ reset_root_port(ehci_hcd_t* ehci_hcd, ehci_port_t* port)
 }
 
 bool ehci_post_enumeration(usb_hcd_t* usb_hcd)
-{
-  
+{  
   ehci_hcd_t* ehci_hcd = hcd_to_ehci_hcd(usb_hcd);
   enable_interrupts(ehci_hcd);
   print_caps_and_regs_info(hcd_to_ehci_hcd(usb_hcd), "In ehci_post_enumeration");
@@ -677,6 +747,18 @@ static int ehci_submit_urb(struct urb* urb,
     panic("packet_len == 0");
   }
   register uint32_t pipe_type = usb_pipetype(pipe);
+
+  if(urb->transfer_buffer) {
+    urb->transfer_dma = (phys_addr_t)get_phys_addr(urb->transfer_buffer);
+  }
+  else {
+    if(usb_pipetype(urb->pipe) != PIPE_CONTROL) {
+      
+    DLOG("Right now we have to use urb->transfer_buffer");
+    panic("Right now we have to use urb->transfer_buffer");
+    }
+  }
+  
   switch(pipe_type) {
   case PIPE_ISOCHRONOUS:
     return ehci_isochronous_transfer(ehci_hcd, urb);
@@ -701,10 +783,73 @@ void ehci_kill_urb(struct urb* urb)
 }
 
 /*
+ * -- EM -- Need to actually implement this function just a dummy right now
+ */
+int ehci_rt_iso_data_lost(struct urb* urb)
+{
+  DLOG("ehci_rt_iso_data_lost is not implemented");
+  panic("ehci_rt_iso_data_lost is not implemented");
+  return 0;
+}
+
+
+int ehci_rt_iso_free_packets(struct urb* urb, int number_of_packets)
+{
+  int i;
+  ehci_iso_urb_priv_t* iso_urb_priv = get_iso_urb_priv(urb);
+  uint32_t next_packet_to_free = iso_urb_priv->next_packet_to_free;
+  uint32_t urb_num_packets = urb->number_of_packets;
+  uint32_t microframe_offset = iso_urb_priv->interval_offset & 0x7;
+  uint32_t interval = urb->interval;
+  itd_t** urb_itds = iso_urb_priv->itds;
+  uint32_t packets_per_itd = interval < 8 ? 8 / interval : 1;
+  uint32_t packets_per_itd_mask = packets_per_itd - 1;
+
+  for(i = 0; i < number_of_packets; ++i) {
+    itd_t* itd;
+    int transaction_index;
+    usb_iso_packet_descriptor_t* packet = &urb->iso_frame_desc[next_packet_to_free];
+    
+    if(!packet->data_available) {
+      break;
+    }
+    
+    transaction_index = microframe_offset +
+      ((next_packet_to_free & packets_per_itd_mask) * interval);
+    
+    EHCI_ASSERT(transaction_index < 8);
+
+    itd = urb_itds[next_packet_to_free / packets_per_itd];
+
+    EHCI_ASSERT(!(itd->transaction[transaction_index].raw & ITD_ACTIVE));
+    
+    itd->transaction[transaction_index].raw =
+      itd->transaction_backup[transaction_index].raw;
+    if(!(itd->transaction[transaction_index].raw & ITD_ACTIVE)) {
+      DLOG("Failed to set packet %d to active", next_packet_to_free);
+      while(1);
+    }
+
+    packet->data_available = FALSE;
+    ++next_packet_to_free;
+    if(next_packet_to_free == urb_num_packets) {
+      next_packet_to_free = 0;
+    }
+  }
+
+  iso_urb_priv->next_packet_to_free = next_packet_to_free;
+
+  return i;
+}
+
+/*
  * Host controller initiailization sequence taken from page 53 of the
  * EHCI Specs
  */
 
+/*
+ * -- EM -- Move this into ehci_hcd to get more than 1 ehci chip to work!!!!
+ */
 static u32 temp_stack[1024] ALIGNED (0x1000);
 static bool
 initialise_ehci_hcd(uint32_t usb_base,
@@ -732,22 +877,25 @@ initialise_ehci_hcd(uint32_t usb_base,
                          USB_TYPE_HC_EHCI, ehci_reset_root_ports,
                          ehci_post_enumeration,
                          ehci_submit_urb,
-                         ehci_kill_urb)) {
+                         ehci_kill_urb,
+                         ehci_rt_iso_data_lost,
+                         ehci_rt_iso_update_packets,
+                         ehci_rt_iso_free_packets)) {
     return FALSE;
   }
   
   ehci_hcd->base_physical_address = (phys_addr_t)usb_base;
-  ehci_hcd->base_virtual_address = map_virtual_page(usb_base | 0x3);
-  ehci_hcd->caps = ehci_hcd->base_virtual_address;
-  ehci_hcd->regs = (ehci_regs_t*)(ehci_hcd->base_virtual_address
-                                  + ehci_hcd->caps->cap_length);
+  ehci_hcd->base_virtual_address  = map_virtual_page(usb_base | 0x3);
+  ehci_hcd->caps                  = ehci_hcd->base_virtual_address;
+  ehci_hcd->regs                  = (ehci_regs_t*)(ehci_hcd->base_virtual_address
+                                                   + ehci_hcd->caps->cap_length);
   
 
   memset(ehci_hcd->ehci_devinfo, 0, sizeof(ehci_hcd->ehci_devinfo));
   
-  ehci_hcd->frame_list              = frm_lst;
-  ehci_hcd->last_frame_list_entries = last_frm_lst_entries;
-  ehci_hcd->frame_list_size         = frm_lst_size;
+  ehci_hcd->frame_list                  = frm_lst;
+  ehci_hcd->last_frame_list_entries     = last_frm_lst_entries;
+  ehci_hcd->frame_list_size             = frm_lst_size;
   ehci_hcd->micro_frame_remaining_bytes = micro_frame_remaining_bytes;
 
   INIT_LIST_HEAD(&ehci_hcd->uninserted_itd_urb_list);
@@ -837,7 +985,7 @@ initialise_ehci_hcd(uint32_t usb_base,
 
 /*
  * Called to initialise EHCI, functionality mimics uhci_init in
- *  uhci_hcd
+ * uhci_hcd
  */
 bool
 ehci_init(void)
@@ -980,13 +1128,13 @@ ehci_init(void)
     EHCI_DEBUG_HALT();
     return FALSE;
   }
-
+  
   if(!add_usb_hcd(&(ehci_hcd.usb_hcd))) {
     EHCI_DEBUG_HALT();
     return FALSE;
   }
-
-
+  
+  
   
   DLOG("Successfully initialised and registered ehci hcd");
   return TRUE;
@@ -1266,9 +1414,9 @@ static void qh_prep(ehci_hcd_t* ehci_hcd, qh_t* qh, uint32_t endpoint,
   case USB_SPEED_LOW:
     info1 |= (1 << 12); // Set EPS to low
   case USB_SPEED_FULL:
-
+    
     /* full speed -> EPS = 0 */
-
+    
     if(pipe_type != PIPE_INTERRUPT) {
       info1 |= (EHCI_TUNE_RL_HS << 28);
     }
@@ -1276,16 +1424,18 @@ static void qh_prep(ehci_hcd_t* ehci_hcd, qh_t* qh, uint32_t endpoint,
       info1 |= (1 << 27);     /* for TT */
       info1 |= 1 << 14;       /* toggle from qtd */
     }
-
+    
     info1 |= max_packet_len << 16;
-
+    
     info2 |= (EHCI_TUNE_MULT_TT << 30);
-
+    
     /* -- !! -- Should set ttport not doing it right now */
-    DLOG("this has not been tested if you are seeing this you need to know that and then can remove this panic file %s function %s line %d",
+    DLOG("this has not been tested if you are seeing this you need "
+         "to know that and then can remove this panic file %s function "
+         "%s line %d",
          __FILE__, __FUNCTION__, __LINE__);
-    panic("this has not been tested if you are seeing this you need to know that and then can remove this panic");
-
+    panic("this has not been tested if you are seeing this you need to "
+          "know that and then can remove this panic");
     break;
 
   case USB_SPEED_HIGH:
@@ -1609,9 +1759,9 @@ ehci_async_transfer(ehci_hcd_t* ehci_hcd, struct urb* urb)
 
 int itd_fill(itd_t* itd, uint8_t address, uint8_t endpoint,
              int max_packet_len, bool is_input, phys_addr_t data_phys,
-             usb_iso_packet_descriptor_t* packets, int num_packets)
-{
-  
+             usb_iso_packet_descriptor_t* packets, int num_packets,
+             uint32_t microframe_offset)
+{ 
   int i;
   int cur_buf_ptr = 0;
   uint32_t old_buf_ptr_value;
@@ -1646,7 +1796,7 @@ int itd_fill(itd_t* itd, uint8_t address, uint8_t endpoint,
   }
   
   itd->buf_ptr[2] = hb_mult(max_packet_len);
-
+  
   for(i = 0; i < num_packets; ++i) {
     data_phys = data_phys_start + packets[i].offset;
     
@@ -1664,17 +1814,20 @@ int itd_fill(itd_t* itd, uint8_t address, uint8_t endpoint,
          */
         DLOG("Cannot fit iso packets into a single iTD, crosses "
              "too many buffer boundaries");
+        panic("Cannot fit iso packets into a single iTD, crosses "
+             "too many buffer boundaries");
         return -1;
       }
       old_buf_ptr_value = data_phys & ~0x0FFF;
       cur_buf_ptr++;
       ITD_SET_BUF_PTR(itd, cur_buf_ptr, data_phys);
     }
-    
-    itd->transaction[i].raw = ITD_ACTIVE;
-    itd->transaction[i].offset = data_phys & 0x0FFF;
-    itd->transaction[i].length = packets[i].length;
-    itd->transaction[i].page_selector = cur_buf_ptr;
+    EHCI_ASSERT(i+microframe_offset < 8);
+    /* -- EM -- Change this to be more efficient later */
+    itd->transaction[i+microframe_offset].raw = ITD_ACTIVE;
+    itd->transaction[i+microframe_offset].offset = data_phys & 0x0FFF;
+    itd->transaction[i+microframe_offset].length = packets[i].length;
+    itd->transaction[i+microframe_offset].page_selector = cur_buf_ptr;
   }
   
   
@@ -1686,16 +1839,26 @@ static int create_itd_chain(ehci_hcd_t* ehci_hcd, uint8_t address,
                             usb_iso_packet_descriptor_t* packets,
                             int num_packets, 
                             int max_packet_len, bool is_input,
-                            list_head_t* itd_list, bool ioc)
+                            list_head_t* itd_list, bool ioc,
+                            struct urb* urb)
 {
   int i;
+  itd_t* itd;
+  uint32_t packets_per_itd;
+  uint32_t microframe_interval = urb->interval;
+  ehci_iso_urb_priv_t* iso_urb_priv = get_iso_urb_priv(urb);
+  uint32_t microframe_offset = iso_urb_priv->interval_offset & 0x7;
   phys_addr_t data_phys = (phys_addr_t)get_phys_addr(data);
   INIT_LIST_HEAD(itd_list);
+  iso_urb_priv->num_itds = 0;
+
+  packets_per_itd = microframe_interval < 8 ? 8 / microframe_interval : 1;
   
   i = 0;
   while(i < num_packets) {
     
-    int packets_this_itd = 8 < (num_packets - i) ? 8 : num_packets - i;
+    int packets_this_itd = packets_per_itd < (num_packets - i) ?
+      packets_per_itd : num_packets - i;
     itd_t* current_itd = allocate_itd(ehci_hcd);
     usb_iso_packet_descriptor_t* itd_packets = &(packets[i]);
     
@@ -1706,19 +1869,48 @@ static int create_itd_chain(ehci_hcd_t* ehci_hcd, uint8_t address,
     }
     
     list_add_tail(&current_itd->chain_list, itd_list);
-    
+    (iso_urb_priv->num_itds)++;
     if(itd_fill(current_itd, address, endpoint, max_packet_len,
-                is_input, data_phys, itd_packets, packets_this_itd) < 0) {
+                is_input, data_phys, itd_packets, packets_this_itd,
+                microframe_offset) < 0) {
       return -1;
     }
-
+    
     i += packets_this_itd;
   }
-  if(ioc) {
-    itd_t* ioc_itd = list_entry(itd_list->prev, itd_t, chain_list);
-    int packets_last_itd = num_packets & 0x7; // num_packets % 8
-    if(packets_last_itd == 0) packets_last_itd = 8;
-    ioc_itd->transaction[packets_last_itd-1].raw |= ITD_IOC;
+  
+  if(urb->realtime) {
+    int j = 0;
+    uint32_t next_iso_packet = 0;
+    int interrupt_to_transaction_ratio
+      = urb->interrupt_interval / urb->interval;
+    int last_interrupt = interrupt_to_transaction_ratio;
+    list_for_each_entry(itd, itd_list, chain_list) {
+      iso_urb_priv->itds[j++] = itd;
+      for(i = 0; i < 8; ++i) {
+        if(IS_ITD_TRANSACTION_ACTIVE(itd, i)) {
+          itd->iso_packet_descs[i] = &urb->iso_frame_desc[next_iso_packet++];
+          
+          if(interrupt_to_transaction_ratio != 0) {
+            last_interrupt--;
+            if(last_interrupt == 0) {
+              itd->transaction[i].raw |= ITD_IOC;
+              last_interrupt = interrupt_to_transaction_ratio;
+            }
+          }
+          
+        }
+      }
+      memcpy(itd->transaction_backup, itd->transaction, 8 * sizeof(itd_transaction_t));
+    }
+  }
+  else {
+    if(ioc) {
+      itd_t* ioc_itd = list_entry(itd_list->prev, itd_t, chain_list);
+      int packets_last_itd = num_packets & 0x7; // num_packets % 8
+      if(packets_last_itd == 0) packets_last_itd = 8;
+      ioc_itd->transaction[packets_last_itd-1].raw |= ITD_IOC;
+    }
   }
   
   return 0;
@@ -1729,71 +1921,61 @@ static int submit_itd_chain(ehci_hcd_t* ehci_hcd, list_head_t* itd_list,
                             struct urb* urb)
 {
   itd_t* itd;
-  ehci_iso_urb_priv_t* iso_urb_priv = get_iso_urb_priv(urb);
-  frm_lst_lnk_ptr_t* frame_list  = ehci_hcd->frame_list;
   uint32_t current_frame_index, start_frame_index;
-  uint32_t frame_list_size       = ehci_hcd->frame_list_size;
-  uint32_t frame_list_mask       = frame_list_size - 1;
-  uint32_t frame_interval_offset = iso_urb_priv->interval_offset / 8;
-  uint32_t frame_interval        = urb->interval / 8;
   uint32_t frame_index;
+  ehci_iso_urb_priv_t* iso_urb_priv = get_iso_urb_priv(urb);
+  frm_lst_lnk_ptr_t* frame_list     = ehci_hcd->frame_list;
+  uint32_t frame_list_size          = ehci_hcd->frame_list_size;
+  uint32_t frame_list_mask          = frame_list_size - 1;
+  uint32_t frame_interval_offset    = iso_urb_priv->interval_offset / 8;
+  uint32_t frame_interval           = urb->interval / 8;
+  bool     uninserted_items;
   
-  
-  /*
-   * -- EM -- Right now following the ideas of KISS and just adding a
-   * single iTD to each index with nothing following it.  And that
-   * nothing else is using the periodic list.  This will obviously be
-   * changed later but right now just want to make sure the simplest
-   * thing is working first
-   */
-
-  if(urb->real_time) {
-    bool looped_around;
+  if(urb->realtime) {
     if(frame_interval <= 1) {
       frame_interval = 1;
       current_frame_index = EHCI_CURRENT_FRAME_INDEX(ehci_hcd);
-      frame_index = current_frame_index + EHCI_SAFE_FRAME_OFFSET(ehci_hcd);
+      frame_index = current_frame_index + EHCI_SAFE_FRAME_INSERT_OFFSET(ehci_hcd);
     }
     else {
       current_frame_index = EHCI_CURRENT_FRAME_INDEX(ehci_hcd);
-      frame_index = ((current_frame_index + EHCI_SAFE_FRAME_OFFSET(ehci_hcd))
+      frame_index = ((current_frame_index + EHCI_SAFE_FRAME_INSERT_OFFSET(ehci_hcd))
                      | (frame_interval-1)) + 1 + frame_interval_offset;
     }
-    
+
     start_frame_index = frame_index = frame_index & frame_list_mask;
     
-    looped_around = frame_index < current_frame_index;
-    /*
-     * If looped_around is TRUE we looped around by adding the safe
-     * offset and interval offset
-     */
+    if(start_frame_index == 0) {
+      start_frame_index = frame_list_size - 1;
+    }
+    else {
+      start_frame_index = start_frame_index - 1;
+    }
+    
+    uninserted_items = FALSE;
     list_for_each_entry(itd, itd_list, chain_list) {
-      
-      if(looped_around) {
-	if( (frame_index >= start_frame_index) && (frame_index < current_frame_index) ) {
-	  insert_itd_into_frame_list(frame_list, frame_index, itd);
-	}
-	else {
-	  list_add_tail(&iso_urb_priv->uninserted_itds_list, &itd->uninserted_list);
-	}
+
+      if(EHCI_IS_INDEX_IN_CIRC_BUF_REGION(frame_index,
+                                          current_frame_index, start_frame_index)) {
+        list_add_tail(&itd->uninserted_list, &iso_urb_priv->uninserted_itds_list);
+        uninserted_items = TRUE;
       }
       else {
-	if( (frame_index >= start_frame_index || frame_index < current_frame_index) ) {
-	  insert_itd_into_frame_list(frame_list, frame_index, itd);
-	}
-	else {
-	  list_add_tail(&iso_urb_priv->uninserted_itds_list, &itd->uninserted_list);
-	}
+        //DLOG("adding %d", frame_index);
+        insert_itd_into_frame_list(frame_list, frame_index, itd);
       }
-      
+            
       itd->frame_index = frame_index;
       frame_index = (frame_interval + frame_index) & frame_list_mask;
+      
     }
 
-    spinlock_lock(&ehci_hcd->uninserted_itd_lock);
-    list_add_tail(&ehci_hcd->uninserted_itd_urb_list,
-                  &iso_urb_priv->uninserted_itd_urb_list);
-    spinlock_unlock(&ehci_hcd->uninserted_itd_lock);
+    if(uninserted_items) {
+      spinlock_lock(&ehci_hcd->uninserted_itd_lock);
+      list_add_tail(&iso_urb_priv->uninserted_itd_urb_list,
+                    &ehci_hcd->uninserted_itd_urb_list);
+      spinlock_unlock(&ehci_hcd->uninserted_itd_lock);
+    }
   }
   else {
     /*
@@ -1831,27 +2013,30 @@ ehci_isochronous_transfer(ehci_hcd_t* ehci_hcd, struct urb* urb)
   ehci_iso_urb_priv_t* iso_urb_priv;
 
   if(urb->hcpriv == NULL) {
-    pow2_alloc(sizeof(ehci_iso_urb_priv_t), (uint8_t**)&urb->hcpriv);
-    initialise_iso_urb_priv(urb->hcpriv);
+    urb->hcpriv = ehci_alloc_iso_urb_priv(urb->number_of_packets);
+    if(urb->hcpriv == NULL) {
+      DLOG("Failed to allocate ehci_iso_urb_priv");
+      return -1;
+    }
   }
 
   iso_urb_priv = urb->hcpriv;
   
-  if(urb->real_time) {
-    
+  if(urb->realtime) {
     if((iso_urb_priv->interval_offset = ehci_is_rt_schedulable(ehci_hcd, urb)) < 0) {
       DLOG("urb is not real time schedulable");
       return -1;
     }
   }
-  
+
   if(create_itd_chain(ehci_hcd, usb_pipedevice(pipe),
                       usb_pipeendpoint(pipe), urb->transfer_buffer,
                       packets,
                       num_packets,
                       usb_maxpacket(urb->dev, urb->pipe),
                       usb_pipein(pipe),
-                      &itd_list, mp_enabled) < 0) {
+                      &itd_list, mp_enabled,
+                      urb) < 0) {
     DLOG("create_itd_chain failed");
     panic("create_itd_chain failed");
     return -1;
@@ -1868,14 +2053,15 @@ ehci_isochronous_transfer(ehci_hcd_t* ehci_hcd, struct urb* urb)
     /*
      * -- EM -- Not putting it in list just some dummy element right now
      */
-
-    iso_completion_element.urb = urb;
-    INIT_LIST_HEAD(&iso_completion_element.tds);
-    list_splice(&itd_list, &iso_completion_element.tds);
-    iso_completion_element.pipe_type = PIPE_ISOCHRONOUS;
-    spinlock_lock(&ehci_hcd->completion_lock);
-    list_add_tail(&iso_completion_element.chain_list, &ehci_hcd->completion_list);
-    spinlock_unlock(&ehci_hcd->completion_lock);
+    if(urb->realtime_complete_interval) {
+      iso_completion_element.urb = urb;
+      INIT_LIST_HEAD(&iso_completion_element.tds);
+      list_splice(&itd_list, &iso_completion_element.tds);
+      iso_completion_element.pipe_type = PIPE_ISOCHRONOUS;
+      spinlock_lock(&ehci_hcd->completion_lock);
+      list_add_tail(&iso_completion_element.chain_list, &ehci_hcd->completion_list);
+      spinlock_unlock(&ehci_hcd->completion_lock);
+    }
 
     return 0;
   }
@@ -1974,6 +2160,7 @@ static inline int calc_total_bytes_cost(struct urb* urb)
     return -1;
   }
 }
+
 static inline void
 itd_remove_from_periodic(itd_t* itd)
 {

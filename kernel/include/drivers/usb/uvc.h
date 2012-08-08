@@ -163,7 +163,7 @@ struct uvc_ia_desc
   uint8_t bFunctionSubClass;
   uint8_t bFunctionProtocol;
   uint8_t iFunction;
-} __attribute__ ((packed));
+} PACKED;
 
 typedef struct uvc_ia_desc UVC_IA_DESC;
 
@@ -184,7 +184,7 @@ struct uvc_csvc_if_hdr_desc
   uint32_t dwClockFrequency;
   uint8_t bInCollection;
   uint8_t baInterface1;
-} __attribute__ ((packed));
+} PACKED;
 
 typedef struct uvc_csvc_if_hdr_desc UVC_CSVC_IF_HDR_DESC;
 
@@ -204,7 +204,7 @@ struct uvc_in_term_desc
   uint16_t wTerminalType;
   uint8_t bAssocTerminal;
   uint8_t iTerminal;
-} __attribute__ ((packed));
+} PACKED;
 
 typedef struct uvc_in_term_desc UVC_IN_TERM_DESC;
 
@@ -229,7 +229,7 @@ struct uvc_csvs_if_hdr_desc
   uint8_t bTriggerSupport;
   uint8_t bTriggerUsage;
   uint8_t bControlSize;
-} __attribute__ ((packed));
+} PACKED;
 
 typedef struct uvc_csvs_if_hdr_desc UVC_CSVS_IF_HDR_DESC;
 
@@ -250,7 +250,7 @@ struct uvc_out_term_desc
   uint8_t bAssocTerminal;
   uint8_t bSourceID;
   uint8_t iTerminal;
-} __attribute__ ((packed));
+} PACKED;
 
 typedef struct uvc_out_term_desc UVC_OUT_TERM_DESC;
 
@@ -279,7 +279,7 @@ struct uvc_vs_ctl_par_block
   uint8_t bPreferedVersion;
   uint8_t bMinVersion;
   uint8_t bMaxVersion;
-} __attribute__ ((packed));
+} PACKED;
 
 typedef struct uvc_vs_ctl_par_block UVC_VS_CTL_PAR_BLOCK;
 
@@ -303,7 +303,7 @@ struct uvc_mjpeg_format_desc
   uint8_t bAspectRatioY;
   uint8_t bmInterlaceFlags;
   uint8_t bCopyProtect;
-} __attribute__ ((packed));
+} PACKED;
 
 typedef struct uvc_mjpeg_format_desc UVC_MJPEG_FORMAT_DESC;
 
@@ -328,7 +328,7 @@ struct uvc_mjpeg_frame_desc
   uint32_t dwMaxVideoFrameBufferSize;
   uint32_t dwDefaultFrameInterval;
   uint8_t bFrameIntervalType;
-} __attribute__ ((packed));
+} PACKED;
 
 typedef struct uvc_mjpeg_frame_desc UVC_MJPEG_FRAME_DESC;
 
@@ -382,9 +382,10 @@ typedef struct uvc_uncompressed_frame_desc UVC_UNCOMPRESSED_FRAME_DESC;
 #define UVC_MAX_NUM_MJPEG_FRAME_DESC 20
 #define UVC_MAX_DESC                 20
 
-typedef struct 
+typedef struct
 {
   bool initialised;
+  struct urb* urb;
   int mjpeg_format_index;
   UVC_MJPEG_FRAME_DESC mjpeg_frame_desc[UVC_MAX_NUM_MJPEG_FRAME_DESC];
   int num_mjpeg_frame_desc;
@@ -393,9 +394,17 @@ typedef struct
   int num_interfaces;
   int num_endpoints;
   int transaction_size;
-} PACKED uvc_device_info_t;
+  int next_packet_to_read;
+  int packets_available;
 
+  /*
+   * -- EM -- hack since pow2 is broken
+   */
+  char urb_arena_hack[sizeof(struct urb) +
+                      sizeof(usb_iso_packet_descriptor_t) * 8 * 1024];
+} uvc_device_info_t;
 
+#define get_uvc_dev_info(dev) ((uvc_device_info_t*) (dev)->device_priv)
 
 extern bool usb_uvc_driver_init (void);
 

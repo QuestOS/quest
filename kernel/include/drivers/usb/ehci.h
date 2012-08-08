@@ -95,11 +95,6 @@
 
 #define EHCI_TUNE_MULT_TT 1
 
-
-
-
-
-
 typedef uint32_t ehci_port_t;
 
 #define TYPE_ITD  0
@@ -192,23 +187,26 @@ typedef struct
   
   uint32_t frame_index;
 
-  /*
-   * -- EM -- Right now being lazy and making an extremely safe (5
-   * frames) estimate of the safest frame index offset.  Fix this
-   * later to appropriately check how much the EHCI chip caches (or
-   * perhaps not since we will have a real-time system this should all
-   * be periodic this macro might never be used in the RT system)
-   */
+  
   /*
    * Should only call this macro right before adding itds to periodic
    * list, the value returned should be checked to see if it goes
    * beyond the frame list size
    */
+#define EHCI_CURRENT_FRAME_INDEX(hcd)                                   \
+  ( (((hcd)->regs->frame_index) >> 3) & ((hcd)->frame_list_size - 1) )
 
-#define EHCI_CURRENT_FRAME_INDEX(hcd) ( (((hcd)->regs->frame_index) >> 3) & ((hcd)->frame_list_size - 1) )
-#define EHCI_SAFE_FRAME_OFFSET(hcd) (5)
 
-#define EHCI_MAX_FRAME_LIST_LOOKAHEAD 40
+/*
+ * -- EM -- Right now being lazy and making an extremely safe (5
+ * frames) estimate of the safest frame index offset.  Fix this
+ * later to appropriately check how much the EHCI chip caches (or
+ * perhaps not since we will have a real-time system this should all
+ * be periodic this macro might never be used in the RT system)
+ */
+#define EHCI_SAFE_FRAME_INSERT_OFFSET(hcd) (5)
+
+  //#define EHCI_MAX_FRAME_LIST_LOOKAHEAD 40
   
   uint32_t segment;
   uint32_t frame_list;
@@ -561,6 +559,9 @@ typedef struct _itd_t {
 #define ITD_BUF_ERR (1 << 30)
 #define ITD_BAB_ERR (1 << 29)
 #define ITD_TRN_ERR (1 << 28)
+
+#define IS_ITD_TRANSACTION_ACTIVE(itd, transaction_num)         \
+  ((itd)->transaction[transaction_num].raw | ITD_ACTIVE)
   
   uint32_t buf_ptr[7];
 
@@ -575,11 +576,13 @@ typedef struct _itd_t {
    * Everything after this is used by software only and is not
    * specified by EHCI
    */
-
+  itd_transaction_t transaction_backup[8];
   list_head_t chain_list;
   uint32_t total_bytes_to_transfer;
   uint32_t frame_index;
   list_head_t uninserted_list;
+  usb_iso_packet_descriptor_t *iso_packet_descs[8];
+  
   /*
    * previous is used when the itd is removed
    */
@@ -639,8 +642,8 @@ typedef struct
   uint32_t    type##_pool_size;                 \
   uint32_t*   used_##type##_bitmap;             \
   uint32_t    used_##type##_bitmap_size;        
-
-
+  
+  
   EHCI_DECLARE_POOL(qh)
   EHCI_DECLARE_POOL(qtd)
   EHCI_DECLARE_POOL(itd)
@@ -677,17 +680,43 @@ typedef struct
   int interval_offset;
   list_head_t uninserted_itds_list;
   list_head_t uninserted_itd_urb_list;
+  uint32_t next_packet_to_free;
+  uint32_t next_packet_to_make_available;
+  uint32_t num_itds;
+  itd_t* itds[0];
 } ehci_iso_urb_priv_t;
 
-#define iso_urb_priv_to_urb(iso_urb_priv) container_of((void*)(iso_urb_priv), struct urb, hcpriv);
 
 static inline void
 initialise_iso_urb_priv(ehci_iso_urb_priv_t* iso_urb_priv)
 {
-  iso_urb_priv->interval_offset = 0;
+  iso_urb_priv->interval_offset               = 0;
+  iso_urb_priv->next_packet_to_free           = 0;
+  iso_urb_priv->next_packet_to_make_available = 0;
   INIT_LIST_HEAD(&iso_urb_priv->uninserted_itds_list);
   INIT_LIST_HEAD(&iso_urb_priv->uninserted_itd_urb_list);
 }
+
+static inline ehci_iso_urb_priv_t* ehci_alloc_iso_urb_priv(int num_itds)
+{
+  ehci_iso_urb_priv_t* temp;
+  pow2_alloc(sizeof(ehci_iso_urb_priv_t) +
+             num_itds * sizeof(itd_t*),
+             (uint8_t**)&temp);
+  if(temp == NULL) {
+    return NULL;
+  }
+  initialise_iso_urb_priv(temp);
+  return temp;
+}
+
+#define iso_urb_priv_to_urb(iso_urb_priv)                       \
+  (container_of((void*)(iso_urb_priv), struct urb, hcpriv))
+
+#define iso_urb_priv_data_available(iso_urb_priv)                       \
+  ((iso_urb_priv)->last_frame_read != (iso_urb_priv)->last_frame_processed)
+
+
 
 #define get_iso_urb_priv(urb) ((ehci_iso_urb_priv_t*)urb->hcpriv)
 

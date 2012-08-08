@@ -18,6 +18,9 @@
 #include <stdlib.h>
 #include <stdio.h>
 #include <usb.h>
+#include <sys/socket.h>
+#include <arpa/inet.h>
+#include <netinet/in.h>
 
 #define ARENA_START (0x400000 * 10)
 
@@ -25,16 +28,50 @@ int
 main ()
 {
   int i = 0;
+  int result;
   void* arena = ARENA_START;
-
+  char* picture_arena = ARENA_START + (0x400000 * 4);
+  struct sockaddr_in name, cli_name;
+  int sd;
+  int image_len;
+  int port = 54000;
+  int slen = sizeof(cli_name);
+  /*
+  if((sd = socket(AF_INET, SOCK_DGRAM, IPPROTO_UDP)) < 0) {
+    printf("socket() error!\n");
+    exit(-1);
+  }
   
   
+  bzero(&name, sizeof(name));
+  name.sin_family = AF_INET;
+  name.sin_port = htons(port);
+  name.sin_addr.s_addr = htonl(INADDR_ANY);
+  if(bind(sd, (struct sockaddr *)&name, sizeof(name)) < 0){
+    printf("bind() fails!\n");
+    exit(-1);
+  }
+  */
   printf("Entering usb test program\n");
   
+  if(usb_open(0, arena, 0x400000 * 4) < 0) {
+    printf("Call to open failed");
+    while(1);
+  }
+  
+  //printf("About to start reading frames");
+  
+  
   while(1) {
-    usleep(10000000);
-    printf("usb read returned %d\n", usb_read(0, arena, 0x3C0000));
-    printf("%d\n", i++);
+    *picture_arena = 0;
+    if(i > 50) {
+      //*picture_arena = 1;
+    }
+    result = usb_read(0, picture_arena, 0x400000);
+    if(result != 0) {
+      printf("usb read returned %d\n", result);
+      printf("%d\n", i++);
+    }
   }
 
 

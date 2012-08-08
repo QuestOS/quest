@@ -48,7 +48,7 @@ int usb_syscall_handler(uint32_t device_id, uint32_t operation,
   int result;
   USB_DEVICE_INFO* device = usb_get_device(device_id);
 
-  DLOG("entering %s", __FUNCTION__);
+  
   if(device == NULL) {
     DLOG("Unknown device id");
     return -1;
@@ -65,12 +65,20 @@ int usb_syscall_handler(uint32_t device_id, uint32_t operation,
     result = device->driver->write(device, buf, data_len);
     break;
 
+  case USB_USER_OPEN:
+    result = device->driver->open(device, buf, data_len);
+    break;
+    
+  case USB_USER_CLOSE:
+    result = device->driver->close(device);
+    break;
+
   default:
     DLOG("Unknown usb user operation %d", operation);
     return -1;
   }
 
-  DLOG("Leaving %s result = %d", __FUNCTION__, result);
+  
   return result;
 }
 
@@ -78,14 +86,20 @@ bool
 initialise_usb_hcd(usb_hcd_t* usb_hcd, uint32_t usb_hc_type,
                    usb_reset_root_ports_func reset_root_ports,
                    usb_post_enumeration_func post_enumeration,
-                   usb_submit_urb_func usb_submit_urb,
-                   usb_kill_urb_func usb_kill_urb)
+                   usb_submit_urb_func submit_urb,
+                   usb_kill_urb_func kill_urb,
+                   usb_rt_iso_data_lost_func rt_iso_data_lost,
+                   usb_rt_iso_update_packets_func rt_iso_update_packets,
+                   usb_rt_iso_free_packets_func rt_iso_free_packets)
 {
   usb_hcd->usb_hc_type = usb_hc_type;
-  usb_hcd->reset_root_ports = reset_root_ports;
-  usb_hcd->post_enumeration = post_enumeration;
-  usb_hcd->usb_submit_urb   = usb_submit_urb;
-  usb_hcd->usb_kill_urb     = usb_kill_urb;
+  usb_hcd->reset_root_ports      = reset_root_ports;
+  usb_hcd->post_enumeration      = post_enumeration;
+  usb_hcd->submit_urb            = submit_urb;
+  usb_hcd->kill_urb              = kill_urb;
+  usb_hcd->rt_iso_data_lost      = rt_iso_data_lost;
+  usb_hcd->rt_iso_update_packets = rt_iso_update_packets;
+  usb_hcd->rt_iso_free_packets   = rt_iso_free_packets;
   usb_hcd->next_address = 1;
   return TRUE;
 }
@@ -129,7 +143,7 @@ get_usb_hcd(uint32_t index)
  */
 int usb_submit_urb (struct urb *urb, gfp_t mem_flags)
 {
-  urb->active = TRUE;
+  DLOG("usb_submit_urb called");
   if(mem_flags != 0) {
     /*
      * -- EM -- mem_flags can only be zero for right now.  Panic if it
@@ -139,7 +153,18 @@ int usb_submit_urb (struct urb *urb, gfp_t mem_flags)
     DLOG("mem_flags can only be zero for right now");
     panic("mem_flags != 0 in usb_submit_urb");
   }
-  return urb->dev->hcd->usb_submit_urb(urb, mem_flags);
+  if(urb->realtime) {
+    if(!mp_enabled) {
+      DLOG("Can only submit realtime urbs when interrupts are on");
+      return -1;
+    }
+    if(urb->interrupt_interval < urb->interval && urb->interrupt_interval != 0) {
+      DLOG("interrupt_interval cannot be less than interval");
+      return -1;
+    }
+  }
+  urb->active = TRUE;
+  return urb->dev->hcd->submit_urb(urb, mem_flags);
 }
 
 /*
@@ -150,7 +175,7 @@ int usb_submit_urb (struct urb *urb, gfp_t mem_flags)
 void usb_kill_urb(struct urb *urb)
 {
   if(urb->active) {
-    urb->dev->hcd->usb_kill_urb(urb);
+    urb->dev->hcd->kill_urb(urb);
   }
 }
 
@@ -169,6 +194,21 @@ struct urb *usb_alloc_urb(int iso_packets, gfp_t mem_flags)
   }
   usb_init_urb(urb);
   return urb;
+}
+
+int usb_rt_iso_update_packets(struct urb* urb, int max_packets)
+{
+  return urb->dev->hcd->rt_iso_update_packets(urb, max_packets);
+}
+
+int usb_rt_iso_free_packets(struct urb* urb, int number_of_packets)
+{
+  return urb->dev->hcd->rt_iso_free_packets(urb, number_of_packets);
+}
+
+int usb_rt_iso_data_lost(struct urb* urb)
+{
+  return urb->dev->hcd->rt_iso_data_lost(urb);
 }
 
 static void usb_core_blocking_completion(struct urb* urb)
@@ -275,6 +315,7 @@ int usb_interrupt_msg(struct usb_device *usb_dev, unsigned int pipe,
   void* context;
   struct usb_host_endpoint *ep;
 
+  usb_init_urb(&urb);
   ep = usb_pipe_endpoint(usb_dev, pipe);
 
   if(mp_enabled) {
@@ -338,6 +379,7 @@ int usb_bulk_msg(struct usb_device *usb_dev, unsigned int pipe,
   usb_complete_t complete_callback;
   void* context;
 
+  usb_init_urb(&urb);
   if(mp_enabled) {
     complete_callback = usb_core_blocking_completion;
     current_task = str();
@@ -395,12 +437,13 @@ int usb_control_msg(struct usb_device *dev, unsigned int pipe,
   task_id current_task;
 
   
+  
   USB_DEV_REQ cmd;
   int ret;
   usb_complete_t complete_callback;
   void* context;
   
-  
+  usb_init_urb(&urb);
   cmd.bmRequestType = requesttype;
   cmd.bRequest = request;
   cmd.wValue = cpu_to_le16(value);
@@ -517,7 +560,8 @@ int
 usb_set_configuration(USB_DEVICE_INFO * dev, uint8_t conf)
 {
   return usb_control_msg(dev, usb_sndctrlpipe(dev, 0), USB_SET_CONFIGURATION,
-                         USB_DIR_OUT, conf, 0, NULL, 0, USB_DEFAULT_CONTROL_MSG_TIMEOUT);
+                         USB_DIR_OUT, conf, 0, NULL, 0,
+                         USB_DEFAULT_CONTROL_MSG_TIMEOUT);
 }
 
 int
@@ -557,7 +601,8 @@ int
 usb_set_interface(USB_DEVICE_INFO * dev, uint16_t alt, uint16_t interface)
 {
   return usb_control_msg(dev, usb_sndctrlpipe(dev, 0), USB_SET_INTERFACE,
-                         0x01, alt, interface, NULL, 0, USB_DEFAULT_CONTROL_MSG_TIMEOUT);
+                         0x01, alt, interface, NULL, 0,
+                         USB_DEFAULT_CONTROL_MSG_TIMEOUT);
 }
 
 

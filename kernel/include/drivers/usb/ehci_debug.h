@@ -64,17 +64,17 @@ print_caps_and_regs_info(ehci_hcd_t* ehci_hcd, char* msg);
 void SQUELCH_UNUSED
 print_qtd_info(ehci_hcd_t* ehci, qtd_t* qtd, char* msg);
 
-
-  
 void SQUELCH_UNUSED
 print_qh_info(ehci_hcd_t* ehci_hcd, qh_t* qh, bool print_tds ,char* msg);
-
 
 void SQUELCH_UNUSED
 print_itd_info(ehci_hcd_t* ehci_hcd, itd_t* itd ,char* msg);
 
 uint32_t SQUELCH_UNUSED
 print_itd_dma(ehci_hcd_t* ehci_hcd, itd_t* itd, int transaction,char* msg);
+
+void SQUELCH_UNUSED
+print_periodic_list(ehci_hcd_t* ehci_hcd);
 
 #endif // _EHCI_DEBUG_H_
 

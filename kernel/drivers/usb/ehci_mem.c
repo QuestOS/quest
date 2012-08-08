@@ -77,7 +77,7 @@ inline bool initialise_itd(ehci_hcd_t* ehci_hcd, itd_t* itd)
 {
   memset(itd, 0, sizeof(*itd));
   INIT_LIST_HEAD(&itd->chain_list);
-  INIT_LIST_HEAD(&itd->chain_list);
+  INIT_LIST_HEAD(&itd->uninserted_list);
   return TRUE;
 }
 
@@ -100,7 +100,7 @@ inline bool initialise_ehci_completion_element(ehci_hcd_t* ehci_hcd,
  * simpler since all these static pools will go away
  */
 
-#define EHCI_RESOURCE_MEMORY_FUNCS(res)                                      \
+#define EHCI_RESOURCE_MEMORY_FUNCS(res)                                 \
   uint32_t allocate_##res##s(ehci_hcd_t* ehci_hcd, res##_t** items, uint32_t num) \
   {                                                                     \
     uint32_t  count       = 0;                                          \
@@ -128,7 +128,6 @@ inline bool initialise_ehci_completion_element(ehci_hcd_t* ehci_hcd,
         }                                                               \
       }                                                                 \
     }                                                                   \
-    panic("ran out of " #res);                                          \
     return count;                                                       \
   }                                                                     \
                                                                         \

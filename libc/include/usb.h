@@ -22,6 +22,8 @@
 
 #define USB_USER_READ  0
 #define USB_USER_WRITE 1
+#define USB_USER_OPEN  2
+#define USB_USER_CLOSE 3
 
 static inline int usb_read(int device_id, void* buf, int data_len)
 {
@@ -32,6 +34,16 @@ static inline int usb_read(int device_id, void* buf, int data_len)
 static inline int usb_write(int device_id, void* buf, int data_len)
 {
   return usb_syscall(device_id, USB_USER_WRITE, buf, data_len);
+}
+
+static inline int usb_open(int device_id, void* buf, int data_len)
+{
+  return usb_syscall(device_id, USB_USER_OPEN, buf, data_len);
+}
+
+static inline int usb_close(int device_id)
+{
+  return usb_syscall(device_id, USB_USER_CLOSE, 0, 0);
 }
 
 #endif //_USER_USB_H

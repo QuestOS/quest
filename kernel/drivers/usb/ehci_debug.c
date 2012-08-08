@@ -207,13 +207,13 @@ print_qh_info(ehci_hcd_t* ehci_hcd, qh_t* qh, bool print_tds ,char* msg)
 void SQUELCH_UNUSED
 print_itd_info(ehci_hcd_t* ehci_hcd, itd_t* itd ,char* msg)
 {
-
   DLOGV("%s", msg);
   
 #define PRINT_ITD_MEMBER(member) DLOGV(#member ": 0x%X", itd->member)
 
   #define ITD_PRINT_VERBOSE
 
+  DLOG("This ITD = 0x%p", itd);
   PRINT_ITD_MEMBER(next_link_pointer);
   PRINT_ITD_MEMBER(transaction[0]);
 #ifdef ITD_PRINT_VERBOSE
@@ -300,6 +300,73 @@ print_itd_info(ehci_hcd_t* ehci_hcd, itd_t* itd ,char* msg)
   PRINT_ITD_MEMBER(ex_buf_ptr_pgs[4]);
   PRINT_ITD_MEMBER(ex_buf_ptr_pgs[5]);
   PRINT_ITD_MEMBER(ex_buf_ptr_pgs[6]);
+  PRINT_ITD_MEMBER(frame_index);
+  
+    PRINT_ITD_MEMBER(transaction_backup[0]);
+#ifdef ITD_PRINT_VERBOSE
+  PRINT_ITD_MEMBER(transaction_backup[0].status);
+  PRINT_ITD_MEMBER(transaction_backup[0].length);
+  PRINT_ITD_MEMBER(transaction_backup[0].ioc);
+  PRINT_ITD_MEMBER(transaction_backup[0].page_selector);
+  PRINT_ITD_MEMBER(transaction_backup[0].offset);
+#endif
+  
+    PRINT_ITD_MEMBER(transaction_backup[1]);
+#ifdef ITD_PRINT_VERBOSE
+  PRINT_ITD_MEMBER(transaction_backup[1].status);
+  PRINT_ITD_MEMBER(transaction_backup[1].length);
+  PRINT_ITD_MEMBER(transaction_backup[1].ioc);
+  PRINT_ITD_MEMBER(transaction_backup[1].page_selector);
+  PRINT_ITD_MEMBER(transaction_backup[1].offset);
+#endif
+    PRINT_ITD_MEMBER(transaction_backup[2]);
+#ifdef ITD_PRINT_VERBOSE
+  PRINT_ITD_MEMBER(transaction_backup[2].status);
+  PRINT_ITD_MEMBER(transaction_backup[2].length);
+  PRINT_ITD_MEMBER(transaction_backup[2].ioc);
+  PRINT_ITD_MEMBER(transaction_backup[2].page_selector);
+  PRINT_ITD_MEMBER(transaction_backup[2].offset);
+#endif
+    PRINT_ITD_MEMBER(transaction_backup[3]);
+#ifdef ITD_PRINT_VERBOSE
+  PRINT_ITD_MEMBER(transaction_backup[3].status);
+  PRINT_ITD_MEMBER(transaction_backup[3].length);
+  PRINT_ITD_MEMBER(transaction_backup[3].ioc);
+  PRINT_ITD_MEMBER(transaction_backup[3].page_selector);
+  PRINT_ITD_MEMBER(transaction_backup[3].offset);
+#endif
+    PRINT_ITD_MEMBER(transaction_backup[4]);
+#ifdef ITD_PRINT_VERBOSE
+  PRINT_ITD_MEMBER(transaction_backup[4].status);
+  PRINT_ITD_MEMBER(transaction_backup[4].length);
+  PRINT_ITD_MEMBER(transaction_backup[4].ioc);
+  PRINT_ITD_MEMBER(transaction_backup[4].page_selector);
+  PRINT_ITD_MEMBER(transaction_backup[4].offset);
+#endif
+    PRINT_ITD_MEMBER(transaction_backup[5]);
+#ifdef ITD_PRINT_VERBOSE
+  PRINT_ITD_MEMBER(transaction_backup[5].status);
+  PRINT_ITD_MEMBER(transaction_backup[5].length);
+  PRINT_ITD_MEMBER(transaction_backup[5].ioc);
+  PRINT_ITD_MEMBER(transaction_backup[5].page_selector);
+  PRINT_ITD_MEMBER(transaction_backup[5].offset);
+#endif
+    PRINT_ITD_MEMBER(transaction_backup[6]);
+#ifdef ITD_PRINT_VERBOSE
+  PRINT_ITD_MEMBER(transaction_backup[6].status);
+  PRINT_ITD_MEMBER(transaction_backup[6].length);
+  PRINT_ITD_MEMBER(transaction_backup[6].ioc);
+  PRINT_ITD_MEMBER(transaction_backup[6].page_selector);
+  PRINT_ITD_MEMBER(transaction_backup[6].offset);
+#endif
+    PRINT_ITD_MEMBER(transaction_backup[7]);
+#ifdef ITD_PRINT_VERBOSE
+  PRINT_ITD_MEMBER(transaction_backup[7].status);
+  PRINT_ITD_MEMBER(transaction_backup[7].length);
+  PRINT_ITD_MEMBER(transaction_backup[7].ioc);
+  PRINT_ITD_MEMBER(transaction_backup[7].page_selector);
+  PRINT_ITD_MEMBER(transaction_backup[7].offset);
+#endif
 
 #undef PRINT_ITD_MEMBER
   
@@ -321,5 +388,16 @@ print_itd_dma(ehci_hcd_t* ehci_hcd, itd_t* itd, int transaction, char* msg)
   else {
     DLOGV("Transaction %d is not active", transaction);
     return 0;
+  }
+}
+
+
+void SQUELCH_UNUSED
+print_periodic_list(ehci_hcd_t* ehci_hcd)
+{
+  int i;
+  frm_lst_lnk_ptr_t* frame_list = ehci_hcd->frame_list;
+  for(i = 0; i < ehci_hcd->frame_list_size; ++i) {
+    DLOG("Entry %d = 0x%p", i , frame_list[i].raw);
   }
 }

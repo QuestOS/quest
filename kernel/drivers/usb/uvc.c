@@ -23,7 +23,7 @@
 #include <sched/sched.h>
 
 #define DEBUG_UVC
-#define DEBUG_UVC_VERBOSE
+//#define DEBUG_UVC_VERBOSE
 
 #ifdef DEBUG_UVC
 
@@ -51,14 +51,13 @@
 
 #define dev_to_uvc_dev(dev) ( (uvc_device_info_t*)dev->device_priv )
 
-#define MAX_UVC_DEVICES 10
+#define MAX_UVC_DEVICES 1
 static int current_uvc_dev_count = 0;
 static uvc_device_info_t uvc_devices[MAX_UVC_DEVICES];
 
-#define IMAGE_WIDTH 1280
+#define IMAGE_WIDTH 160
 
 #define BUF_SIZE        (907200)
-static int full_image_count = 0;
 #define START_SENDING_COUNT 5
 
 #define MAX_NUM_PACKETS  10000
@@ -93,10 +92,9 @@ static void uvc_test (USB_DEVICE_INFO* device);
 
 static int uvc_device_cfg (USB_DEVICE_INFO *, USB_CFG_DESC *);
 
-
+#if 0
 static int uvc_read(USB_DEVICE_INFO* device, char* buf, int data_len)
 {
-  
   uint32_t frm_len;
   int i;
   uint32_t *dump = (uint32_t*)buf;
@@ -144,6 +142,258 @@ static int uvc_read(USB_DEVICE_INFO* device, char* buf, int data_len)
   return 9;
   
 }
+#else
+
+#define GET_NEWEST_FRAME
+
+static int uvc_read(USB_DEVICE_INFO* device, char* buf, int data_len)
+{
+  uvc_device_info_t* uvc_dev = get_uvc_dev_info(device);
+  int i;
+  uint8_t* data;
+  int buf_offset = 0;
+  struct urb* urb = uvc_dev->urb;
+  int header_len;
+  bool new_frame;
+  bool full_frame;
+  bool print_frame = FALSE;
+  int last_packet_in_frame;
+
+  if(*buf == 1) {
+    print_frame = TRUE;
+  }
+  
+  if(urb) {
+    int result = usb_rt_iso_update_packets(uvc_dev->urb, 8192);
+    int packets_to_free = 0;
+    int frame_start_packet = -1;
+    int latest_frame_start_packet = -1;
+    if(result < 0) {
+      DLOG("usb_rt_iso_update_packets returned %d", result);
+      panic("usb_rt_iso_update_packets returned a negative value");
+    }
+    uvc_dev->packets_available += result;
+#ifdef GET_NEWEST_FRAME
+    
+    new_frame = TRUE;
+    for(i = 0; i < uvc_dev->packets_available; ++i) {
+      int packet_num = i + uvc_dev->next_packet_to_read;
+      usb_iso_packet_descriptor_t* packet;
+
+      if(packet_num >= urb->number_of_packets) {
+        packet_num = packet_num - urb->number_of_packets;
+      }
+      packet = &urb->iso_frame_desc[packet_num];
+      
+      data = urb->transfer_buffer + packet->offset;
+
+      header_len = *data;
+      if(packet->actual_length == 0 ||header_len == 0 ||
+         packet->actual_length <= header_len) {
+        continue;
+      }
+      
+      if(new_frame) {
+        new_frame = FALSE;
+        frame_start_packet = latest_frame_start_packet;
+        latest_frame_start_packet = packet_num;
+        if(print_frame) {
+          DLOG("packet_num = %d in new_frame", packet_num);
+          DLOG("frame_start_packet = %d in new frame", frame_start_packet);
+          DLOG("latest_frame_start_packet = %d in new frame", latest_frame_start_packet);
+        }
+      }
+      
+      if(*(data + 1) &  0x02) {
+        new_frame = TRUE;
+        if(print_frame) {
+          DLOG("packet_num in EOF check = %d", packet_num);
+        }
+      }
+      
+    }
+#else
+
+    frame_start_packet = uvc_dev->next_packet_to_read;
+
+#endif
+
+    if(frame_start_packet < 0) {
+      return 0;
+    }
+
+    packets_to_free =
+      (frame_start_packet + urb->number_of_packets) - uvc_dev->next_packet_to_read;
+    
+    if(packets_to_free >= urb->number_of_packets) {
+      packets_to_free = packets_to_free - urb->number_of_packets;
+    }
+
+
+    /*
+     * Right now packets_to_free contains the number of packets we
+     * will drop and never consider.  Need to add to it the number of
+     * packets for the image we return.
+     */
+    full_frame = FALSE;
+    for(;packets_to_free < uvc_dev->packets_available; ++packets_to_free) {
+      int packet_num = packets_to_free + uvc_dev->next_packet_to_read;
+      usb_iso_packet_descriptor_t* packet;
+      if(packet_num >= urb->number_of_packets) {
+        packet_num = packet_num - urb->number_of_packets;
+      }
+      packet = &urb->iso_frame_desc[packet_num];
+      data = urb->transfer_buffer + packet->offset;
+      header_len = *data;
+
+      if(packet->actual_length == 0 ||header_len == 0 ||
+         packet->actual_length <= header_len) {
+        continue;
+      }
+      
+      if(buf_offset + packet->actual_length >= data_len) {
+        return -1;
+      }
+      if(packet->actual_length > header_len) {
+        memcpy(buf + buf_offset, data + header_len, packet->actual_length - header_len);
+        buf_offset += (packet->actual_length - header_len);
+      }
+      
+      if(*(data + 1) &  0x02) {
+        last_packet_in_frame = packet_num;
+        full_frame = TRUE;
+        ++packets_to_free; // Free the current packet as well
+        //DLOG("packet_num = %d\nlatest_frame_start_packet = %d", packet_num, latest_frame_start_packet);
+        
+        break;
+      }
+    }
+    /*
+     * We didn't get the end of frame
+     */
+    if(!full_frame){
+      DLOG("%s returning with %d, didn't get full frame", __FUNCTION__, 0);
+      return 0;
+    }
+
+    if(print_frame) {
+    
+      DLOG("start_packet = %d", frame_start_packet);
+      DLOG("last_packet_in_frame = %d", last_packet_in_frame);
+      for(i = 0; i < packets_to_free; ++i) {
+        int packet_num = i + uvc_dev->next_packet_to_read;
+        usb_iso_packet_descriptor_t* packet;
+        
+        if(packet_num >= urb->number_of_packets) {
+          packet_num = packet_num - urb->number_of_packets;
+        }
+        
+        packet = &urb->iso_frame_desc[packet_num];
+        data = urb->transfer_buffer + packet->offset;
+        uint32_t *temp = data;
+        
+        int header_len_temp = *data;
+        uint8_t header_bitfield_temp = *(data + 1);
+        //DLOG("%d: header = 0x%X, header_len = %d, bitfield = 0x%X, actual_len = %d", packet_num, *temp, header_len_temp, header_bitfield_temp, packet->actual_length);
+      }
+    }
+
+    uvc_dev->next_packet_to_read += packets_to_free;
+    if(uvc_dev->next_packet_to_read >= urb->number_of_packets) {
+      uvc_dev->next_packet_to_read =
+        uvc_dev->next_packet_to_read - urb->number_of_packets;
+    }
+
+    uvc_dev->packets_available = uvc_dev->packets_available - packets_to_free;
+    if(packets_to_free != 0) {
+      if(usb_rt_iso_free_packets(urb, packets_to_free) != packets_to_free) {
+        DLOG("ERROR didnt free all the packets");
+        panic("ERROR didnt free all the packets");
+      }
+    }
+    if(print_frame) {
+      uint32_t* dump = buf;
+      for(i = 1; i <= (buf_offset / 4 + 1); i++) {
+        putx(*dump);
+        dump++;
+        if ((i % 6) == 0) putchar('\n');
+        if ((i % 96) == 0) putchar('\n');
+      }
+      putchar('\n');
+      putchar('\n');
+      putchar('\n');
+      putchar('\n');
+      putchar('\n');
+      putchar('\n');
+      putchar('\n');
+      putchar('\n');
+      putchar('\n');
+      putchar('\n');
+      putchar('\n');
+      putchar('\n');
+      putchar('\n');
+      putchar('\n');
+    }
+    return buf_offset;
+  }
+  else {
+    DLOG("Urb not created need to call open first");
+    return -1;
+  }
+}
+
+#endif
+
+static int uvc_open(USB_DEVICE_INFO* device, char* buf, int data_len)
+{
+  int num_packets = 1024 * 8;
+  uvc_device_info_t* uvc_dev = get_uvc_dev_info(device);
+  struct usb_host_endpoint *ep;
+  uint pipe = usb_rcvisocpipe(device, 1);
+  uvc_dev->next_packet_to_read = 0;
+  uvc_dev->packets_available   = 0;
+
+  DLOG("%s called with arguments (0x%p, 0x%p, %d)", __FUNCTION__,
+       device, buf, data_len);
+  
+  ep = usb_pipe_endpoint(device, pipe);
+  
+  if(data_len < num_packets * dev_to_uvc_dev(device)->transaction_size) {
+    DLOG("Not enough memory passed to uvc_open, need %d",
+         num_packets * dev_to_uvc_dev(device)->transaction_size);
+    return -1;
+  }
+
+  /*
+   * -- EM -- pow2 seems to be broken so doing this hack right now to
+   * get around having to use it.
+   */
+  //uvc_dev->urb = usb_alloc_urb(num_packets, 0);
+  uvc_dev->urb = (struct urb*)uvc_dev->urb_arena_hack;
+  usb_init_urb(uvc_dev->urb);
+  if(uvc_dev->urb == NULL) {
+    DLOG("Failed to allocate urb for %s", __FUNCTION__);
+    return -1;
+  }
+
+  usb_fill_rt_iso_urb(uvc_dev->urb, device, pipe, buf,
+                      ep->desc.bInterval, num_packets, 
+                      dev_to_uvc_dev(device)->transaction_size);
+
+  if(usb_submit_urb(uvc_dev->urb, 0) < 0) {
+    DLOG("Failed to submit rt urb");
+    usb_free_urb(uvc_dev->urb);
+    return -1;
+  }
+
+  return 0;
+}
+
+static int uvc_close(USB_DEVICE_INFO* device)
+{
+  DLOG("UVC close is broken");
+  panic("UVC close is broken");
+}
 
 static int uvc_write(USB_DEVICE_INFO* device, char* buf, int data_len)
 {
@@ -160,6 +410,8 @@ static int uvc_write(USB_DEVICE_INFO* device, char* buf, int data_len)
 
 static USB_DRIVER uvc_driver = {
   .probe = uvc_probe,
+  .open = uvc_open,
+  .close = uvc_close,
   .read = uvc_read,
   .write = uvc_write
 };
@@ -427,7 +679,6 @@ uvc_init (USB_DEVICE_INFO * dev, USB_CFG_DESC * cfg)
 
   if(uvc_negotiation(dev) < 0) {
     DLOG("Negotiation failed");
-    panic("ff");
     return FALSE;
   }
 
@@ -445,6 +696,7 @@ uvc_init (USB_DEVICE_INFO * dev, USB_CFG_DESC * cfg)
 static void init_uvc_dev_info(uvc_device_info_t* dev)
 {
   dev->initialised = FALSE;
+  dev->urb = NULL;
   dev->mjpeg_format_index = 0;
   dev->num_mjpeg_frame_desc = 0;
   dev->num_interfaces = 0;
