@@ -593,16 +593,27 @@ void
 vmx_process_exit (uint32 status)
 {
   uint cpu = get_pcpu_id ();
-  quest_tss * ret_tss = NULL;
-  pgdir_t mdir = {-1, 0}, cdir = {-1, 0};
+  static quest_tss * ret_tss = NULL;
+  static pgdir_t mdir = {-1, 0}, cdir = {-1, 0};
+  static bool new_request = TRUE;  /* Is this a new request or a preempted one? */
+  struct _tm_param {
+    void * ptss;
+    u64 dl;
+  };
+  struct _tm_param * param = (struct _tm_param *) vm_exit_input_param;
   DLOG ("Sandbox%d: performing VM-Exit Status: 0x%X Input: 0x%X\n",
         cpu, status, vm_exit_input_param);
 
   switch (status) {
     case VM_EXIT_REASON_MIGRATION:
 #ifdef USE_VMX
-      /* Begin migration by first pulling the whole address space over */
-      ret_tss = pull_quest_tss (vm_exit_input_param);
+      if (new_request) {
+        /* Begin migration by first pulling the whole address space over */
+        ret_tss = pull_quest_tss (param->ptss);
+      } else {
+        /* We were preempted, directly go to address space clone */
+        goto resume_clone;
+      }
       if (ret_tss) {
         mdir.dir_pa = ret_tss->CR3;
         mdir.dir_va = map_virtual_page (mdir.dir_pa | 3);
@@ -612,7 +623,15 @@ vmx_process_exit (uint32 status)
           free_quest_tss (ret_tss);
           break;
         }
-        cdir = remote_clone_page_directory (mdir);
+
+resume_clone:
+        cdir = remote_clone_page_directory (mdir, param->dl);
+        if (((uint32) (cdir.dir_va)) == 0xFFFFFFFF) {
+          /* remote_clone_page_directory preempted */
+          vm_exit_return_val = (void *) 0xFFFFFFFF;
+          new_request = FALSE;
+          goto abort;
+        }
         unmap_virtual_page (mdir.dir_va);
         if (!cdir.dir_va) {
           /* Clone failed */
@@ -629,6 +648,12 @@ vmx_process_exit (uint32 status)
         vm_exit_return_val = NULL;
         logger_printf ("pull_quest_tss failed!\n");
       }
+      /* Reset all static variables */
+      ret_tss = NULL;
+      new_request = TRUE;
+      mdir.dir_pa = cdir.dir_pa = -1;
+      mdir.dir_va = cdir.dir_va = NULL;
+abort:
 #endif
       break;
     case VM_EXIT_REASON_GET_HPA:

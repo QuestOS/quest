@@ -32,18 +32,31 @@
 #define DLOG(fmt,...) ;
 #endif
 
-#define MSG_HOST    1
+#define MSG_HOST    0
+#define RECV_HOST   1
 #define MB_SIZE     64 /* In bytes */
 #define SND_RATE    50000 /* micro-seconds */
 
 static u32 msgt_stack[1024] ALIGNED (0x1000);
 static u32 ipc_stack[1024] ALIGNED (0x1000);
+static u32 stat_stack[1024] ALIGNED (0x1000);
 static task_id msgt_id = 0;
 static u32 phys_channels[4];
 static void * virt_channels[4];
 static void * channel = NULL;
 static int recv_rate[4] = {100000, 1, 800000, 1000000};
 u8 * mailbox;
+u32 msgt_stat_phy_page = 0;
+
+struct msgt_stat_report {
+  unsigned int canny_frame_count;
+  unsigned int msg_sent;
+  unsigned int msg_recv;
+  u64 counter1;
+  u64 tsc;
+};
+
+struct msgt_stat_report * msgt_report = NULL;
 
 static uint64 logs[4][50];
 
@@ -122,16 +135,65 @@ msg_thread (void)
   }
 }
 
+/* Never co-run with msg_thread, shared stack */
+static void
+msg_bandwidth_thread (void)
+{
+  int sandbox = 0, i, index = 1;
+  sandbox = get_pcpu_id ();
+  volatile uint32 * mailbox = NULL;
+
+  if (!msgt_report)
+    msgt_report = (struct msgt_stat_report *) map_virtual_page (msgt_stat_phy_page | 3);
+
+  if (sandbox == MSG_HOST) {
+    /* Sender code */
+    for (i = 0; i < 4; i++) {
+      virt_channels[i] = map_virtual_page (phys_channels[i] | 3);
+    }
+    mailbox = (uint32 *) virt_channels[MSG_HOST];
+
+    unlock_kernel ();
+    sti ();
+    for (;;) {
+      for (i = 0; i < 128; i++) {
+        mailbox[i] = index;
+      }
+      msgt_report->msg_sent += 1; /* 512B */
+      index++;
+    }
+  } else if (sandbox == RECV_HOST) {
+    /* Receiver code */
+    for (i = 0; i < 4; i++) {
+      virt_channels[i] = map_virtual_page (phys_channels[i] | 3);
+    }
+    mailbox = (uint32 *) virt_channels[RECV_HOST];
+
+    unlock_kernel ();
+    sti ();
+    for (;;) {
+      for (i = 0; i < 128; i++) {
+        mailbox[i] = index;
+      }
+      msgt_report->msg_recv += 1; /* 512B */
+      index++;
+    }
+  }
+
+  return;
+}
+
 #define RECV_SB           1
 #define META_PAGE         3
-#define IPC_SB_SIZE       1024
-#define NUM_ITERATIONS    5000
+#define IPC_SB_SIZE       512
+#define NUM_ITERATIONS    2000000
 
 static void
 ipc_send_thread (void)
 {
-  uint64 start = 0, end = 0;
-  int i = 0, j = 0, k = 0, m = 0;
+  uint64 start = 0, end = 0, cost = 0;
+  int i = 0, j = 0, m = 0;
+  //int k = 0;
   uint32 index = 0;
   void * channel = NULL;
   void * data = NULL;
@@ -139,6 +201,7 @@ ipc_send_thread (void)
   volatile uint32 * mailbox = NULL;
   int cpu;
   int count = 1;
+  int multiplier = 1;
 
   cpu = get_pcpu_id ();
   logger_printf ("Sandbox %d start sending...\n", cpu);
@@ -148,29 +211,48 @@ ipc_send_thread (void)
   mailbox = (uint32*) channel;
   meta = (uint32*) data;
   meta[0] = 16; /* Start from 16 * 4 = 64 bytes */
+  meta[1] = 0;
 
-  sched_usleep (2000000);
+  sched_usleep (5000000);
+  //check_copied_threads ();
 
   unlock_kernel ();
   sti ();
   for (i = 1; i < 15; i++) {
-    RDTSC (start);
-    for (m = 0; m < NUM_ITERATIONS * ((count == 1) ? 100 : 1); m++) {
+    cost = 0;
+    count = ((meta[0] >> 9) == 0) ? 1 : (meta[0] >> 9);
+    if (count == 1)
+      multiplier = 10;
+    else
+      multiplier = 1;
+    for (m = 0; m < NUM_ITERATIONS * multiplier; m++) {
+      //asm volatile ("wbinvd");
+      RDTSC (start);
       for (j = 0; j < count; j++) {
         index++;
-        for (k = 0; k < meta[0] && k < IPC_SB_SIZE; k++) {
-          mailbox[k] = index;
+        //for (k = 0; k < meta[0] && k < IPC_SB_SIZE; k++) {
+        //  mailbox[k] = index;
+        //}
+        if (meta[0] <= IPC_SB_SIZE) {
+          memset ((void *) mailbox, index, meta[0] * 4);
+        } else {
+          memset ((void *) mailbox, index, IPC_SB_SIZE * 4);
         }
         meta[1] = index;
         while (index == meta[1]);
         index = meta[1];
       }
+      RDTSC (end);
+      cost += (end - start);
+      //cli ();
+      //lock_kernel ();
+      //sched_usleep (10);
+      //unlock_kernel ();
+      //sti ();
     }
-    RDTSC (end);
-    logger_printf ("Cycles: 0x%llX      Message Size: %d Count: %d\n",
-                   end - start, 4 * meta[0], count);
+    logger_printf ("Cycles: 0x%llX          Message Size: %d    Count: %d   Mult: %d\n",
+                   cost, 4 * meta[0], count, multiplier);
     meta[0] = meta[0] * 2;
-    count = ((meta[0] >> 10) == 0) ? 1 : (meta[0] >> 10);
   }
 
   logger_printf ("Sender Done!\n");
@@ -184,7 +266,7 @@ ipc_recv_thread (void)
   volatile uint32 * mailbox = NULL;
   void * data = NULL;
   uint32 * meta = NULL;
-  int k = 0;
+  //int k = 0;
   uint32 index = 0;
   int cpu;
 
@@ -201,12 +283,98 @@ ipc_recv_thread (void)
     while (index == meta[1]);
     index = meta[1] + 1;
 
-    for (k = 0; k < meta[0] && k < IPC_SB_SIZE; k++) {
-      mailbox[k] = index;
+    //for (k = 0; k < meta[0] && k < IPC_SB_SIZE; k++) {
+    //  mailbox[k] = index;
+    //}
+    if (meta[0] <= IPC_SB_SIZE) {
+      memset ((void *) mailbox, index, meta[0] * 4);
+    } else {
+      memset ((void *) mailbox, index, IPC_SB_SIZE * 4);
     }
     meta[1] = index;
-    //asm volatile ("wbinvd");
   }
+}
+
+static void
+statistics_thread (void)
+{
+  int cpu = 0, prev_stat = 0, diff = 0, i = 0;
+  int prev_sent = 0, diff_sent = 0, prev_recv = 0, diff_recv = 0;
+  u64 prev_tsc = 0, diff_tsc = 0;
+  u64 prev_c1 = 0, diff_c1 = 0;
+  struct msgt_stat_report * report = NULL;
+
+  if (!msgt_stat_phy_page) {
+    logger_printf ("stat thread: msgt memory is not initialised\n");
+    return;
+  }
+  report = (struct msgt_stat_report *) map_virtual_page (msgt_stat_phy_page | 3);
+
+  cpu = get_pcpu_id ();
+  logger_printf ("Statistics thread started in sandbox %d\n", cpu);
+
+  unlock_kernel ();
+  sti ();
+  for (;;) {
+    if (prev_stat == 0) {
+      prev_stat = report->canny_frame_count;
+    } else {
+      diff = report->canny_frame_count - prev_stat;
+      prev_stat = report->canny_frame_count;
+    }
+    if (prev_sent == 0) {
+      prev_sent = report->msg_sent;
+    } else {
+      diff_sent = report->msg_sent - prev_sent;
+      prev_sent = report->msg_sent;
+    }
+    if (prev_recv == 0) {
+      prev_recv = report->msg_recv;
+    } else {
+      diff_recv = report->msg_recv - prev_recv;
+      prev_recv = report->msg_recv;
+    }
+    if (prev_tsc == 0) {
+      prev_tsc = report->tsc;
+    } else {
+      diff_tsc = report->tsc - prev_tsc;
+      prev_tsc = report->tsc;
+    }
+    if (prev_c1 == 0) {
+      prev_c1 = report->counter1;
+    } else {
+      diff_c1 = report->counter1 - prev_c1;
+      prev_c1 = report->counter1;
+    }
+    if (prev_stat || prev_sent || prev_recv || prev_tsc || prev_c1)
+      logger_printf ("Time: %d FPS: %d IPC 1: %d IPC 2: %d MIG: 0x%llX Overrun: 0x%llX\n",
+                     i, diff, diff_sent >> 1, diff_recv >> 1, diff_tsc, diff_c1);
+    i++;
+#if 0
+    lock_kernel ();
+    sched_usleep (1000000);
+    unlock_kernel ();
+#else
+    tsc_delay_usec (1000000);
+#endif
+  }
+}
+
+extern bool
+stat_thread_init (void)
+{
+#ifdef DEBUG_MSGT
+  int sandbox = 0;
+  sandbox = get_pcpu_id ();
+#endif
+
+  task_id stat_id = 0;
+
+  stat_id = start_kernel_thread ((u32) statistics_thread, (u32) &stat_stack[1023], "Stats");
+  lookup_TSS (stat_id)->cpu = 1;
+
+  DLOG ("Statistics Thread Created on Sandbox %d, Thread ID is: 0x%x...\n", sandbox, stat_id);
+  return TRUE;
 }
 
 extern bool
@@ -225,18 +393,32 @@ msgt_init (void)
 }
 
 extern bool
+msgt_bandwidth_init (void)
+{
+#ifdef DEBUG_MSGT
+  int sandbox = 0;
+  sandbox = get_pcpu_id ();
+#endif
+
+  create_kernel_thread_vcpu_args ((u32) msg_bandwidth_thread, (u32) &msgt_stack[1023],
+                                  "msg bandwidth", 4, TRUE, 0);
+
+  DLOG ("IPC Bandwidth Thread Created on Sandbox %d...\n", sandbox);
+  return TRUE;
+}
+
+extern bool
 ipc_send_init (void)
 {
 #ifdef DEBUG_MSGT
   int sandbox = 0;
   sandbox = get_pcpu_id ();
 #endif
-  task_id ipc_id = 0;
 
-  ipc_id = start_kernel_thread ((u32) ipc_send_thread, (u32) &ipc_stack[1023], "IPC send");
-  lookup_TSS (ipc_id)->cpu = 1;
+  create_kernel_thread_vcpu_args ((u32) ipc_send_thread, (u32) &ipc_stack[1023],
+                                  "IPC send", 2, TRUE, 0);
 
-  DLOG ("Sandbox %d: Sender 0x%x created", sandbox, ipc_id);
+  DLOG ("Sandbox %d: Sender created", sandboxd);
 
   return TRUE;
 }
@@ -248,12 +430,11 @@ ipc_recv_init (void)
   int sandbox = 0;
   sandbox = get_pcpu_id ();
 #endif
-  task_id ipc_id = 0;
 
-  ipc_id = start_kernel_thread ((u32) ipc_recv_thread, (u32) &ipc_stack[1023], "IPC recv");
-  lookup_TSS (ipc_id)->cpu = 1;
+  create_kernel_thread_vcpu_args ((u32) ipc_recv_thread, (u32) &ipc_stack[1023],
+                                  "IPC recv", 4, TRUE, 0);
 
-  DLOG ("Sandbox %d: Receiver 0x%x created", sandbox, ipc_id);
+  DLOG ("Sandbox %d: Receiver created", sandbox);
 
   return TRUE;
 }
@@ -262,14 +443,20 @@ extern bool
 msgt_mem_init (void)
 {
   int i;
+  void * stat_page = NULL;
 
   for (i = 0; i < 4; i++) {
     phys_channels[i] = shm_alloc_phys_frame ();
-    virt_channels[i] = map_virtual_page (phys_channels[i] | 3);
+    virt_channels[i] = map_virtual_page (phys_channels[i] | 0x3);
     memset ((void*) virt_channels[i], 0, 4096);
     unmap_virtual_page (virt_channels[i]);
     DLOG ("Message Channel for Sandbox %d with Physical Address: 0x%X", i, phys_channels[i]);
   }
+
+  msgt_stat_phy_page = shm_alloc_phys_frame ();
+  stat_page = map_virtual_page (msgt_stat_phy_page | 3);
+  memset ((void*) stat_page, 0, 4096);
+  unmap_virtual_page (stat_page);
 
   return TRUE;
 }

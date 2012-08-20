@@ -27,6 +27,15 @@
 #define MIGRATION_RECV_REQ_VECTOR    240
 #define MIGRATION_CLEANUP_VECTOR     241
 
+#define USE_MIGRATION_THREAD  /* Flag to turn on migration thread */
+
+/* --YL-- The following two should almost always be un/defined at the same time */
+#define MIGRATION_THREAD_PREEMPTIBLE  /* Flag to make migration thread preemptible */
+#define REMOTE_CLONE_PREEMPTIBLE      /* Flag to make remote clone preemptible */
+
+/* Overhead reserved for process attach_task */
+#define MIGRATION_ATTACH_OVERHEAD     1500000
+
 /* The low level infrastructure for process migration includes at least the
  * following 4 functions. An overview of the call graph is shown below. Some
  * inter-sandbox communication mechanism must be implemented to support the
@@ -76,7 +85,7 @@ extern quest_tss * pull_quest_tss (void * phy_tss);
  * space into the destination sandbox. It is called in the remote
  * sandbox.
  */
-extern pgdir_t remote_clone_page_directory (pgdir_t dir);
+extern pgdir_t remote_clone_page_directory (pgdir_t dir, u64 deadline);
 
 /* destroy_task is called by the local sandbox to free the whole address
  * space of the migrating process and its other data structures (like

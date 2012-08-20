@@ -73,11 +73,12 @@ extern bool
 logger_init (void)
 {
 #ifndef NO_LOGGER
-  task_id id =
-    start_kernel_thread ((u32) logger_thread, (u32) &logger_stack[1023], "logger");
+  //task_id id =
+    create_kernel_thread_vcpu_args ((u32) logger_thread, (u32) &logger_stack[1023],
+                                    "logger", 3, TRUE, 0);
 
-  uint lowest_priority_vcpu (void);
-  lookup_TSS (id)->cpu = lowest_priority_vcpu ();
+  //uint lowest_priority_vcpu (void);
+  //lookup_TSS (id)->cpu = lowest_priority_vcpu ();
 
 #endif
   return TRUE;

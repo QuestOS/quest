@@ -97,12 +97,24 @@ check_control_alt_del (void)
   }
 
   if (ctrl && alt && del) {
+#if 0
+//extern uint64 ipi_rt_start, ipi_rt_end;
+//extern uint64 vm_time_start, vm_time_end;
+    //int vec = 200;
+    //RDTSC (ipi_rt_start);
+    //LAPIC_send_ipi (0x1 << 1, LAPIC_ICR_LEVELASSERT | LAPIC_ICR_DM_LOGICAL | vec);
+    //RDTSC (vm_time_start);
+    vm_exit (0);
+    //RDTSC (vm_time_end);
+    //com1_printf ("VM-Enter Time: 0x%llX\n", vm_time_end - vm_time_start);
+#else
     uint8 state;
     printf ("REBOOTING...\n");
     com1_printf ("REBOOTING...\n");
     while (((state = inb (KEYBOARD_STATUS_PORT)) & 2) != 0);
     outb (0xFE, KEYBOARD_STATUS_PORT);
     asm volatile ("hlt");
+#endif
   }
 }
 

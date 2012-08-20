@@ -53,7 +53,8 @@ u64 vcpu_init_time;
 
 struct vcpu_params { vcpu_type type; u32 C, T; iovcpu_class class; };
 static struct vcpu_params init_params[] = {
-  { MAIN_VCPU, 20, 100 },
+  { MAIN_VCPU, 10, 100 },
+  { MAIN_VCPU, 10, 50 },
   { MAIN_VCPU, 20, 100 },
   { MAIN_VCPU, 20, 100 },
   { MAIN_VCPU, 20, 100 },
@@ -616,6 +617,8 @@ check_run_invariants (void)
 }
 #endif
 
+extern bool migration_thread_ready;
+
 extern void
 vcpu_schedule (void)
 {
@@ -702,27 +705,33 @@ vcpu_schedule (void)
       uint current_cpu = get_pcpu_id ();
       if (tss) {
         if (tss->sandbox_affinity != current_cpu) {
-          logger_printf ("Migration Request: taskid=0x%X, src=%d, dest=%d, vcpu=%d\n",
-              str (), current_cpu, tss->sandbox_affinity, tss->cpu);
-          logger_printf ("Current task: 0x%X, Next task: 0x%X\n", str (), next);
+          DLOG ("Migration Request: taskid=0x%X, src=%d, dest=%d, vcpu=%d",
+                str (), current_cpu, tss->sandbox_affinity, tss->cpu);
+          DLOG ("Current task: 0x%X, Next task: 0x%X", str (), next);
           mvcpu = vcpu_lookup (tss->cpu);
           if (!mvcpu) {
             logger_printf ("No VCPU (%d) associated with Task 0x%X\n", tss->cpu, tss->tid);
           } else {
-            /* Located the migrating quest_tss and its VCPU */
-            /* Detach the migrating task from local scheduler */
-            ph_tss = detach_task (tss->tid);
-            logger_printf ("Process quest_tss to be migrated: 0x%X\n", ph_tss);
-
-            /* Add the migrating process to migration queue of destination sandbox */
+#ifdef USE_MIGRATION_THREAD
+            if (!migration_thread_ready) {
+              /* migration thread is not ready */
+              goto resume_schedule;
+            }
+#endif
             if (shm->migration_queue[tss->sandbox_affinity]) {
+              /* Located the migrating quest_tss and its VCPU */
               /* TODO:
                * Assume the queue can have only one element for now. In case of queued
                * requests, quest_tss should be chained as usual.
                */
               logger_printf ("Migration queue in sandbox %d is not empty\n",
                              tss->sandbox_affinity);
+              goto resume_schedule;
             } else {
+              /* Detach the migrating task from local scheduler */
+              ph_tss = detach_task (tss->tid);
+              DLOG ("Process quest_tss to be migrated: 0x%X", ph_tss);
+              /* Add the migrating process to migration queue of destination sandbox */
               shm->migration_queue[tss->sandbox_affinity] = ph_tss;
             }
 
@@ -748,6 +757,7 @@ vcpu_schedule (void)
         }
       }
     }
+  resume_schedule:
 #endif
 
     /* find time of next important event */
@@ -826,6 +836,7 @@ vcpu_wakeup (task_id task)
   DLOG ("vcpu_wakeup (0x%x), cpu=%d", task, get_pcpu_id ());
   quest_tss *tssp = lookup_TSS (task);
   static int next_vcpu_binding = 1;
+  extern bool sleepqueue_detach (task_id);
 
   /* assign vcpu if not already set */
   if (tssp->cpu == 0xFF) {

@@ -28,6 +28,7 @@
 #include "sched/proc.h"
 #include "sched/vcpu.h"
 #include "arch/i386-percpu.h"
+#include "arch/i386-mtrr.h"
 
 static spinlock kernel_lock ALIGNED(LOCK_ALIGNMENT) = SPINLOCK_INIT;
 
@@ -352,6 +353,75 @@ check_copied_threads (void)
   return;
 }
 #endif
+
+void
+disable_all_cache (void)
+{  
+  u64 mtrr_def_type = rdmsr (IA32_MTRR_DEF_TYPE);
+
+  /* Intel Manual 3, section 11.5.3 Preventing Caching */
+  /* Step 1 & 2 */
+  /* Disable Cache */
+  asm volatile ("push   %%eax\n\t"
+                "wbinvd\n\t"
+                "movl   %%cr0, %%eax\n\t"
+                "orl    $0x40000000, %%eax\n\t"  /* CD set to 1 */
+                "andl   $0xDFFFFFFF, %%eax\n\t"  /* Clear NW */
+                "movl   %%eax, %%cr0\n\t"
+                "pop    %%eax\n\t"
+                "wbinvd":::"eax");
+
+  /* Step 3 */
+
+  /* Memory Types That Can Be Encoded in MTRRs    */
+  /* -------------------------------------------- */
+  /* | Uncacheable (UC)       |  00H            | */
+  /* | Write Combining (WC)   |  01H            | */
+  /* | Reserved*              |  02H            | */
+  /* | Reserved*              |  03H            | */
+  /* | Write-through (WT)     |  04H            | */
+  /* | Write-protected (WP)   |  05H            | */
+  /* | Writeback (WB)         |  06H            | */
+  /* | Reserved*              |  7H through FFH | */
+  /* -------------------------------------------- */
+
+  /* Disable MTRRs and set default memory type to UC */
+  wrmsr (IA32_MTRR_DEF_TYPE, mtrr_def_type & 0xFFFFFFFFFFFFF300L);
+
+#if 0
+  /* Set all MTRRs to UC type. This shouldn't be necessary. */
+  u64 mtrr_cap = rdmsr (IA32_MTRRCAP);
+  u8 num_var_reg = (u8) mtrr_cap;
+  bool fix_supported = (mtrr_cap >> 8) & 0x01;
+  u64 var_base, var_mask;
+  int i = 0;
+
+  for (i=0; i < num_var_reg; i++) {
+    var_base = rdmsr (IA32_MTRR_PHYS_BASE (i));
+    var_mask = rdmsr (IA32_MTRR_PHYS_MASK (i));
+    wrmsr (IA32_MTRR_PHYS_BASE (i), var_base & 0xFFFFFFFFFFFFFF00L);
+    wrmsr (IA32_MTRR_PHYS_MASK (i), var_mask);
+  }
+
+  if (fix_supported) {
+    wrmsr (IA32_MTRR_FIX64K_00000, 0L);
+    wrmsr (IA32_MTRR_FIX16K_80000, 0L);
+    wrmsr (IA32_MTRR_FIX16K_A0000, 0L);
+    wrmsr (IA32_MTRR_FIX4K_C0000, 0l);
+    wrmsr (IA32_MTRR_FIX4K_C8000, 0l);
+    wrmsr (IA32_MTRR_FIX4K_D0000, 0l);
+    wrmsr (IA32_MTRR_FIX4K_D8000, 0l);
+    wrmsr (IA32_MTRR_FIX4K_E0000, 0l);
+    wrmsr (IA32_MTRR_FIX4K_E8000, 0l);
+    wrmsr (IA32_MTRR_FIX4K_F0000, 0l);
+    wrmsr (IA32_MTRR_FIX4K_F8000, 0l);
+  }
+#endif
+
+  asm volatile ("wbinvd");
+
+  return;
+}
 
 /*
  * Local Variables:

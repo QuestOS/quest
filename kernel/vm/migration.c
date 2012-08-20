@@ -225,13 +225,24 @@ attach_task (quest_tss * new_tss)
 }
 
 pgdir_t
-remote_clone_page_directory (pgdir_t dir)
+remote_clone_page_directory (pgdir_t dir, u64 deadline)
 {
-  frame_t new_pgd_pa;
-  pgdir_t new_dir, shell_dir;
-  uint i;
+  static frame_t new_pgd_pa = 0;
+  static pgdir_t new_dir = {-1, 0}, shell_dir = {-1, 0};
+  static int i = 0;
   extern task_id shell_tss;
-  quest_tss * stss = lookup_TSS (shell_tss);
+  static quest_tss * stss = NULL;
+
+#ifdef REMOTE_CLONE_PREEMPTIBLE
+  static bool new_as = TRUE;  /* Is dir a new address space to be cloned or preempted? */
+  pgdir_t tmp_dir;
+  u64 cur_tsc = 0;
+  int k = 0;
+
+  /* If preempted, go directly to the loop. */
+  if (!new_as) goto for_loop;
+#endif
+  stss = lookup_TSS (shell_tss);
   if (!stss) goto abort;
   shell_dir.dir_pa = stss->CR3;
   shell_dir.dir_va = map_virtual_page (shell_dir.dir_pa | 3);
@@ -249,8 +260,26 @@ remote_clone_page_directory (pgdir_t dir)
 
   memset (new_dir.dir_va, 0, PGDIR_NUM_ENTRIES * sizeof (pgdir_entry_t));
 
+#ifdef REMOTE_CLONE_PREEMPTIBLE
+for_loop:
+#endif
+
   /* run through dir and make copies of tables */
-  for (i=0; i<PGDIR_NUM_ENTRIES; i++) {
+  for (; i<PGDIR_NUM_ENTRIES; i++) {
+
+#ifdef REMOTE_CLONE_PREEMPTIBLE
+    /* Check for preemption */
+    RDTSC (cur_tsc);
+    /* TODO: Add an offset here to count for overhead and avoid overrun */
+    if (cur_tsc >= deadline) {
+      /* Should be preempted */
+      tmp_dir.dir_va = (void *) 0xFFFFFFFF;
+      tmp_dir.dir_pa = -1;
+      new_as = FALSE;
+      return tmp_dir;
+    }
+#endif
+
     if (dir.dir_va[i].flags.present) {
       if (i >= PGDIR_KERNEL_BEGIN && i != PGDIR_KERNEL_STACK) {
         /* Replace kernel mappings with destination sandbox kernel */
@@ -290,6 +319,14 @@ remote_clone_page_directory (pgdir_t dir)
     }
   }
 
+  shell_dir.dir_va = NULL;
+  shell_dir.dir_pa = -1;
+  i = 0;
+  new_pgd_pa = 0;
+  stss = NULL;
+#ifdef REMOTE_CLONE_PREEMPTIBLE
+  new_as = TRUE;
+#endif
   return new_dir;
 
  abort_pgd_va:
@@ -298,8 +335,14 @@ remote_clone_page_directory (pgdir_t dir)
   free_phys_frame (new_pgd_pa);
   unmap_virtual_page (shell_dir.dir_va);
  abort:
-  new_dir.dir_va = NULL;
-  new_dir.dir_pa = -1;
+  shell_dir.dir_va = new_dir.dir_va = NULL;
+  shell_dir.dir_pa = new_dir.dir_pa = -1;
+  i = 0;
+  new_pgd_pa = 0;
+  stss = NULL;
+#ifdef REMOTE_CLONE_PREEMPTIBLE
+  new_as = TRUE;
+#endif
   return new_dir;
 }
 
@@ -390,25 +433,32 @@ request_migration (int sandbox)
 extern void * vm_exit_input_param;
 extern void * vm_exit_return_val;
 
+/* Monitor can access this address */
+struct _tm_param {
+  void * ptss;
+  u64 dl;
+} tm_param;
+
 /* 
  * Trap into monitor and do the address space duplication. The newly
  * created process quest_tss will be returned.
  */
 static quest_tss *
-trap_and_migrate (void * phy_tss)
+trap_and_migrate (void * phy_tss, u64 deadline)
 {
-  vm_exit_input_param = phy_tss;
+  tm_param.ptss = phy_tss;
+  tm_param.dl = deadline;
+  vm_exit_input_param = &tm_param;
   vm_exit (VM_EXIT_REASON_MIGRATION);
   return (quest_tss *) vm_exit_return_val;
 }
-
-#define USE_MIGRATION_THREAD
 
 static uint32
 receive_migration_request (uint8 vector)
 {
 #ifndef USE_MIGRATION_THREAD
   quest_tss * new_tss = NULL;
+  uint64 cur_tsc = 0, prev_tsc = 0;
 #endif
   int cpu = 0;
   uint64 now;
@@ -449,8 +499,9 @@ receive_migration_request (uint8 vector)
     schedule ();
 #else
     DLOG ("Process quest_tss to be migrated: 0x%X", (uint32) shm->migration_queue[cpu]);
+    RDTSC (prev_tsc);
     /* Trap to monitor now for convenience */
-    new_tss = trap_and_migrate (shm->migration_queue[cpu]);
+    new_tss = trap_and_migrate (shm->migration_queue[cpu], 0);
     if (new_tss) {
       DLOG ("New quest_tss:");
       DLOG ("  name: %s, task_id: 0x%X, affinity: %d, CR3: 0x%X",
@@ -465,6 +516,9 @@ receive_migration_request (uint8 vector)
       DLOG ("trap_and_migrate failed!");
       goto abort;
     }
+    shm->migration_queue[cpu] = 0;
+    RDTSC (cur_tsc);
+    logger_printf ("Migration time: 0x%llX\n", cur_tsc - prev_tsc);
 #endif
   } else {
     /* No request in queue! */
@@ -477,6 +531,8 @@ abort:
   return 0;
 }
 
+bool migration_thread_ready = FALSE;
+
 /* Migration thread which is responsible for duplicating the address space should
  * be placed on a VCPU that has the highest priority in each sandbox kernel with
  * the budget big enough for the worst case execution time.
@@ -487,20 +543,127 @@ migration_thread (void)
   int cpu = 0;
   quest_tss * new_tss = NULL;
   cpu = get_pcpu_id ();
+
+#ifdef MIGRATION_THREAD_PREEMPTIBLE
+  bool trap_not_finished = FALSE;  /* Has trap_and_migrate been interrupted? */
+  bool attach_not_finished = FALSE;  /* Has attach_task been performed? */
+#endif
+  u64 prev_tsc = 0, cur_tsc = 0;
+  u64 budget = 0, period = 0;
+  u64 deadline = 0, overrun = 0;
+  u64 next_act = 0;
+  uint32 quantum = 0, sleep = 0;
+
+  budget = vcpu_lookup (lookup_TSS (str ())->cpu)->C;
+  period = vcpu_lookup (lookup_TSS (str ())->cpu)->T;
+  quantum = vcpu_lookup (lookup_TSS (str ())->cpu)->quantum;
+
+  if (budget == 0) {
+    logger_printf ("No budget for migration thread. Exit!\n");
+    return;
+  }
+
   logger_printf ("Migration thread started in sandbox %d\n", cpu);
 
   for (;;) {
-    if ((!shm->migration_queue[cpu]) && (!mig_working_flag)) {
-      sched_usleep (1000000);
+    if (((!shm->migration_queue[cpu]) && (!mig_working_flag)) || !migration_thread_ready) {
+
+#ifdef MIGRATION_THREAD_PREEMPTIBLE
+yield:
+#endif
+      if (migration_thread_ready) {
+        sched_usleep (1000000);
+      } else {
+        RDTSC (cur_tsc);
+        if (next_act > cur_tsc)
+          sleep = div_u64_u32_u32 ((next_act - cur_tsc) * 1000, quantum);
+          if (sleep)  sched_usleep (sleep);
+      }
+
+      if (!migration_thread_ready) {
+        RDTSC (cur_tsc);
+        /* Shouldn't need this with scheduler overhead. But if happened, be pessimistic. */
+        //if ((cur_tsc - prev_tsc) >= (period - budget + overrun)) {
+        if (cur_tsc >= next_act) {
+          migration_thread_ready = TRUE;
+          overrun = 0;
+        }
+      }
     } else {
       /* Work needed */
+      RDTSC (cur_tsc);
+      deadline = cur_tsc + budget;
+      next_act = cur_tsc + period;
+
+#ifdef MIGRATION_THREAD_PREEMPTIBLE
+      if (trap_not_finished) {
+        /* Resuming interrrupted trap_and_migrate request */
+        DLOG ("Resume trap_not_finished...");
+        goto resume;
+      } else if (attach_not_finished) {
+        /* Resume after trap_and_migrate */
+        DLOG ("Resume attach...");
+        goto resume_attach;
+      }
+#endif
+
       DLOG ("Process quest_tss to be migrated: 0x%X", (uint32) shm->migration_queue[cpu]);
+
+#ifdef MIGRATION_THREAD_PREEMPTIBLE
+resume:
+#endif
       /* Trap to monitor now for convenience */
-      new_tss = trap_and_migrate (shm->migration_queue[cpu]);
+#ifdef MIGRATION_THREAD_PREEMPTIBLE
+      /* TODO: Worst case reserved for cleanup set to MIGRATION_ATTACH_OVERHEAD cycles */
+      new_tss = trap_and_migrate (shm->migration_queue[cpu],
+                                  deadline - MIGRATION_ATTACH_OVERHEAD);
+#else
+      new_tss = trap_and_migrate (shm->migration_queue[cpu], 0);
+#endif
+
       if (new_tss) {
+
+#ifdef MIGRATION_THREAD_PREEMPTIBLE
+        if (((uint32) new_tss) == 0xFFFFFFFF) {
+          /* trap_and_migrate was preempted */
+          trap_not_finished = TRUE;
+          migration_thread_ready = FALSE;
+          RDTSC (cur_tsc);
+          if (cur_tsc > deadline) {
+            overrun = cur_tsc - deadline;
+            /* TODO: Convert from T/C please... */
+            next_act = next_act + overrun * 5;
+          } else {
+            overrun = 0;
+          }
+          RDTSC (prev_tsc);
+          goto yield;
+        }
+#endif
+
+        /* trap_and_migrate is finished */
         DLOG ("New quest_tss:");
         DLOG ("  name: %s, task_id: 0x%X, affinity: %d, CR3: 0x%X",
               new_tss->name, new_tss->tid, new_tss->sandbox_affinity, new_tss->CR3);
+
+#ifdef MIGRATION_THREAD_PREEMPTIBLE
+        trap_not_finished = FALSE;
+
+        RDTSC (cur_tsc);
+        if (cur_tsc >= deadline) {
+          attach_not_finished = TRUE;
+          migration_thread_ready = FALSE;
+          overrun = cur_tsc - deadline;
+          /* TODO: Convert from T/C please... */
+          next_act = next_act + overrun * 5;
+          RDTSC (prev_tsc);
+          goto yield;
+        }
+
+resume_attach:
+#endif
+
+        /* --YL-- For now, attach is not preemptible */
         /* Add new (migrated) process to local sandbox scheduler */
         if (!attach_task (new_tss)) {
           DLOG ("Attaching task failed!");
@@ -513,9 +676,26 @@ migration_thread (void)
          */
         shm->migration_queue[cpu] = 0;
         mig_working_flag = FALSE;
+#ifdef MIGRATION_THREAD_PREEMPTIBLE
+        attach_not_finished = FALSE;
+#endif
       } else {
+        /* TODO: What do we do here? */
         DLOG ("trap_and_migrate failed!");
       }
+
+      /* Just to be safe here... */
+      migration_thread_ready = FALSE;
+      RDTSC (cur_tsc);
+      if (cur_tsc < deadline) {
+        prev_tsc = deadline;
+        overrun = 0;
+      } else {
+        prev_tsc = cur_tsc;
+        overrun = cur_tsc - deadline;
+      }
+      /* TODO: Convert from T/C please... */
+      next_act = next_act + overrun * 5;
     }
   }
 }
@@ -523,7 +703,9 @@ migration_thread (void)
 static uint32
 receive_cleanup_request (uint8 vector)
 {
+#ifdef DEBUG_MIGRATION
   int cpu = get_pcpu_id ();
+#endif
   DLOG ("Received migration cleanup request in sandbox kernel %d!", cpu);
 
   return 0;
@@ -536,7 +718,9 @@ receive_cleanup_request (uint8 vector)
 bool
 migration_init (void)
 {
+#ifdef DEBUG_MIGRATION
   int cpu = get_pcpu_id ();
+#endif
 
   if (vector_used (MIGRATION_RECV_REQ_VECTOR)) {
     DLOG ("Interrupt vector %d has been used in sandbox %d. IPI handler registration failed!",
