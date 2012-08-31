@@ -15,6 +15,10 @@ ifndef INSTALL_DIR
 INSTALL_DIR=/tftp
 endif
 
+ifndef INSTALL_CMD
+INSTALL_CMD = cp
+endif
+
 PROGS = quest
 
 ##################################################
@@ -141,15 +145,12 @@ quest: $(OBJS) $(ACPI_OBJS) $(LWIP_OBJS) $(SHARED_COMPS)
 %: %.c
 
 install: $(PROGS)
-	cp $(PROGS) welcome.raw $(INSTALL_DIR)/boot
-	sync
+	$(INSTALL_CMD) $(PROGS) welcome.raw $(INSTALL_DIR)/boot
 
 vmware: install quest.iso
 	qemu-img convert c.img -O vmdk c-img.vmdk
 	cp c-img.vmdk /mnt/hgfs/shared/quest/
 	cp quest.iso /mnt/hgfs/shared/quest/
-
-
 
 indent:
 	(for f in $(CFILES); do [ -f "$$f" ] && $(INDENT) $(INDENTFLAGS) "$$f"; done)

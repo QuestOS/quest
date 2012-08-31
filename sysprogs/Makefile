@@ -6,6 +6,10 @@ ifndef INSTALL_DIR
 INSTALL_DIR=/tftp
 endif
 
+ifndef INSTALL_CMD
+INSTALL_CMD = cp
+endif
+
 LIBS   = -L../libc/ -L../libc/include -L../softfloat/ -lc -lsoftfloat
 INCS   = -I../libc/include -I../quest/include
 CFLAGS = -m32 -march=i586 -fno-builtin -fno-stack-protector -fno-strict-aliasing \
@@ -30,5 +34,4 @@ clean:
 	rm -f *.o *.d *.map *~ $(PROGS)
 
 install: $(PROGS)
-	cp $(PROGS) $(INSTALL_DIR)/boot
-	sync
+	$(INSTALL_CMD) $(PROGS) $(INSTALL_DIR)/boot

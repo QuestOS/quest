@@ -3,6 +3,8 @@ PWD := $(shell pwd)
 MNT_POINT = /tftp
 ISO_DIR = $(PWD)/iso
 TAR = tar
+SYNC = sync
+export INSTALL_CMD = cp
 
 DIRS = kernel libc canny netperf/src softfloat sysprogs tests
 # the sets of directories to do various things in
@@ -35,8 +37,11 @@ build-libc: build-softfloat
 
 
 install: $(INSTALLDIRS)
+	$(SYNC)
+
 $(INSTALLDIRS) : all
 	$(MAKE) -C $(@:install-%=%) install
+
 
 clean: $(CLEANDIRS)
 	rm -rf quest.iso iso
@@ -61,4 +66,5 @@ quest.iso: $(ISO_DIR)/boot/grub/eltorito.img all
 .PHONY: subdirs $(DIRS)
 .PHONY: subdirs $(BUILDDIRS)
 .PHONY: subdirs $(CLEANDIRS)
+.PHONY: subdirs $(INSTALLDIRS)
 .PHONY: all clean install

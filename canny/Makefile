@@ -9,6 +9,10 @@ ifndef INSTALL_DIR
 INSTALL_DIR=/tftp
 endif
 
+ifndef INSTALL_CMD
+INSTALL_CMD = cp
+endif
+
 # quest
 
 .PHONY: all clean install
@@ -41,5 +45,4 @@ clean:
 	rm -f *.o *.d *~ canny
 
 install: $(PROGS)
-	cp $(PROGS) $(INSTALL_DIR)/boot
-	sync
+	$(INSTALL_CMD) $(PROGS) $(INSTALL_DIR)/boot
