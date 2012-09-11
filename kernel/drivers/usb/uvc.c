@@ -55,7 +55,7 @@
 static int current_uvc_dev_count = 0;
 static uvc_device_info_t uvc_devices[MAX_UVC_DEVICES];
 
-#define IMAGE_WIDTH 160
+#define IMAGE_WIDTH 640
 
 #define BUF_SIZE        (907200)
 #define START_SENDING_COUNT 5
@@ -92,61 +92,8 @@ static void uvc_test (USB_DEVICE_INFO* device);
 
 static int uvc_device_cfg (USB_DEVICE_INFO *, USB_CFG_DESC *);
 
-#if 0
-static int uvc_read(USB_DEVICE_INFO* device, char* buf, int data_len)
-{
-  uint32_t frm_len;
-  int i;
-  uint32_t *dump = (uint32_t*)buf;
-  int transfer_len = dev_to_uvc_dev(device)->transaction_size;
-  int num_packets = ((data_len / transfer_len) - 1);
-  DLOG("dev_to_uvc_dev(device)->transaction_size = %d",
-       dev_to_uvc_dev(device)->transaction_size);
 
-  
-  DLOG("%s called\n   buf = 0x%X\n   data_len = %d", __FUNCTION__, buf, data_len);
-
-  memset(buf, 0, data_len);
-  if(uvc_get_frame (device, buf, data_len, transfer_len,
-                    &frm_len) < 0) {
-    DLOG("Didn't get full frame");
-    return 10;
-    
-  }
-  full_image_count++;
-  DLOG("\n\n\n\n\n\n\nGOT FULL IMAGE\n\n\n\n");
-  if(full_image_count >= START_SENDING_COUNT) {
-    DLOG("Getting a frame : %d bytes", frm_len);
-    
-#if 1
-    DLOG("transfer_len = %d", transfer_len);
-    for(i = 0; i < num_packets; ++i) {
-      DLOG("get_frame_statuses[%d] = %d", i, get_frame_statuses[i]);
-      DLOG("get_frame_actual_lens[%d] = %d", i, get_frame_actual_lens[i]);
-    }
-    DLOG("Dumping the frame:");
-    
-    for(i = 1; i <= (frm_len / 4 + 1); i++) {
-      putx(*dump);
-      dump++;
-      if ((i % 6) == 0) putchar('\n');
-      if ((i % 96) == 0) putchar('\n');
-    }
-    putchar('\n');
-    putchar('\n');
-    putchar('\n');
-    putchar('\n');
-    while(1);
-#endif
-  }
-  return 9;
-  
-}
-#else
-
-#define GET_NEWEST_FRAME
-
-static int uvc_read(USB_DEVICE_INFO* device, char* buf, int data_len)
+static int uvc_read(USB_DEVICE_INFO* device, int dev_num, char* buf, int data_len)
 {
   uvc_device_info_t* uvc_dev = get_uvc_dev_info(device);
   int i;
@@ -173,7 +120,6 @@ static int uvc_read(USB_DEVICE_INFO* device, char* buf, int data_len)
       panic("usb_rt_iso_update_packets returned a negative value");
     }
     uvc_dev->packets_available += result;
-#ifdef GET_NEWEST_FRAME
     
     new_frame = TRUE;
     for(i = 0; i < uvc_dev->packets_available; ++i) {
@@ -212,11 +158,7 @@ static int uvc_read(USB_DEVICE_INFO* device, char* buf, int data_len)
       }
       
     }
-#else
 
-    frame_start_packet = uvc_dev->next_packet_to_read;
-
-#endif
 
     if(frame_start_packet < 0) {
       return 0;
@@ -342,9 +284,7 @@ static int uvc_read(USB_DEVICE_INFO* device, char* buf, int data_len)
   }
 }
 
-#endif
-
-static int uvc_open(USB_DEVICE_INFO* device, char* buf, int data_len)
+static int uvc_open(USB_DEVICE_INFO* device, int dev_num, char* buf, int data_len)
 {
   int num_packets = 1024 * 8;
   uvc_device_info_t* uvc_dev = get_uvc_dev_info(device);
@@ -382,20 +322,19 @@ static int uvc_open(USB_DEVICE_INFO* device, char* buf, int data_len)
 
   if(usb_submit_urb(uvc_dev->urb, 0) < 0) {
     DLOG("Failed to submit rt urb");
-    usb_free_urb(uvc_dev->urb);
     return -1;
   }
 
   return 0;
 }
 
-static int uvc_close(USB_DEVICE_INFO* device)
+static int uvc_close(USB_DEVICE_INFO* device, int dev_num)
 {
   DLOG("UVC close is broken");
   panic("UVC close is broken");
 }
 
-static int uvc_write(USB_DEVICE_INFO* device, char* buf, int data_len)
+static int uvc_write(USB_DEVICE_INFO* device, int dev_num, char* buf, int data_len)
 {
   UVC_VS_CTL_PAR_BLOCK par;
   //DLOG("%s called", __FUNCTION__);
@@ -560,7 +499,7 @@ static int select_interface_setting(USB_DEVICE_INFO* dev,
   
   for(i = 0; i < num_interfaces; ++i) {
     
-    int payload_size = usb_iso_payload_size(dev, &uvc_dev->endpoints[i]);
+    int payload_size = usb_payload_size(dev, &uvc_dev->endpoints[i]);
     
     if(payload_size < 0) continue;
     
@@ -612,7 +551,7 @@ static int uvc_negotiation(USB_DEVICE_INFO* dev)
     DLOG("Setting device state during probe failed");
   }
   memset(&par, 0, sizeof(UVC_VS_CTL_PAR_BLOCK));
-      
+  
   if (video_commit_controls (dev, GET_CUR, 1, &par)) {
     DLOG("Setting device state during probe failed");
   }
@@ -623,7 +562,7 @@ static int uvc_negotiation(USB_DEVICE_INFO* dev)
   if(interface_setting_index < 0) return -1;
 
   uvc_dev->transaction_size =
-    usb_iso_payload_size(dev, &uvc_dev->endpoints[interface_setting_index]);
+    usb_payload_size(dev, &uvc_dev->endpoints[interface_setting_index]);
   
   DLOG("Select Alternate Setting %d for VS interface",
        uvc_dev->interfaces[interface_setting_index].bAlternateSetting);
@@ -726,8 +665,7 @@ uvc_probe (USB_DEVICE_INFO *dev, USB_CFG_DESC *cfg, USB_IF_DESC *ifd)
   }
 
   if(((uvc_device_info_t*)dev->device_priv)->initialised) return TRUE;
-  init_uvc_dev_info(dev->device_priv);
-  
+    
 #if 0
   /* Dumping UVC device descriptors */
   desc_dump (dev, cfg);

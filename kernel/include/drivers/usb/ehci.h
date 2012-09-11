@@ -27,6 +27,7 @@
 #include <util/list.h>
 #include <util/cassert.h>
 #include "smp/spinlock.h"
+//#include "drivers/usb/ehci_mem.h"
 
 
 #define hcd_to_ehci_hcd(hcd) container_of((hcd), ehci_hcd_t, usb_hcd)
@@ -141,9 +142,12 @@ typedef struct
 #define EHCI_RUN(hcd) (hcd)->regs->command |= RUN
 #define EHCI_HALT(hcd) (hcd)->regs->command &= ~RUN
 #define EHCI_RESET(hcd) (hcd)->regs->command |= RESET
-#define EHCI_ASYNC_DOORBELL_ENABLED(hcd) ((hcd)->regs->command | INT_ASYNC_ADV_DOORBELL)
-#define EHCI_ENABLE_ASYNC_DOORBELL(hcd) ((hcd)->regs->command |= INT_ASYNC_ADV_DOORBELL)
-#define EHCI_DISABLE_ASYNC_DOORBELL(hcd) ((hcd)->regs->command &= ~INT_ASYNC_ADV_DOORBELL)
+#define EHCI_ASYNC_DOORBELL_ENABLED(hcd)                \
+  ((hcd)->regs->command | INT_ASYNC_ADV_DOORBELL)
+#define EHCI_ENABLE_ASYNC_DOORBELL(hcd)                 \
+  ((hcd)->regs->command |= INT_ASYNC_ADV_DOORBELL)
+#define EHCI_DISABLE_ASYNC_DOORBELL(hcd)                \
+  ((hcd)->regs->command &= ~INT_ASYNC_ADV_DOORBELL)
   
 #define EHCI_SET_FRAME_LIST_SIZE(hcd, size)                       \
   do {                                                            \
@@ -174,8 +178,12 @@ typedef struct
 #define USBINTR_PCD  (1<<2)          /* port change detect                 */
 #define USBINTR_ERR  (1<<1)          /* "error" completion (overflow, ...) */
 #define USBINTR_INT  (1<<0)          /* "normal" completion (short, ...)   */
-#define USBINTR_MASK (USBINTR_IAA | USBINTR_HSE | USBINTR_PCD | USBINTR_ERR | USBINTR_INT )
-#define USBINTR_ALL  (USBINTR_IAA | USBINTR_HSE | USBINTR_PCD | USBINTR_ERR | USBINTR_INT | USBINTR_FLR )
+#define USBINTR_MASK                                                    \
+  (USBINTR_IAA | USBINTR_HSE | USBINTR_PCD | USBINTR_ERR | USBINTR_INT )
+
+#define USBINTR_ALL \
+  (USBINTR_IAA | USBINTR_HSE | USBINTR_PCD | USBINTR_ERR | USBINTR_INT | \
+   USBINTR_FLR )
   
 #define EHCI_ENABLE_INTR(hcd, intr) ((hcd)->regs->interrupt_enable |= (intr))
 #define EHCI_SET_INTRS(hcd) EHCI_ENABLE_INTR((hcd), USBINTR_MASK)
@@ -190,26 +198,27 @@ typedef struct
   
   /*
    * Should only call this macro right before adding itds to periodic
-   * list, the value returned should be checked to see if it goes
-   * beyond the frame list size
+   * list
    */
 #define EHCI_CURRENT_FRAME_INDEX(hcd)                                   \
   ( (((hcd)->regs->frame_index) >> 3) & ((hcd)->frame_list_size - 1) )
 
 
-/*
- * -- EM -- Right now being lazy and making an extremely safe (5
- * frames) estimate of the safest frame index offset.  Fix this
- * later to appropriately check how much the EHCI chip caches (or
- * perhaps not since we will have a real-time system this should all
- * be periodic this macro might never be used in the RT system)
- */
+  /*
+   * -- EM -- Right now being lazy and making an extremely safe (5
+   * frames) estimate of the safest frame index offset.  Fix this later
+   * to appropriately check how much the EHCI chip caches
+   */
 #define EHCI_SAFE_FRAME_INSERT_OFFSET(hcd) (5)
-
-  //#define EHCI_MAX_FRAME_LIST_LOOKAHEAD 40
   
+  /*
+   * Always best to make this a little larger than the actual max look
+   * ahead
+   */
+#define MAX_SAFE_FRAME_INDEX_LOOK_AHEAD (7)
+
   uint32_t segment;
-  uint32_t frame_list;
+  volatile uint32_t frame_list;
   uint32_t async_next;
 
   
@@ -272,8 +281,8 @@ typedef union {
 
 #define EHCI_LIST_END 1 
 
-#define CLEAR_FRAME_LIST_LINK_POINTER(frame_pointer)    \
-  (frame_pointer.raw = EHCI_LIST_END)
+#define CLEAR_FRAME_LIST_LINK_POINTER(ehci_hcd, frame_list, frame_index) \
+  (frame_list[frame_index].raw = EHCI_LIST_END)
 
 
 
@@ -356,13 +365,17 @@ typedef struct _qtd_t
   /* Software only members */
 
   list_head_t chain_list;
+  uint32_t original_total_bytes_to_transfer;
+  uint32_t token_backup;
+  qtd_buffer_page_pointer_t buffer_page_zero_backup;
   
 } PACKED ALIGNED(32) qtd_t;
 
 
 CASSERT( (sizeof(qtd_t) % 32) == 0, ehci_qtd_size);
 
-#define QH_NEXT(hcd, qh_virt) ( (EHCI_QH_VIRT_TO_PHYS(hcd, qh_virt)) | (TYPE_QH << 1) )
+#define QH_NEXT(hcd, qh_virt)                                   \
+  ( (EHCI_QH_VIRT_TO_PHYS(hcd, qh_virt)) | (TYPE_QH << 1) )
 
 typedef struct _qh_t{
   
@@ -506,6 +519,7 @@ typedef struct _qh_t{
   list_head_t qtd_list;
   list_head_t reclaim_chain;
   USB_DEVICE_INFO* dev;
+  struct urb* urb;
 
 
 #define QH_STATE_NOT_LINKED 1 /* Not in the buffer at all */
@@ -515,10 +529,12 @@ typedef struct _qh_t{
                                  buffer but the HC might still have
                                  links to it */
 
-  
+  frm_lst_lnk_ptr_t* previous;
 } PACKED ALIGNED(32) qh_t;
 
 CASSERT( (sizeof(qh_t) % 32) == 0, ehci_qh_size);
+
+#define EHCI_TRANSACTION_LENGTH
 
 typedef struct {
   union {
@@ -536,20 +552,8 @@ typedef struct {
   };
 } PACKED itd_transaction_t;
 
-/*
- * This should always be a macro, inserting itds is time sensitive
- */
-#define insert_itd_into_frame_list(list, index, itd)            \
-  do {                                                          \
-    itd->previous = &(list[index]);                             \
-    list[index].raw = ITD_NEXT(ehci_hcd, itd);                  \
-  } while(0)
-
-
 #define ITD_NEXT(hcd, itd_virt)                                 \
   ( (EHCI_ITD_VIRT_TO_PHYS(hcd, itd_virt) ) | (TYPE_ITD << 1) )
-
-
 
 typedef struct _itd_t {
   frm_lst_lnk_ptr_t next_link_pointer;
@@ -587,10 +591,13 @@ typedef struct _itd_t {
    * previous is used when the itd is removed
    */
   frm_lst_lnk_ptr_t* previous;
+
+  uint32_t padding[16];
 } PACKED ALIGNED(32) itd_t;
 
-CASSERT( (sizeof(itd_t) % 32) == 0, ehci_itd_size);
+CASSERT( (sizeof(itd_t) % 32) == 0, ehci_itd_size)
 
+CASSERT( (sizeof(itd_t) & (sizeof(itd_t) - 1)) == 0, itd_alignedment)
 
 /*
  * -- EM -- There are better ways to store queue heads for endpoints
@@ -609,6 +616,8 @@ typedef struct {
   int pipe_type;
   list_head_t chain_list;
 } ehci_completion_element_t;
+
+
 
 typedef struct
 {
@@ -630,6 +639,8 @@ typedef struct
   frm_lst_lnk_ptr_t* frame_list;
   frm_lst_lnk_ptr_t* last_frame_list_entries;
   uint32_t           frame_list_size;
+
+  list_head_t frame_list_heads[1024];
   
   uint32_t*          micro_frame_remaining_bytes;
 
@@ -682,22 +693,68 @@ typedef struct
   list_head_t uninserted_itd_urb_list;
   uint32_t next_packet_to_free;
   uint32_t next_packet_to_make_available;
+  int next_itd_for_sending_data;
   uint32_t num_itds;
+  uint32_t next_packet_for_sending_data;
+  uint32_t packets_in_use;
+  list_head_t write_itds_to_free;
+  uint32_t used_table_entries_bitmap[1024/32];
   itd_t* itds[0];
 } ehci_iso_urb_priv_t;
 
 
+/*
+ * This should always be a macro, inserting qhs into the frame list is
+ * time sensitive
+ */
+
+/*
+ * -- EM -- insert_qh_into_frame_list is also broken because it does
+ * not update previous for the element it links to but that should not
+ * matter until we start removing qhs from the periodic list
+ */
+#define insert_qh_into_frame_list(lst_lnk_ptr, qh)      \
+  do {                                                  \
+    (qh)->horizontalPointer = *lst_lnk_ptr;             \
+    (qh)->previous = lst_lnk_ptr;                       \
+    lst_lnk_ptr->raw = QH_NEXT(ehci_hcd, qh);           \
+} while (0)
+
+/*
+ * -- EM -- unlink_qh_from_periodic is broken!!
+ */
+#define unlink_qh_from_periodic(qh)                     \
+  do {                                                  \
+    DLOG("unlink_qh_from_periodic is broken");          \
+    panic("unlink_qh_from_periodic is broken");         \
+    (qh)->previous->raw = (qh)->horizontalPointer.raw;  \
+  } while(0)                                            \
+
+
 static inline void
-initialise_iso_urb_priv(ehci_iso_urb_priv_t* iso_urb_priv)
+initialise_iso_urb_priv(ehci_iso_urb_priv_t* iso_urb_priv, struct urb* urb)
 {
-  iso_urb_priv->interval_offset               = 0;
-  iso_urb_priv->next_packet_to_free           = 0;
-  iso_urb_priv->next_packet_to_make_available = 0;
+  uint32_t microframe_interval = urb->interval;
+  uint32_t packets_per_itd = microframe_interval < 8 ? 8 / microframe_interval : 1;
+  
+  iso_urb_priv->interval_offset                     = 0;
+  iso_urb_priv->next_packet_to_free                 = 0;
+  iso_urb_priv->next_packet_to_make_available       = 0;
+  iso_urb_priv->next_itd_for_sending_data           = -1;
+  iso_urb_priv->next_packet_for_sending_data        = 0;
+  iso_urb_priv->packets_in_use = (packets_per_itd * MAX_SAFE_FRAME_INDEX_LOOK_AHEAD);
+  memset(iso_urb_priv->used_table_entries_bitmap, 0, 1024/32);
+  INIT_LIST_HEAD(&iso_urb_priv->write_itds_to_free);
   INIT_LIST_HEAD(&iso_urb_priv->uninserted_itds_list);
   INIT_LIST_HEAD(&iso_urb_priv->uninserted_itd_urb_list);
 }
 
-static inline ehci_iso_urb_priv_t* ehci_alloc_iso_urb_priv(int num_itds)
+/***************************************************************
+ * Isochronous URB private data start
+ ***************************************************************/
+
+static inline
+ehci_iso_urb_priv_t* ehci_alloc_iso_urb_priv(int num_itds, struct urb* urb)
 {
   ehci_iso_urb_priv_t* temp;
   pow2_alloc(sizeof(ehci_iso_urb_priv_t) +
@@ -706,7 +763,7 @@ static inline ehci_iso_urb_priv_t* ehci_alloc_iso_urb_priv(int num_itds)
   if(temp == NULL) {
     return NULL;
   }
-  initialise_iso_urb_priv(temp);
+  initialise_iso_urb_priv(temp, urb);
   return temp;
 }
 
@@ -716,9 +773,64 @@ static inline ehci_iso_urb_priv_t* ehci_alloc_iso_urb_priv(int num_itds)
 #define iso_urb_priv_data_available(iso_urb_priv)                       \
   ((iso_urb_priv)->last_frame_read != (iso_urb_priv)->last_frame_processed)
 
-
-
 #define get_iso_urb_priv(urb) ((ehci_iso_urb_priv_t*)urb->hcpriv)
+
+/***************************************************************
+ * Isochronous URB private data end
+ ***************************************************************/
+
+/***************************************************************
+ * Interrupt URB private data start
+ ***************************************************************/
+
+typedef struct
+{
+  qh_t* qh;
+  int interval_offset;
+  uint32_t next_qtd_to_free;
+  uint32_t next_byte_to_free_in_qtd;
+  uint32_t next_qtd_to_make_available;
+  uint32_t next_byte_to_make_available_in_qtd;
+  
+  uint32_t next_byte_to_free_for_writing;
+  uint32_t next_byte_to_use_for_writing;
+  uint32_t bytes_in_buffer;
+  uint32_t buffer_size;
+  unsigned int num_qtds;
+  qtd_t* qtds[0];
+} ehci_int_urb_priv_t;
+
+static void
+initialise_int_urb_priv(ehci_int_urb_priv_t* priv, unsigned int num_qtds)
+{
+  memset(priv, 0,
+         sizeof(ehci_int_urb_priv_t) + num_qtds * sizeof(qtd_t*));
+  priv->num_qtds = num_qtds;
+}
+
+static inline
+ehci_int_urb_priv_t* ehci_alloc_int_urb_priv(unsigned int num_qtds)
+{
+  ehci_int_urb_priv_t* temp;
+  pow2_alloc(sizeof(ehci_int_urb_priv_t) +
+             num_qtds * sizeof(qtd_t*),
+             (uint8_t**)&temp);
+  if(temp == NULL) {
+    return NULL;
+  }
+  initialise_int_urb_priv(temp, num_qtds);
+  return temp;
+}
+
+#define int_urb_priv_to_urb(int_urb_priv)                       \
+  (container_of((void*)(int_urb_priv), struct urb, hcpriv))
+
+#define get_int_urb_priv(urb) ((ehci_int_urb_priv_t*)urb->hcpriv)
+
+/***************************************************************
+ * Interrupt URB private data end
+ ***************************************************************/
+
 
 #define EHCI_GET_DEVICE_QH(ehci_hcd, addr, is_input, endpoint)          \
   ((ehci_hcd)->ehci_devinfo[(addr)]                                     \

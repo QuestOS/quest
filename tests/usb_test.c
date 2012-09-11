@@ -24,6 +24,8 @@
 
 #define ARENA_START (0x400000 * 10)
 
+#define USE_TWO_EP
+
 int
 main ()
 {
@@ -53,25 +55,38 @@ main ()
   }
   */
   printf("Entering usb test program\n");
-  
-  if(usb_open(0, arena, 0x400000 * 4) < 0) {
+
+  //if(usb_open(0, arena, 1024 * 800) < 0) {
+  if(usb_open(0, arena, 0x400000 * 2) < 0) {
     printf("Call to open failed");
     while(1);
   }
+#ifdef USE_TWO_EP
+  if(usb_open(1, arena + 0x400000 * 2, 0x400000 * 2) < 0) {
+    printf("Call to open failed");
+    while(1);
+  }
+#endif
   
-  //printf("About to start reading frames");
-  
+  printf("About to start reading frames");
+
+  usleep(2000000);
   
   while(1) {
-    *picture_arena = 0;
-    if(i > 50) {
-      //*picture_arena = 1;
-    }
-    result = usb_read(0, picture_arena, 0x400000);
-    if(result != 0) {
-      printf("usb read returned %d\n", result);
-      printf("%d\n", i++);
-    }
+    int dev_num;
+
+#ifdef USE_TWO_EP
+    dev_num = i & 0x1;
+#else
+    dev_num = 0;
+#endif
+    //result = usb_read(0, picture_arena, 0x400000);
+    result = usb_write(dev_num, picture_arena, 0x400000);
+    //usleep(100000);
+    //if(result != 0) {
+    printf("device %d: %d: usb read returned %d\n", dev_num, i, result);
+    ++i;
+      //}
   }
 
 

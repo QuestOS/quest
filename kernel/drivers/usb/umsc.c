@@ -243,14 +243,14 @@ umsc_tmr_test (void)
   #endif
 }
 
-static int umsc_read(USB_DEVICE_INFO* device, char* buf, int data_len)
+static int umsc_read(USB_DEVICE_INFO* device, int dev_num, char* buf, int data_len)
 {
   DLOG("umsc_read called");
   umsc_tmr_test ();
   return -1;
 }
 
-static int umsc_write(USB_DEVICE_INFO* device, char* buf, int data_len)
+static int umsc_write(USB_DEVICE_INFO* device, int dev_num, char* buf, int data_len)
 {
   umsc_tmr_test ();
   return -1;

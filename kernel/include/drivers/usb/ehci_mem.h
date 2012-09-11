@@ -43,19 +43,19 @@
   __EHCI_POOL_VIRT_TO_PHYS(hcd, qh_virt_addr, qh_pool)
 
 #define EHCI_QH_PHYS_TO_VIRT(hcd, qh_phys_addr)                 \
-  (qh_t*)__EHCI_POOL_PHYS_TO_VIRT(hcd, qh_phys_addr, qh_pool)
+  ((qh_t*)__EHCI_POOL_PHYS_TO_VIRT(hcd, qh_phys_addr, qh_pool))
 
 #define EHCI_QTD_VIRT_TO_PHYS(hcd, qtd_virt_addr)               \
   __EHCI_POOL_VIRT_TO_PHYS(hcd, qtd_virt_addr, qtd_pool)
 
 #define EHCI_QTD_PHYS_TO_VIRT(hcd, qtd_phys_addr)               \
-  (qtd_t*)__EHCI_POOL_PHYS_TO_VIRT(hcd, qtd_phys_addr, qtd_pool)
+  ((qtd_t*)__EHCI_POOL_PHYS_TO_VIRT(hcd, qtd_phys_addr, qtd_pool))
 
 #define EHCI_ITD_VIRT_TO_PHYS(hcd, itd_virt_addr)               \
   __EHCI_POOL_VIRT_TO_PHYS(hcd, itd_virt_addr, itd_pool)
 
 #define EHCI_ITD_PHYS_TO_VIRT(hcd, itd_phys_addr)               \
-  (itd_t*)__EHCI_POOL_PHYS_TO_VIRT(hcd, itd_phys_addr, itd_pool)
+  ((itd_t*)__EHCI_POOL_PHYS_TO_VIRT(hcd, itd_phys_addr, itd_pool))
 
 
 #define DECLARE_EHCI_MEM_FUNCTIONS(type)                                \

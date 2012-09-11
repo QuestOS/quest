@@ -121,7 +121,7 @@ struct usb_dev_req
   uint16_t wLength;
 } PACKED;
 
-#define IS_INPUT_USB_DEV_REQ(dev_req_addr) ( (*((uint8_t*)dev_req_addr) ) & 0x80 )
+#define IS_INPUT_USB_DEV_REQ(dev_req_addr) ( (*((uint8_t*)dev_req_addr) ) & USB_DIR_IN )
 
 typedef struct usb_dev_req USB_DEV_REQ;
 
@@ -380,19 +380,20 @@ usb_maxpacket(struct usb_device *udev, int pipe)
 typedef struct _USB_DRIVER
 {
   bool (*probe) (USB_DEVICE_INFO *, USB_CFG_DESC *, USB_IF_DESC *);
-  int (*open) (USB_DEVICE_INFO* device, char* buf, int data_len);
-  int (*close) (USB_DEVICE_INFO* device);
-  int (*write) (USB_DEVICE_INFO* device, char* buf, int data_len);
-  int (*read) (USB_DEVICE_INFO* device, char* buf, int data_len);
+  int (*open) (USB_DEVICE_INFO* device, int dev_num, char* buf, int data_len);
+  int (*close) (USB_DEVICE_INFO* device, int dev_num);
+  int (*write) (USB_DEVICE_INFO* device, int dev_num, char* buf, int data_len);
+  int (*read) (USB_DEVICE_INFO* device, int dev_num, char* buf, int data_len);
 } USB_DRIVER;
 
-bool usb_register_device(USB_DEVICE_INFO* device, USB_DRIVER* driver);
+int usb_register_device(USB_DEVICE_INFO* device, USB_DRIVER* driver);
 
 bool usb_register_driver (USB_DRIVER *driver);
 
 USB_DEVICE_INFO* usb_get_device(int device_id);
 
-int usb_syscall_handler(uint32_t device_id, uint32_t operation, char* buf, uint32_t data_len);
+int usb_syscall_handler(uint32_t device_id, uint32_t operation, char* buf,
+                        uint32_t data_len);
 
 /* Generic USB operations */
 
@@ -413,15 +414,24 @@ int usb_get_interface(USB_DEVICE_INFO* dev, uint16_t interface);
 int usb_set_interface(USB_DEVICE_INFO* dev, uint16_t alt,
                              uint16_t interface);
 
-int usb_iso_payload_size(USB_DEVICE_INFO* dev,
-                                USB_EPT_DESC* endpoint);
-
+int usb_payload_size(USB_DEVICE_INFO* dev,
+                     USB_EPT_DESC* endpoint);
 
 int usb_rt_iso_update_packets(struct urb* urb, int max_packets);
 
 int usb_rt_iso_free_packets(struct urb* urb, int number_of_packets);
 
 int usb_rt_iso_data_lost(struct urb* urb);
+
+int usb_rt_iso_push_data(struct urb* urb, char* data, int count);
+
+int usb_rt_int_data_lost(struct urb* urb);
+
+int usb_rt_int_free_data(struct urb* urb, int count);
+
+int usb_rt_int_update_data(struct urb* urb, int max_count);
+
+int usb_rt_int_push_data(struct urb* urb, char* data, int count);
 
 /*
  * ********************************************************************
@@ -536,6 +546,20 @@ usb_fill_int_urb(struct urb *urb,
   urb->start_frame = -1;
 }
 
+
+static inline struct usb_host_endpoint *
+usb_pipe_endpoint(struct usb_device *dev, unsigned int pipe)
+{
+  return usb_pipein(pipe) ? &(dev->ep_in[usb_pipeendpoint(pipe)]) :
+    &(dev->ep_out[usb_pipeendpoint(pipe)]);
+}
+
+/*
+ * ********************************************************************
+ * End of functions copied from Linux
+ * ********************************************************************
+ */
+
 /*
  * We are nicer than Linux we provide a usb_fill_iso_urb function ;-)
  */
@@ -574,13 +598,14 @@ static inline void usb_fill_iso_urb(struct urb* urb,
   }
 }
 
-static inline void usb_fill_rt_iso_urb(struct urb* urb,
-                                       struct usb_device *dev,
-                                       unsigned int pipe,
-                                       void *transfer_buffer,
-                                       int interval,
-                                       int num_packets,
-                                       int packet_len)
+static inline void
+usb_fill_rt_iso_urb(struct urb* urb,
+                    struct usb_device *dev,
+                    unsigned int pipe,
+                    void *transfer_buffer,
+                    int interval,
+                    int num_packets,
+                    int packet_len)
 {
   usb_fill_iso_urb(urb, dev, pipe, transfer_buffer, NULL, NULL,
                    interval, num_packets, packet_len);
@@ -588,20 +613,76 @@ static inline void usb_fill_rt_iso_urb(struct urb* urb,
   
 }
 
-
-static inline struct usb_host_endpoint *
-usb_pipe_endpoint(struct usb_device *dev, unsigned int pipe)
+static inline void
+usb_fill_rt_int_urb(struct urb *urb,
+                 struct usb_device *dev,
+                 unsigned int pipe,
+                 void *transfer_buffer,
+                 int buffer_length,
+                 int interval)
 {
-  return usb_pipein(pipe) ? &(dev->ep_in[usb_pipeendpoint(pipe)]) :
-    &(dev->ep_out[usb_pipeendpoint(pipe)]);
+  usb_fill_int_urb(urb, dev, pipe, transfer_buffer, buffer_length,
+                   NULL, NULL, interval);
+  urb->realtime = TRUE;
 }
 
-/*
- * ********************************************************************
- * End of functions copied from Linux
- * ********************************************************************
- */
+static inline uint
+usb_get_endpoint_transfer_type(USB_EPT_DESC* ept)
+{
+  switch(ept->bmAttributes & 0x3) {
+  case 0:
+    return PIPE_CONTROL;
+  case 1:
+    return PIPE_ISOCHRONOUS;
+  case 2:
+    return PIPE_BULK;
+  default: // case 3:
+    return PIPE_INTERRUPT;
+  }
+}
 
+static inline uint
+usb_is_endpoint_in(USB_EPT_DESC* ept)
+{
+  return (ept->bEndpointAddress & USB_DIR_IN);
+}
+
+static inline uint usb_create_pipe(USB_DEVICE_INFO *device, USB_EPT_DESC* ept)
+{
+  switch(usb_get_endpoint_transfer_type(ept)) {
+  case PIPE_ISOCHRONOUS:
+    if(usb_is_endpoint_in(ept)) {
+      return usb_rcvisocpipe(device, ept->bEndpointAddress & 0xF);
+    }
+    else {
+      return usb_sndisocpipe(device, ept->bEndpointAddress & 0xF);
+    }
+
+  case PIPE_INTERRUPT:
+    if(usb_is_endpoint_in(ept)) {
+      return usb_rcvintpipe(device, ept->bEndpointAddress & 0xF);
+    }
+    else {
+      return usb_sndintpipe(device, ept->bEndpointAddress & 0xF);
+    }
+
+  case PIPE_BULK:
+    if(usb_is_endpoint_in(ept)) {
+      return usb_rcvbulkpipe(device, ept->bEndpointAddress & 0xF);
+    }
+    else {
+      return usb_sndbulkpipe(device, ept->bEndpointAddress & 0xF);
+    }
+
+  default: // case PIPE_CONTROL:
+    if(usb_is_endpoint_in(ept)) {
+      return usb_rcvctrlpipe(device, ept->bEndpointAddress & 0xF);
+    }
+    else {
+      return usb_sndctrlpipe(device, ept->bEndpointAddress & 0xF);
+    }
+  }
+}
 
 bool usb_enumerate(usb_hcd_t* usb_hcd);
 
@@ -612,6 +693,11 @@ typedef void (*usb_kill_urb_func)(struct urb* urb);
 typedef int  (*usb_rt_iso_data_lost_func)(struct urb* urb);
 typedef int  (*usb_rt_iso_free_packets_func)(struct urb* urb, int number_of_packets);
 typedef int  (*usb_rt_iso_update_packets_func)(struct urb* urb, int max_packets);
+typedef int  (*usb_rt_iso_push_data_func)(struct urb* urb, char* data, int count);
+typedef int  (*usb_rt_int_data_lost_func)(struct urb* urb);
+typedef int  (*usb_rt_int_free_data_func)(struct urb* urb, int count);
+typedef int  (*usb_rt_int_update_data_func)(struct urb* urb, int max_count);
+typedef int  (*usb_rt_int_push_data_func)(struct urb* urb, char* data, int count);
 
 /*
  * Generic USB Host controller Device object 
@@ -628,6 +714,11 @@ struct _usb_hcd_t
   usb_rt_iso_data_lost_func      rt_iso_data_lost;
   usb_rt_iso_update_packets_func rt_iso_update_packets;
   usb_rt_iso_free_packets_func   rt_iso_free_packets;
+  usb_rt_iso_push_data_func      rt_iso_push_data;
+  usb_rt_int_data_lost_func      rt_int_data_lost;
+  usb_rt_int_update_data_func    rt_int_update_data;
+  usb_rt_int_free_data_func      rt_int_free_data;
+  usb_rt_int_push_data_func      rt_int_push_data;
   uint32_t next_address;
   
   
@@ -643,8 +734,12 @@ bool initialise_usb_hcd(usb_hcd_t* usb_hcd, uint32_t usb_hc_type,
                         usb_kill_urb_func kill_urb,
                         usb_rt_iso_data_lost_func rt_iso_data_lost,
                         usb_rt_iso_update_packets_func rt_iso_update_packets,
-                        usb_rt_iso_free_packets_func rt_iso_free_packets);
-
+                        usb_rt_iso_free_packets_func rt_iso_free_packets,
+                        usb_rt_iso_push_data_func rt_iso_push_data,
+                        usb_rt_int_data_lost_func rt_int_data_lost,
+                        usb_rt_int_update_data_func rt_int_update_data,
+                        usb_rt_int_free_data_func rt_int_free_data,
+                        usb_rt_int_push_data_func rt_int_push_data);
 
 bool add_usb_hcd(usb_hcd_t* usb_hcd);
 

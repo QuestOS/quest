@@ -163,7 +163,7 @@ print_qh_info(ehci_hcd_t* ehci_hcd, qh_t* qh, bool print_tds ,char* msg)
     qtd_t* alt_qtd = NULL;
     if(qh->current_qtd_ptr_raw > 32) {
       qtd = EHCI_QTD_PHYS_TO_VIRT(ehci_hcd, qh->current_qtd_ptr_raw);
-      print_qtd_info(ehci_hcd, qtd, "\n\n\nCurrent QH");
+      print_qtd_info(ehci_hcd, qtd, "\n\n\nCurrent QTD");
     }
     qtd = NULL;
     if(qh->next_qtd_ptr_raw > 32) {
@@ -211,7 +211,7 @@ print_itd_info(ehci_hcd_t* ehci_hcd, itd_t* itd ,char* msg)
   
 #define PRINT_ITD_MEMBER(member) DLOGV(#member ": 0x%X", itd->member)
 
-  #define ITD_PRINT_VERBOSE
+  //#define ITD_PRINT_VERBOSE
 
   DLOG("This ITD = 0x%p", itd);
   PRINT_ITD_MEMBER(next_link_pointer);
@@ -301,7 +301,8 @@ print_itd_info(ehci_hcd_t* ehci_hcd, itd_t* itd ,char* msg)
   PRINT_ITD_MEMBER(ex_buf_ptr_pgs[5]);
   PRINT_ITD_MEMBER(ex_buf_ptr_pgs[6]);
   PRINT_ITD_MEMBER(frame_index);
-  
+
+#if 0
     PRINT_ITD_MEMBER(transaction_backup[0]);
 #ifdef ITD_PRINT_VERBOSE
   PRINT_ITD_MEMBER(transaction_backup[0].status);
@@ -368,6 +369,8 @@ print_itd_info(ehci_hcd_t* ehci_hcd, itd_t* itd ,char* msg)
   PRINT_ITD_MEMBER(transaction_backup[7].offset);
 #endif
 
+#endif
+
 #undef PRINT_ITD_MEMBER
   
 
@@ -393,11 +396,42 @@ print_itd_dma(ehci_hcd_t* ehci_hcd, itd_t* itd, int transaction, char* msg)
 
 
 void SQUELCH_UNUSED
-print_periodic_list(ehci_hcd_t* ehci_hcd)
+print_periodic_list(ehci_hcd_t* ehci_hcd, bool first_row_only,
+		    bool print_qhs, bool print_itds)
 {
   int i;
   frm_lst_lnk_ptr_t* frame_list = ehci_hcd->frame_list;
   for(i = 0; i < ehci_hcd->frame_list_size; ++i) {
-    DLOG("Entry %d = 0x%p", i , frame_list[i].raw);
+    if(!first_row_only) {
+      qh_t* temp_qh;
+      itd_t* temp_itd;
+      frm_lst_lnk_ptr_t* current = &frame_list[i];
+      while(current->raw >= 32) {
+	switch(current->type) {
+          case TYPE_ITD:
+            temp_itd = EHCI_ITD_PHYS_TO_VIRT(ehci_hcd, current->raw & (~0x1F));
+	    if(print_itds) print_itd_info(ehci_hcd, temp_itd, "In periodic list");
+            current = &temp_itd->next_link_pointer;
+	    break;
+	    
+          case TYPE_QH:
+            temp_qh = EHCI_QH_PHYS_TO_VIRT(ehci_hcd, current->raw & (~0x1F));
+	    if(print_qhs) print_qh_info(ehci_hcd, temp_qh, TRUE, "In periodic list");
+	    current = &temp_qh->horizontalPointer;
+	    break;
+
+	case TYPE_SITD:
+	case TYPE_FSTN:
+	default:
+	  /*
+	   * -- EM -- These shouldn't ever be in the periodic list right
+	   * now because we don't use them at all yet
+	   */
+	  DLOG("Unhandled case in %s line %d", __FILE__, __LINE__);
+	  panic("Unhandled case in link_qh_to_periodic_list");
+	}
+	DLOG("----------- 0x%p",  current->raw);
+      }
+    }
   }
 }

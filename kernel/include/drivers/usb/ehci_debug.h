@@ -56,6 +56,8 @@
   while(0)
 #endif
 
+#define DLOG_INT(val) DLOG(#val " = %d", (int)(val));
+#define DLOG_UINT(val) DLOG(#val " = %u", (unsigned int)(val));
 
 void SQUELCH_UNUSED
 print_caps_and_regs_info(ehci_hcd_t* ehci_hcd, char* msg);
@@ -71,10 +73,11 @@ void SQUELCH_UNUSED
 print_itd_info(ehci_hcd_t* ehci_hcd, itd_t* itd ,char* msg);
 
 uint32_t SQUELCH_UNUSED
-print_itd_dma(ehci_hcd_t* ehci_hcd, itd_t* itd, int transaction,char* msg);
+print_itd_dma(ehci_hcd_t* ehci_hcd, itd_t* itd, int transaction, char* msg);
 
 void SQUELCH_UNUSED
-print_periodic_list(ehci_hcd_t* ehci_hcd);
+print_periodic_list(ehci_hcd_t* ehci_hcd, bool first_row_only,
+		    bool print_qhs, bool print_itds);
 
 #endif // _EHCI_DEBUG_H_
 

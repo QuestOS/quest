@@ -57,20 +57,20 @@ int usb_syscall_handler(uint32_t device_id, uint32_t operation,
   switch(operation) {
   case USB_USER_READ:
 
-    result = device->driver->read(device, buf, data_len);
+    result = device->driver->read(device, device_id, buf, data_len);
     break;
     
   case USB_USER_WRITE:
     
-    result = device->driver->write(device, buf, data_len);
+    result = device->driver->write(device, device_id, buf, data_len);
     break;
 
   case USB_USER_OPEN:
-    result = device->driver->open(device, buf, data_len);
+    result = device->driver->open(device, device_id, buf, data_len);
     break;
     
   case USB_USER_CLOSE:
-    result = device->driver->close(device);
+    result = device->driver->close(device, device_id);
     break;
 
   default:
@@ -90,16 +90,30 @@ initialise_usb_hcd(usb_hcd_t* usb_hcd, uint32_t usb_hc_type,
                    usb_kill_urb_func kill_urb,
                    usb_rt_iso_data_lost_func rt_iso_data_lost,
                    usb_rt_iso_update_packets_func rt_iso_update_packets,
-                   usb_rt_iso_free_packets_func rt_iso_free_packets)
+                   usb_rt_iso_free_packets_func rt_iso_free_packets,
+                   usb_rt_iso_push_data_func rt_iso_push_data,
+                   usb_rt_int_data_lost_func rt_int_data_lost,
+                   usb_rt_int_update_data_func rt_int_update_data,
+                   usb_rt_int_free_data_func rt_int_free_data,
+                   usb_rt_int_push_data_func rt_int_push_data)
 {
   usb_hcd->usb_hc_type = usb_hc_type;
   usb_hcd->reset_root_ports      = reset_root_ports;
   usb_hcd->post_enumeration      = post_enumeration;
+  
   usb_hcd->submit_urb            = submit_urb;
   usb_hcd->kill_urb              = kill_urb;
+  
   usb_hcd->rt_iso_data_lost      = rt_iso_data_lost;
   usb_hcd->rt_iso_update_packets = rt_iso_update_packets;
   usb_hcd->rt_iso_free_packets   = rt_iso_free_packets;
+  usb_hcd->rt_iso_push_data      = rt_iso_push_data;
+  
+  usb_hcd->rt_int_data_lost      = rt_int_data_lost;
+  usb_hcd->rt_int_update_data    = rt_int_update_data;
+  usb_hcd->rt_int_free_data      = rt_int_free_data;
+  usb_hcd->rt_int_push_data      = rt_int_push_data;
+  
   usb_hcd->next_address = 1;
   return TRUE;
 }
@@ -114,14 +128,14 @@ add_usb_hcd(usb_hcd_t* usb_hcd)
   return FALSE;
 }
 
-bool usb_register_device(USB_DEVICE_INFO* device, USB_DRIVER* driver)
+int usb_register_device(USB_DEVICE_INFO* device, USB_DRIVER* driver)
 {
   if(num_devices < USB_CORE_MAX_DEVICES) {
     device->driver = driver;
     devices[num_devices++] = device;
-    return TRUE;
+    return num_devices-1;
   }
-  return FALSE;
+  return -1;
 }
 
 USB_DEVICE_INFO* usb_get_device(int device_id)
@@ -143,7 +157,6 @@ get_usb_hcd(uint32_t index)
  */
 int usb_submit_urb (struct urb *urb, gfp_t mem_flags)
 {
-  DLOG("usb_submit_urb called");
   if(mem_flags != 0) {
     /*
      * -- EM -- mem_flags can only be zero for right now.  Panic if it
@@ -211,6 +224,31 @@ int usb_rt_iso_data_lost(struct urb* urb)
   return urb->dev->hcd->rt_iso_data_lost(urb);
 }
 
+int usb_rt_iso_push_data(struct urb* urb, char* data, int count)
+{
+  return urb->dev->hcd->rt_iso_push_data(urb, data, count);
+}
+
+int usb_rt_int_data_lost(struct urb* urb)
+{
+  return urb->dev->hcd->rt_int_data_lost(urb);
+}
+
+int usb_rt_int_free_data(struct urb* urb, int count)
+{
+  return urb->dev->hcd->rt_int_free_data(urb, count);
+}
+
+int usb_rt_int_update_data(struct urb* urb, int max_count)
+{
+  return urb->dev->hcd->rt_int_update_data(urb, max_count);
+}
+
+int usb_rt_int_push_data(struct urb* urb, char* data, int count)
+{
+  return urb->dev->hcd->rt_int_push_data(urb, data, count);
+}
+
 static void usb_core_blocking_completion(struct urb* urb)
 {
   *((bool*)urb->context) = TRUE;
@@ -235,28 +273,17 @@ int usb_isochronous_msg(struct usb_device *dev, unsigned int pipe,
   struct usb_host_endpoint *ep;
 
   ep = usb_pipe_endpoint(dev, pipe);
-
   urb = usb_alloc_urb(num_packets, 0);
-
   
   memset(actual_lens, 0, sizeof(*actual_lens) * num_packets);
-  memset(statuses,    0, sizeof(*statuses) * num_packets);
-
+  memset(statuses,    0, sizeof(*statuses)    * num_packets);
+  
   if(urb == NULL) {
     return -1;
   }
   
   if(mp_enabled) {
     complete_callback = usb_core_blocking_completion;
-    
-    /*
-     * -- EM -- So the best way to do this would have the processes
-     * sleep the entire time until either woken up or a timeout
-     * occurred.  Quest does not have this functionality yet (or maybe
-     * it does and I just don't know) so just going to do a spin/sleep
-     * combo looking at a boolean to see if the completion has
-     * finished
-     */
   }
   else {
     complete_callback  = NULL;
@@ -271,20 +298,28 @@ int usb_isochronous_msg(struct usb_device *dev, unsigned int pipe,
   if(ret < 0) goto usb_isochronous_msg_out;
   
   if(mp_enabled) {
+    
+    /*
+     * -- EM -- So the best way to do this would have the processes
+     * sleep the entire time until either woken up or a timeout
+     * occurred.  Quest does not have this functionality yet (or maybe
+     * it does and I just don't know) so just going to do a spin/sleep
+     * combo looking at a boolean to see if the completion has
+     * finished
+     */
+    
     /*
      * -- EM -- Timeout is specified in jiffies, right now assuming
      * the Linux default of 4ms
      */
-
+    
     /* add one for integer rounding*/
     
     for(i = 0; (!done) && (i < (timeout / USB_MSG_SLEEP_INTERVAL) + 1 ); ++i) {
       sched_usleep(4000 * USB_MSG_SLEEP_INTERVAL);
-      
     }
-
+    
     ret = done ? 0 : -1;
-
   }
 
  usb_isochronous_msg_out:
@@ -307,12 +342,10 @@ int usb_interrupt_msg(struct usb_device *usb_dev, unsigned int pipe,
    */
 
   struct urb urb;
-  task_id current_task;
-
-  
+  bool done = FALSE;
+  int i;
   int ret;
   usb_complete_t complete_callback;
-  void* context;
   struct usb_host_endpoint *ep;
 
   usb_init_urb(&urb);
@@ -320,23 +353,13 @@ int usb_interrupt_msg(struct usb_device *usb_dev, unsigned int pipe,
 
   if(mp_enabled) {
     complete_callback = usb_core_blocking_completion;
-    current_task = str();
-
-    /*
-     * -- EM -- The context will most likely have to be more
-     * complicated than this
-     */
-    context = &current_task;
-    
-    DLOG("mp_enabled usb_interrupt_msg not finished");
-    panic("mp_enabled usb_interrupt_msg not finished");
   }
   else {
-    complete_callback = context = NULL;
+    complete_callback  = NULL;
     urb.timeout = timeout;
   }
 
-  usb_fill_int_urb(&urb, usb_dev, pipe, data, len, complete_callback, context,
+  usb_fill_int_urb(&urb, usb_dev, pipe, data, len, complete_callback, &done,
                    ep->desc.bInterval);
   urb.actual_length = 0;
 
@@ -345,15 +368,31 @@ int usb_interrupt_msg(struct usb_device *usb_dev, unsigned int pipe,
   if(ret < 0) goto usb_interrupt_msg_out;
   
   if(mp_enabled) {
-    /*
-     * -- EM -- should sleep here after, need some way to check for
-     * race condition where urb finishes before getting here
-     */
-  }
 
-  /*
-   * -- EM -- Set the ret val from the context passed to the callback
-   */
+    /*
+     * -- EM -- So the best way to do this would have the processes
+     * sleep the entire time until either woken up or a timeout
+     * occurred.  Quest does not have this functionality yet (or maybe
+     * it does and I just don't know) so just going to do a spin/sleep
+     * combo looking at a boolean to see if the completion has
+     * finished
+     */
+    
+    /*
+     * -- EM -- Timeout is specified in jiffies, right now assuming
+     * the Linux default of 4ms
+     */
+
+    /* add one for integer rounding*/
+    
+    for(i = 0; (!done) && (i < (timeout / USB_MSG_SLEEP_INTERVAL) + 1 ); ++i) {
+      sched_usleep(4000 * USB_MSG_SLEEP_INTERVAL);
+      
+    }
+
+    ret = done ? 0 : -1;
+
+  }
   
  usb_interrupt_msg_out:
 
@@ -372,33 +411,21 @@ int usb_bulk_msg(struct usb_device *usb_dev, unsigned int pipe,
    * function won't complete until the callback is called
    */
   struct urb urb;
-  task_id current_task;
-
-  
+  bool done;
+  int i;
   int ret;
   usb_complete_t complete_callback;
-  void* context;
 
   usb_init_urb(&urb);
   if(mp_enabled) {
     complete_callback = usb_core_blocking_completion;
-    current_task = str();
-
-    /*
-     * -- EM -- The context will most likely have to be more
-     * complicated than this
-     */
-    context = &current_task;
-    
-    DLOG("mp_enabled usb_bulk_msg not finished");
-    panic("mp_enabled usb_bulk_msg not finished");
   }
   else {
-    complete_callback = context = NULL;
+    complete_callback  = NULL;
     urb.timeout = timeout;
   }
 
-  usb_fill_bulk_urb(&urb, usb_dev, pipe, data, len, complete_callback, context);
+  usb_fill_bulk_urb(&urb, usb_dev, pipe, data, len, complete_callback, &done);
   urb.actual_length = 0;
 
   ret = usb_submit_urb(&urb, 0);
@@ -406,15 +433,31 @@ int usb_bulk_msg(struct usb_device *usb_dev, unsigned int pipe,
   if(ret < 0) goto usb_bulk_msg_out;
   
   if(mp_enabled) {
-    /*
-     * -- EM -- should sleep here after, need some way to check for
-     * race condition where urb finishes before getting here
-     */
-  }
 
-  /*
-   * -- EM -- Set the ret val from the context passed to the callback
-   */
+    /*
+     * -- EM -- So the best way to do this would have the processes
+     * sleep the entire time until either woken up or a timeout
+     * occurred.  Quest does not have this functionality yet (or maybe
+     * it does and I just don't know) so just going to do a spin/sleep
+     * combo looking at a boolean to see if the completion has
+     * finished
+     */
+
+    /*
+     * -- EM -- Timeout is specified in jiffies, right now assuming
+     * the Linux default of 4ms
+     */
+    
+    /* add one for integer rounding*/
+    
+    for(i = 0; (!done) && (i < (timeout / USB_MSG_SLEEP_INTERVAL) + 1 ); ++i) {
+      sched_usleep(4000 * USB_MSG_SLEEP_INTERVAL);
+      
+    }
+
+    ret = done ? 0 : -1;
+
+  }
   
  usb_bulk_msg_out:
 
@@ -434,14 +477,11 @@ int usb_control_msg(struct usb_device *dev, unsigned int pipe,
    * function won't complete until the callback is called
    */
   struct urb urb;
-  task_id current_task;
-
-  
-  
+  bool done;
+  int i;
   USB_DEV_REQ cmd;
   int ret;
   usb_complete_t complete_callback;
-  void* context;
   
   usb_init_urb(&urb);
   cmd.bmRequestType = requesttype;
@@ -452,24 +492,14 @@ int usb_control_msg(struct usb_device *dev, unsigned int pipe,
   
   if(mp_enabled) {
     complete_callback = usb_core_blocking_completion;
-    current_task = str();
-
-    /*
-     * -- EM -- The context will most likely have to be more
-     * complicated than this
-     */
-    context = &current_task;
-    
-    DLOG("mp_enabled usb_control_msg not finished");
-    panic("mp_enabled usb_control_msg not finished");
   }
   else {
-    complete_callback = context = NULL;
+    complete_callback = NULL;
     urb.timeout = timeout;
   }
   
   usb_fill_control_urb(&urb, dev, pipe, (unsigned char *)&cmd, data,
-                       size, complete_callback, context);
+                       size, complete_callback, &done);
 
   
   ret = usb_submit_urb(&urb, 0);
@@ -477,15 +507,28 @@ int usb_control_msg(struct usb_device *dev, unsigned int pipe,
   if(ret < 0) goto usb_control_msg_out;
 
   if(mp_enabled) {
-    /*
-     * -- EM -- should sleep here after, need some way to check for
-     * race condition where urb finishes before getting here
-     */
-  }
 
-  /*
-   * -- EM -- Set the ret val from the context passed to the callback
-   */
+    /*
+     * -- EM -- So the best way to do this would have the processes
+     * sleep the entire time until either woken up or a timeout
+     * occurred.  Quest does not have this functionality yet (or maybe
+     * it does and I just don't know) so just going to do a spin/sleep
+     * combo looking at a boolean to see if the completion has
+     * finished
+     */
+
+    /*
+     * -- EM -- Timeout is specified in jiffies, right now assuming
+     * the Linux default of 4ms
+     */
+    
+    /* add one for integer rounding*/
+    
+    for(i = 0; (!done) && (i < (timeout / USB_MSG_SLEEP_INTERVAL) + 1 ); ++i) {
+      sched_usleep(4000 * USB_MSG_SLEEP_INTERVAL);
+    }
+    ret = done ? 0 : -1;
+  }
   
  usb_control_msg_out:
   
@@ -664,8 +707,9 @@ find_device_driver (USB_DEVICE_INFO *info, USB_CFG_DESC *cfgd, USB_IF_DESC *ifd)
   for (d=0; d<num_drivers; d++) {
     if (drivers[d].probe (info, cfgd, ifd)) return;
   }
-  DLOG("Unknown device file %s line %d", __FILE__, __LINE__);
-  //panic("Unknown Device");
+  DLOG("Unknown device bDeviceClass = 0x%X\nbDeviceSubClass = 0x%X\nfile %s line %d",
+       info->devd.bDeviceClass, info->devd.bDeviceSubClass, __FILE__, __LINE__);
+  panic("Unknown Device");
 }
 
 
@@ -854,8 +898,8 @@ void dlog_usb_hcd(usb_hcd_t* usb_hcd)
 }
 
 
-int usb_iso_payload_size(USB_DEVICE_INFO* dev,
-                              USB_EPT_DESC* endpoint)
+int usb_payload_size(USB_DEVICE_INFO* dev,
+                     USB_EPT_DESC* endpoint)
 {
   int wMaxPacketSize = endpoint->wMaxPacketSize;
   
