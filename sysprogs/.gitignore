@@ -1,0 +1,9 @@
+iotest
+ipctest
+shell
+spinner
+tcpclient
+tcpserver
+udpclient
+udpserver
+webserver
