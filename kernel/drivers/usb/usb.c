@@ -95,7 +95,11 @@ initialise_usb_hcd(usb_hcd_t* usb_hcd, uint32_t usb_hc_type,
                    usb_rt_int_data_lost_func rt_int_data_lost,
                    usb_rt_int_update_data_func rt_int_update_data,
                    usb_rt_int_free_data_func rt_int_free_data,
-                   usb_rt_int_push_data_func rt_int_push_data)
+                   usb_rt_int_push_data_func rt_int_push_data,
+                   usb_rt_bulk_data_lost_func rt_bulk_data_lost,
+                   usb_rt_bulk_update_data_func rt_bulk_update_data,
+                   usb_rt_bulk_free_data_func rt_bulk_free_data,
+                   usb_rt_bulk_push_data_func rt_bulk_push_data)
 {
   usb_hcd->usb_hc_type = usb_hc_type;
   usb_hcd->reset_root_ports      = reset_root_ports;
@@ -113,6 +117,12 @@ initialise_usb_hcd(usb_hcd_t* usb_hcd, uint32_t usb_hc_type,
   usb_hcd->rt_int_update_data    = rt_int_update_data;
   usb_hcd->rt_int_free_data      = rt_int_free_data;
   usb_hcd->rt_int_push_data      = rt_int_push_data;
+
+  usb_hcd->rt_bulk_data_lost     = rt_bulk_data_lost;
+  usb_hcd->rt_bulk_free_data     = rt_bulk_free_data;
+  usb_hcd->rt_bulk_update_data   = rt_bulk_update_data;
+  usb_hcd->rt_bulk_push_data     = rt_bulk_push_data;
+  
   
   usb_hcd->next_address = 1;
   return TRUE;
@@ -247,6 +257,26 @@ int usb_rt_int_update_data(struct urb* urb, int max_count)
 int usb_rt_int_push_data(struct urb* urb, char* data, int count)
 {
   return urb->dev->hcd->rt_int_push_data(urb, data, count);
+}
+
+int usb_rt_bulk_data_lost(struct urb* urb)
+{
+  return urb->dev->hcd->rt_bulk_data_lost(urb);
+}
+
+int usb_rt_bulk_free_data(struct urb* urb, int count)
+{
+  return urb->dev->hcd->rt_bulk_free_data(urb, count);
+}
+
+int usb_rt_bulk_update_data(struct urb* urb, int max_count)
+{
+  return urb->dev->hcd->rt_bulk_update_data(urb, max_count);
+}
+
+int usb_rt_bulk_push_data(struct urb* urb, char* data, int count)
+{
+  return urb->dev->hcd->rt_bulk_push_data(urb, data, count);
 }
 
 static void usb_core_blocking_completion(struct urb* urb)

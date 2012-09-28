@@ -111,9 +111,12 @@ static int gadget_open(USB_DEVICE_INFO* device, int dev_num, char* buf, int data
                         gadget_dev->buffer_size, ep->desc.bInterval);
     break;
   case PIPE_BULK:
-    DLOG("Bulk gadget EP not handled yet");
-    panic("Bulk gadget EP not handled yet");
-
+    if(gadget_dev->buffer_size > (1024*400)) {
+      gadget_dev->buffer_size = 1024*400;
+    }
+    usb_fill_rt_bulk_urb(gadget_dev->urb, device, gadget_dev->pipe, buf,
+                        gadget_dev->buffer_size, 1);
+    break;
   default: // PIPE_CONTROL:
     DLOG("Gadget EP should never be control");
     panic("Gadget EP should never be control");
@@ -171,7 +174,7 @@ static int gadget_read(USB_DEVICE_INFO* device, int dev_num, char* buf, int data
             memcpy(buf, &data_buf[gadget_dev->next_to_read], new_bytes);
           }
           buf[10] = '\0';
-          //DLOG("Data = %s", buf);
+          DLOG("Data = %s", buf);
 #endif
           //DLOG("%c", data_buf[gadget_dev->next_to_read]);
       
@@ -235,7 +238,54 @@ static int gadget_read(USB_DEVICE_INFO* device, int dev_num, char* buf, int data
       }
 
     case PIPE_BULK:
-    default: // case: PIPE_CONTROL:
+      {
+        int new_bytes;
+        new_bytes = usb_rt_bulk_update_data(urb, BYTES_TO_READ);
+        
+        DLOG("new_bytes = %d / %d", new_bytes, BYTES_TO_READ);
+        if(new_bytes < 0) {
+          DLOG("new bytes < 0");
+          panic("new bytes < 0");
+        }
+        if(new_bytes > 0) {
+          gadget_dev->data_available += new_bytes;
+          total_bytes_read += new_bytes;
+          //DLOG("total_bytes_read = %d", total_bytes_read);
+          //DLOG("new_bytes = %d / %d", new_bytes, BYTES_TO_READ);
+          
+          //DLOG("gadget_dev->next_to_read = %d", gadget_dev->next_to_read);
+#if 1
+          if(gadget_dev->next_to_read + new_bytes > gadget_dev->buffer_size) {
+            memcpy(buf, &data_buf[gadget_dev->next_to_read],
+                   gadget_dev->buffer_size - gadget_dev->next_to_read);
+            memcpy(&buf[gadget_dev->buffer_size - gadget_dev->next_to_read],
+                   data_buf,
+                   new_bytes - (gadget_dev->buffer_size - gadget_dev->next_to_read));
+          }
+          else {
+            memcpy(buf, &data_buf[gadget_dev->next_to_read], new_bytes);
+          }
+          buf[10] = '\0';
+          DLOG("Data = %s", buf);
+#endif
+          //DLOG("%c", data_buf[gadget_dev->next_to_read]);
+      
+          gadget_dev->next_to_read += new_bytes;
+          if(gadget_dev->next_to_read > gadget_dev->buffer_size) {
+            gadget_dev->next_to_read -= gadget_dev->buffer_size;
+          }
+        }
+        //DLOG("data_available = %d", gadget_dev->data_available);
+        if(gadget_dev->data_available > 0) {
+          bytes_freed = usb_rt_bulk_free_data(urb, gadget_dev->data_available);
+          if(bytes_freed > 0) {
+            gadget_dev->data_available -= bytes_freed;
+          }
+        }
+
+        return new_bytes;
+      }
+    default: // case PIPE_CONTROL:
       {
         DLOG("Unsupported type in read");
         return -1;
@@ -289,7 +339,7 @@ static int gadget_write(USB_DEVICE_INFO* device, int dev_num, char* buf,
           DLOG("got start time");
         }
         
-#if 0
+#if 1
 #ifdef PUSH_LOTS_DATA
         result = usb_rt_int_push_data(urb, buf, data_len);
 #else
@@ -331,6 +381,20 @@ static int gadget_write(USB_DEVICE_INFO* device, int dev_num, char* buf,
         return result;
       }
     case PIPE_BULK:
+      {
+#if 1
+#ifdef PUSH_LOTS_DATA
+        result = usb_rt_bulk_push_data(urb, buf, data_len);
+#else
+        result = usb_rt_bulk_push_data(urb, buf, gadget_dev->transaction_size);
+#endif
+#else
+        result = usb_rt_bulk_push_data(urb, "3", 1);
+        
+#endif
+        DLOG("result = %d", result);
+        return result;
+      }
     default: // case PIPE_CONTROL:
       {
         DLOG("Unsupported pipe type");
@@ -420,7 +484,8 @@ static bool gadget_probe (USB_DEVICE_INFO *device, USB_CFG_DESC *cfg,
       ept = (USB_EPT_DESC*)(((uint8_t*)ept) + ept->bLength);
     }
 
-    DLOG("Endpoint address = %d, attributes = 0x%X, maxPacketSize = %d, interval = %d",
+    DLOG("Endpoint address = %d, attributes = 0x%X, "
+         "maxPacketSize = %d, interval = %d",
          ept->bEndpointAddress, ept->bmAttributes, ept->wMaxPacketSize,
          ept->bInterval);
 

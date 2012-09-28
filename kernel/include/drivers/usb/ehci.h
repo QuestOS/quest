@@ -368,11 +368,14 @@ typedef struct _qtd_t
   uint32_t original_total_bytes_to_transfer;
   uint32_t token_backup;
   qtd_buffer_page_pointer_t buffer_page_zero_backup;
-  
+
+  uint32_t padding[7];
 } PACKED ALIGNED(32) qtd_t;
 
 
 CASSERT( (sizeof(qtd_t) % 32) == 0, ehci_qtd_size);
+
+CASSERT( (sizeof(qtd_t) & (sizeof(qtd_t) - 1)) == 0, qtd_alignedment)
 
 #define QH_NEXT(hcd, qh_virt)                                   \
   ( (EHCI_QH_VIRT_TO_PHYS(hcd, qh_virt)) | (TYPE_QH << 1) )
@@ -533,6 +536,8 @@ typedef struct _qh_t{
 } PACKED ALIGNED(32) qh_t;
 
 CASSERT( (sizeof(qh_t) % 32) == 0, ehci_qh_size);
+
+CASSERT( (sizeof(qh_t) & (sizeof(qh_t) - 1)) == 0, qh_alignedment)
 
 #define EHCI_TRANSACTION_LENGTH
 
@@ -780,13 +785,16 @@ ehci_iso_urb_priv_t* ehci_alloc_iso_urb_priv(int num_itds, struct urb* urb)
  ***************************************************************/
 
 /***************************************************************
- * Interrupt URB private data start
+ * QH URB private data start
+ *
+ * Both bulk, control and interrupt URB private data share similar
+ * data elements because they all use QHs.  This is where the common
+ * data elements are located
  ***************************************************************/
 
 typedef struct
 {
   qh_t* qh;
-  int interval_offset;
   uint32_t next_qtd_to_free;
   uint32_t next_byte_to_free_in_qtd;
   uint32_t next_qtd_to_make_available;
@@ -798,6 +806,22 @@ typedef struct
   uint32_t buffer_size;
   unsigned int num_qtds;
   qtd_t* qtds[0];
+} ehci_qh_urb_priv_t;
+
+/***************************************************************
+ * QH URB private data end
+ ***************************************************************/
+
+/***************************************************************
+ * Interrupt URB private data start
+ ***************************************************************/
+
+typedef struct
+{
+  int interval_offset;
+  ehci_qh_urb_priv_t qh_urb_priv;
+  /* Nothing can be after this because qh_urb_priv has a variable size
+   * array at its end */
 } ehci_int_urb_priv_t;
 
 static void
@@ -805,7 +829,7 @@ initialise_int_urb_priv(ehci_int_urb_priv_t* priv, unsigned int num_qtds)
 {
   memset(priv, 0,
          sizeof(ehci_int_urb_priv_t) + num_qtds * sizeof(qtd_t*));
-  priv->num_qtds = num_qtds;
+  priv->qh_urb_priv.num_qtds = num_qtds;
 }
 
 static inline
@@ -831,6 +855,47 @@ ehci_int_urb_priv_t* ehci_alloc_int_urb_priv(unsigned int num_qtds)
  * Interrupt URB private data end
  ***************************************************************/
 
+/***************************************************************
+ * Bulk URB private data start
+ ***************************************************************/
+
+typedef struct
+{
+  ehci_qh_urb_priv_t qh_urb_priv;
+  /* Nothing can be after this because qh_urb_priv has a variable size
+   * array at the end */
+} ehci_bulk_urb_priv_t;
+
+static void
+initialise_bulk_urb_priv(ehci_bulk_urb_priv_t* priv, unsigned int num_qtds)
+{
+  memset(priv, 0,
+         sizeof(ehci_bulk_urb_priv_t) + num_qtds * sizeof(qtd_t*));
+  priv->qh_urb_priv.num_qtds = num_qtds;
+}
+
+static inline
+ehci_bulk_urb_priv_t* ehci_alloc_bulk_urb_priv(unsigned int num_qtds)
+{
+  ehci_bulk_urb_priv_t* temp;
+  pow2_alloc(sizeof(ehci_bulk_urb_priv_t) +
+             num_qtds * sizeof(qtd_t*),
+             (uint8_t**)&temp);
+  if(temp == NULL) {
+    return NULL;
+  }
+  initialise_bulk_urb_priv(temp, num_qtds);
+  return temp;
+}
+
+#define bulk_urb_priv_to_urb(bulk_urb_priv)                       \
+  (container_of((void*)(bulk_urb_priv), struct urb, hcpriv))
+
+#define get_bulk_urb_priv(urb) ((ehci_bulk_urb_priv_t*)urb->hcpriv)
+
+/***************************************************************
+ * Bulk URB private data end
+ ***************************************************************/
 
 #define EHCI_GET_DEVICE_QH(ehci_hcd, addr, is_input, endpoint)          \
   ((ehci_hcd)->ehci_devinfo[(addr)]                                     \

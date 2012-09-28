@@ -174,42 +174,58 @@ static int ehci_rt_int_data_lost(struct urb* urb)
   return 0;
 }
 
-static int ehci_rt_int_update_data(struct urb* urb, int max_count)
+
+
+/*
+ * -- EM -- Need to actually implement this function just a dummy
+ * right now
+ */
+static int ehci_rt_bulk_data_lost(struct urb* urb)
 {
-  ehci_int_urb_priv_t* int_urb_priv = get_int_urb_priv(urb);
-  qtd_t** qtds = int_urb_priv->qtds;
-  int num_qtds = int_urb_priv->num_qtds;
+  DLOG("ehci_rt_bulk_data_lost is not implemented");
+  panic("ehci_rt_bulk_data_lost is not implemented");
+  return 0;
+}
+
+
+
+static int ehci_rt_qh_update_data(struct urb* urb, ehci_qh_urb_priv_t* qh_urb_priv,
+                                  int max_count)
+{
+  qtd_t** qtds = qh_urb_priv->qtds;
+  int num_qtds = qh_urb_priv->num_qtds;
   int original_max_count = max_count;
-  int next_qtd_to_free = int_urb_priv->next_qtd_to_free;
-  int next_byte_to_free_in_qtd = int_urb_priv->next_byte_to_free_in_qtd;
-  
+  int next_qtd_to_free = qh_urb_priv->next_qtd_to_free;
+  int next_byte_to_free_in_qtd = qh_urb_priv->next_byte_to_free_in_qtd;
+
   while(max_count) {
-    int next_qtd_to_make_available = int_urb_priv->next_qtd_to_make_available;
+    int next_qtd_to_make_available = qh_urb_priv->next_qtd_to_make_available;
     int next_byte_to_make_available_in_qtd
-      = int_urb_priv->next_byte_to_make_available_in_qtd;
+      = qh_urb_priv->next_byte_to_make_available_in_qtd;
     
     qtd_t* current_qtd = qtds[next_qtd_to_make_available];
     int bytes_remaining_to_transfer = (current_qtd->token >> 16) & 0x7FFF;
     int newly_available_bytes = 
       current_qtd->original_total_bytes_to_transfer
       - bytes_remaining_to_transfer
-      - int_urb_priv->next_byte_to_make_available_in_qtd;
+      - qh_urb_priv->next_byte_to_make_available_in_qtd;
     
     EHCI_ASSERT(max_count > 0);
     EHCI_ASSERT(newly_available_bytes >= 0);
-
+    
 #if 0
+    DLOG_INT(current_qtd->original_total_bytes_to_transfer);
     DLOG_INT(next_qtd_to_make_available);
     DLOG_INT(next_byte_to_make_available_in_qtd);
     DLOG_INT(bytes_remaining_to_transfer);
     DLOG_INT(newly_available_bytes);
     DLOG_INT(next_qtd_to_free);
     DLOG_INT(next_byte_to_free_in_qtd);
-    DLOG_INT(int_urb_priv->buffer_size);
-    DLOG_INT(int_urb_priv->bytes_in_buffer);
+    DLOG_INT(qh_urb_priv->buffer_size);
+    DLOG_INT(qh_urb_priv->bytes_in_buffer);
 #endif
 
-    if(int_urb_priv->bytes_in_buffer == int_urb_priv->buffer_size) {
+    if(qh_urb_priv->bytes_in_buffer == qh_urb_priv->buffer_size) {
       break;
     }
     
@@ -217,14 +233,14 @@ static int ehci_rt_int_update_data(struct urb* urb, int max_count)
         (next_byte_to_make_available_in_qtd < next_byte_to_free_in_qtd)) {
       int diff = next_byte_to_free_in_qtd - next_byte_to_make_available_in_qtd;
       if(diff > max_count) {
-        int_urb_priv->next_byte_to_make_available_in_qtd += max_count;
-        int_urb_priv->bytes_in_buffer += max_count;
+        qh_urb_priv->next_byte_to_make_available_in_qtd += max_count;
+        qh_urb_priv->bytes_in_buffer += max_count;
         max_count = 0;
       }
       else {
-        int_urb_priv->next_byte_to_make_available_in_qtd += diff;
+        qh_urb_priv->next_byte_to_make_available_in_qtd += diff;
         max_count -= diff;
-        int_urb_priv->bytes_in_buffer += diff;
+        qh_urb_priv->bytes_in_buffer += diff;
       }
       break;
     }
@@ -235,8 +251,8 @@ static int ehci_rt_int_update_data(struct urb* urb, int max_count)
            * More bytes than requested are available, don't advance
            * qtd counter
            */
-          int_urb_priv->next_byte_to_make_available_in_qtd += max_count;
-          int_urb_priv->bytes_in_buffer += max_count;
+          qh_urb_priv->next_byte_to_make_available_in_qtd += max_count;
+          qh_urb_priv->bytes_in_buffer += max_count;
           max_count = 0;
         }
         else {
@@ -246,17 +262,17 @@ static int ehci_rt_int_update_data(struct urb* urb, int max_count)
            * the end of the qtd
            */
           max_count -= newly_available_bytes; 
-          int_urb_priv->bytes_in_buffer += newly_available_bytes;
+          qh_urb_priv->bytes_in_buffer += newly_available_bytes;
           if(bytes_remaining_to_transfer) {
-            int_urb_priv->next_byte_to_make_available_in_qtd
+            qh_urb_priv->next_byte_to_make_available_in_qtd
               += newly_available_bytes;
             break;
           }
           else {
-            int_urb_priv->next_byte_to_make_available_in_qtd = 0;
-            int_urb_priv->next_qtd_to_make_available++;
-            if(int_urb_priv->next_qtd_to_make_available == num_qtds) {
-              int_urb_priv->next_qtd_to_make_available = 0;
+            qh_urb_priv->next_byte_to_make_available_in_qtd = 0;
+            qh_urb_priv->next_qtd_to_make_available++;
+            if(qh_urb_priv->next_qtd_to_make_available == num_qtds) {
+              qh_urb_priv->next_qtd_to_make_available = 0;
             }
           }
         }
@@ -270,6 +286,18 @@ static int ehci_rt_int_update_data(struct urb* urb, int max_count)
   EHCI_ASSERT(max_count >= 0);
   
   return original_max_count - max_count;
+}
+
+static int ehci_rt_int_update_data(struct urb* urb, int max_count)
+{
+  return ehci_rt_qh_update_data(urb, &(get_int_urb_priv(urb)->qh_urb_priv),
+                                max_count);
+}
+
+static int ehci_rt_bulk_update_data(struct urb* urb, int max_count)
+{
+  return ehci_rt_qh_update_data(urb, &(get_bulk_urb_priv(urb)->qh_urb_priv),
+                                max_count);
 }
 
 static inline bool is_itd_partially_active(itd_t* itd)
@@ -505,7 +533,6 @@ int fill_iso_push_packets(struct urb* urb, int count,
 
 int ehci_rt_iso_push_data(struct urb* urb, char* data, int count)
 {
-  static int call_counter = 0;
   unsigned int pipe = urb->pipe;
   uint32_t microframe_interval = urb->interval;
   uint32_t packets_per_itd = microframe_interval < 8 ? 8 / microframe_interval : 1;
@@ -642,24 +669,24 @@ static void qtd_restore(qtd_t* qtd)
   qtd->buffer_page[0] = qtd->buffer_page_zero_backup;
 }
 
-static int ehci_rt_int_free_data(struct urb* urb, int count)
+static int ehci_rt_qh_free_data(struct urb* urb, ehci_qh_urb_priv_t* qh_urb_priv,
+                                int count)
 {
-  ehci_int_urb_priv_t* int_urb_priv = get_int_urb_priv(urb);
-  qtd_t** qtds = int_urb_priv->qtds;
-  int num_qtds = int_urb_priv->num_qtds;
-  int next_qtd_to_make_available = int_urb_priv->next_qtd_to_make_available;
+  qtd_t** qtds = qh_urb_priv->qtds;
+  int num_qtds = qh_urb_priv->num_qtds;
+  int next_qtd_to_make_available = qh_urb_priv->next_qtd_to_make_available;
   int next_byte_to_make_available_in_qtd
-    = int_urb_priv->next_byte_to_make_available_in_qtd;
+    = qh_urb_priv->next_byte_to_make_available_in_qtd;
   int original_count = count;
-  qh_t* qh = int_urb_priv->qh;
+  qh_t* qh = qh_urb_priv->qh;
   ehci_hcd_t* ehci_hcd = hcd_to_ehci_hcd(urb->dev->hcd);
   
   while(count) {
-    int next_qtd_to_free = int_urb_priv->next_qtd_to_free;
-    int next_byte_to_free_in_qtd = int_urb_priv->next_byte_to_free_in_qtd;
+    int next_qtd_to_free = qh_urb_priv->next_qtd_to_free;
+    int next_byte_to_free_in_qtd = qh_urb_priv->next_byte_to_free_in_qtd;
     qtd_t* current_qtd = qtds[next_qtd_to_free];
 
-    if(int_urb_priv->bytes_in_buffer == 0) {
+    if(qh_urb_priv->bytes_in_buffer == 0) {
       break;
     }
     
@@ -667,37 +694,37 @@ static int ehci_rt_int_free_data(struct urb* urb, int count)
     
     if((next_qtd_to_make_available == next_qtd_to_free) &&
        (next_byte_to_free_in_qtd <= next_byte_to_make_available_in_qtd)) {
-      if(int_urb_priv->bytes_in_buffer == int_urb_priv->buffer_size) {
+      if(qh_urb_priv->bytes_in_buffer == qh_urb_priv->buffer_size) {
         /*
          * Edge case buffer is full, free as many bytes left in the
          * current qtd
          */
         int bytes_to_free = 
           current_qtd->original_total_bytes_to_transfer
-          - int_urb_priv->next_byte_to_free_in_qtd;
+          - qh_urb_priv->next_byte_to_free_in_qtd;
         
         count -= bytes_to_free;
-        int_urb_priv->bytes_in_buffer -= bytes_to_free;
-        int_urb_priv->next_byte_to_free_in_qtd = 0;
-        int_urb_priv->next_qtd_to_free++;
-        if(int_urb_priv->next_qtd_to_free == num_qtds) {
-          int_urb_priv->next_qtd_to_free = 0;
+        qh_urb_priv->bytes_in_buffer -= bytes_to_free;
+        qh_urb_priv->next_byte_to_free_in_qtd = 0;
+        qh_urb_priv->next_qtd_to_free++;
+        if(qh_urb_priv->next_qtd_to_free == num_qtds) {
+          qh_urb_priv->next_qtd_to_free = 0;
         }
         qtd_restore(current_qtd);
         current_qtd->next_pointer_raw = EHCI_LIST_END;
-        qh_append_qtd(ehci_hcd, urb, int_urb_priv->qh, current_qtd);
+        qh_append_qtd(ehci_hcd, urb, qh_urb_priv->qh, current_qtd);
       }
       else {
         int diff = next_byte_to_make_available_in_qtd - next_byte_to_free_in_qtd;
         EHCI_ASSERT(diff >= 0);
         if(diff > count) {
-          int_urb_priv->next_byte_to_free_in_qtd += count;
-          int_urb_priv->bytes_in_buffer -= count;
+          qh_urb_priv->next_byte_to_free_in_qtd += count;
+          qh_urb_priv->bytes_in_buffer -= count;
           count = 0;
         }
         else {
-          int_urb_priv->next_byte_to_free_in_qtd += diff;
-          int_urb_priv->bytes_in_buffer -= diff;
+          qh_urb_priv->next_byte_to_free_in_qtd += diff;
+          qh_urb_priv->bytes_in_buffer -= diff;
           count -= diff;
         }
         break;
@@ -709,21 +736,21 @@ static int ehci_rt_int_free_data(struct urb* urb, int count)
       int max_bytes_to_free = 
         current_qtd->original_total_bytes_to_transfer
         - bytes_remaining_to_transfer
-        - int_urb_priv->next_byte_to_free_in_qtd;
+        - qh_urb_priv->next_byte_to_free_in_qtd;
       
       if(max_bytes_to_free) {
         if(max_bytes_to_free > count) {
-          int_urb_priv->next_byte_to_free_in_qtd += count;
-          int_urb_priv->bytes_in_buffer -= count;
+          qh_urb_priv->next_byte_to_free_in_qtd += count;
+          qh_urb_priv->bytes_in_buffer -= count;
           count = 0;
           
           break;
         }
         else {
           if(bytes_remaining_to_transfer) {
-            int_urb_priv->next_byte_to_free_in_qtd += max_bytes_to_free;
+            qh_urb_priv->next_byte_to_free_in_qtd += max_bytes_to_free;
             count -= max_bytes_to_free;
-            int_urb_priv->bytes_in_buffer -= max_bytes_to_free;
+            qh_urb_priv->bytes_in_buffer -= max_bytes_to_free;
             
             break;
           }
@@ -747,15 +774,15 @@ static int ehci_rt_int_free_data(struct urb* urb, int count)
             }
             
             count -= max_bytes_to_free;
-            int_urb_priv->bytes_in_buffer -= max_bytes_to_free;
-            int_urb_priv->next_byte_to_free_in_qtd = 0;
-            int_urb_priv->next_qtd_to_free++;
-            if(int_urb_priv->next_qtd_to_free == num_qtds) {
-              int_urb_priv->next_qtd_to_free = 0;
+            qh_urb_priv->bytes_in_buffer -= max_bytes_to_free;
+            qh_urb_priv->next_byte_to_free_in_qtd = 0;
+            qh_urb_priv->next_qtd_to_free++;
+            if(qh_urb_priv->next_qtd_to_free == num_qtds) {
+              qh_urb_priv->next_qtd_to_free = 0;
             }
             qtd_restore(current_qtd);
             current_qtd->next_pointer_raw = EHCI_LIST_END;
-            qh_append_qtd(ehci_hcd, urb, int_urb_priv->qh, current_qtd);
+            qh_append_qtd(ehci_hcd, urb, qh_urb_priv->qh, current_qtd);
           }
         }
       }
@@ -769,6 +796,16 @@ static int ehci_rt_int_free_data(struct urb* urb, int count)
   return original_count - count;
 }
 
+static int ehci_rt_int_free_data(struct urb* urb, int count)
+{
+  return ehci_rt_qh_free_data(urb, &(get_int_urb_priv(urb)->qh_urb_priv), count);
+}
+
+static int ehci_rt_bulk_free_data(struct urb* urb, int count)
+{
+  return ehci_rt_qh_free_data(urb, &(get_bulk_urb_priv(urb)->qh_urb_priv), count);
+}
+
 /*
  * -- EM -- For the sake of simplicity for writing we do not free
  * bytes in a qtd until the entire qtd is done (like for reading when
@@ -780,29 +817,30 @@ static int ehci_rt_int_free_data(struct urb* urb, int count)
  * not as important for writing
  */
 
-static int ehci_rt_int_push_data(struct urb* urb, char* data, int count)
+static int ehci_rt_qh_push_data(struct urb* urb, ehci_qh_urb_priv_t* qh_urb_priv,
+                                char* data, int count)
 {
-  ehci_int_urb_priv_t* int_urb_priv = get_int_urb_priv(urb);
-  qh_t* qh = int_urb_priv->qh;
+  qh_t* qh = qh_urb_priv->qh;
   qtd_t* temp_qtd;
   qtd_t* qtd_to_remove;
   int bytes_sent = 0;
   char* urb_buffer = urb->transfer_buffer;
   list_head_t qtd_list;
   ehci_hcd_t* ehci_hcd = hcd_to_ehci_hcd(urb->dev->hcd);
-  uint32_t buffer_size = int_urb_priv->buffer_size;
-
+  uint32_t buffer_size = qh_urb_priv->buffer_size;
+  
   list_for_each_entry_safe(qtd_to_remove, temp_qtd, &qh->qtd_list, chain_list) {
     if(qh->current_qtd_ptr_raw == EHCI_QTD_VIRT_TO_PHYS(ehci_hcd, qtd_to_remove)) {
       break;
     }
     else {
+      
       list_del(&qtd_to_remove->chain_list);
-      int_urb_priv->next_byte_to_free_for_writing
+      qh_urb_priv->next_byte_to_free_for_writing
         += qtd_to_remove->original_total_bytes_to_transfer;
-      int_urb_priv->bytes_in_buffer -= qtd_to_remove->original_total_bytes_to_transfer;
-      if(int_urb_priv->next_byte_to_free_for_writing >= buffer_size) {
-        int_urb_priv->next_byte_to_free_for_writing -= buffer_size;
+      qh_urb_priv->bytes_in_buffer -= qtd_to_remove->original_total_bytes_to_transfer;
+      if(qh_urb_priv->next_byte_to_free_for_writing >= buffer_size) {
+        qh_urb_priv->next_byte_to_free_for_writing -= buffer_size;
       }
       free_qtd(ehci_hcd, qtd_to_remove);
     }
@@ -812,38 +850,38 @@ static int ehci_rt_int_push_data(struct urb* urb, char* data, int count)
     uint32_t bytes_for_this_chain;
     uint32_t max_possible_for_this_chain;
 
-    if(int_urb_priv->bytes_in_buffer == buffer_size) {
+    if(qh_urb_priv->bytes_in_buffer == buffer_size) {
       break;
     }
 
-    //DLOG_INT(int_urb_priv->bytes_in_buffer);
+    //DLOG_INT(qh_urb_priv->bytes_in_buffer);
     //DLOG_INT(buffer_size);
     //DLOG_INT(bytes_sent);
     //DLOG_INT(count);
-    //DLOG_INT(int_urb_priv->next_byte_to_free_for_writing);
-    //DLOG_INT(int_urb_priv->next_byte_to_use_for_writing);
+    //DLOG_INT(qh_urb_priv->next_byte_to_free_for_writing);
+    //DLOG_INT(qh_urb_priv->next_byte_to_use_for_writing);
 
-    if(int_urb_priv->bytes_in_buffer >= buffer_size) {
-      DLOG_UINT(int_urb_priv->bytes_in_buffer);
+    if(qh_urb_priv->bytes_in_buffer >= buffer_size) {
+      DLOG_UINT(qh_urb_priv->bytes_in_buffer);
       DLOG_UINT(buffer_size);
       DLOG_INT(bytes_sent);
       DLOG_INT(count);
-      DLOG_UINT(int_urb_priv->next_byte_to_free_for_writing);
-      DLOG_UINT(int_urb_priv->next_byte_to_use_for_writing);
+      DLOG_UINT(qh_urb_priv->next_byte_to_free_for_writing);
+      DLOG_UINT(qh_urb_priv->next_byte_to_use_for_writing);
     }
     
-    EHCI_ASSERT(int_urb_priv->bytes_in_buffer < buffer_size);
+    EHCI_ASSERT(qh_urb_priv->bytes_in_buffer < buffer_size);
     
-    if(int_urb_priv->next_byte_to_free_for_writing
-       <= int_urb_priv->next_byte_to_use_for_writing) {
+    if(qh_urb_priv->next_byte_to_free_for_writing
+       <= qh_urb_priv->next_byte_to_use_for_writing) {
       /* We might run into the end of the buffer */
       max_possible_for_this_chain
-        = buffer_size - int_urb_priv->next_byte_to_use_for_writing;
+        = buffer_size - qh_urb_priv->next_byte_to_use_for_writing;
     }
     else {
       /* We might run into data */
-      max_possible_for_this_chain = int_urb_priv->next_byte_to_free_for_writing
-        - int_urb_priv->next_byte_to_use_for_writing;
+      max_possible_for_this_chain = qh_urb_priv->next_byte_to_free_for_writing
+        - qh_urb_priv->next_byte_to_use_for_writing;
     }
     
     EHCI_ASSERT(max_possible_for_this_chain > 0);
@@ -855,12 +893,12 @@ static int ehci_rt_int_push_data(struct urb* urb, char* data, int count)
       bytes_for_this_chain = max_possible_for_this_chain;
     }
 
-    memcpy(&urb_buffer[int_urb_priv->next_byte_to_use_for_writing],
+    memcpy(&urb_buffer[qh_urb_priv->next_byte_to_use_for_writing],
            &data[bytes_sent],
            bytes_for_this_chain);
     
     if(!create_qtd_chain(ehci_hcd, urb, NULL, 0,
-                         (addr_t)&urb_buffer[int_urb_priv->next_byte_to_use_for_writing],
+                         (addr_t)&urb_buffer[qh_urb_priv->next_byte_to_use_for_writing],
                          bytes_for_this_chain, mp_enabled, &qtd_list)) {
       DLOG("Failed to create qtd chain");
       panic("Failed to create qtd chain");
@@ -871,14 +909,28 @@ static int ehci_rt_int_push_data(struct urb* urb, char* data, int count)
 
     
     bytes_sent += bytes_for_this_chain;
-    int_urb_priv->bytes_in_buffer += bytes_for_this_chain;
-    int_urb_priv->next_byte_to_use_for_writing += bytes_for_this_chain;
-    if(int_urb_priv->next_byte_to_use_for_writing == buffer_size) {
-      int_urb_priv->next_byte_to_use_for_writing = 0;
+    qh_urb_priv->bytes_in_buffer += bytes_for_this_chain;
+    qh_urb_priv->next_byte_to_use_for_writing += bytes_for_this_chain;
+    if(qh_urb_priv->next_byte_to_use_for_writing == buffer_size) {
+      qh_urb_priv->next_byte_to_use_for_writing = 0;
     }
   }
   //DLOG("Bytes sent at end %d\n\n\n\n", bytes_sent);
   return bytes_sent;
+}
+
+static int ehci_rt_int_push_data(struct urb* urb, 
+                                 char* data, int count)
+{
+  return ehci_rt_qh_push_data(urb, &(get_int_urb_priv(urb)->qh_urb_priv),
+                              data, count);
+}
+
+static int ehci_rt_bulk_push_data(struct urb* urb, 
+                                 char* data, int count)
+{
+  return ehci_rt_qh_push_data(urb, &(get_bulk_urb_priv(urb)->qh_urb_priv),
+                              data, count);
 }
 
 static int ehci_rt_iso_update_packets(struct urb* urb, int max_packets)
@@ -1491,12 +1543,33 @@ reset_root_port(ehci_hcd_t* ehci_hcd, ehci_port_t* port)
   return TRUE;
 }
 
+static void unlink_all_qhs_from_async(ehci_hcd_t* ehci_hcd)
+{
+  qh_t* async_head = ehci_hcd->async_head;
+  uint32_t async_head_hw = QH_NEXT(ehci_hcd, async_head);
+  qh_t* current_qh = async_head;
+  qh_t* next_qh;
+
+  do {
+    next_qh = EHCI_QH_PHYS_TO_VIRT(ehci_hcd,
+                                   current_qh->horizontalPointer.raw & (~0x1F));
+    current_qh->horizontalPointer.raw = async_head_hw;
+    /*
+     * -- EM -- Should really free the qh but that would involve going
+     * into the device struct and release the qh there as well so just
+     * mark it as not linked for now
+     */
+    current_qh->state = QH_STATE_NOT_LINKED;
+    current_qh = next_qh;
+  } while(next_qh != async_head);
+}
+
 bool ehci_post_enumeration(usb_hcd_t* usb_hcd)
 {  
   ehci_hcd_t* ehci_hcd = hcd_to_ehci_hcd(usb_hcd);
   enable_interrupts(ehci_hcd);
   print_caps_and_regs_info(hcd_to_ehci_hcd(usb_hcd), "In ehci_post_enumeration");
-  
+  unlink_all_qhs_from_async(ehci_hcd);
   return TRUE;
 }
 
@@ -1672,7 +1745,11 @@ initialise_ehci_hcd(uint32_t usb_base,
                          ehci_rt_int_data_lost,
                          ehci_rt_int_update_data,
                          ehci_rt_int_free_data,
-                         ehci_rt_int_push_data)) {
+                         ehci_rt_int_push_data,
+                         ehci_rt_bulk_data_lost,
+                         ehci_rt_bulk_update_data,
+                         ehci_rt_bulk_free_data,
+                         ehci_rt_bulk_push_data)) {
     return FALSE;
   }
   
@@ -1978,7 +2055,6 @@ qtd_fill(qtd_t* qtd,
   qtd->original_total_bytes_to_transfer = count;
   qtd->token_backup = qtd->token;
   qtd->buffer_page_zero_backup = qtd->buffer_page[0];
-  
   return count;
 }
 
@@ -2293,7 +2369,7 @@ static void qh_append_qtds(ehci_hcd_t* ehci_hcd, struct urb* urb,
   qtd_t* dummy;
   uint32_t token;
   phys_addr_t new_dummy_phys_addr;
-  ehci_int_urb_priv_t* int_urb_priv = NULL;
+  ehci_qh_urb_priv_t* qh_urb_priv = NULL;
   int urb_swap_index;
   qtd_t** urb_qtd_list = NULL;
   
@@ -2301,13 +2377,20 @@ static void qh_append_qtds(ehci_hcd_t* ehci_hcd, struct urb* urb,
 
   qtd = list_entry(qtd_list->next, qtd_t, chain_list);
 
-  if(usb_pipetype(urb->pipe) == PIPE_INTERRUPT &&
+  if((usb_pipetype(urb->pipe) == PIPE_BULK ||
+      usb_pipetype(urb->pipe) == PIPE_INTERRUPT) &&
      usb_pipein(urb->pipe)) {
     int i, num_qtds;
-    int_urb_priv = get_int_urb_priv(urb);
-    if(int_urb_priv != NULL) {
-      num_qtds = int_urb_priv->num_qtds;
-      urb_qtd_list = int_urb_priv->qtds;
+    if(usb_pipetype(urb->pipe) == PIPE_BULK) {
+      qh_urb_priv = &(get_bulk_urb_priv(urb))->qh_urb_priv;
+    }
+    else {
+      qh_urb_priv = &(get_int_urb_priv(urb))->qh_urb_priv;
+    }
+    
+    if(qh_urb_priv != NULL) {
+      num_qtds = qh_urb_priv->num_qtds;
+      urb_qtd_list = qh_urb_priv->qtds;
       urb_swap_index = -1;
       for(i = 0; i < num_qtds; ++i) {
         if(urb_qtd_list[i] == qtd) {
@@ -2334,7 +2417,7 @@ static void qh_append_qtds(ehci_hcd_t* ehci_hcd, struct urb* urb,
   if(urb_qtd_list != NULL) {
     urb_qtd_list[urb_swap_index] = dummy;
   }
-
+  
   list_del(&qtd->chain_list);
   list_add(&dummy->chain_list, qtd_list);
   list_splice_tail(qtd_list, &qh->qtd_list);
@@ -2375,14 +2458,22 @@ void link_qh_to_async(ehci_hcd_t* ehci_hcd, qh_t* qh, bool ioc_enabled,
                       uint32_t pipe_type, uint32_t address,
                       uint16_t endpoint, bool is_input, bool save_qh)
 {
+  if(pipe_type == PIPE_BULK) {
+    //print_qh_info(ehci_hcd, qh, TRUE, "before link");
+  }
   if(qh->state == QH_STATE_NOT_LINKED) {
     qh_refresh(ehci_hcd, qh);
   }
-
+  if(pipe_type == PIPE_BULK) {
+    //print_qh_info(ehci_hcd, qh, TRUE, "right before link");
+  }
   qh->state = QH_STATE_LINKED;
   qh->horizontalPointer = ehci_hcd->async_head->horizontalPointer;
   gccmb();
   ehci_hcd->async_head->horizontalPointer.raw = QH_NEXT(ehci_hcd, qh);
+  if(pipe_type == PIPE_BULK) {
+    //print_qh_info(ehci_hcd, qh, TRUE, "after link");
+  }
 }
 
 static sint32 spin_for_transfer_completion(ehci_hcd_t* ehci_hcd,
@@ -2565,14 +2656,16 @@ static int submit_async_qtd_chain(ehci_hcd_t* ehci_hcd, struct urb* urb, qh_t** 
   if(save_qh) {
     EHCI_SET_DEVICE_QH(ehci_hcd, device_addr, is_input, endpoint, *qh);
   }
+
+  get_bulk_urb_priv(urb)->qh_urb_priv.qh = *qh;
   
   qh_append_qtds(ehci_hcd, urb, *qh, qtd_list);
   if((*qh)->state == QH_STATE_NOT_LINKED) {
+    DLOG("Linking QH");
     link_qh_to_async(ehci_hcd, *qh, ioc_enabled, pipe_type,
                      device_addr, endpoint, is_input, save_qh);
   }
   if(ioc_enabled) {
-    print_caps_and_regs_info(ehci_hcd, "just turned doorbell on");
     return 0;
   }
   else {
@@ -2695,7 +2788,7 @@ submit_interrupt_qtd(ehci_hcd_t* ehci_hcd, struct urb* urb,
             max_packet_len, dev_speed, pipe_type, is_input);
   }
 
-  get_int_urb_priv(urb)->qh = *qh;
+  get_int_urb_priv(urb)->qh_urb_priv.qh = *qh;
   
   EHCI_SET_DEVICE_QH(ehci_hcd, device_addr, is_input, endpoint, *qh);
 
@@ -2768,13 +2861,13 @@ static int
       return -1;
     }
     int_urb_priv = urb->hcpriv;
-    int_urb_priv->buffer_size = urb->transfer_buffer_length;
+    int_urb_priv->qh_urb_priv.buffer_size = urb->transfer_buffer_length;
     int_urb_priv->interval_offset = interval_offset;
 
     if(is_input) {
       i = 0;
       list_for_each_entry(temp_qtd, &qtd_list, chain_list) {
-        int_urb_priv->qtds[i++] = temp_qtd;
+        int_urb_priv->qh_urb_priv.qtds[i++] = temp_qtd;
       }
     }
   }
@@ -2818,7 +2911,74 @@ ehci_async_transfer(ehci_hcd_t* ehci_hcd, struct urb* urb)
   list_head_t qtd_list;
   uint8_t pipe_type = usb_pipetype(pipe);
   int packet_len = usb_maxpacket(urb->dev, urb->pipe);
+
+  INIT_LIST_HEAD(&qtd_list);
+    
+  if(usb_pipetype(pipe) != PIPE_BULK &&
+     mp_enabled && !urb->realtime) {
+    DLOG("Can only do control transactions at boot or real time bulk transactions");
+    panic("Can only do control transactions at boot or real time bulk transactions");
+  }
+
+  /*
+   * -- EM -- high jack function if it is bulk and realtime urb
+   */
+  if(usb_pipetype(pipe) == PIPE_BULK && urb->realtime) {
+    if(is_input) {
+      if(!create_qtd_chain(ehci_hcd, urb, urb->setup_packet, sizeof(USB_DEV_REQ),
+                           urb->transfer_buffer, urb->transfer_buffer_length,
+                           mp_enabled, &qtd_list)) {
+        return -1;
+      }
+    }
   
+    if(urb->hcpriv == NULL) {
+      list_head_t* temp_list;
+      int num_qtds;
+      qtd_t* temp_qtd;
+      int i;
+      ehci_bulk_urb_priv_t* bulk_urb_priv;
+      num_qtds = 0;
+
+      if(ehci_is_rt_schedulable(ehci_hcd, urb) < 0) {
+        DLOG("Cannot schedule URB");
+        return -1;
+      }
+      
+      if(is_input) {
+        list_for_each(temp_list, &qtd_list) { num_qtds++; }
+      }
+    
+      DLOG("num_qtds = %d", num_qtds);
+      urb->hcpriv = ehci_alloc_bulk_urb_priv(num_qtds);
+      if(urb->hcpriv == NULL) {
+        /*
+         * -- EM -- Should clean up qtds but not doing it right now
+         */
+        DLOG("Failed to allocate ehci_iso_urb_priv");
+        return -1;
+      }
+      bulk_urb_priv = urb->hcpriv;
+      bulk_urb_priv->qh_urb_priv.buffer_size = urb->transfer_buffer_length;
+      
+
+      if(is_input) {
+        i = 0;
+        list_for_each_entry(temp_qtd, &qtd_list, chain_list) {
+          bulk_urb_priv->qh_urb_priv.qtds[i++] = temp_qtd;
+        }
+      }
+    }
+  
+    if(submit_async_qtd_chain(ehci_hcd, urb, &qh, endpoint, address,
+                              USB_SPEED_HIGH, pipe_type, packet_len,
+                              is_input, mp_enabled,
+                              &qtd_list, TRUE) < 0) {
+      return -1;
+    }
+
+    return 0;
+  }
   
   if(!create_qtd_chain(ehci_hcd, urb, urb->setup_packet, sizeof(USB_DEV_REQ),
                        urb->transfer_buffer, urb->transfer_buffer_length,
@@ -3290,7 +3450,7 @@ static inline int calc_total_bytes_cost(struct urb* urb)
   switch(usb_pipetype(urb->pipe)) {
   case PIPE_ISOCHRONOUS:
   case PIPE_INTERRUPT:
-
+  case PIPE_BULK:
     result = max_packet(maxpacket) + 192;
     if(result >= 128) {
       result += 128;
@@ -3299,7 +3459,7 @@ static inline int calc_total_bytes_cost(struct urb* urb)
     return result * hb_mult(maxpacket);
     
   
-  case PIPE_BULK:
+  
   case PIPE_CONTROL:
     DLOG("USB transaction type not handled in calc_total_bytes_cost");
     panic("USB transaction type not handled in calc_total_bytes_cost");
@@ -3367,6 +3527,7 @@ static int ehci_is_rt_schedulable(ehci_hcd_t* ehci_hcd, struct urb* urb)
      * -- EM -- unhandled transactions types
      */
   case PIPE_BULK:
+    return 0;
   case PIPE_CONTROL:
     DLOG("USB transaction type not handled in ehci_is_rt_schedulable");
     panic("USB transaction type not handled in ehci_is_rt_schedulable");

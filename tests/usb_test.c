@@ -24,7 +24,7 @@
 
 #define ARENA_START (0x400000 * 10)
 
-#define USE_TWO_EP
+//#define USE_TWO_EP
 
 int
 main ()
@@ -80,13 +80,13 @@ main ()
 #else
     dev_num = 0;
 #endif
-    //result = usb_read(0, picture_arena, 0x400000);
-    result = usb_write(dev_num, picture_arena, 0x400000);
+    result = usb_read(0, picture_arena, 0x400000);
+    //result = usb_write(dev_num, picture_arena, 0x400000);
     //usleep(100000);
     //if(result != 0) {
     printf("device %d: %d: usb read returned %d\n", dev_num, i, result);
     ++i;
-      //}
+    //}
   }
 
 

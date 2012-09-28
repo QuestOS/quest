@@ -433,6 +433,15 @@ int usb_rt_int_update_data(struct urb* urb, int max_count);
 
 int usb_rt_int_push_data(struct urb* urb, char* data, int count);
 
+int usb_rt_bulk_data_lost(struct urb* urb);
+
+int usb_rt_bulk_free_data(struct urb* urb, int count);
+
+int usb_rt_bulk_update_data(struct urb* urb, int max_count);
+
+int usb_rt_bulk_push_data(struct urb* urb, char* data, int count);
+
+
 /*
  * ********************************************************************
  * The following is copied from Linux but needs to be put here for
@@ -487,12 +496,12 @@ int usb_isochronous_msg(struct usb_device *dev, unsigned int pipe,
 
 static inline void
 usb_fill_bulk_urb(struct urb *urb,
-                       struct usb_device *dev,
-                       unsigned int pipe,
-                       void *transfer_buffer,
-                       int buffer_length,
-                       usb_complete_t complete_fn,
-                       void *context)
+                  struct usb_device *dev,
+                  unsigned int pipe,
+                  void *transfer_buffer,
+                  int buffer_length,
+                  usb_complete_t complete_fn,
+                  void *context)
 {
   urb->dev = dev;
   urb->pipe = pipe;
@@ -501,6 +510,7 @@ usb_fill_bulk_urb(struct urb *urb,
   urb->complete = complete_fn;
   urb->context = context;
 }
+
 
 static inline void
 usb_fill_control_urb(struct urb *urb,
@@ -626,6 +636,17 @@ usb_fill_rt_int_urb(struct urb *urb,
   urb->realtime = TRUE;
 }
 
+static inline void
+usb_fill_rt_bulk_urb(struct urb *urb,
+                 struct usb_device *dev,
+                 unsigned int pipe,
+                 void *transfer_buffer,
+                 int buffer_length,
+                 int interval)
+{
+  usb_fill_rt_int_urb(urb, dev, pipe, transfer_buffer, buffer_length, interval);
+}
+
 static inline uint
 usb_get_endpoint_transfer_type(USB_EPT_DESC* ept)
 {
@@ -698,6 +719,11 @@ typedef int  (*usb_rt_int_data_lost_func)(struct urb* urb);
 typedef int  (*usb_rt_int_free_data_func)(struct urb* urb, int count);
 typedef int  (*usb_rt_int_update_data_func)(struct urb* urb, int max_count);
 typedef int  (*usb_rt_int_push_data_func)(struct urb* urb, char* data, int count);
+typedef int  (*usb_rt_bulk_data_lost_func)(struct urb* urb);
+typedef int  (*usb_rt_bulk_free_data_func)(struct urb* urb, int count);
+typedef int  (*usb_rt_bulk_update_data_func)(struct urb* urb, int max_count);
+typedef int  (*usb_rt_bulk_push_data_func)(struct urb* urb, char* data, int count);
+
 
 /*
  * Generic USB Host controller Device object 
@@ -719,6 +745,10 @@ struct _usb_hcd_t
   usb_rt_int_update_data_func    rt_int_update_data;
   usb_rt_int_free_data_func      rt_int_free_data;
   usb_rt_int_push_data_func      rt_int_push_data;
+  usb_rt_bulk_data_lost_func     rt_bulk_data_lost;
+  usb_rt_bulk_free_data_func     rt_bulk_free_data;
+  usb_rt_bulk_update_data_func   rt_bulk_update_data;
+  usb_rt_bulk_push_data_func     rt_bulk_push_data;
   uint32_t next_address;
   
   
@@ -739,7 +769,11 @@ bool initialise_usb_hcd(usb_hcd_t* usb_hcd, uint32_t usb_hc_type,
                         usb_rt_int_data_lost_func rt_int_data_lost,
                         usb_rt_int_update_data_func rt_int_update_data,
                         usb_rt_int_free_data_func rt_int_free_data,
-                        usb_rt_int_push_data_func rt_int_push_data);
+                        usb_rt_int_push_data_func rt_int_push_data,
+                        usb_rt_bulk_data_lost_func rt_bulk_data_lost,
+                        usb_rt_bulk_free_data_func rt_bulk_free_data,
+                        usb_rt_bulk_update_data_func rt_bulk_update_data,
+                        usb_rt_bulk_push_data_func rt_bulk_push_data);
 
 bool add_usb_hcd(usb_hcd_t* usb_hcd);
 
