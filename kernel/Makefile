@@ -205,3 +205,5 @@ config.mk: default-config.mk
 	cp -f default-config.mk config.mk
 
 -include $(DFILES)
+
+$(OBJS) $(LWIP_OBJS) $(ACPI_OBJS) : config.mk
