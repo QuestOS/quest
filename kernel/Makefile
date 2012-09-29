@@ -39,7 +39,7 @@ OBJS =  boot/boot.o boot/init.o kernel.o module/loader.o \
 	sched/task.o sched/sched.o sched/sleep.o sched/vcpu.o sched/ipc.o sched/msgt.o sched/proc.o \
 	mem/physical.o mem/virtual.o mem/pow2.o \
 	util/cpuid.o util/printf.o util/screen.o util/debug.o util/circular.o \
-	util/crc32.o util/bitrev.o util/logger.o util/perfmon.o \
+	util/crc32.o util/bitrev.o util/logger.o util/perfmon.o util/sort.o \
 	drivers/ata/ata.o drivers/ata/diskio.o \
 	drivers/input/keyboard_8042.o drivers/input/keymap.o \
 	drivers/pci/pci.o drivers/pci/pci_irq.o \
