@@ -152,9 +152,6 @@ struct urb {
 };
 
 
-
-
-
 #define usb_pipein(pipe)        (!!((pipe) & USB_DIR_IN))
 #define usb_pipeout(pipe)       (!usb_pipein(pipe))
 
@@ -178,5 +175,25 @@ static inline void usb_free_urb(struct urb *urb)
 static inline void usb_init_urb(struct urb *urb) {
   memset(urb, 0, sizeof(*urb));
 }
+
+
+#define BitTime(bytecount) (7 * 8 * bytecount / 6) /* with integer truncation */
+/* Trying not to use worst-case bit-stuffing
+ * of (7/6 * 8 * bytecount) = 9.33 * bytecount */
+/* bytecount = data payload byte count */
+ 
+#define NS_TO_US(ns)    ((ns + 500L) / 1000L)
+/* convert & round nanoseconds to microseconds */
+
+#define USB2_HOST_DELAY 5       /* nsec, guess */
+#define HS_NSECS(bytes) (((55 * 8 * 2083)				\
+			  + (2083UL * (3 + BitTime(bytes))))/1000	\
+			 + USB2_HOST_DELAY)
+#define HS_NSECS_ISO(bytes) (((38 * 8 * 2083)				\
+			      + (2083UL * (3 + BitTime(bytes))))/1000	\
+			     + USB2_HOST_DELAY)
+#define HS_USECS(bytes)         NS_TO_US(HS_NSECS(bytes))
+#define HS_USECS_ISO(bytes)     NS_TO_US(HS_NSECS_ISO(bytes))
+
 
 #endif // _LINUX_USB_H_

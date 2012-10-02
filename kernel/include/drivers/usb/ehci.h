@@ -27,7 +27,6 @@
 #include <util/list.h>
 #include <util/cassert.h>
 #include "smp/spinlock.h"
-//#include "drivers/usb/ehci_mem.h"
 
 
 #define hcd_to_ehci_hcd(hcd) container_of((hcd), ehci_hcd_t, usb_hcd)
@@ -35,7 +34,6 @@
 
 
 
-#define EHCI_BYTES_PER_MICRO_FRAME 7500
 
 /*
  * -- EM -- So here is the deal with EHCI irq handling.  For most
@@ -75,7 +73,6 @@
  */
 
 #define EHCI_IOC_BUG
-
 
 
 /*
@@ -205,11 +202,17 @@ typedef struct
 
 
   /*
-   * -- EM -- Right now being lazy and making an extremely safe (5
-   * frames) estimate of the safest frame index offset.  Fix this later
-   * to appropriately check how much the EHCI chip caches
+   * -- EM -- Right now being lazy and making an extremely safe (10
+   * frames) estimate of the safest frame index offset.  Fix this
+   * later to appropriately check how much the EHCI chip caches,
+   * because of how reordering works this value now also depends on
+   * the max isochronous device in the periodic list.  This is because
+   * this value is also used for reordering and we can't reorder an
+   * itd to be behind the frame entry register's current value.  The max
+   * interval should be stored (which it isn't right now) and then
+   * used in the calculations too.
    */
-#define EHCI_SAFE_FRAME_INSERT_OFFSET(hcd) (5)
+#define EHCI_SAFE_FRAME_INSERT_OFFSET(hcd) (10)
   
   /*
    * Always best to make this a little larger than the actual max look
@@ -570,7 +573,7 @@ typedef struct _itd_t {
 #define ITD_TRN_ERR (1 << 28)
 
 #define IS_ITD_TRANSACTION_ACTIVE(itd, transaction_num)         \
-  ((itd)->transaction[transaction_num].raw | ITD_ACTIVE)
+  ((itd)->transaction[transaction_num].raw & ITD_ACTIVE)
   
   uint32_t buf_ptr[7];
 
@@ -590,14 +593,14 @@ typedef struct _itd_t {
   uint32_t total_bytes_to_transfer;
   uint32_t frame_index;
   list_head_t uninserted_list;
-  usb_iso_packet_descriptor_t *iso_packet_descs[8];
+  //usb_iso_packet_descriptor_t *iso_packet_descs[8];
   
   /*
    * previous is used when the itd is removed
    */
   frm_lst_lnk_ptr_t* previous;
 
-  uint32_t padding[16];
+  uint32_t padding[19];
 } PACKED ALIGNED(32) itd_t;
 
 CASSERT( (sizeof(itd_t) % 32) == 0, ehci_itd_size)
@@ -647,7 +650,7 @@ typedef struct
 
   list_head_t frame_list_heads[1024];
   
-  uint32_t*          micro_frame_remaining_bytes;
+  uint32_t* micro_frame_remaining_time;
 
   spinlock uninserted_itd_lock;
   list_head_t uninserted_itd_urb_list;
@@ -680,6 +683,19 @@ typedef struct
                              * items */
   list_head_t completion_list;
 
+#define MAX_RT_URBS 30
+  struct urb* rt_urbs[MAX_RT_URBS];
+  int num_rt_urbs;
+  int new_assignments[MAX_RT_URBS];
+
+  bool reordered_map[1024];
+
+
+#define EHCI_RUS_NONE 0
+#define EHCI_RUS_REORDER_OLD 1
+  
+  int reorder_urbs_stage;
+  
 #ifdef EHCI_IOC_BUG
 
 #define IOC_BACKUP_THREAD_STACK_SIZE 1024
@@ -691,9 +707,35 @@ typedef struct
 } ehci_hcd_t;
 
 
+
+/***************************************************************
+ * EHCI URB private data start
+ ***************************************************************/
+
+/*
+ * All ehci private urb data contain this struct
+ */
+
 typedef struct
 {
-  int interval_offset;
+  uint usecs_per_transactions;
+  int sched_assignment;
+} ehci_urb_priv_t;
+
+ehci_urb_priv_t* get_ehci_urb_priv(struct urb* urb);
+
+/***************************************************************
+ * EHCI URB private data start
+ ***************************************************************/
+
+
+/***************************************************************
+ * Isochronous URB private data start
+ ***************************************************************/
+
+typedef struct
+{
+  ehci_urb_priv_t ehci_urb_priv;
   list_head_t uninserted_itds_list;
   list_head_t uninserted_itd_urb_list;
   uint32_t next_packet_to_free;
@@ -703,7 +745,7 @@ typedef struct
   uint32_t next_packet_for_sending_data;
   uint32_t packets_in_use;
   list_head_t write_itds_to_free;
-  uint32_t used_table_entries_bitmap[1024/32];
+  //uint32_t used_table_entries_bitmap[1024/32];
   itd_t* itds[0];
 } ehci_iso_urb_priv_t;
 
@@ -742,25 +784,25 @@ initialise_iso_urb_priv(ehci_iso_urb_priv_t* iso_urb_priv, struct urb* urb)
   uint32_t microframe_interval = urb->interval;
   uint32_t packets_per_itd = microframe_interval < 8 ? 8 / microframe_interval : 1;
   
-  iso_urb_priv->interval_offset                     = 0;
+  iso_urb_priv->ehci_urb_priv.sched_assignment      = -1;
   iso_urb_priv->next_packet_to_free                 = 0;
   iso_urb_priv->next_packet_to_make_available       = 0;
   iso_urb_priv->next_itd_for_sending_data           = -1;
   iso_urb_priv->next_packet_for_sending_data        = 0;
   iso_urb_priv->packets_in_use = (packets_per_itd * MAX_SAFE_FRAME_INDEX_LOOK_AHEAD);
-  memset(iso_urb_priv->used_table_entries_bitmap, 0, 1024/32);
+  //memset(iso_urb_priv->used_table_entries_bitmap, 0, 1024/32);
   INIT_LIST_HEAD(&iso_urb_priv->write_itds_to_free);
   INIT_LIST_HEAD(&iso_urb_priv->uninserted_itds_list);
   INIT_LIST_HEAD(&iso_urb_priv->uninserted_itd_urb_list);
 }
 
-/***************************************************************
- * Isochronous URB private data start
- ***************************************************************/
 
 static inline
-ehci_iso_urb_priv_t* ehci_alloc_iso_urb_priv(int num_itds, struct urb* urb)
+ehci_iso_urb_priv_t* ehci_alloc_iso_urb_priv(struct urb* urb)
 {
+  int frame_interval = urb->interval / 8;
+  if(frame_interval == 0) frame_interval = 1;
+  int num_itds = 1024 / frame_interval;
   ehci_iso_urb_priv_t* temp;
   pow2_alloc(sizeof(ehci_iso_urb_priv_t) +
              num_itds * sizeof(itd_t*),
@@ -818,7 +860,7 @@ typedef struct
 
 typedef struct
 {
-  int interval_offset;
+  ehci_urb_priv_t ehci_urb_priv;
   ehci_qh_urb_priv_t qh_urb_priv;
   /* Nothing can be after this because qh_urb_priv has a variable size
    * array at its end */
@@ -861,6 +903,7 @@ ehci_int_urb_priv_t* ehci_alloc_int_urb_priv(unsigned int num_qtds)
 
 typedef struct
 {
+  ehci_urb_priv_t ehci_urb_priv;
   ehci_qh_urb_priv_t qh_urb_priv;
   /* Nothing can be after this because qh_urb_priv has a variable size
    * array at the end */
@@ -896,6 +939,10 @@ ehci_bulk_urb_priv_t* ehci_alloc_bulk_urb_priv(unsigned int num_qtds)
 /***************************************************************
  * Bulk URB private data end
  ***************************************************************/
+
+
+
+
 
 #define EHCI_GET_DEVICE_QH(ehci_hcd, addr, is_input, endpoint)          \
   ((ehci_hcd)->ehci_devinfo[(addr)]                                     \

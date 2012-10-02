@@ -64,9 +64,10 @@ static int gadget_open(USB_DEVICE_INFO* device, int dev_num, char* buf, int data
   gadget_sub_device_info_t* gadget_dev = get_gadget_sub_dev_info(device, dev_num);
   struct usb_host_endpoint *ep = usb_pipe_endpoint(device, gadget_dev->pipe);
   int num_packets = (1024 * 8) >> (ep->desc.bInterval - 1);
+  int result;
 
-  DLOG("gadget_sub_dev = 0x%p", gadget_dev);
-  DLOG("gadget_sub pipe = 0x%X", gadget_dev->pipe);
+  //DLOG("gadget_sub_dev = 0x%p", gadget_dev);
+  //DLOG("gadget_sub pipe = 0x%X", gadget_dev->pipe);
   memset(buf, '-', data_len);
   
   gadget_dev->next_to_read = gadget_dev->data_available = 0;
@@ -76,7 +77,8 @@ static int gadget_open(USB_DEVICE_INFO* device, int dev_num, char* buf, int data
        ((num_packets * gadget_dev->transaction_size) +
         sizeof(struct urb) + (sizeof(usb_iso_packet_descriptor_t) * num_packets)) ) {
       DLOG("Not enough memory passed to gadget_open, need %d",
-           num_packets * gadget_dev->transaction_size);
+           ((num_packets * gadget_dev->transaction_size) +
+            sizeof(struct urb) + (sizeof(usb_iso_packet_descriptor_t) * num_packets)));
       return -1;
     }
     gadget_dev->urb = (struct urb*)buf;
@@ -121,10 +123,10 @@ static int gadget_open(USB_DEVICE_INFO* device, int dev_num, char* buf, int data
     DLOG("Gadget EP should never be control");
     panic("Gadget EP should never be control");
   }
-
-  if(usb_submit_urb(gadget_dev->urb, 0) < 0) {
-    DLOG("Failed to submit rt urb");
-    return -1;
+  
+  if((result = usb_submit_urb(gadget_dev->urb, 0)) < 0) {
+    //DLOG("Failed to submit rt urb result = %d", result);
+    return result;
   }
 
   return 0;
@@ -150,7 +152,7 @@ static int gadget_read(USB_DEVICE_INFO* device, int dev_num, char* buf, int data
       {
         int new_bytes = usb_rt_int_update_data(urb, BYTES_TO_READ);
         
-        DLOG("new_bytes = %d / %d", new_bytes, BYTES_TO_READ);
+        DLOG("%d: new_bytes = %d / %d", dev_num, new_bytes, BYTES_TO_READ);
         if(new_bytes < 0) {
           DLOG("new bytes < 0");
           panic("new bytes < 0");
@@ -205,8 +207,8 @@ static int gadget_read(USB_DEVICE_INFO* device, int dev_num, char* buf, int data
           DLOG("new packets = %d", new_packets);
           panic("new packets < 0");
         }
-        DLOG("%d / %d", new_packets, gadget_dev->num_packets);
-#if 1
+        DLOG("%d: %d / %d", dev_num, new_packets, gadget_dev->num_packets);
+#if 0
         for(i =0; i < new_packets; ++i) {
           data_buf[(gadget_dev->next_to_read + i) *
                    gadget_dev->transaction_size + 30] = 0;

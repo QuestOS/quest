@@ -22,71 +22,96 @@
 #include <arpa/inet.h>
 #include <netinet/in.h>
 
-#define ARENA_START (0x400000 * 10)
+#define ARENA_START_PAGE 10
+#define ARENA_PAGE_SIZE 40
 
-//#define USE_TWO_EP
+#define ARENA_START (0x400000 * ARENA_START_PAGE)
+//#define NUM_DEVICES 19
+#define NUM_DEVICES 11
+
+#define DEVICE_MEMORY_SIZE (0x400000 * 2)
+
 
 int
 main ()
 {
-  int i = 0;
+  int i;
+  int dev_num;
   int result;
-  void* arena = ARENA_START;
-  char* picture_arena = ARENA_START + (0x400000 * 4);
-  struct sockaddr_in name, cli_name;
-  int sd;
-  int image_len;
-  int port = 54000;
-  int slen = sizeof(cli_name);
-  /*
-  if((sd = socket(AF_INET, SOCK_DGRAM, IPPROTO_UDP)) < 0) {
-    printf("socket() error!\n");
-    exit(-1);
+  char* arena = ARENA_START;
+  char* read_arena = ARENA_START + (0x400000 * (ARENA_PAGE_SIZE - 2));
+  char* device_memory[NUM_DEVICES];
+  int device_is_input_map[20];
+
+  device_is_input_map[0]  = 1;
+  device_is_input_map[1]  = 1;
+  device_is_input_map[2]  = 1;
+  device_is_input_map[3]  = 1;
+  device_is_input_map[4]  = 1;
+  device_is_input_map[5]  = 1;
+  device_is_input_map[6]  = 1;
+  device_is_input_map[7]  = 1;
+  device_is_input_map[8]  = 1;
+  device_is_input_map[9]  = 1;
+  device_is_input_map[10] = 1;
+  device_is_input_map[11] = 1;
+  device_is_input_map[12] = 1;
+  device_is_input_map[13] = 1;
+  device_is_input_map[14] = 1;
+  device_is_input_map[15] = 1;
+  device_is_input_map[16] = 1;
+  device_is_input_map[17] = 1;
+  device_is_input_map[18] = 1;
+  device_is_input_map[19] = 1;
+  
+  for(i = 0; i < NUM_DEVICES; ++i) {
+    device_memory[i] = (i * DEVICE_MEMORY_SIZE) + ARENA_START;
   }
   
-  
-  bzero(&name, sizeof(name));
-  name.sin_family = AF_INET;
-  name.sin_port = htons(port);
-  name.sin_addr.s_addr = htonl(INADDR_ANY);
-  if(bind(sd, (struct sockaddr *)&name, sizeof(name)) < 0){
-    printf("bind() fails!\n");
-    exit(-1);
+  for(i = 0; i < (40 * 0x400000); ++i) {
+    arena[i] = 'a';
+    if(arena[i] != 'a') {
+      printf("Couldn't set memory area");
+      exit(1);
+    }
   }
-  */
+  
   printf("Entering usb test program\n");
 
-  //if(usb_open(0, arena, 1024 * 800) < 0) {
-  if(usb_open(0, arena, 0x400000 * 2) < 0) {
-    printf("Call to open failed");
-    while(1);
+  for(i = 0; i < NUM_DEVICES; ++i) {
+    while(1) {
+      int res;
+      if((res = usb_open(i, device_memory[i], DEVICE_MEMORY_SIZE)) < 0) {
+        if(res == -2) { continue; }
+        printf("Call to open failed");
+        while(1);
+      }
+      break;
+    }
   }
-#ifdef USE_TWO_EP
-  if(usb_open(1, arena + 0x400000 * 2, 0x400000 * 2) < 0) {
-    printf("Call to open failed");
-    while(1);
-  }
-#endif
+  
+  //usleep(2000000);
   
   printf("About to start reading frames");
-
-  usleep(2000000);
   
+  dev_num = 0;
+  i = 0;
   while(1) {
-    int dev_num;
-
-#ifdef USE_TWO_EP
-    dev_num = i & 0x1;
-#else
-    dev_num = 0;
-#endif
-    result = usb_read(0, picture_arena, 0x400000);
-    //result = usb_write(dev_num, picture_arena, 0x400000);
-    //usleep(100000);
-    //if(result != 0) {
-    printf("device %d: %d: usb read returned %d\n", dev_num, i, result);
-    ++i;
-    //}
+    
+    if(device_is_input_map[dev_num]) {
+      result = usb_read(dev_num, read_arena, 0x400000);
+      printf("device %d: %d: usb read returned %d\n", dev_num, i, result);
+    }
+    else {
+      result = usb_write(dev_num, read_arena, 0x400000);
+      printf("device %d: %d: usb write returned %d\n", dev_num, i, result);
+    }
+    
+    ++i; ++dev_num;
+    
+    if(dev_num == NUM_DEVICES) {
+      dev_num = 0;
+    }
   }
 
 

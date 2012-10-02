@@ -75,6 +75,12 @@ inline bool initialise_qh(ehci_hcd_t* ehci_hcd, qh_t* qh)
 
 inline bool initialise_itd(ehci_hcd_t* ehci_hcd, itd_t* itd)
 {
+  
+  //void *phys_addr, *phys_addr2;
+  //uint32 *virt_addr, *virt_addr2;
+  //phys_addr = get_pdbr ();      /* Parent page dir base address */
+  //virt_addr = map_virtual_page ((uint32) phys_addr | 3);        /* Temporary virtual address */
+  //DLOG("%d: 0x%X", 1010, virt_addr[1010]);
   memset(itd, 0, sizeof(*itd));
   INIT_LIST_HEAD(&itd->chain_list);
   INIT_LIST_HEAD(&itd->uninserted_list);

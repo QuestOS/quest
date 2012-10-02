@@ -39,6 +39,8 @@
 #include <arch/i386-div64.h>
 #include <kernel.h>
 #include <sched/sched.h>
+#include <util/sort.h>
+
 
 #define EHCI_IS_INDEX_IN_CIRC_BUF_REGION(test_index, start_index, end_index) \
   (start_index < end_index ?                                            \
@@ -94,15 +96,15 @@ get_next_frm_lst_lnk_ptrs_previous(ehci_hcd_t* ehci_hcd, frm_lst_lnk_ptr_t* ptr)
 /*
  * This should always be a macro, inserting itds is time sensitive
  */
-#define insert_itd_into_frame_list(hcd, list, index, itd)               \
-  do {                                                                  \
-    frm_lst_lnk_ptr_t** __nexts_prev =                                  \
-      get_next_frm_lst_lnk_ptrs_previous(hcd, &(list)[index]);          \
-    (itd)->frame_index = index;                                         \
-    if(__nexts_prev) *__nexts_prev = &itd->next_link_pointer;           \
-    (itd)->next_link_pointer = (list)[index];                           \
-    (itd)->previous = &(list[index]);                                   \
-    (list)[index].raw = ITD_NEXT(hcd, itd);                             \
+#define insert_itd_into_frame_list(hcd, list, index, itd)       \
+  do {                                                          \
+    frm_lst_lnk_ptr_t** __nexts_prev =                          \
+      get_next_frm_lst_lnk_ptrs_previous(hcd, &(list)[index]);  \
+    (itd)->frame_index = index;                                 \
+    if(__nexts_prev) *__nexts_prev = &itd->next_link_pointer;   \
+    (itd)->next_link_pointer = (list)[index];                   \
+    (itd)->previous = &(list[index]);                           \
+    (list)[index].raw = ITD_NEXT(hcd, itd);                     \
   } while(0)
 
 
@@ -121,9 +123,9 @@ get_next_frm_lst_lnk_ptrs_previous(ehci_hcd_t* ehci_hcd, frm_lst_lnk_ptr_t* ptr)
 
 #define FRM_LIST_SIZE 1024  /* Frame list size used in Quest */
 #define DEFAULT_INT_THRESHOLD 8
-#define QH_POOL_SIZE  128
+#define QH_POOL_SIZE  32
 #define QTD_POOL_SIZE 256
-#define ITD_POOL_SIZE 2048
+#define ITD_POOL_SIZE (1024 * 1)
 #define EHCI_COMPLETION_ELEMENT_POOL_SIZE 128
 
 CASSERT((QH_POOL_SIZE  % 32) == 0, ehci_qh_pool_size )
@@ -131,9 +133,6 @@ CASSERT((QTD_POOL_SIZE % 32) == 0, ehci_qtd_pool_size)
 CASSERT((ITD_POOL_SIZE % 32) == 0, ehci_itd_pool_size)
 CASSERT((EHCI_COMPLETION_ELEMENT_POOL_SIZE % 32) == 0,
         ehci_completion_element_pool_size)
-
-
-
 
 
 static ehci_hcd_t ehci_hcd;
@@ -153,6 +152,14 @@ static uint32_t used_qtd_bitmap[(QTD_POOL_SIZE + EHCI_ELEMENTS_PER_BITMAP_ENTRY 
 static itd_t itd_pool[ITD_POOL_SIZE] ALIGNED(0x1000);
 static uint32_t used_itd_bitmap[(ITD_POOL_SIZE + EHCI_ELEMENTS_PER_BITMAP_ENTRY - 1)
                                 / EHCI_ELEMENTS_PER_BITMAP_ENTRY];
+
+
+static itd_t* temp_itd_pool = (itd_t*)0xFC800000; // 1010 *  0x400000;
+#define TEMP_ITD_POOL_SIZE (0x400000 / sizeof(itd_t))
+static int temp_itd_pool_size = TEMP_ITD_POOL_SIZE;
+static uint32_t temp_used_itd_bitmap[(TEMP_ITD_POOL_SIZE + EHCI_ELEMENTS_PER_BITMAP_ENTRY - 1)
+                                     / EHCI_ELEMENTS_PER_BITMAP_ENTRY];
+
 
 static ehci_completion_element_t
 ehci_completion_element_pool[EHCI_COMPLETION_ELEMENT_POOL_SIZE] ALIGNED(0x1000);
@@ -323,7 +330,7 @@ static inline int add_data_to_itd(struct urb* urb, itd_t* itd,
   char* data_start                  = urb->transfer_buffer;
   uint32_t bytes_added              = 0;
   ehci_iso_urb_priv_t* iso_urb_priv = get_iso_urb_priv(urb);
-  int start_transaction             = iso_urb_priv->interval_offset;
+  int start_transaction             = iso_urb_priv->ehci_urb_priv.sched_assignment;
   
   while(start_transaction > 8) start_transaction -= 8;
 
@@ -332,7 +339,7 @@ static inline int add_data_to_itd(struct urb* urb, itd_t* itd,
       i += interval, ++j) {
     itd_transaction_t* transaction = &itd->transaction[i];
     uint32_t bytes_to_add_for_transaction = max_transaction_size;
-    if(transaction->raw | ITD_ACTIVE) {
+    if(transaction->raw & ITD_ACTIVE) {
       bytes_to_add_for_transaction -= transaction->length;
     }
     
@@ -395,6 +402,8 @@ int ehci_rt_iso_push_data(struct urb* urb, char* data, int count)
   static int diff[1024];
   static uint32_t current[1024];
   int i;
+
+  insert_remaining_realtime_itds(hcd_to_ehci_hcd(urb->dev->hcd), FALSE, TRUE, urb);
   
   if(transactions_per_itd == 0) {
     transactions_per_itd = 1;
@@ -415,7 +424,7 @@ int ehci_rt_iso_push_data(struct urb* urb, char* data, int count)
   else {
     current_frame_index = EHCI_CURRENT_FRAME_INDEX(ehci_hcd);
     safe_frame_index = ((current_frame_index + EHCI_SAFE_FRAME_INSERT_OFFSET(ehci_hcd))
-                   | (frame_interval-1)) + 1 + frame_interval_offset;
+                        | (frame_interval-1)) + 1 + frame_interval_offset;
   }
   
   safe_frame_index = safe_frame_index & frame_list_mask;
@@ -472,7 +481,7 @@ int ehci_rt_iso_push_data(struct urb* urb, char* data, int count)
 
     current[counter] = EHCI_CURRENT_FRAME_INDEX(ehci_hcd);
     diff[counter] = (itds[iso_urb_priv->next_itd_for_sending_data]->frame_index -
-                       current[counter]);
+                     current[counter]);
     counter++;
     
     iso_urb_priv->next_itd_for_sending_data++;
@@ -548,9 +557,8 @@ int ehci_rt_iso_push_data(struct urb* urb, char* data, int count)
   int i = 0;
   int effective_packet_num;
 
-  DLOG_UINT(packets_per_itd);
+  insert_remaining_realtime_itds(hcd_to_ehci_hcd(urb->dev->hcd), FALSE, TRUE, urb);
 
-  //DLOG("Items in write itds to free %d", i);
   
   list_for_each_entry_safe(itd_to_free, temp_itd, &iso_urb_priv->write_itds_to_free,
                            chain_list) {
@@ -834,7 +842,6 @@ static int ehci_rt_qh_push_data(struct urb* urb, ehci_qh_urb_priv_t* qh_urb_priv
       break;
     }
     else {
-      
       list_del(&qtd_to_remove->chain_list);
       qh_urb_priv->next_byte_to_free_for_writing
         += qtd_to_remove->original_total_bytes_to_transfer;
@@ -927,7 +934,7 @@ static int ehci_rt_int_push_data(struct urb* urb,
 }
 
 static int ehci_rt_bulk_push_data(struct urb* urb, 
-                                 char* data, int count)
+                                  char* data, int count)
 {
   return ehci_rt_qh_push_data(urb, &(get_bulk_urb_priv(urb)->qh_urb_priv),
                               data, count);
@@ -935,17 +942,20 @@ static int ehci_rt_bulk_push_data(struct urb* urb,
 
 static int ehci_rt_iso_update_packets(struct urb* urb, int max_packets)
 {
-  int i;
+  int i, j;
   ehci_iso_urb_priv_t* iso_urb_priv = get_iso_urb_priv(urb);
   itd_t** urb_itds = iso_urb_priv->itds;
   uint32_t urb_num_packets = urb->number_of_packets;
-  uint32_t microframe_offset = iso_urb_priv->interval_offset & 0x7;
+  //uint32_t microframe_offset = iso_urb_priv->ehci_urb_priv.sched_assignment & 0x7;
   uint32_t interval = urb->interval;
   uint32_t packets_per_itd = interval < 8 ? 8 / interval : 1;
   uint32_t packets_per_itd_mask = packets_per_itd - 1;
   uint32_t next_packet_to_make_available =
     iso_urb_priv->next_packet_to_make_available;
+  //int next_packet_for_this_itd;
 
+
+  insert_remaining_realtime_itds(hcd_to_ehci_hcd(urb->dev->hcd), FALSE, TRUE, urb);
   //DLOG("%s called", __FUNCTION__);
     
   for(i = 0; i < max_packets; ++i) {
@@ -953,6 +963,7 @@ static int ehci_rt_iso_update_packets(struct urb* urb, int max_packets)
       &urb->iso_frame_desc[next_packet_to_make_available];
     itd_t* itd;
     int transaction_num;
+    int transaction_index = -1;
     if(packet->data_available) {
       DLOG("Lost data!");
       //while(1);
@@ -960,20 +971,33 @@ static int ehci_rt_iso_update_packets(struct urb* urb, int max_packets)
     }
     
     itd = urb_itds[next_packet_to_make_available / packets_per_itd];
-    transaction_num = microframe_offset +
-      ((next_packet_to_make_available & packets_per_itd_mask)
-       * interval);
-    EHCI_ASSERT(transaction_num < 8);
+
+    
+    
+    transaction_num = next_packet_to_make_available & packets_per_itd_mask;
+
+    for(j = 0; j < 8; ++j) {
+      if(itd->transaction[j].raw > 0) {
+        if(transaction_num == 0) {
+          transaction_index = j;
+          break;
+        }
+        else {
+          transaction_num--;
+        }
+      }
+    }
+
+    EHCI_ASSERT(j != 8);
+    EHCI_ASSERT(transaction_index >= 0);
         
-    if(itd->transaction[transaction_num].raw & ITD_ACTIVE) {
+    if(itd->transaction[transaction_index].raw & ITD_ACTIVE) {
       break;
     }
 
     packet->actual_length =
-      (itd->transaction[transaction_num].raw >> 16) & 0xFFF;
-    packet->status = (itd->transaction[transaction_num].raw >> 28) & 0xF;
-    //DLOG("da");
-    //DLOG("%d transaction = 0x%X", next_packet_to_make_available, itd->transaction[transaction_num].raw);
+      (itd->transaction[transaction_index].raw >> 16) & 0xFFF;
+    packet->status = (itd->transaction[transaction_index].raw >> 28) & 0xF;
     
     packet->data_available = TRUE;
     
@@ -986,6 +1010,7 @@ static int ehci_rt_iso_update_packets(struct urb* urb, int max_packets)
   iso_urb_priv->next_packet_to_make_available = next_packet_to_make_available;
   return i;
 }
+
 
 static void ehci_check_for_urb_completions(ehci_hcd_t* ehci_hcd, bool in_irq_handler)
 {
@@ -1147,20 +1172,251 @@ static void ehci_check_for_urb_completions(ehci_hcd_t* ehci_hcd, bool in_irq_han
         }
       }
     }
-    
     list_del(&comp_element->chain_list);
   }
 
   spinlock_unlock(&ehci_hcd->completion_lock);
 }
 
-void insert_remaining_realtime_itds(ehci_hcd_t* ehci_hcd, bool in_irq_handler)
+
+void remap_iso_itd(struct urb* urb, uint32 frame_index, int new_assignment)
+{
+  int i;
+  ehci_iso_urb_priv_t* iso_urb_priv = get_iso_urb_priv(urb);
+  int old_assignment                = iso_urb_priv->ehci_urb_priv.sched_assignment;
+  uint32_t interval                 = urb->interval;
+  uint32_t num_itds = iso_urb_priv->num_itds;
+  itd_t* itd = NULL;
+  itd_t** urb_itds = iso_urb_priv->itds;
+
+  if(new_assignment == old_assignment) { return; }
+
+  if((old_assignment / 8) != (new_assignment / 8)) {
+    /* -- EM -- Add this functionality later */
+    DLOG ("We don't support rescheduling where the itd has to change position yet");
+    panic("We don't support rescheduling where the itd has to change position yet");
+  }
+
+  //DLOG("urb interval = %d", urb->interval);
+  //DLOG("num itds = %d", num_itds);
+
+  /* -- EM -- Could make this more efficient by just doing the math to
+     figure out the correct index but don't care right now */
+  
+  for(i = 0; (i < num_itds); ++i) {
+    if(urb_itds[i]->frame_index == frame_index) {
+      itd = urb_itds[i];
+      break;
+    }
+  }
+
+  if(itd == NULL) { return; }
+  
+  for(i = 0; i * interval < 8; ++i) {
+    int transaction_new_assignment = (i * interval) + new_assignment;
+    int transaction_old_assignment = (i * interval) + old_assignment;
+
+    if(transaction_old_assignment > 7 || transaction_new_assignment > 7) {
+      panic("Fucked up");
+    }
+    itd_transaction_t temp;
+    temp = itd->transaction[transaction_old_assignment];
+    itd->transaction[transaction_old_assignment] = itd->transaction[transaction_new_assignment];
+    itd->transaction[transaction_new_assignment] = temp;
+
+    temp = itd->transaction_backup[transaction_old_assignment];
+    itd->transaction_backup[transaction_old_assignment] = itd->transaction_backup[transaction_new_assignment];
+    itd->transaction_backup[transaction_new_assignment] = temp;
+
+    
+  }
+}
+
+void reorder_transactions(ehci_hcd_t* ehci_hcd, bool in_irq_handler, bool have_kernel_lock)
+{
+  /*
+   * Since this function is called both in a thread that runs with
+   * interrupts on and in an interrupt handler if we cannot get the
+   * lock when in the interrupt handler then that means something else
+   * is handling completions and we should just back off.  This is
+   * extremely important for the interrupt handler because if it
+   * preempted the backup thread when the backup thread had the lock
+   * the interrupt handler would wait indefinitely unless the backup
+   * thread was scheduled on another core
+   */
+
+  //static int call_counter = 0;
+  int i,j;
+  int num_rt_urbs = ehci_hcd->num_rt_urbs;
+  struct urb** rt_urbs = ehci_hcd->rt_urbs;
+  //frm_lst_lnk_ptr_t* frame_list     = ehci_hcd->frame_list;
+  uint32_t frame_list_size          = ehci_hcd->frame_list_size;
+  uint32_t frame_list_mask          = frame_list_size - 1;
+  uint32_t current_frame_index;
+  uint32_t frame_index;
+  int* new_assignments = ehci_hcd->new_assignments;
+
+  
+  /* -- EM -- Overloading uninserted_itd_lock to also be used for
+     reordering */
+
+
+  if(ehci_hcd->reorder_urbs_stage == EHCI_RUS_NONE) {
+    return;
+  }
+  
+
+
+  if(!have_kernel_lock) {
+   
+    cli();  /* Messing with frame list, cannot be interrupted */
+    
+    lock_kernel(); /* -- EM -- Need to the kernel lock because that is
+                      protecting the frame list, should fix it so it
+                      isn't later */
+  }
+
+  if(in_irq_handler) {
+    if(!spinlock_attempt_lock(&ehci_hcd->uninserted_itd_lock)) {
+      if(!have_kernel_lock) {
+        unlock_kernel();
+        sti();
+      }
+      return;
+    }
+  }
+  else {
+    spinlock_lock(&ehci_hcd->uninserted_itd_lock);
+  }
+  
+  
+  current_frame_index = EHCI_CURRENT_FRAME_INDEX(ehci_hcd);
+  frame_index = ((current_frame_index + EHCI_SAFE_FRAME_INSERT_OFFSET(ehci_hcd))) & frame_list_mask;
+
+  
+  
+  while(frame_index != current_frame_index) {
+    if(!ehci_hcd->reordered_map[frame_index]) {
+      /* Don't have to reorder the last urb's element because it is
+         the one that caused us to reorder everything so it is put
+         into the right spot, also this function is called before the
+         last urb's elements are put into the list */
+      for(j = 0; j < num_rt_urbs - 1; ++j) { 
+        if(usb_pipetype(rt_urbs[j]->pipe) == PIPE_ISOCHRONOUS) {
+          remap_iso_itd(rt_urbs[j], frame_index, new_assignments[j]);
+        }
+      }
+      ehci_hcd->reordered_map[frame_index] = TRUE;
+    }
+    
+    frame_index = (frame_index + 1) & frame_list_mask;
+  }
+
+  for(i = 0; i < frame_list_size; ++i) {
+    if(!ehci_hcd->reordered_map[i]) {
+      break;
+    }
+  }
+  
+  if(i == frame_list_size) {
+    //DLOG("Reorder done!");
+    ehci_hcd->reorder_urbs_stage = EHCI_RUS_NONE;
+    for(i = 0; i < num_rt_urbs; ++i) {
+      get_ehci_urb_priv(rt_urbs[i])->sched_assignment = new_assignments[i];
+    }
+  }
+  
+  spinlock_unlock(&ehci_hcd->uninserted_itd_lock);
+  if(!have_kernel_lock) {
+    unlock_kernel();
+    sti();
+  }
+  
+}
+
+void insert_remaining_realtime_itds_for_urb(ehci_hcd_t* ehci_hcd, ehci_iso_urb_priv_t* iso_urb_priv)
+{
+
+  frm_lst_lnk_ptr_t* frame_list = ehci_hcd->frame_list;
+  uint32_t frame_list_size = ehci_hcd->frame_list_size;
+  uint32_t frame_list_mask = frame_list_size - 1;
+  
+  bool all_itds_added = TRUE;
+  itd_t* itd;
+  itd_t* itd_temp;
+  bool looped_around;
+  struct urb* urb = iso_urb_priv_to_urb(iso_urb_priv);
+  uint32_t current_frame_index, start_frame_index;
+  uint32_t frame_interval_offset = iso_urb_priv->ehci_urb_priv.sched_assignment / 8;
+  uint32_t frame_interval        = urb->interval / 8;
+    
+  if(frame_interval <= 1) {
+    frame_interval = 1;
+    current_frame_index = EHCI_CURRENT_FRAME_INDEX(ehci_hcd);
+    start_frame_index =
+      current_frame_index + EHCI_SAFE_FRAME_INSERT_OFFSET(ehci_hcd);
+  }
+  else {
+    current_frame_index = EHCI_CURRENT_FRAME_INDEX(ehci_hcd);
+    start_frame_index =
+      ((current_frame_index + EHCI_SAFE_FRAME_INSERT_OFFSET(ehci_hcd))
+       | (frame_interval-1)) + 1 + frame_interval_offset;
+  }
+    
+  start_frame_index &= frame_list_mask;
+  looped_around = start_frame_index < current_frame_index;
+  /*
+   * If looped_around is TRUE we looped around by adding the safe
+   * offset and interval offset
+   */
+    
+  list_for_each_entry_safe(itd, itd_temp, &iso_urb_priv->uninserted_itds_list,
+                           uninserted_list) {
+    uint32_t frame_index = itd->frame_index;
+    if(looped_around) {
+      if( (frame_index >= start_frame_index) &&
+          (frame_index < current_frame_index) ) {
+        insert_itd_into_frame_list(ehci_hcd, frame_list, frame_index, itd);
+          
+        list_del(&itd->uninserted_list);
+      }
+      else {
+        all_itds_added = FALSE;
+      }
+    }
+    else {
+      if( (frame_index >= start_frame_index  ) ||
+          (frame_index <  current_frame_index) ) {
+        insert_itd_into_frame_list(ehci_hcd, frame_list, frame_index, itd);
+        list_del(&itd->uninserted_list);
+      }
+      else {
+        all_itds_added = FALSE;
+      }
+    }
+  }
+    
+  if(all_itds_added) {
+    list_del(&iso_urb_priv->uninserted_itd_urb_list);
+  }
+}
+
+void insert_remaining_realtime_itds(ehci_hcd_t* ehci_hcd, bool in_irq_handler,
+                                    bool have_kernel_lock, struct urb* urb)
 {
   ehci_iso_urb_priv_t* iso_urb_priv;
   ehci_iso_urb_priv_t* temp_iso_urb_priv;
-  frm_lst_lnk_ptr_t* frame_list;
-  uint32_t frame_list_size;
-  uint32_t frame_list_mask;
+  ehci_iso_urb_priv_t* specific_iso_urb_priv = NULL;
+  
+  if(urb) {
+    if(usb_pipetype(urb->pipe) != PIPE_ISOCHRONOUS) {
+      return;
+    }
+    specific_iso_urb_priv = get_iso_urb_priv(urb);
+    if(list_empty(&specific_iso_urb_priv->uninserted_itds_list)) {
+      return;
+    }
+  }
 
   /*
    * Since this function is called both in a thread that runs with
@@ -1173,86 +1429,49 @@ void insert_remaining_realtime_itds(ehci_hcd_t* ehci_hcd, bool in_irq_handler)
    * thread was scheduled on another core
    */
 
+  if(!have_kernel_lock) {
+   
+    cli();  /* Messing with frame list, cannot be interrupted */
+    
+    lock_kernel(); /* -- EM -- Need to the kernel lock because that is
+                      protecting the frame list, should fix it so it
+                      isn't later */
+  }
+  
   if(in_irq_handler) {
     if(!spinlock_attempt_lock(&ehci_hcd->uninserted_itd_lock)) {
+      if(!have_kernel_lock) {
+        unlock_kernel();
+        sti();
+      }
       return;
     }
   }
   else {
     spinlock_lock(&ehci_hcd->uninserted_itd_lock);
   }
-  // At this point we have the uninserted_itd_lock lock
-
-  frame_list      = ehci_hcd->frame_list;
-  frame_list_size = ehci_hcd->frame_list_size;
-  frame_list_mask = frame_list_size - 1;
   
-  list_for_each_entry_safe(iso_urb_priv, temp_iso_urb_priv,
-                           &ehci_hcd->uninserted_itd_urb_list,
-                           uninserted_itd_urb_list) {
-    bool all_itds_added = TRUE;
-    itd_t* itd;
-    itd_t* itd_temp;
-    bool looped_around;
-    struct urb* urb = iso_urb_priv_to_urb(iso_urb_priv);
-    uint32_t current_frame_index, start_frame_index;
-    uint32_t frame_interval_offset = iso_urb_priv->interval_offset / 8;
-    uint32_t frame_interval        = urb->interval / 8;
-    
-    if(frame_interval <= 1) {
-      frame_interval = 1;
-      current_frame_index = EHCI_CURRENT_FRAME_INDEX(ehci_hcd);
-      start_frame_index =
-        current_frame_index + EHCI_SAFE_FRAME_INSERT_OFFSET(ehci_hcd);
-    }
-    else {
-      current_frame_index = EHCI_CURRENT_FRAME_INDEX(ehci_hcd);
-      start_frame_index =
-        ((current_frame_index + EHCI_SAFE_FRAME_INSERT_OFFSET(ehci_hcd))
-         | (frame_interval-1)) + 1 + frame_interval_offset;
-    }
-    
-    start_frame_index &= frame_list_mask;
-    looped_around = start_frame_index < current_frame_index;
-    /*
-     * If looped_around is TRUE we looped around by adding the safe
-     * offset and interval offset
-     */
-    list_for_each_entry_safe(itd, itd_temp, &iso_urb_priv->uninserted_itds_list,
-                             uninserted_list) {
-      uint32_t frame_index = itd->frame_index;
-      if(looped_around) {
-	if( (frame_index >= start_frame_index) &&
-            (frame_index < current_frame_index) ) {
-          //DLOG("adding %d", frame_index);
-	  insert_itd_into_frame_list(ehci_hcd, frame_list, frame_index, itd);
-          list_del(&itd->uninserted_list);
-	}
-	else {
-          //DLOG("Did add item in backup thread");
-          all_itds_added = FALSE;
-        }
-      }
-      else {
-	if( (frame_index >= start_frame_index  ) ||
-            (frame_index <  current_frame_index) ) {
-          //DLOG("adding %d", frame_index);
-	  insert_itd_into_frame_list(ehci_hcd, frame_list, frame_index, itd);
-          list_del(&itd->uninserted_list);
-        }
-	else {
-          //DLOG("Did add item in backup thread");
-          all_itds_added = FALSE;
-	}
-      }
-    }
-    
-    if(all_itds_added) {
-      list_del(&iso_urb_priv->uninserted_itd_urb_list);
-      DLOG("Added all ITDS");
+  /* At this point we have the uninserted_itd_lock lock */
+
+
+  if(specific_iso_urb_priv) {
+    insert_remaining_realtime_itds_for_urb(ehci_hcd, specific_iso_urb_priv);
+  }
+  else {
+    list_for_each_entry_safe(iso_urb_priv, temp_iso_urb_priv,
+                             &ehci_hcd->uninserted_itd_urb_list,
+                             uninserted_itd_urb_list) {
+      
+      insert_remaining_realtime_itds_for_urb(ehci_hcd, iso_urb_priv);
     }
   }
+
+  
   spinlock_unlock(&ehci_hcd->uninserted_itd_lock);
+  if(!have_kernel_lock) {
+    unlock_kernel();
+    sti();
+  }
 }
 
 
@@ -1272,13 +1491,14 @@ static void ioc_backup_thread(ehci_hcd_t* ehci_hcd)
      */
     cli();
     lock_kernel();
-    // 18750 = 150 * 125
+    /* 18750 - just a random number that works */
     sched_usleep(18750 * DEFAULT_INT_THRESHOLD );
     unlock_kernel();
     sti();
     
-    insert_remaining_realtime_itds(ehci_hcd, FALSE);
-    ehci_check_for_urb_completions(ehci_hcd, FALSE);   
+    insert_remaining_realtime_itds(ehci_hcd, FALSE, FALSE, NULL);
+    ehci_check_for_urb_completions(ehci_hcd, FALSE);
+    reorder_transactions(ehci_hcd, FALSE, FALSE);
   }
 }
 
@@ -1318,7 +1538,8 @@ ehci_irq_handler(uint8 vec)
 
   EHCI_ACK_INTERRUPTS(&ehci_hcd, status & USBINTR_ALL);
 
-  insert_remaining_realtime_itds(&ehci_hcd, TRUE);
+  insert_remaining_realtime_itds(&ehci_hcd, TRUE, TRUE, NULL);
+  reorder_transactions(&ehci_hcd, TRUE, TRUE);
   
   if(status & USBINTR_INT) { /* "normal" completion (short, ...) */
     ehci_check_for_urb_completions(&ehci_hcd, TRUE);
@@ -1338,8 +1559,6 @@ ehci_irq_handler(uint8 vec)
   }
   
   if(status & USBINTR_FLR) { /* frame list rolled over */
-    DLOG("USBINTR_FLR case in %s unhandled status = 0x%X", __FUNCTION__, status);
-    //panic("USBINTR_FLR case unhandled");
   }
 
   if(status & USBINTR_PCD) { /* port change detect */
@@ -1603,21 +1822,29 @@ static int ehci_submit_urb(struct urb* urb,
   uint32_t pipe = urb->pipe;
   ehci_hcd_t* ehci_hcd = hcd_to_ehci_hcd(urb->dev->hcd);
   uint16_t packet_len = usb_maxpacket(urb->dev, urb->pipe);
+  uint32_t pipe_type;
+  
+  if(ehci_hcd->reorder_urbs_stage != EHCI_RUS_NONE) {
+    reorder_transactions(ehci_hcd, FALSE, TRUE);
+    if(ehci_hcd->reorder_urbs_stage != EHCI_RUS_NONE) {
+      return -2;
+    }
+  }
   
   if(packet_len == 0) {
     DLOG("packet_len == 0");
     panic("packet_len == 0");
   }
-  register uint32_t pipe_type = usb_pipetype(pipe);
+  
+  pipe_type = usb_pipetype(pipe);
 
   if(urb->transfer_buffer) {
     urb->transfer_dma = (phys_addr_t)get_phys_addr(urb->transfer_buffer);
   }
   else {
     if(usb_pipetype(urb->pipe) != PIPE_CONTROL) {
-      
-    DLOG("Right now we have to use urb->transfer_buffer");
-    panic("Right now we have to use urb->transfer_buffer");
+      DLOG("Right now we have to use urb->transfer_buffer");
+      panic("Right now we have to use urb->transfer_buffer");
     }
   }
   
@@ -1647,6 +1874,7 @@ void ehci_kill_urb(struct urb* urb)
  */
 int ehci_rt_iso_data_lost(struct urb* urb)
 {
+  insert_remaining_realtime_itds(hcd_to_ehci_hcd(urb->dev->hcd), FALSE, TRUE, urb);
   DLOG("ehci_rt_iso_data_lost is not implemented");
   panic("ehci_rt_iso_data_lost is not implemented");
   return 0;
@@ -1655,39 +1883,85 @@ int ehci_rt_iso_data_lost(struct urb* urb)
 
 int ehci_rt_iso_free_packets(struct urb* urb, int number_of_packets)
 {
-  int i;
+  int i, j;
   ehci_iso_urb_priv_t* iso_urb_priv = get_iso_urb_priv(urb);
   uint32_t next_packet_to_free = iso_urb_priv->next_packet_to_free;
   uint32_t urb_num_packets = urb->number_of_packets;
-  uint32_t microframe_offset = iso_urb_priv->interval_offset & 0x7;
+  //uint32_t microframe_offset = iso_urb_priv->ehci_urb_priv.sched_assignment & 0x7;
   uint32_t interval = urb->interval;
   itd_t** urb_itds = iso_urb_priv->itds;
   uint32_t packets_per_itd = interval < 8 ? 8 / interval : 1;
   uint32_t packets_per_itd_mask = packets_per_itd - 1;
 
+  insert_remaining_realtime_itds(hcd_to_ehci_hcd(urb->dev->hcd), FALSE, TRUE, urb);
+
   for(i = 0; i < number_of_packets; ++i) {
     itd_t* itd;
-    int transaction_index;
+    int transaction_num;
+    int transaction_index = -1;
     usb_iso_packet_descriptor_t* packet = &urb->iso_frame_desc[next_packet_to_free];
     
     if(!packet->data_available) {
       break;
     }
     
-    transaction_index = microframe_offset +
-      ((next_packet_to_free & packets_per_itd_mask) * interval);
-    
-    EHCI_ASSERT(transaction_index < 8);
-
     itd = urb_itds[next_packet_to_free / packets_per_itd];
+    
+    transaction_num = next_packet_to_free & packets_per_itd_mask;
+    for(j = 0; j < 8; ++j) {
+      if(itd->transaction[j].raw > 0) {
+        if(transaction_num == 0) {
+          transaction_index = j;
+          break;
+        }
+        else {
+          transaction_num--;
+        }
+      }
+    }
 
+    
+    EHCI_ASSERT(j != 8);
+    EHCI_ASSERT(transaction_index >= 0);
+
+    
     EHCI_ASSERT(!(itd->transaction[transaction_index].raw & ITD_ACTIVE));
     
     itd->transaction[transaction_index].raw =
       itd->transaction_backup[transaction_index].raw;
     if(!(itd->transaction[transaction_index].raw & ITD_ACTIVE)) {
-      DLOG("Failed to set packet %d to active", next_packet_to_free);
-      while(1);
+      /* This occurs when we have remapped stuff, the solution is to
+         scan the backups for the correct transaction_num in backup
+         and then copy that backup */
+
+      transaction_num = next_packet_to_free & packets_per_itd_mask;
+      
+      for(j = 0; j < 8; ++j) {
+        if(itd->transaction_backup[j].raw > 0) {
+          if(transaction_num == 0) {
+            transaction_index = j;
+            break;
+          }
+          else {
+            transaction_num--;
+          }
+        }
+      }
+      
+    
+      EHCI_ASSERT(j != 8);
+      EHCI_ASSERT(transaction_index >= 0);
+
+      EHCI_ASSERT(!(itd->transaction[transaction_index].raw & ITD_ACTIVE));
+    
+      itd->transaction[transaction_index].raw =
+        itd->transaction_backup[transaction_index].raw;
+
+      if(!(itd->transaction[transaction_index].raw & ITD_ACTIVE)) {
+        /* Should never get here */
+        DLOG ("Failed to set transaction as active");
+        panic("Failed to set transaction as active");
+      }
     }
 
     packet->data_available = FALSE;
@@ -1716,7 +1990,7 @@ initialise_ehci_hcd(uint32_t usb_base,
                     ehci_hcd_t* ehci_hcd,
                     frm_lst_lnk_ptr_t* frm_lst,
                     frm_lst_lnk_ptr_t* last_frm_lst_entries,
-                    uint32_t* micro_frame_remaining_bytes,
+                    uint32_t* micro_frame_remaining_time,
                     uint32_t frm_lst_size,
                     qh_t* qh_pool,
                     uint32_t qh_pool_size,
@@ -1758,19 +2032,22 @@ initialise_ehci_hcd(uint32_t usb_base,
   ehci_hcd->caps                  = ehci_hcd->base_virtual_address;
   ehci_hcd->regs                  = (ehci_regs_t*)(ehci_hcd->base_virtual_address
                                                    + ehci_hcd->caps->cap_length);
-  
 
+  ehci_hcd->reorder_urbs_stage = EHCI_RUS_NONE;
+  
   memset(ehci_hcd->ehci_devinfo, 0, sizeof(ehci_hcd->ehci_devinfo));
   
   ehci_hcd->frame_list                  = frm_lst;
   ehci_hcd->last_frame_list_entries     = last_frm_lst_entries;
   ehci_hcd->frame_list_size             = frm_lst_size;
-  ehci_hcd->micro_frame_remaining_bytes = micro_frame_remaining_bytes;
+  ehci_hcd->micro_frame_remaining_time  = micro_frame_remaining_time;
+
+  ehci_hcd->num_rt_urbs = 0;
 
   INIT_LIST_HEAD(&ehci_hcd->uninserted_itd_urb_list);
   
   for(i = 0; i < frm_lst_size * 8; ++i) {
-    micro_frame_remaining_bytes[i] = EHCI_BYTES_PER_MICRO_FRAME;
+    micro_frame_remaining_time[i] = USEC_PER_MICRO_FRAME;
   }
 
   spinlock_init(&ehci_hcd->completion_lock);
@@ -1780,10 +2057,10 @@ initialise_ehci_hcd(uint32_t usb_base,
 #define INIT_EHCI_POOL(type)                                            \
   do {                                                                  \
     ehci_hcd->type##_pool = type##_pool;                                \
-    ehci_hcd->type##_pool_phys_addr = (phys_addr_t)get_phys_addr(type##_pool); \
-    ehci_hcd->type##_pool_size = type##_pool_size;                      \
-    ehci_hcd->used_##type##_bitmap = used_##type##_bitmap;              \
-    memset(type##_pool, 0, type##_pool_size * sizeof(type##_t));        \
+      ehci_hcd->type##_pool_phys_addr = (phys_addr_t)get_phys_addr(type##_pool); \
+        ehci_hcd->type##_pool_size = type##_pool_size;                  \
+          ehci_hcd->used_##type##_bitmap = used_##type##_bitmap;        \
+            memset(type##_pool, 0, type##_pool_size * sizeof(type##_t)); \
   }                                                                     \
   while(0)
   
@@ -1792,6 +2069,15 @@ initialise_ehci_hcd(uint32_t usb_base,
   INIT_EHCI_POOL(itd);
   INIT_EHCI_POOL(ehci_completion_element);
 
+
+#if 0
+  ehci_hcd->itd_pool = itd_pool;                                  
+  ehci_hcd->itd_pool_phys_addr = (phys_addr_t)get_phys_addr(itd_pool); 
+  ehci_hcd->itd_pool_size = itd_pool_size;                    
+  ehci_hcd->used_itd_bitmap = used_itd_bitmap;
+  memset(itd_pool, 0, itd_pool_size * sizeof(itd_t));       
+#endif
+    
 #undef INIT_EHCI_POOL
   
   ehci_hcd->interrupt_threshold = int_threshold;
@@ -1806,19 +2092,19 @@ initialise_ehci_hcd(uint32_t usb_base,
     calc_used_qh_bitmap_size(ehci_hcd);
 
   memset(used_qh_bitmap, 0,
-         ehci_hcd->used_qh_bitmap_size * sizeof(*used_qh_bitmap));
+    ehci_hcd->used_qh_bitmap_size * sizeof(*used_qh_bitmap));
   
   ehci_hcd->used_qtd_bitmap_size =
     calc_used_qtd_bitmap_size(ehci_hcd);
 
   memset(used_qtd_bitmap, 0,
-         ehci_hcd->used_qtd_bitmap_size * sizeof(*used_qtd_bitmap));
+    ehci_hcd->used_qtd_bitmap_size * sizeof(*used_qtd_bitmap));
 
   ehci_hcd->used_itd_bitmap_size =
     calc_used_itd_bitmap_size(ehci_hcd);
 
   memset(used_itd_bitmap, 0,
-         ehci_hcd->used_itd_bitmap_size * sizeof(*used_itd_bitmap));
+    ehci_hcd->used_itd_bitmap_size * sizeof(*used_itd_bitmap));
   
   if(!restart_ehci_hcd(ehci_hcd)) return FALSE;
   if(!initialise_frame_list(ehci_hcd)) return FALSE;
@@ -1842,9 +2128,9 @@ initialise_ehci_hcd(uint32_t usb_base,
 #ifdef EHCI_IOC_BUG
   
   create_kernel_thread_args((u32)ioc_backup_thread,
-                            (u32) &temp_stack[1023],
-                            "EHCI Backup",
-                            TRUE, 1, ehci_hcd);
+    (u32) &temp_stack[1023],
+    "EHCI Backup",
+    TRUE, 1, ehci_hcd);
   
 #endif // EHCI_IOC_BUG
   
@@ -1856,88 +2142,110 @@ initialise_ehci_hcd(uint32_t usb_base,
  * Called to initialise EHCI, functionality mimics uhci_init in
  * uhci_hcd
  */
-bool
-ehci_init(void)
-{
+
+ uint32 ehci_itd_page;
+
+ bool
+   ehci_init(void)
+ {
   uint32_t usb_base = 0;
   uint i, device_index, irq_pin;
   pci_device ehci_device;
   pci_irq_t irq;
+  void *phys_addr;
+  uint32 *virt_addr, *virt_addr2;
+
+  phys_addr = get_pdbr ();      /* Parent page dir base address */
+  virt_addr = map_virtual_page ((uint32) phys_addr | 3);        /* Temporary virtual address */
+
+  ehci_itd_page = virt_addr[1010] = alloc_phys_frame() | 3;
+  virt_addr2 = map_virtual_page((uint32) virt_addr[1010] );        /* Temporary virtual address */
+  
+  for(i = 0; i < 1024; ++i) {
+  virt_addr2[i] = alloc_phys_frame() | 3;
+}
+
+  unmap_virtual_page(virt_addr);
+  unmap_virtual_page(virt_addr2);
 
 
+  //char* temp = 0xFE000000;
+  //char* temp = 0xFD000000;
+  //temp[0] = 'a';
+  
   if(mp_ISA_PC) {
-    DLOG("Cannot operate without PCI");
-    DLOGV("Exiting %s with FALSE", __FUNCTION__);
-    return FALSE;
-  }
+  DLOG("Cannot operate without PCI");
+  DLOGV("Exiting %s with FALSE", __FUNCTION__);
+  return FALSE;
+}
 
   /* Find the EHCI device on the PCI bus */
   device_index = ~0;
   i = 0;
 
   /*
-   * -- WARN -- Only looking for 1 specific EHCI host controller device
-   * this is D29 for Intel 6 C200 or the qemu ehci chip would be best
-   * to add all EHCI chips to an array that is iterated, and each time
-   * one is found it is pushed to the usb core
+   * -- WARN -- Only looking for 1 specific EHCI host controller
+   * device this is D29 for Intel 6 C200 or the qemu ehci chip would
+   * be best to add all EHCI chips to an array that is iterated, and
+   * each time one is found it is pushed to the usb core
    */
   
   while (pci_find_device (0x8086, 0x1C2D, 0x0C, 0x03, i, &i)) {
-    if (pci_get_device (i, &ehci_device)) { 
-      if (ehci_device.progIF == 0x20) {
-        device_index = i;
-        break;
-      }
-      i++;
-    } else break;
-  }
+  if (pci_get_device (i, &ehci_device)) { 
+  if (ehci_device.progIF == 0x20) {
+  device_index = i;
+  break;
+}
+  i++;
+} else break;
+}
 
 
   if(device_index == ~0) {
-    while (pci_find_device (0x8086, 0x24CD, 0x0C, 0x03, i, &i)) { 
-      if (pci_get_device (i, &ehci_device)) { 
-        if (ehci_device.progIF == 0x20) {
-          device_index = i;
-          break;
-        }
-        i++;
-      } else break;
-    }
-  }
+  while (pci_find_device (0x8086, 0x24CD, 0x0C, 0x03, i, &i)) { 
+  if (pci_get_device (i, &ehci_device)) { 
+  if (ehci_device.progIF == 0x20) {
+  device_index = i;
+  break;
+}
+  i++;
+} else break;
+}
+}
 
   if(device_index == ~0) {
-    while (pci_find_device (0x8086, 0x1c26, 0x0C, 0x03, i, &i)) { 
-      if (pci_get_device (i, &ehci_device)) { 
-        if (ehci_device.progIF == 0x20) {
-          device_index = i;
-          break;
-        }
-        i++;
-      } else break;
-    }
-  }
+  while (pci_find_device (0x8086, 0x1c26, 0x0C, 0x03, i, &i)) { 
+  if (pci_get_device (i, &ehci_device)) { 
+  if (ehci_device.progIF == 0x20) {
+  device_index = i;
+  break;
+}
+  i++;
+} else break;
+}
+}
 
   
   DLOG("Device %d", device_index);
   
   if (device_index == ~0) {
-    DLOG ("Unable to find compatible device on PCI bus");
-    DLOGV("Exiting %s with FALSE", __FUNCTION__);
+  DLOG ("Unable to find compatible device on PCI bus");
+  DLOGV("Exiting %s with FALSE", __FUNCTION__);
 
-    EHCI_DEBUG_HALT();
-    return FALSE;
-  }
+  EHCI_DEBUG_HALT();
+  return FALSE;
+}
 
   
 
   DLOGV("Found device on PCI bus");
   
   if (!pci_get_device (device_index, &ehci_device)) {
-    DLOG ("Unable to get PCI device from PCI subsystem");
-    DLOGV("Exiting %s with FALSE", __FUNCTION__);
-    EHCI_DEBUG_HALT();
-    return FALSE;
-  }
+  DLOG ("Unable to get PCI device from PCI subsystem");
+  DLOGV("Exiting %s with FALSE", __FUNCTION__);
+  EHCI_DEBUG_HALT();
+  return FALSE;
+}
   
   ehci_hcd.bus = ehci_device.bus;
   ehci_hcd.dev = ehci_device.slot;
@@ -1987,9 +2295,12 @@ ehci_init(void)
                           qtd_pool,
                           sizeof(qtd_pool)/sizeof(qtd_t),
                           used_qtd_bitmap,
-                          itd_pool,
-                          sizeof(itd_pool)/sizeof(itd_t),
-                          used_itd_bitmap,
+                          //itd_pool,
+                          //sizeof(itd_pool)/sizeof(itd_t),
+                          //used_itd_bitmap,
+                          temp_itd_pool,
+                          temp_itd_pool_size,
+                          temp_used_itd_bitmap,
                           ehci_completion_element_pool,
                           sizeof(ehci_completion_element_pool)
                           / sizeof(ehci_completion_element_t),
@@ -2006,7 +2317,7 @@ ehci_init(void)
     
   DLOG("Successfully initialised and registered ehci hcd");
   return TRUE;
-}
+ }
 
 static uint32_t
 qtd_fill(qtd_t* qtd,
@@ -2257,7 +2568,7 @@ static inline uint16_t create_int_sched_mask(struct urb* urb)
 {
   uint16_t mask = 0;
   int i;
-  uint32_t interval_offset = get_int_urb_priv(urb)->interval_offset;
+  uint32_t interval_offset = get_int_urb_priv(urb)->ehci_urb_priv.sched_assignment;
 
   for(i = interval_offset; i < 8; i += urb->interval) {
     mask |= 1 << i;
@@ -2402,7 +2713,7 @@ static void qh_append_qtds(ehci_hcd_t* ehci_hcd, struct urb* urb,
       if(urb_swap_index < 0) {
         DLOG("urb_swap_index = %d in %s this should never happen",
              urb_swap_index, __FUNCTION__);
-      panic("urb_swap_index < 0 in qh_append_qtds this should never happen");
+        panic("urb_swap_index < 0 in qh_append_qtds this should never happen");
       }
     }
   }
@@ -2656,12 +2967,13 @@ static int submit_async_qtd_chain(ehci_hcd_t* ehci_hcd, struct urb* urb, qh_t** 
   if(save_qh) {
     EHCI_SET_DEVICE_QH(ehci_hcd, device_addr, is_input, endpoint, *qh);
   }
+  if(get_bulk_urb_priv(urb)) {
+    get_bulk_urb_priv(urb)->qh_urb_priv.qh = *qh;
 
-  get_bulk_urb_priv(urb)->qh_urb_priv.qh = *qh;
-  
+  }
   qh_append_qtds(ehci_hcd, urb, *qh, qtd_list);
   if((*qh)->state == QH_STATE_NOT_LINKED) {
-    DLOG("Linking QH");
+    //DLOG("Linking QH");
     link_qh_to_async(ehci_hcd, *qh, ioc_enabled, pipe_type,
                      device_addr, endpoint, is_input, save_qh);
   }
@@ -2693,7 +3005,7 @@ void link_qh_to_periodic_list(ehci_hcd_t* ehci_hcd, qh_t* qh, struct urb* urb)
   frm_lst_lnk_ptr_t* frame_list     = ehci_hcd->frame_list;
   uint32_t frame_list_size          = ehci_hcd->frame_list_size;
   uint32_t frame_interval           = urb->interval / 8;
-  uint32_t frame_interval_offset    = int_urb_priv->interval_offset / 8;
+  uint32_t frame_interval_offset    = int_urb_priv->ehci_urb_priv.sched_assignment / 8;
 
   if(frame_interval == 0) {
     frame_interval = 1;
@@ -2747,15 +3059,15 @@ void link_qh_to_periodic_list(ehci_hcd_t* ehci_hcd, qh_t* qh, struct urb* urb)
             break;
 
 
-            case TYPE_SITD:
-            case TYPE_FSTN:
-            default:
-               /*
-                * -- EM -- These shouldn't ever be in the periodic list right
-                * now because we don't use them at all yet
-                */
-               DLOG("Unhandled case in %s line %d", __FILE__, __LINE__);
-               panic("Unhandled case in link_qh_to_periodic_list");
+          case TYPE_SITD:
+          case TYPE_FSTN:
+          default:
+            /*
+             * -- EM -- These shouldn't ever be in the periodic list right
+             * now because we don't use them at all yet
+             */
+            DLOG("Unhandled case in %s line %d", __FILE__, __LINE__);
+            panic("Unhandled case in link_qh_to_periodic_list");
           }
         }
       }
@@ -2804,7 +3116,7 @@ submit_interrupt_qtd(ehci_hcd_t* ehci_hcd, struct urb* urb,
 
 
 static int
- ehci_interrupt_transfer(ehci_hcd_t* ehci_hcd, struct urb* urb)
+ehci_interrupt_transfer(ehci_hcd_t* ehci_hcd, struct urb* urb)
 {
   unsigned int pipe = urb->pipe;
   uint8_t address = usb_pipedevice(pipe);
@@ -2862,7 +3174,7 @@ static int
     }
     int_urb_priv = urb->hcpriv;
     int_urb_priv->qh_urb_priv.buffer_size = urb->transfer_buffer_length;
-    int_urb_priv->interval_offset = interval_offset;
+    int_urb_priv->ehci_urb_priv.sched_assignment = interval_offset;
 
     if(is_input) {
       i = 0;
@@ -3053,7 +3365,7 @@ int itd_fill(itd_t* itd, struct urb* urb, uint8_t address, uint8_t endpoint,
         DLOG("Cannot fit iso packets into a single iTD, crosses "
              "too many buffer boundaries");
         panic("Cannot fit iso packets into a single iTD, crosses "
-             "too many buffer boundaries");
+              "too many buffer boundaries");
         return -1;
       }
       old_buf_ptr_value = data_phys & ~0x0FFF;
@@ -3062,16 +3374,22 @@ int itd_fill(itd_t* itd, struct urb* urb, uint8_t address, uint8_t endpoint,
     }
     EHCI_ASSERT(i+microframe_offset < 8);
     /* -- EM -- Change this to be more efficient later */
-    if(urb->realtime  && is_input) {
+    if(urb->realtime && !is_input) {
       itd->transaction[i].raw = 0;
+      //DLOG("%d: itd->transaction[i].raw = 0x%X", __LINE__, itd->transaction[i].raw);
       itd->transaction[i].length = 0;
+      //DLOG("%d: itd->transaction[i].raw = 0x%X", __LINE__, itd->transaction[i].raw);
     }
     else {
       itd->transaction[i].raw = ITD_ACTIVE;
+      //DLOG("%d: itd->transaction[i].raw = 0x%X", __LINE__, itd->transaction[i].raw);
       itd->transaction[i].length = packets[i].length;
+      //DLOG("%d: itd->transaction[i].raw = 0x%X", __LINE__, itd->transaction[i].raw);
     }
     itd->transaction[i].offset = data_phys & 0x0FFF;
+    //DLOG("%d: itd->transaction[i].raw = 0x%X", __LINE__, itd->transaction[i].raw);
     itd->transaction[i].page_selector = cur_buf_ptr;
+    //DLOG("%d: itd->transaction[i].raw = 0x%X", __LINE__, itd->transaction[i].raw);
   }
   
   
@@ -3091,7 +3409,7 @@ static int create_itd_chain(ehci_hcd_t* ehci_hcd, uint8_t address,
   uint32_t packets_per_itd;
   uint32_t microframe_interval = urb->interval;
   ehci_iso_urb_priv_t* iso_urb_priv = get_iso_urb_priv(urb);
-  uint32_t microframe_offset = iso_urb_priv->interval_offset & 0x7;
+  uint32_t microframe_offset = iso_urb_priv->ehci_urb_priv.sched_assignment & 0x7;
   phys_addr_t data_phys = (phys_addr_t)get_phys_addr(data);
   INIT_LIST_HEAD(itd_list);
   iso_urb_priv->num_itds = 0;
@@ -3125,7 +3443,6 @@ static int create_itd_chain(ehci_hcd_t* ehci_hcd, uint8_t address,
   
   if(urb->realtime) {
     int j = 0;
-    uint32_t next_iso_packet = 0;
     int interrupt_to_transaction_ratio
       = urb->interrupt_interval / urb->interval;
     int last_interrupt = interrupt_to_transaction_ratio;
@@ -3133,7 +3450,6 @@ static int create_itd_chain(ehci_hcd_t* ehci_hcd, uint8_t address,
       iso_urb_priv->itds[j++] = itd;
       for(i = 0; i < 8; ++i) {
         if(IS_ITD_TRANSACTION_ACTIVE(itd, i)) {
-          itd->iso_packet_descs[i] = &urb->iso_frame_desc[next_iso_packet++];
           
           if(interrupt_to_transaction_ratio != 0) {
             last_interrupt--;
@@ -3147,6 +3463,8 @@ static int create_itd_chain(ehci_hcd_t* ehci_hcd, uint8_t address,
       }
       memcpy(itd->transaction_backup, itd->transaction,
              8 * sizeof(itd_transaction_t));
+      //DLOG("itd->transaction[0] after copy = 0x%X", itd->transaction[0]);
+      //DLOG("itd->transaction_backup[0] = 0x%X", itd->transaction_backup[0]);
     }
   }
   else {
@@ -3162,7 +3480,7 @@ static int create_itd_chain(ehci_hcd_t* ehci_hcd, uint8_t address,
 }
 
 
- static int submit_itd_chain(ehci_hcd_t* ehci_hcd, list_head_t* itd_list,
+static int submit_itd_chain(ehci_hcd_t* ehci_hcd, list_head_t* itd_list,
                             struct urb* urb)
 {
   itd_t* itd;
@@ -3172,7 +3490,7 @@ static int create_itd_chain(ehci_hcd_t* ehci_hcd, uint8_t address,
   frm_lst_lnk_ptr_t* frame_list     = ehci_hcd->frame_list;
   uint32_t frame_list_size          = ehci_hcd->frame_list_size;
   uint32_t frame_list_mask          = frame_list_size - 1;
-  uint32_t frame_interval_offset    = iso_urb_priv->interval_offset / 8;
+  uint32_t frame_interval_offset    = iso_urb_priv->ehci_urb_priv.sched_assignment / 8;
   uint32_t frame_interval           = urb->interval / 8;
   bool     uninserted_items;
   
@@ -3184,7 +3502,9 @@ static int create_itd_chain(ehci_hcd_t* ehci_hcd, uint8_t address,
    * fixed, of course an ugly hack would be to turn interrupts off for
    * just this portion but a more elegant solution might exists.
    */
-
+  
+  reorder_transactions(ehci_hcd, FALSE, TRUE);
+    
   if(frame_interval == 0) {
     frame_interval = 1;
   }
@@ -3204,6 +3524,8 @@ static int create_itd_chain(ehci_hcd_t* ehci_hcd, uint8_t address,
       start_frame_index = start_frame_index - 1;
     }
 
+    INIT_LIST_HEAD(&iso_urb_priv->uninserted_itds_list);
+
     if(usb_pipein(urb->pipe)) {
       /* Realtime Input */
       uninserted_items = FALSE;
@@ -3213,6 +3535,7 @@ static int create_itd_chain(ehci_hcd_t* ehci_hcd, uint8_t address,
                                             current_frame_index,
                                             start_frame_index)) {
           list_add_tail(&itd->uninserted_list, &iso_urb_priv->uninserted_itds_list);
+          
           uninserted_items = TRUE;
         }
         else {
@@ -3222,9 +3545,11 @@ static int create_itd_chain(ehci_hcd_t* ehci_hcd, uint8_t address,
         itd->frame_index = frame_index;
         frame_index = (frame_interval + frame_index) & frame_list_mask;
       }
-      
+
       if(uninserted_items) {
+        itd_t* itd_temp;
         spinlock_lock(&ehci_hcd->uninserted_itd_lock);
+        
         list_add_tail(&iso_urb_priv->uninserted_itd_urb_list,
                       &ehci_hcd->uninserted_itd_urb_list);
         spinlock_unlock(&ehci_hcd->uninserted_itd_lock);
@@ -3275,7 +3600,7 @@ static int create_itd_chain(ehci_hcd_t* ehci_hcd, uint8_t address,
         insert_itd_into_frame_list(ehci_hcd, frame_list, frame_index, itd);
         itd->frame_index = frame_index;
         frame_index = (frame_index + frame_interval) & frame_list_mask;
-        //DLOG_INT(frame_index);
+        DLOG_INT(frame_index);
       }
     }
   }
@@ -3293,9 +3618,11 @@ static int create_itd_chain(ehci_hcd_t* ehci_hcd, uint8_t address,
       ++frame_index;
     }
   }
+  
   return 0;
 }
 
+static int first_iso_call = 0;
 
 ehci_completion_element_t iso_completion_element;
 
@@ -3314,8 +3641,14 @@ ehci_isochronous_transfer(ehci_hcd_t* ehci_hcd, struct urb* urb)
   uint32_t timeout_in_usec;
   ehci_iso_urb_priv_t* iso_urb_priv;
 
+  if(first_iso_call) {
+    first_iso_call = 0;
+    ehci_hcd->itd_pool_phys_addr = (phys_addr_t)get_phys_addr(ehci_hcd->itd_pool); 
+    //memset(itd_pool, 0, ehci_hcd->itd_pool_size * sizeof(itd_t));       
+  }
+  
   if(urb->hcpriv == NULL) {
-    urb->hcpriv = ehci_alloc_iso_urb_priv(urb->number_of_packets, urb);
+    urb->hcpriv = ehci_alloc_iso_urb_priv(urb);
     if(urb->hcpriv == NULL) {
       DLOG("Failed to allocate ehci_iso_urb_priv");
       return -1;
@@ -3325,9 +3658,9 @@ ehci_isochronous_transfer(ehci_hcd_t* ehci_hcd, struct urb* urb)
   iso_urb_priv = urb->hcpriv;
   
   if(urb->realtime) {
-    if((iso_urb_priv->interval_offset = ehci_is_rt_schedulable(ehci_hcd, urb)) < 0) {
+    if((iso_urb_priv->ehci_urb_priv.sched_assignment = ehci_is_rt_schedulable(ehci_hcd, urb)) < 0) {
       DLOG("urb is not real time schedulable");
-      return -1;
+      return iso_urb_priv->ehci_urb_priv.sched_assignment;
     }
   }
 
@@ -3439,103 +3772,278 @@ ehci_isochronous_transfer(ehci_hcd_t* ehci_hcd, struct urb* urb)
   return 0;
 }
 
-/*
- * -- EM -- Need to fix this
- */
-static inline int calc_total_bytes_cost(struct urb* urb)
+
+ehci_urb_priv_t* get_ehci_urb_priv(struct urb* urb)
 {
-  int result;
-  uint16_t maxpacket = usb_maxpacket(urb->dev, urb->pipe);
-  
   switch(usb_pipetype(urb->pipe)) {
-  case PIPE_ISOCHRONOUS:
-  case PIPE_INTERRUPT:
-  case PIPE_BULK:
-    result = max_packet(maxpacket) + 192;
-    if(result >= 128) {
-      result += 128;
-    }
-    
-    return result * hb_mult(maxpacket);
-    
-  
-  
   case PIPE_CONTROL:
-    DLOG("USB transaction type not handled in calc_total_bytes_cost");
-    panic("USB transaction type not handled in calc_total_bytes_cost");
-    
-  default:
-    DLOG("Unknown pipe type passed to calc_total_bytes_cost");
-    return -1;
+    DLOG("In %s at unsupported case");
+    panic("In get_ehci_urb_priv at unsupported case");
+  case PIPE_BULK:
+    return &(get_bulk_urb_priv(urb)->ehci_urb_priv);
+  case PIPE_INTERRUPT:
+    return &(get_int_urb_priv(urb)->ehci_urb_priv);
+  case PIPE_ISOCHRONOUS:
+    return &(get_iso_urb_priv(urb)->ehci_urb_priv);
+  }
+
+  return NULL;
+}
+
+static inline uint calc_total_bytes_cost(struct urb* urb)
+{
+  uint16_t maxpacket = usb_maxpacket(urb->dev, urb->pipe);
+  uint32_t bytes_per_packet = max_packet(maxpacket);
+  uint32_t num_packets = hb_mult(maxpacket);
+  
+  return (usb_pipetype(urb->pipe) ==  PIPE_ISOCHRONOUS ?
+          HS_USECS_ISO(bytes_per_packet) : HS_USECS(bytes_per_packet))
+    * num_packets;
+}
+
+
+static void allocate_bandwidth(ehci_hcd_t* ehci_hcd, struct urb* urb, uint32_t assignment)
+{
+  ehci_urb_priv_t* ehci_urb_priv = get_ehci_urb_priv(urb);
+  int interval = urb->interval;
+  uint32_t  frame_list_size = ehci_hcd->frame_list_size;
+  uint32_t* micro_frame_remaining_time = ehci_hcd->micro_frame_remaining_time;
+  uint usecs_per_transaction = ehci_urb_priv->usecs_per_transactions;
+  uint32_t i;
+  for(i = assignment; i < frame_list_size; i += interval) {
+    micro_frame_remaining_time[i] -= usecs_per_transaction;
   }
 }
 
+typedef struct {
+  int urb_index;
+  int interval;
+  int usec;
+  int type;
+  int original_assignment;
+} usb_sched_tuple_t;
+
+int usb_sched_tuple_cmp(const void* a, const void* b)
+{
+  const usb_sched_tuple_t* aa = a;
+  const usb_sched_tuple_t* bb = b;
+
+  return aa->interval == bb->interval ? bb->usec - aa->usec : aa->interval - bb->interval;
+}
+
+bool first_fit_usb_scheduling(usb_sched_tuple_t sched_tuples[MAX_RT_URBS], int num_reqs,
+                              int max_interval,
+                              int assignments[MAX_RT_URBS])
+{
+  int* bandwidth_remaining;
+  int i, j, k;
+  pow2_alloc(sizeof(int) * max_interval, (uint8_t**)&bandwidth_remaining);
+  bool valid_scheduling = TRUE;
+
+  for(i = 0; i < max_interval; ++i) {
+    bandwidth_remaining[i] = USEC_PER_MICRO_FRAME;
+  }
+
+  /* We can't move interrupt qh's in the periodic list because we have
+     to stagger itd remapping and you can't stagger interrupt qh
+     mapping, so its really one or the other and we choose to be able
+     to remap isochronous, it might be possible to either remap only
+     isochronous or only interrupt so we should try to find a
+     scheduling with all the isochronous pinned and all the interrupts
+     moving but for now just only remap isochronous */
+  for(i = 0; i < num_reqs; ++i) {
+    if(sched_tuples[i].type == PIPE_INTERRUPT) {
+      for(j = sched_tuples[i].original_assignment;
+          j < max_interval; j += sched_tuples[i].interval) {
+        bandwidth_remaining[j] -= sched_tuples[i].usec;
+      }
+    }
+  }
+  
+  for(i = 0; i < num_reqs && valid_scheduling; ++i) {
+    int sched_interval = sched_tuples[i].interval;
+    int sched_bandwidth = sched_tuples[i].usec;
+    assignments[i] = -1;
+
+    if(sched_tuples[i].type == PIPE_INTERRUPT) {
+      assignments[i] = sched_tuples[i].original_assignment;
+      continue;
+    }
+    
+    for(j = 0; j < sched_interval; ++j) {
+      bool scheduable = TRUE;
+      for(k = j; k < max_interval; k += sched_interval) {
+	//DLOG("k = %d, j = %d, i = %d", k, j, i);
+	if(bandwidth_remaining[k] < sched_bandwidth) {
+          scheduable = FALSE;
+	  break;
+	}
+      }
+      if(scheduable) {
+	assignments[i] = j;
+	for(k = j; k < max_interval; k += sched_interval) {
+	  bandwidth_remaining[k] -= sched_bandwidth;
+	}
+	break;
+      }
+    }
+    valid_scheduling = assignments[i] >= 0;
+  }
+  
+  pow2_free((uint8_t*)bandwidth_remaining);
+  return valid_scheduling;
+}
+
+static bool valid_scheduling_exists(ehci_hcd_t* ehci_hcd, struct urb* urb)
+{
+  int i;
+  usb_sched_tuple_t sched_tuples[MAX_RT_URBS];
+  int num_rt_urbs = ehci_hcd->num_rt_urbs;
+  int max_interval = 1;
+  int sorted_assignments[MAX_RT_URBS];
+  bool schedulable;
+  
+  for(i = 0; i < num_rt_urbs; ++i) {
+    sched_tuples[i].type = usb_pipetype(ehci_hcd->rt_urbs[i]->pipe);
+    sched_tuples[i].original_assignment = get_ehci_urb_priv(ehci_hcd->rt_urbs[i])->sched_assignment;
+    sched_tuples[i].urb_index = i;
+    sched_tuples[i].interval = ehci_hcd->rt_urbs[i]->interval;
+    sched_tuples[i].usec = get_ehci_urb_priv(ehci_hcd->rt_urbs[i])->usecs_per_transactions;
+  }
+  
+  sort(sched_tuples, num_rt_urbs, sizeof(usb_sched_tuple_t), usb_sched_tuple_cmp, NULL);
+  
+  max_interval = sched_tuples[num_rt_urbs - 1].interval;
+  
+  schedulable = first_fit_usb_scheduling(sched_tuples, num_rt_urbs, max_interval,
+                                         sorted_assignments);
+  
+  if(schedulable) {
+    for(i = 0; i < num_rt_urbs; ++i) {
+      ehci_hcd->new_assignments[sched_tuples[i].urb_index] = sorted_assignments[i];
+    }
+  }
+
+  return schedulable;
+  
+}
+
+static void clear_reordered_map(ehci_hcd_t* ehci_hcd)
+{
+  /* -- EM -- Could probably just do a memset here but being safe for
+     now and setting each value explicitly */
+  int i;
+  int frame_list_size = ehci_hcd->frame_list_size;
+  bool* reordered_map = ehci_hcd->reordered_map;
+  for(i = 0; i < frame_list_size; ++i) {
+    reordered_map[i] = FALSE;
+  }
+}
 
 /*
  * Returns a value < 0 if it is not schedulable if it is schedulable
  * it returns the following depending on the type:
  *
- * Isochronous - returns the offset from interval we should start on
+ * Isochronous/Interrupt- returns the offset from interval we should
+ * start on
+ *
+ * Bulk/Control - returns 0
  */
 static int ehci_is_rt_schedulable(ehci_hcd_t* ehci_hcd, struct urb* urb)
 {
   uint32_t  i, j;
   uint32_t  frame_list_size = ehci_hcd->frame_list_size;
   int interval = urb->interval;
-  uint32_t  bytes_per_micro_frame;
-  uint32_t* micro_frame_remaining_bytes = ehci_hcd->micro_frame_remaining_bytes;
+  uint  bytes_per_micro_frame;
+  uint32_t* micro_frame_remaining_time = ehci_hcd->micro_frame_remaining_time;
   bool      schedulable;
-
-  bytes_per_micro_frame = calc_total_bytes_cost(urb);
-  if(bytes_per_micro_frame < 0) {
-    DLOG("calc_total_bytes_cost returned a value < 0");
+  ehci_urb_priv_t* ehci_urb_priv = get_ehci_urb_priv(urb);
+  uint pipe_type = pipe_type;
+  
+  if(ehci_hcd->num_rt_urbs == MAX_RT_URBS) {
+    DLOG("Reached limit of RT urbs");
     return -1;
   }
-  switch(usb_pipetype(urb->pipe)) {
-    
-  case PIPE_ISOCHRONOUS:
-    if(ehci_hcd->frame_list_size * 8 / interval != urb->number_of_packets) {
-      DLOG("number of packets does not match interval and frame size");
-      return -1;
-    }
-    // Switch fall through 
-  case PIPE_INTERRUPT:
-    
-    /*
-     * -- EM -- Periodic scheduling is bin packing-like.  This is
-     * our simple greedy algorithm that we can improve on later
-     */
-    
-    for(i = 0, schedulable = FALSE; i < interval; ++i) {
-      schedulable = TRUE;
-      for(j = i; j < frame_list_size; j += interval) {
-        if(micro_frame_remaining_bytes[j] < bytes_per_micro_frame) {
-          schedulable = FALSE;
-          break;
-        }
-      }
-      if(schedulable) break;
-    }
-
-    if(!schedulable) {
-      return -1;
-    }
-
-    return i;
-
-    /*
-     * -- EM -- unhandled transactions types
-     */
-  case PIPE_BULK:
+  
+  bytes_per_micro_frame
+    = ehci_urb_priv->usecs_per_transactions
+    = calc_total_bytes_cost(urb);
+  
+  
+#ifndef USB_REALTIME_ASYNC
+  /* Can't do real-time async transactions but so devices written for
+     real-time async don't fail and to allow the same interface even
+     when we aren't doing realtime just return 0 better solution would
+     be return an errno message indicating that the functionality is
+     not supported */
+  if((pipe_type == PIPE_CONTROL) || (pipe_type == PIPE_BULK)) {
     return 0;
-  case PIPE_CONTROL:
-    DLOG("USB transaction type not handled in ehci_is_rt_schedulable");
-    panic("USB transaction type not handled in ehci_is_rt_schedulable");
+  }
+#endif
 
-  default:
-    DLOG("Unknown pipe type passed to ehci_is_rt_schedulable");
+  if((pipe_type == PIPE_ISOCHRONOUS) &&
+     (ehci_hcd->frame_list_size * 8 / interval != urb->number_of_packets)) {
+    DLOG("number of packets does not match interval and frame size");
     return -1;
   }
+  
+  /* Put new urb request into real-time urbs array and remove it at
+     the end of the function if it is not schedulable */
+  
+  ehci_hcd->rt_urbs[ehci_hcd->num_rt_urbs++] = urb;
+  
+  if((pipe_type == PIPE_CONTROL) || (pipe_type == PIPE_BULK)) {
+    DLOG("Need to handle the case where the newest async interval "
+         "is the smallest one and has messed everything up");
+    panic("Need to handle the case where the newest async interval "
+          "is the smallest one and has messed everything up");
+  }
+  
+  
+
+  /* First try to schedule it using first fit, if this works all is
+     good if it doesn't we later see if it is schedulable if we
+     reorder transactions */
+  for(i = 0, schedulable = FALSE; i < interval; ++i) {
+    schedulable = TRUE;
+    for(j = i; j < frame_list_size; j += interval) {
+      if(micro_frame_remaining_time[j] < bytes_per_micro_frame) {
+        schedulable = FALSE;
+        break;
+      }
+    }
+    if(schedulable) break;
+  }
+  
+  if(!schedulable) {
+    if(valid_scheduling_exists(ehci_hcd, urb)) {
+      /* Need to reorder everything then we can insert the new URB */
+      clear_reordered_map(ehci_hcd);
+      ehci_hcd->reorder_urbs_stage = EHCI_RUS_REORDER_OLD;
+
+      for(i = 0; i < ehci_hcd->frame_list_size; ++i) {
+        ehci_hcd->micro_frame_remaining_time[i] = USEC_PER_MICRO_FRAME;
+      }
+      
+      for(i = 0; i < ehci_hcd->num_rt_urbs; ++i) {
+        allocate_bandwidth(ehci_hcd, ehci_hcd->rt_urbs[i], ehci_hcd->new_assignments[i]);
+      }
+      
+      /* Return the new assignment found by the reordering algorithm,
+         itd_submit will call reorder right before it starts to insert
+         new elements */
+      return ehci_hcd->new_assignments[ehci_hcd->num_rt_urbs-1];
+    }
+    else {
+      /* Not schedulable even if we move stuff around */
+      DLOG("Not schedulable even if we move stuff around");
+      ehci_hcd->num_rt_urbs--;
+      return -1;
+    }
+  }
+
+  allocate_bandwidth(ehci_hcd, urb, i);
+  return i;
 }
 
 

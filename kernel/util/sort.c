@@ -82,7 +82,7 @@ void sort(void *base, size_t num, size_t size,
 
   if (!swap_func)
     swap_func = (size == 4 ? u32_swap : generic_swap);
-
+  
   /* heapify */
   for ( ; i >= 0; i -= size) {
     for (r = i; r * 2 + size < n; r  = c) {
@@ -95,7 +95,7 @@ void sort(void *base, size_t num, size_t size,
       swap_func(base + r, base + c, size);
     }
   }
-
+  
   /* sort */
   for (i = n - size; i > 0; i -= size) {
     swap_func(base, base + i, size);
@@ -160,3 +160,15 @@ static const struct module_ops mod_ops = {
 DEF_MODULE (sorttest, "Sort Test", &mod_ops, {});
 
 #endif
+
+
+/*
+ * Local Variables:
+ * indent-tabs-mode: nil
+ * mode: C
+ * c-file-style: "gnu"
+ * c-basic-offset: 2
+ * End:
+ */
+
+/* vi: set et sw=2 sts=2: */

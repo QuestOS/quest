@@ -40,6 +40,12 @@
 
 #define delay(x) sched_usleep (x*1000)
 
+#ifdef USB_REALTIME_ASYNC
+#define USEC_PER_MICRO_FRAME 125
+#else
+#define USEC_PER_MICRO_FRAME 100
+#endif
+
 #define USB_MAX_LEN       0x3FE
 #define USB_NULL_PACKET   0x7FF
 

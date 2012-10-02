@@ -24,5 +24,15 @@ void sort(void *base, size_t num, size_t size,
           void (*swap_func)(void *, void *, int size));
 
 
-
 #endif //_SORT_H_
+
+/*
+ * Local Variables:
+ * indent-tabs-mode: nil
+ * mode: C
+ * c-file-style: "gnu"
+ * c-basic-offset: 2
+ * End:
+ */
+
+/* vi: set et sw=2 sts=2: */

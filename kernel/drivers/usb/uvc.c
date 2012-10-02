@@ -51,7 +51,7 @@
 
 #define dev_to_uvc_dev(dev) ( (uvc_device_info_t*)dev->device_priv )
 
-#define MAX_UVC_DEVICES 1
+#define MAX_UVC_DEVICES 0
 static int current_uvc_dev_count = 0;
 static uvc_device_info_t uvc_devices[MAX_UVC_DEVICES];
 
