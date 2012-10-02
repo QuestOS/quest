@@ -389,11 +389,11 @@ splash_screen (void)
 
 #ifdef USE_VMX
   fun_printf (_user_putchar_attr_4,
-              "* Copyright Boston University, 2011 *"
+              "* Copyright Boston University, 2012 *"
               "  \\\\--\\ ||-- ||   | ||  | ||-- \\\\--\\   || \n");
 #else
   fun_printf (_user_putchar_attr_4,
-              "* Copyright Boston University, 2011 *"
+              "* Copyright Boston University, 2012 *"
               "   ||   | ||  | ||-- \\\\--\\   || \n");
 #endif
 
