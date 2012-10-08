@@ -168,7 +168,7 @@ cleanacpi:
 
 define ACPI_template
 $(1): $(patsubst %.o,%.c,$(1))
-	$(CC) $(CFLAGS) $(CPPFLAGS) -o $$@ -c $$^
+	$(CC) $(CFLAGS) $(CPPFLAGS) -o $$@ -c $$<
 endef
 
 $(foreach obj,$(ACPI_OBJS),$(eval $(call ACPI_template,$(obj))))
