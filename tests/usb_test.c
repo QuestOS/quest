@@ -27,10 +27,13 @@
 
 #define ARENA_START (0x400000 * ARENA_START_PAGE)
 //#define NUM_DEVICES 19
-#define NUM_DEVICES 11
+#define NUM_DEVICES 14
+#define LOOPS_BEFORE_REPORT 10000000 // About 50 seconds for 11 devices
 
+//#define DEVICE_MEMORY_SIZE (0x400000 * 1)
 #define DEVICE_MEMORY_SIZE (0x400000 * 2)
 
+#define SLEEP_BETWEEN_OPENS TRUE
 
 int
 main ()
@@ -41,30 +44,13 @@ main ()
   char* arena = ARENA_START;
   char* read_arena = ARENA_START + (0x400000 * (ARENA_PAGE_SIZE - 2));
   char* device_memory[NUM_DEVICES];
-  int device_is_input_map[20];
+  int device_is_input_map[NUM_DEVICES];
+  BOOL report_results = FALSE;
+  int device_is_open_map[NUM_DEVICES];
 
-  device_is_input_map[0]  = 1;
-  device_is_input_map[1]  = 1;
-  device_is_input_map[2]  = 1;
-  device_is_input_map[3]  = 1;
-  device_is_input_map[4]  = 1;
-  device_is_input_map[5]  = 1;
-  device_is_input_map[6]  = 1;
-  device_is_input_map[7]  = 1;
-  device_is_input_map[8]  = 1;
-  device_is_input_map[9]  = 1;
-  device_is_input_map[10] = 1;
-  device_is_input_map[11] = 1;
-  device_is_input_map[12] = 1;
-  device_is_input_map[13] = 1;
-  device_is_input_map[14] = 1;
-  device_is_input_map[15] = 1;
-  device_is_input_map[16] = 1;
-  device_is_input_map[17] = 1;
-  device_is_input_map[18] = 1;
-  device_is_input_map[19] = 1;
-  
-  for(i = 0; i < NUM_DEVICES; ++i) {
+  for(i = 0 ; i < NUM_DEVICES; ++i) {
+    device_is_open_map[i] = 0;
+    device_is_input_map[i] = 1;
     device_memory[i] = (i * DEVICE_MEMORY_SIZE) + ARENA_START;
   }
   
@@ -83,34 +69,52 @@ main ()
       int res;
       if((res = usb_open(i, device_memory[i], DEVICE_MEMORY_SIZE)) < 0) {
         if(res == -2) { continue; }
-        printf("Call to open failed");
-        while(1);
+        printf("Call to open failed for %d\n", i);
+        break;
       }
+      device_is_open_map[i] = 1;
       break;
     }
   }
+
   
-  //usleep(2000000);
   
-  printf("About to start reading frames");
+  printf("About to start reading frames\n");
   
   dev_num = 0;
   i = 0;
   while(1) {
-    
-    if(device_is_input_map[dev_num]) {
-      result = usb_read(dev_num, read_arena, 0x400000);
-      printf("device %d: %d: usb read returned %d\n", dev_num, i, result);
+
+    if((i > LOOPS_BEFORE_REPORT * NUM_DEVICES) && (dev_num == 0)) {
+      report_results = TRUE;
     }
-    else {
-      result = usb_write(dev_num, read_arena, 0x400000);
-      printf("device %d: %d: usb write returned %d\n", dev_num, i, result);
+    
+    if(report_results) {
+      read_arena[0] = 'e';
+    }
+
+    if(device_is_open_map[dev_num]) {
+    
+      if(device_is_input_map[dev_num]) {
+        //printf("calling read for %d\n", dev_num);
+        result = usb_read(dev_num, read_arena, 0x400000);
+        //printf("device %d: %d: usb read returned %d\n", dev_num, i, result);
+      }
+      else {
+        printf("calling write for %d\n", dev_num);
+        result = usb_write(dev_num, read_arena, 0x400000);
+        //printf("device %d: %d: usb write returned %d\n", dev_num, i, result);
+      }
     }
     
     ++i; ++dev_num;
     
     if(dev_num == NUM_DEVICES) {
       dev_num = 0;
+      if(report_results) {
+        printf("Done with test");
+        while(1);
+      }
     }
   }
 

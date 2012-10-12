@@ -50,7 +50,7 @@
   do {                                                                  \
     if(!(test)) {                                                       \
       DLOG("assert in file " __FILE__ " line %d failed", __LINE__);     \
-      panic("assert failed");                                           \
+      panic("EHCI assert failed");					\
     }                                                                   \
   }                                                                     \
   while(0)

@@ -18,7 +18,7 @@ CFLAGS = -m32 -march=i586 -fno-builtin -fno-stack-protector -fno-strict-aliasing
 
 
 PROGS = exec migtest race test1 test2 test3 test4 test5 \
-	test6 test7 usb_test
+	test6 test7 usb_test usb_test_rtt
 
 .PHONY: all clean install
 

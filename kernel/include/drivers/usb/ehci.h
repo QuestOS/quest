@@ -29,6 +29,7 @@
 #include "smp/spinlock.h"
 
 
+
 #define hcd_to_ehci_hcd(hcd) container_of((hcd), ehci_hcd_t, usb_hcd)
 #define ehci_hcd_to_hcd(ehci_hcd) (&((ehci_hcd)->usb_hcd))
 
@@ -212,7 +213,7 @@ typedef struct
    * interval should be stored (which it isn't right now) and then
    * used in the calculations too.
    */
-#define EHCI_SAFE_FRAME_INSERT_OFFSET(hcd) (10)
+#define EHCI_SAFE_FRAME_INSERT_OFFSET(hcd) (3)
   
   /*
    * Always best to make this a little larger than the actual max look
@@ -650,7 +651,8 @@ typedef struct
 
   list_head_t frame_list_heads[1024];
   
-  uint32_t* micro_frame_remaining_time;
+  uint32_t* micro_frame_remaining_time_periodic;
+  uint32_t* micro_frame_remaining_time_async;
 
   spinlock uninserted_itd_lock;
   list_head_t uninserted_itd_urb_list;

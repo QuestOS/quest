@@ -15,8 +15,8 @@
  *  along with this program.  If not, see <http://www.gnu.org/licenses/>.
  */
 
-#ifndef _USB_GADGET_H_
-#define _USB_GADGET_H_
+#ifndef _USB_GADGET2_H_
+#define _USB_GADGET2_H_
 
 #define MAX_EPS 15
 
@@ -34,27 +34,27 @@ typedef struct
   uint64_t total_bytes_written;
   uint64_t start_time;
   uint64_t start_data_throughput;
-} gadget_sub_device_info_t;
+} gadget2_sub_device_info_t;
 
 
 typedef struct {
   bool initialised;
   unsigned int num_sub_devs;
   int first_dev_num;
-  gadget_sub_device_info_t sub_devs[MAX_EPS];
-} gadget_device_info_t;
+  gadget2_sub_device_info_t sub_devs[MAX_EPS];
+} gadget2_device_info_t;
 
-#define get_gadget_device_index(dev, dev_num) (dev_num - dev->first_dev_num)
-
-
-#define get_gadget_dev_info(dev) ((gadget_device_info_t*) (dev)->device_priv)
-
-#define get_gadget_sub_dev_info(dev, dev_num)                           \
-  (&(get_gadget_dev_info(dev)->sub_devs[(dev_num) -                     \
-                                        get_gadget_dev_info(dev)->first_dev_num]))
+#define get_gadget2_device_index(dev, dev_num) (dev_num - dev->first_dev_num)
 
 
-#endif // _USB_GADGET_H_
+#define get_gadget2_dev_info(dev) ((gadget2_device_info_t*) (dev)->device_priv)
+
+#define get_gadget2_sub_dev_info(dev, dev_num)                           \
+  (&(get_gadget2_dev_info(dev)->sub_devs[(dev_num) -                     \
+                                        get_gadget2_dev_info(dev)->first_dev_num]))
+
+
+#endif // _USB_GADGET2_H_
 
 /*
  * Local Variables:

@@ -27,6 +27,10 @@
  * most of their initialisation when they are opened, i.e. in open not
  * probe
  *
+ * 3) Reordering of write itd transactions
+ *
+ * 4) Reordering of itds that change frame list position
+ *
  */
 
 #include <smp/apic.h>
@@ -91,7 +95,9 @@ static int create_itd_chain(ehci_hcd_t* ehci_hcd, uint8_t address,
 
 static inline frm_lst_lnk_ptr_t**
 get_next_frm_lst_lnk_ptrs_previous(ehci_hcd_t* ehci_hcd, frm_lst_lnk_ptr_t* ptr);
-                                                   
+
+static void insert_remaining_realtime_itds(ehci_hcd_t* ehci_hcd, bool in_irq_handler,
+                                           bool have_kernel_lock, struct urb* urb);
 
 /*
  * This should always be a macro, inserting itds is time sensitive
@@ -124,7 +130,7 @@ get_next_frm_lst_lnk_ptrs_previous(ehci_hcd_t* ehci_hcd, frm_lst_lnk_ptr_t* ptr)
 #define FRM_LIST_SIZE 1024  /* Frame list size used in Quest */
 #define DEFAULT_INT_THRESHOLD 8
 #define QH_POOL_SIZE  32
-#define QTD_POOL_SIZE 256
+#define QTD_POOL_SIZE 1024
 #define ITD_POOL_SIZE (1024 * 1)
 #define EHCI_COMPLETION_ELEMENT_POOL_SIZE 128
 
@@ -139,7 +145,8 @@ static ehci_hcd_t ehci_hcd;
 static frm_lst_lnk_ptr_t frame_list[FRM_LIST_SIZE] ALIGNED(0x1000);
 static frm_lst_lnk_ptr_t last_frame_list_entries[FRM_LIST_SIZE] ALIGNED(0x1000);
 
-static uint32_t micro_frame_remaining_bytes[FRM_LIST_SIZE * 8];
+static uint32_t micro_frame_remaining_time_periodic[FRM_LIST_SIZE * 8];
+static uint32_t micro_frame_remaining_time_async[FRM_LIST_SIZE * 8];
 
 static qh_t qh_pool[QH_POOL_SIZE] ALIGNED(0x1000);
 static uint32_t used_qh_bitmap [(QH_POOL_SIZE  + EHCI_ELEMENTS_PER_BITMAP_ENTRY - 1)
@@ -153,12 +160,6 @@ static itd_t itd_pool[ITD_POOL_SIZE] ALIGNED(0x1000);
 static uint32_t used_itd_bitmap[(ITD_POOL_SIZE + EHCI_ELEMENTS_PER_BITMAP_ENTRY - 1)
                                 / EHCI_ELEMENTS_PER_BITMAP_ENTRY];
 
-
-static itd_t* temp_itd_pool = (itd_t*)0xFC800000; // 1010 *  0x400000;
-#define TEMP_ITD_POOL_SIZE (0x400000 / sizeof(itd_t))
-static int temp_itd_pool_size = TEMP_ITD_POOL_SIZE;
-static uint32_t temp_used_itd_bitmap[(TEMP_ITD_POOL_SIZE + EHCI_ELEMENTS_PER_BITMAP_ENTRY - 1)
-                                     / EHCI_ELEMENTS_PER_BITMAP_ENTRY];
 
 
 static ehci_completion_element_t
@@ -572,7 +573,7 @@ int ehci_rt_iso_push_data(struct urb* urb, char* data, int count)
     free_itd(ehci_hcd, itd_to_free);
   }
 
-  DLOG("itds removed = %d", i);
+  //DLOG("itds removed = %d", i);
 
   packets_remaining = urb->number_of_packets - iso_urb_priv->packets_in_use;
   uint32_t max_transaction_size =
@@ -584,7 +585,7 @@ int ehci_rt_iso_push_data(struct urb* urb, char* data, int count)
     count = packets_remaining * max_transaction_size;
   }
 
-  DLOG("count = %d", count);
+  //DLOG("count = %d", count);
   
   num_packets = fill_iso_push_packets(urb, count, start_packet_for_data);
   
@@ -625,8 +626,7 @@ int ehci_rt_iso_push_data(struct urb* urb, char* data, int count)
                       urb->transfer_buffer,
                       &packets[start_packet_for_data],
                       num_packets,
-                      256,
-                      //usb_maxpacket(urb->dev, urb->pipe),
+                      usb_maxpacket(urb->dev, urb->pipe),
                       usb_pipein(pipe),
                       &itd_list, mp_enabled,
                       urb) < 0) {
@@ -1216,9 +1216,6 @@ void remap_iso_itd(struct urb* urb, uint32 frame_index, int new_assignment)
     int transaction_new_assignment = (i * interval) + new_assignment;
     int transaction_old_assignment = (i * interval) + old_assignment;
 
-    if(transaction_old_assignment > 7 || transaction_new_assignment > 7) {
-      panic("Fucked up");
-    }
     itd_transaction_t temp;
     temp = itd->transaction[transaction_old_assignment];
     itd->transaction[transaction_old_assignment] = itd->transaction[transaction_new_assignment];
@@ -1401,7 +1398,7 @@ void insert_remaining_realtime_itds_for_urb(ehci_hcd_t* ehci_hcd, ehci_iso_urb_p
   }
 }
 
-void insert_remaining_realtime_itds(ehci_hcd_t* ehci_hcd, bool in_irq_handler,
+static void insert_remaining_realtime_itds(ehci_hcd_t* ehci_hcd, bool in_irq_handler,
                                     bool have_kernel_lock, struct urb* urb)
 {
   ehci_iso_urb_priv_t* iso_urb_priv;
@@ -1990,7 +1987,8 @@ initialise_ehci_hcd(uint32_t usb_base,
                     ehci_hcd_t* ehci_hcd,
                     frm_lst_lnk_ptr_t* frm_lst,
                     frm_lst_lnk_ptr_t* last_frm_lst_entries,
-                    uint32_t* micro_frame_remaining_time,
+                    uint32_t* micro_frame_remaining_time_periodic,
+                    uint32_t* micro_frame_remaining_time_async,
                     uint32_t frm_lst_size,
                     qh_t* qh_pool,
                     uint32_t qh_pool_size,
@@ -2040,16 +2038,24 @@ initialise_ehci_hcd(uint32_t usb_base,
   ehci_hcd->frame_list                  = frm_lst;
   ehci_hcd->last_frame_list_entries     = last_frm_lst_entries;
   ehci_hcd->frame_list_size             = frm_lst_size;
-  ehci_hcd->micro_frame_remaining_time  = micro_frame_remaining_time;
-
+  ehci_hcd->micro_frame_remaining_time_periodic  = micro_frame_remaining_time_periodic;
+#ifdef USB_REALTIME_ASYNC
+  ehci_hcd->micro_frame_remaining_time_async  = micro_frame_remaining_time_async;
+#endif
   ehci_hcd->num_rt_urbs = 0;
 
   INIT_LIST_HEAD(&ehci_hcd->uninserted_itd_urb_list);
   
   for(i = 0; i < frm_lst_size * 8; ++i) {
-    micro_frame_remaining_time[i] = USEC_PER_MICRO_FRAME;
+    micro_frame_remaining_time_periodic[i] = USEC_PER_MICRO_FRAME_FOR_PERIODIC;
   }
 
+#ifdef USB_REALTIME_ASYNC
+  for(i = 0; i < frm_lst_size * 8; ++i) {
+    micro_frame_remaining_time_async[i] = USEC_PER_MICRO_FRAME_FOR_ASYNC;
+  }
+#endif
+  
   spinlock_init(&ehci_hcd->completion_lock);
   spinlock_init(&ehci_hcd->uninserted_itd_lock);
 
@@ -2057,10 +2063,10 @@ initialise_ehci_hcd(uint32_t usb_base,
 #define INIT_EHCI_POOL(type)                                            \
   do {                                                                  \
     ehci_hcd->type##_pool = type##_pool;                                \
-      ehci_hcd->type##_pool_phys_addr = (phys_addr_t)get_phys_addr(type##_pool); \
-        ehci_hcd->type##_pool_size = type##_pool_size;                  \
-          ehci_hcd->used_##type##_bitmap = used_##type##_bitmap;        \
-            memset(type##_pool, 0, type##_pool_size * sizeof(type##_t)); \
+    ehci_hcd->type##_pool_phys_addr = (phys_addr_t)get_phys_addr(type##_pool); \
+    ehci_hcd->type##_pool_size = type##_pool_size;                      \
+    ehci_hcd->used_##type##_bitmap = used_##type##_bitmap;              \
+    memset(type##_pool, 0, type##_pool_size * sizeof(type##_t));        \
   }                                                                     \
   while(0)
   
@@ -2144,6 +2150,7 @@ initialise_ehci_hcd(uint32_t usb_base,
  */
 
  uint32 ehci_itd_page;
+ uint32 ehci_itd_page2;
 
  bool
    ehci_init(void)
@@ -2152,26 +2159,7 @@ initialise_ehci_hcd(uint32_t usb_base,
   uint i, device_index, irq_pin;
   pci_device ehci_device;
   pci_irq_t irq;
-  void *phys_addr;
-  uint32 *virt_addr, *virt_addr2;
 
-  phys_addr = get_pdbr ();      /* Parent page dir base address */
-  virt_addr = map_virtual_page ((uint32) phys_addr | 3);        /* Temporary virtual address */
-
-  ehci_itd_page = virt_addr[1010] = alloc_phys_frame() | 3;
-  virt_addr2 = map_virtual_page((uint32) virt_addr[1010] );        /* Temporary virtual address */
-  
-  for(i = 0; i < 1024; ++i) {
-  virt_addr2[i] = alloc_phys_frame() | 3;
-}
-
-  unmap_virtual_page(virt_addr);
-  unmap_virtual_page(virt_addr2);
-
-
-  //char* temp = 0xFE000000;
-  //char* temp = 0xFD000000;
-  //temp[0] = 'a';
   
   if(mp_ISA_PC) {
   DLOG("Cannot operate without PCI");
@@ -2287,7 +2275,8 @@ initialise_ehci_hcd(uint32_t usb_base,
   
   if(!initialise_ehci_hcd(usb_base, &ehci_hcd, frame_list,
                           last_frame_list_entries,
-                          micro_frame_remaining_bytes,
+                          micro_frame_remaining_time_periodic,
+                          micro_frame_remaining_time_async,
                           sizeof(frame_list)/sizeof(frm_lst_lnk_ptr_t),
                           qh_pool,
                           sizeof(qh_pool)/sizeof(qh_t),
@@ -2295,12 +2284,9 @@ initialise_ehci_hcd(uint32_t usb_base,
                           qtd_pool,
                           sizeof(qtd_pool)/sizeof(qtd_t),
                           used_qtd_bitmap,
-                          //itd_pool,
-                          //sizeof(itd_pool)/sizeof(itd_t),
-                          //used_itd_bitmap,
-                          temp_itd_pool,
-                          temp_itd_pool_size,
-                          temp_used_itd_bitmap,
+                          itd_pool,
+                          sizeof(itd_pool)/sizeof(itd_t),
+                          used_itd_bitmap,
                           ehci_completion_element_pool,
                           sizeof(ehci_completion_element_pool)
                           / sizeof(ehci_completion_element_t),
@@ -2437,7 +2423,7 @@ create_qtd_chain(ehci_hcd_t* ehci_hcd,
     if(is_input) {
       current_qtd->alt_pointer_raw = ehci_hcd->async_head->alt_qtd_ptr_raw;
     }
-
+    
 
     /*
      * Toggle control bit if necessary.  This test is checking whether
@@ -2615,7 +2601,7 @@ static void qh_prep(ehci_hcd_t* ehci_hcd, struct urb* urb, qh_t* qh, uint32_t en
     
     info2 |= (EHCI_TUNE_MULT_TT << 30);
     
-    /* -- !! -- Should set ttport not doing it right now */
+    /* -- EM -- Should set ttport not doing it right now */
     DLOG("this has not been tested if you are seeing this you need "
          "to know that and then can remove this panic file %s function "
          "%s line %d",
@@ -2703,6 +2689,7 @@ static void qh_append_qtds(ehci_hcd_t* ehci_hcd, struct urb* urb,
       num_qtds = qh_urb_priv->num_qtds;
       urb_qtd_list = qh_urb_priv->qtds;
       urb_swap_index = -1;
+      
       for(i = 0; i < num_qtds; ++i) {
         if(urb_qtd_list[i] == qtd) {
           urb_swap_index = i;
@@ -2725,7 +2712,7 @@ static void qh_append_qtds(ehci_hcd_t* ehci_hcd, struct urb* urb,
   dummy = qh->dummy_qtd;
   *dummy = *qtd;
 
-  if(urb_qtd_list != NULL) {
+  if(urb_qtd_list) {
     urb_qtd_list[urb_swap_index] = dummy;
   }
   
@@ -3131,19 +3118,14 @@ ehci_interrupt_transfer(ehci_hcd_t* ehci_hcd, struct urb* urb)
 
   INIT_LIST_HEAD(&qtd_list);
 
-  DLOG("urb_pipe = %d", urb->pipe);
+  //DLOG("urb_pipe = %d", urb->pipe);
   
   if(!urb->realtime) {
     DLOG("Non realtime interrupts urbs are broken right now");
     panic("Non realtime interrupts urbs are broken right now");
   }
 
-  interval_offset = ehci_is_rt_schedulable(ehci_hcd, urb);
-
-  if(interval_offset < 0) {
-    DLOG("Cannot schedule URB");
-    return -1;
-  }
+  
 
   if(is_input) {
     if(!create_qtd_chain(ehci_hcd, urb, urb->setup_packet, sizeof(USB_DEV_REQ),
@@ -3163,7 +3145,7 @@ ehci_interrupt_transfer(ehci_hcd_t* ehci_hcd, struct urb* urb)
       list_for_each(temp_list, &qtd_list) { num_qtds++; }
     }
     
-    DLOG("num_qtds = %d", num_qtds);
+    
     urb->hcpriv = ehci_alloc_int_urb_priv(num_qtds);
     if(urb->hcpriv == NULL) {
       /*
@@ -3172,6 +3154,14 @@ ehci_interrupt_transfer(ehci_hcd_t* ehci_hcd, struct urb* urb)
       DLOG("Failed to allocate ehci_iso_urb_priv");
       return -1;
     }
+
+    interval_offset = ehci_is_rt_schedulable(ehci_hcd, urb);
+    
+    if(interval_offset < 0) {
+      DLOG("Cannot schedule URB");
+      return -1;
+    }
+    
     int_urb_priv = urb->hcpriv;
     int_urb_priv->qh_urb_priv.buffer_size = urb->transfer_buffer_length;
     int_urb_priv->ehci_urb_priv.sched_assignment = interval_offset;
@@ -3243,26 +3233,29 @@ ehci_async_transfer(ehci_hcd_t* ehci_hcd, struct urb* urb)
         return -1;
       }
     }
-  
+    
     if(urb->hcpriv == NULL) {
       list_head_t* temp_list;
       int num_qtds;
       qtd_t* temp_qtd;
       int i;
       ehci_bulk_urb_priv_t* bulk_urb_priv;
+      
+
       num_qtds = 0;
+      if(is_input) {
+        list_for_each(temp_list, &qtd_list) { num_qtds++; }
+      }
+
+      urb->hcpriv = ehci_alloc_bulk_urb_priv(num_qtds);
 
       if(ehci_is_rt_schedulable(ehci_hcd, urb) < 0) {
         DLOG("Cannot schedule URB");
         return -1;
       }
       
-      if(is_input) {
-        list_for_each(temp_list, &qtd_list) { num_qtds++; }
-      }
     
-      DLOG("num_qtds = %d", num_qtds);
-      urb->hcpriv = ehci_alloc_bulk_urb_priv(num_qtds);
+      
       if(urb->hcpriv == NULL) {
         /*
          * -- EM -- Should clean up qtds but not doing it right now
@@ -3330,20 +3323,18 @@ int itd_fill(itd_t* itd, struct urb* urb, uint8_t address, uint8_t endpoint,
   EHCI_ASSERT(max_packet(max_packet_len) <= 1024);
   EHCI_ASSERT(hb_mult(max_packet_len) > 0);
   EHCI_ASSERT(hb_mult(max_packet_len) <= 3);
-
+  
   itd->next_link_pointer.raw = EHCI_LIST_END;
 
   itd->buf_ptr[0] = old_buf_ptr_value;
   itd->buf_ptr[0] |= address;
   itd->buf_ptr[0] |= (endpoint << 8);
-  itd->buf_ptr[1] = max_packet(max_packet_len);
 
+  itd->buf_ptr[1] = max_packet(max_packet_len);
   
   if(is_input) {
     itd->buf_ptr[1] |= ITD_INPUT;
   }
-
-  
   
   itd->buf_ptr[2] = hb_mult(max_packet_len);
   
@@ -3372,24 +3363,13 @@ int itd_fill(itd_t* itd, struct urb* urb, uint8_t address, uint8_t endpoint,
       cur_buf_ptr++;
       ITD_SET_BUF_PTR(itd, cur_buf_ptr, data_phys);
     }
-    EHCI_ASSERT(i+microframe_offset < 8);
+    
     /* -- EM -- Change this to be more efficient later */
-    if(urb->realtime && !is_input) {
-      itd->transaction[i].raw = 0;
-      //DLOG("%d: itd->transaction[i].raw = 0x%X", __LINE__, itd->transaction[i].raw);
-      itd->transaction[i].length = 0;
-      //DLOG("%d: itd->transaction[i].raw = 0x%X", __LINE__, itd->transaction[i].raw);
-    }
-    else {
-      itd->transaction[i].raw = ITD_ACTIVE;
-      //DLOG("%d: itd->transaction[i].raw = 0x%X", __LINE__, itd->transaction[i].raw);
-      itd->transaction[i].length = packets[i].length;
-      //DLOG("%d: itd->transaction[i].raw = 0x%X", __LINE__, itd->transaction[i].raw);
-    }
+    
+    itd->transaction[i].raw = ITD_ACTIVE;
+    itd->transaction[i].length = packets[i].length;
     itd->transaction[i].offset = data_phys & 0x0FFF;
-    //DLOG("%d: itd->transaction[i].raw = 0x%X", __LINE__, itd->transaction[i].raw);
     itd->transaction[i].page_selector = cur_buf_ptr;
-    //DLOG("%d: itd->transaction[i].raw = 0x%X", __LINE__, itd->transaction[i].raw);
   }
   
   
@@ -3413,7 +3393,7 @@ static int create_itd_chain(ehci_hcd_t* ehci_hcd, uint8_t address,
   phys_addr_t data_phys = (phys_addr_t)get_phys_addr(data);
   INIT_LIST_HEAD(itd_list);
   iso_urb_priv->num_itds = 0;
-
+  
   packets_per_itd = microframe_interval < 8 ? 8 / microframe_interval : 1;
   
   i = 0;
@@ -3503,7 +3483,7 @@ static int submit_itd_chain(ehci_hcd_t* ehci_hcd, list_head_t* itd_list,
    * just this portion but a more elegant solution might exists.
    */
   
-  reorder_transactions(ehci_hcd, FALSE, TRUE);
+  
     
   if(frame_interval == 0) {
     frame_interval = 1;
@@ -3547,7 +3527,6 @@ static int submit_itd_chain(ehci_hcd_t* ehci_hcd, list_head_t* itd_list,
       }
 
       if(uninserted_items) {
-        itd_t* itd_temp;
         spinlock_lock(&ehci_hcd->uninserted_itd_lock);
         
         list_add_tail(&iso_urb_priv->uninserted_itd_urb_list,
@@ -3596,11 +3575,10 @@ static int submit_itd_chain(ehci_hcd_t* ehci_hcd, list_head_t* itd_list,
         EHCI_ASSERT(!EHCI_IS_INDEX_IN_CIRC_BUF_REGION(frame_index,
                                                       current_frame_index,
                                                       start_frame_index));
-        
+
         insert_itd_into_frame_list(ehci_hcd, frame_list, frame_index, itd);
         itd->frame_index = frame_index;
         frame_index = (frame_index + frame_interval) & frame_list_mask;
-        DLOG_INT(frame_index);
       }
     }
   }
@@ -3807,12 +3785,52 @@ static void allocate_bandwidth(ehci_hcd_t* ehci_hcd, struct urb* urb, uint32_t a
   ehci_urb_priv_t* ehci_urb_priv = get_ehci_urb_priv(urb);
   int interval = urb->interval;
   uint32_t  frame_list_size = ehci_hcd->frame_list_size;
-  uint32_t* micro_frame_remaining_time = ehci_hcd->micro_frame_remaining_time;
+#ifdef USB_REALTIME_ASYNC
+  uint32_t* micro_frame_remaining_time_async = ehci_hcd->micro_frame_remaining_time_async;
+#endif
+  uint32_t* micro_frame_remaining_time_periodic = ehci_hcd->micro_frame_remaining_time_periodic;
   uint usecs_per_transaction = ehci_urb_priv->usecs_per_transactions;
   uint32_t i;
-  for(i = assignment; i < frame_list_size; i += interval) {
-    micro_frame_remaining_time[i] -= usecs_per_transaction;
+  uint pipe_type = usb_pipetype(urb->pipe);
+
+  if(pipe_type == PIPE_ISOCHRONOUS || pipe_type == PIPE_INTERRUPT) {
+    for(i = assignment; i < frame_list_size * 8; i += interval) {
+      micro_frame_remaining_time_periodic[i] -= usecs_per_transaction;
+    }
   }
+#ifdef USB_REALTIME_ASYNC
+  for(i = assignment; i < frame_list_size * 8; i += interval) {
+    micro_frame_remaining_time_async[i] -= usecs_per_transaction;
+  }
+#endif
+}
+
+int fits_in_current_schedule(uint32_t* micro_frame_remaining_time_periodic,
+                             uint32_t* micro_frame_remaining_time_async, int interval,
+                             uint bytes_per_micro_frame, uint32_t frame_list_size,
+                             uint pipe_type)
+{
+  int i, j;
+  bool schedulable;
+  for(i = 0, schedulable = FALSE; i < interval; ++i) {
+    schedulable = TRUE;
+    for(j = i; j < frame_list_size * 8; j += interval) {
+      if(pipe_type == PIPE_ISOCHRONOUS &&
+         (micro_frame_remaining_time_periodic[j] < bytes_per_micro_frame)) {
+        schedulable = FALSE;
+        break;
+      }
+#ifdef USB_REALTIME_ASYNC
+      else if(micro_frame_remaining_time_async[j] < bytes_per_micro_frame) {
+        schedulable = FALSE;
+        break;
+      }
+#endif
+      
+    }
+    if(schedulable) break;
+  }
+  return schedulable ? i : -1;
 }
 
 typedef struct {
@@ -3835,13 +3853,18 @@ bool first_fit_usb_scheduling(usb_sched_tuple_t sched_tuples[MAX_RT_URBS], int n
                               int max_interval,
                               int assignments[MAX_RT_URBS])
 {
-  int* bandwidth_remaining;
+  int* periodic_bandwidth_remaining;
+  int* async_bandwidth_remaining;
   int i, j, k;
-  pow2_alloc(sizeof(int) * max_interval, (uint8_t**)&bandwidth_remaining);
+  pow2_alloc(sizeof(int) * max_interval, (uint8_t**)&periodic_bandwidth_remaining);
+  pow2_alloc(sizeof(int) * max_interval, (uint8_t**)&async_bandwidth_remaining);
   bool valid_scheduling = TRUE;
 
   for(i = 0; i < max_interval; ++i) {
-    bandwidth_remaining[i] = USEC_PER_MICRO_FRAME;
+    periodic_bandwidth_remaining[i] = USEC_PER_MICRO_FRAME_FOR_PERIODIC;
+#ifdef USB_REALTIME_ASYNC
+    async_bandwidth_remaining[i] = USEC_PER_MICRO_FRAME_FOR_ASYNC;
+#endif
   }
 
   /* We can't move interrupt qh's in the periodic list because we have
@@ -3855,7 +3878,10 @@ bool first_fit_usb_scheduling(usb_sched_tuple_t sched_tuples[MAX_RT_URBS], int n
     if(sched_tuples[i].type == PIPE_INTERRUPT) {
       for(j = sched_tuples[i].original_assignment;
           j < max_interval; j += sched_tuples[i].interval) {
-        bandwidth_remaining[j] -= sched_tuples[i].usec;
+        periodic_bandwidth_remaining[j] -= sched_tuples[i].usec;
+#ifdef USB_REALTIME_ASYNC
+        async_bandwidth_remaining[j] -= sched_tuples[i].usec;
+#endif
       }
     }
   }
@@ -3869,28 +3895,44 @@ bool first_fit_usb_scheduling(usb_sched_tuple_t sched_tuples[MAX_RT_URBS], int n
       assignments[i] = sched_tuples[i].original_assignment;
       continue;
     }
-    
+    /* -- EM -- Some of the functionality here is duplicated in
+          fits_in_current_schedule */
     for(j = 0; j < sched_interval; ++j) {
-      bool scheduable = TRUE;
+      bool schedulable = TRUE;
       for(k = j; k < max_interval; k += sched_interval) {
 	//DLOG("k = %d, j = %d, i = %d", k, j, i);
-	if(bandwidth_remaining[k] < sched_bandwidth) {
-          scheduable = FALSE;
-	  break;
-	}
+
+        if(sched_tuples[i].type == PIPE_ISOCHRONOUS &&
+           (periodic_bandwidth_remaining[k] < sched_bandwidth)) {
+          schedulable = FALSE;
+          break;
+        }
+#ifdef USB_REALTIME_ASYNC
+        else if(async_bandwidth_remaining[k] < sched_bandwidth) {
+          schedulable = FALSE;
+          break;
+        }
+#endif
       }
-      if(scheduable) {
-	assignments[i] = j;
+      if(schedulable) {
+        assignments[i] = j;
+        
 	for(k = j; k < max_interval; k += sched_interval) {
-	  bandwidth_remaining[k] -= sched_bandwidth;
-	}
+#ifdef USB_REALTIME_ASYNC
+          async_bandwidth_remaining[k] -= sched_bandwidth;
+#endif
+          if(sched_tuples[i].type == PIPE_ISOCHRONOUS) {
+            periodic_bandwidth_remaining[k] -= sched_bandwidth;
+          }
+        }
 	break;
       }
     }
     valid_scheduling = assignments[i] >= 0;
   }
   
-  pow2_free((uint8_t*)bandwidth_remaining);
+  pow2_free((uint8_t*)periodic_bandwidth_remaining);
+  pow2_free((uint8_t*)async_bandwidth_remaining);
   return valid_scheduling;
 }
 
@@ -3951,24 +3993,27 @@ static void clear_reordered_map(ehci_hcd_t* ehci_hcd)
  */
 static int ehci_is_rt_schedulable(ehci_hcd_t* ehci_hcd, struct urb* urb)
 {
-  uint32_t  i, j;
-  uint32_t  frame_list_size = ehci_hcd->frame_list_size;
+  uint32_t i;
+  uint32_t frame_list_size = ehci_hcd->frame_list_size;
   int interval = urb->interval;
+  int new_assignment;
   uint  bytes_per_micro_frame;
-  uint32_t* micro_frame_remaining_time = ehci_hcd->micro_frame_remaining_time;
-  bool      schedulable;
+  uint32_t* micro_frame_remaining_time_periodic = ehci_hcd->micro_frame_remaining_time_periodic;
+  uint32_t* micro_frame_remaining_time_async = ehci_hcd->micro_frame_remaining_time_async;
   ehci_urb_priv_t* ehci_urb_priv = get_ehci_urb_priv(urb);
-  uint pipe_type = pipe_type;
+  uint pipe_type = usb_pipetype(urb->pipe);
+  int min_async_interval = 2048;
+  int num_async_rt_urbs = 0;
+
   
   if(ehci_hcd->num_rt_urbs == MAX_RT_URBS) {
     DLOG("Reached limit of RT urbs");
     return -1;
   }
-  
+
   bytes_per_micro_frame
     = ehci_urb_priv->usecs_per_transactions
     = calc_total_bytes_cost(urb);
-  
   
 #ifndef USB_REALTIME_ASYNC
   /* Can't do real-time async transactions but so devices written for
@@ -3981,6 +4026,17 @@ static int ehci_is_rt_schedulable(ehci_hcd_t* ehci_hcd, struct urb* urb)
   }
 #endif
 
+  for(i = 0; i < ehci_hcd->num_rt_urbs; ++i) {
+    struct urb* rt_urb = ehci_hcd->rt_urbs[i];
+    if((usb_pipetype(rt_urb->pipe) == PIPE_CONTROL) ||
+       (usb_pipetype(rt_urb->pipe) == PIPE_BULK)) {
+      num_async_rt_urbs++;
+      if(rt_urb->interval < min_async_interval) {
+        min_async_interval = rt_urb->interval;
+      }
+    }
+  }
+
   if((pipe_type == PIPE_ISOCHRONOUS) &&
      (ehci_hcd->frame_list_size * 8 / interval != urb->number_of_packets)) {
     DLOG("number of packets does not match interval and frame size");
@@ -3992,37 +4048,49 @@ static int ehci_is_rt_schedulable(ehci_hcd_t* ehci_hcd, struct urb* urb)
   
   ehci_hcd->rt_urbs[ehci_hcd->num_rt_urbs++] = urb;
   
+  
   if((pipe_type == PIPE_CONTROL) || (pipe_type == PIPE_BULK)) {
-    DLOG("Need to handle the case where the newest async interval "
-         "is the smallest one and has messed everything up");
-    panic("Need to handle the case where the newest async interval "
-          "is the smallest one and has messed everything up");
+    if(num_async_rt_urbs > 0) {
+      if(interval < min_async_interval) {
+
+        /* For the sake of simplicity we do not first check to see if it
+           is schedulable under the old mapping of periodic
+           transactions, we first test to see if it is schedulable if we
+           reorder itds and if it is we find the scheduling.  After if
+           we didn't move any itds around we don't go into remap
+           mode.  START HERE */
+
+        DLOG("Case not implemented file %s line %d", __FILE__, __LINE__);
+        panic("case not implemented in ehci_hcd.c function ehci_is_rt_schedulable");
+      }
+      else {
+        /* Just set the interval to the be the same as min interval and
+           continue on */
+        interval = min_async_interval;
+      }
+    }
   }
   
-  
-
   /* First try to schedule it using first fit, if this works all is
      good if it doesn't we later see if it is schedulable if we
      reorder transactions */
-  for(i = 0, schedulable = FALSE; i < interval; ++i) {
-    schedulable = TRUE;
-    for(j = i; j < frame_list_size; j += interval) {
-      if(micro_frame_remaining_time[j] < bytes_per_micro_frame) {
-        schedulable = FALSE;
-        break;
-      }
-    }
-    if(schedulable) break;
-  }
+  new_assignment = fits_in_current_schedule(micro_frame_remaining_time_periodic,
+                                            micro_frame_remaining_time_async,
+                                            interval, bytes_per_micro_frame,
+                                            frame_list_size, usb_pipetype(urb->pipe));
   
-  if(!schedulable) {
+  if(new_assignment < 0) {
     if(valid_scheduling_exists(ehci_hcd, urb)) {
       /* Need to reorder everything then we can insert the new URB */
       clear_reordered_map(ehci_hcd);
       ehci_hcd->reorder_urbs_stage = EHCI_RUS_REORDER_OLD;
+      reorder_transactions(ehci_hcd, FALSE, TRUE);
 
-      for(i = 0; i < ehci_hcd->frame_list_size; ++i) {
-        ehci_hcd->micro_frame_remaining_time[i] = USEC_PER_MICRO_FRAME;
+      for(i = 0; i < ehci_hcd->frame_list_size * 8; ++i) {
+        ehci_hcd->micro_frame_remaining_time_periodic[i] = USEC_PER_MICRO_FRAME_FOR_PERIODIC;
+#ifdef USB_REALTIME_ASYNC
+        ehci_hcd->micro_frame_remaining_time_async[i] = USEC_PER_MICRO_FRAME_FOR_ASYNC;
+#endif
       }
       
       for(i = 0; i < ehci_hcd->num_rt_urbs; ++i) {
@@ -4042,8 +4110,8 @@ static int ehci_is_rt_schedulable(ehci_hcd_t* ehci_hcd, struct urb* urb)
     }
   }
 
-  allocate_bandwidth(ehci_hcd, urb, i);
-  return i;
+  allocate_bandwidth(ehci_hcd, urb, new_assignment);
+  return new_assignment;
 }
 
 

@@ -40,11 +40,14 @@
 
 #define delay(x) sched_usleep (x*1000)
 
+/* Async takes  */
+
 #ifdef USB_REALTIME_ASYNC
-#define USEC_PER_MICRO_FRAME 125
-#else
-#define USEC_PER_MICRO_FRAME 100
+#define USEC_PER_MICRO_FRAME_FOR_ASYNC 121
 #endif
+
+#define USEC_PER_MICRO_FRAME_FOR_PERIODIC 100
+
 
 #define USB_MAX_LEN       0x3FE
 #define USB_NULL_PACKET   0x7FF
@@ -354,6 +357,7 @@ static inline uint16_t
 usb_maxpacket(struct usb_device *udev, int pipe)
 {
   unsigned epnum = usb_pipeendpoint(pipe);
+
   return usb_pipein(pipe) ? udev->ep_in[epnum].desc.wMaxPacketSize :
     udev->ep_out[epnum].desc.wMaxPacketSize;
 }
