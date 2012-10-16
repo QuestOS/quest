@@ -233,6 +233,10 @@ void
 fun_vprintf (void putc (char), const char *fmt, va_list args)
 {
 #ifdef USE_VMX
+  /* 
+   * --YL-- This will cause deadlock! Do it when you really want
+   * to see a message printed parallel by multiple sandboxes.
+   */
   //if (shm_initialized) spinlock_lock (&(shm->logger_lock));
 #endif
 
