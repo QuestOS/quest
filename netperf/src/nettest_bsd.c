@@ -7114,7 +7114,7 @@ recv_udp_stream()
   udp_stream_results  = 
     (struct udp_stream_results_struct *)netperf_response.content.test_specific_data;
   
-  if (debug) {
+  if (1) {
     fprintf(where,"netserver: recv_udp_stream: entered...\n");
     fflush(where);
   }
@@ -7247,8 +7247,10 @@ recv_udp_stream()
   
   /* before we send the response back to the initiator, pull some of */
   /* the socket parms from the globals */
-  udp_stream_response->send_buf_size = lss_size;
-  udp_stream_response->recv_buf_size = lsr_size;
+  //udp_stream_response->send_buf_size = lss_size;
+  //udp_stream_response->recv_buf_size = lsr_size;
+  udp_stream_response->send_buf_size = 1024;
+  udp_stream_response->recv_buf_size = 1024;
   udp_stream_response->so_rcvavoid = loc_rcvavoid;
   udp_stream_response->so_sndavoid = loc_sndavoid;
 
@@ -7274,9 +7276,9 @@ recv_udp_stream()
   
   times_up = 0;
 
-  start_timer(test_time + PAD_TIME);
+  //start_timer(test_time + PAD_TIME);
 
-  if (debug) {
+  if (1) {
     fprintf(where,"recv_udp_stream: about to enter inner sanctum.\n");
     fflush(where);
   }
@@ -7294,6 +7296,7 @@ recv_udp_stream()
                    (struct sockaddr*)&remote_addr, &remote_addrlen);
     if (len != message_size) {
       if ((len == SOCKET_ERROR) && !SOCKET_EINTR(len)) {
+            printf ("socket_error!\n");
             netperf_response.content.serv_errno = errno;
             send_response();
             exit(1);
@@ -7313,7 +7316,7 @@ recv_udp_stream()
         exit(1);
     }
 
-    if (debug) {
+    if (1) {
         fprintf(where,"recv_udp_stream: connected data socket\n");
         fflush(where);
      }
@@ -7328,12 +7331,13 @@ recv_udp_stream()
     } else {
        len = recvfrom(s_data,
                       recv_ring->buffer_ptr,
-    	              message_size, 
-		      0,0,0);
+    	              message_size, 0,
+                      (struct sockaddr*)&remote_addr, &remote_addrlen);
     }
        
     if (len != message_size) {
       if ((len == SOCKET_ERROR) && !SOCKET_EINTR(len)) {
+            printf ("socket_error!\n");
             netperf_response.content.serv_errno = errno;
 	    send_response();
 	    exit(1);
@@ -7342,6 +7346,17 @@ recv_udp_stream()
     }
     messages_recvd++;
     recv_ring = recv_ring->next;
+
+    static struct timeval end_tp = {0, 0}, start_tp = {0, 0};
+
+    if ((start_tp.tv_sec == 0) && (start_tp.tv_usec == 0)) {
+        gettimeofday (&start_tp, NULL);
+    } else {
+        gettimeofday (&end_tp, NULL);
+        /* Time up? */
+        if ((end_tp.tv_sec - start_tp.tv_sec) >= (test_time + PAD_TIME))
+            times_up = 1;
+    }
   }
   
   if (debug) {

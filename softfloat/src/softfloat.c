@@ -351,7 +351,10 @@ int __unordtf2 (long double a, long double b) unimplemented_function
  * are equal.
  */
 
-int __eqsf2 (float a, float b) unimplemented_function
+int __eqsf2 (float a, float b)
+{
+  return float32_eq_signaling(*((float32 *) &a), *((float32 *) &b)) ? 0 : 1;
+} 
 int __eqdf2 (double a, double b) unimplemented_function
 int __eqtf2 (long double a, long double b) unimplemented_function
 
@@ -360,7 +363,10 @@ int __eqtf2 (long double a, long double b) unimplemented_function
  * or if a and b are unequal.
  */
 
-int __nesf2 (float a, float b) unimplemented_function
+int __nesf2 (float a, float b)
+{
+  return float32_eq_signaling(*((float32 *) &a), *((float32 *) &b)) ? 0 : 1;
+}
 int __nedf2 (double a, double b) unimplemented_function
 int __netf2 (long double a, long double b) unimplemented_function
 
@@ -414,7 +420,10 @@ int __letf2 (long double a, long double b) unimplemented_function
  * These functions return a value greater than zero if neither
  * argument is NaN, and a is strictly greater than b.
  */
-int __gtsf2 (float a, float b) unimplemented_function
+int __gtsf2 (float a, float b)
+{
+  return float32_le(*((float32 *) &a), *((float32 *) &b)) ? 0 : 1;
+}
 int __gtdf2 (double a, double b)
 {
   return float64_le(*((float64 *)&a), *((float64 *)&b)) ? -1 : 1;

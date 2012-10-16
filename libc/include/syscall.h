@@ -418,6 +418,19 @@ socket_getsockname (int sockfd, void *addr, void *len)
   return ret;
 }
 
+static inline int
+socket_recovery (int arg)
+{
+  int ret;
+
+  asm volatile ("int $0x3D\n"
+                :"=a" (ret)
+                :"a" (13), "b" (arg), "c" (0), "d" (0), "S" (0), "D" (0)
+                :"memory", "cc");
+
+  return ret;
+}
+
 #ifdef USE_VMX
 static inline int
 switch_screen (int dir)

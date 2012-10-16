@@ -71,6 +71,8 @@ typedef struct _shm_info {
   uint64 remote_tsc[SHM_MAX_SANDBOX];
   /* If TRUE, local tsc is leading. If FALSE, local tsc is falling behind */
   bool remote_tsc_diff[SHM_MAX_SANDBOX];
+  /* Used to muffle network output of a certain sandbox to implement "hot" backup */
+  bool network_transmit_enabled[SHM_MAX_SANDBOX];
   bool bsp_booted;
 } shm_info;
 

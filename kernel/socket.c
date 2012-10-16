@@ -1047,6 +1047,60 @@ sys_call_getsockname (int sockfd, void *addr, void *len)
   return 0;
 }
 
+static void
+restart_networks_local ()
+{
+  cli ();
+  {extern void r8169_reset (void); r8169_reset ();}
+  {extern void r8169_free (void); r8169_free ();}
+  {extern bool r8169_init (void); r8169_init ();}
+  {extern bool r8169_register (void); r8169_register ();}
+  {extern bool netsetup_init (void); netsetup_init ();}
+  sti ();
+}
+
+static int
+sys_call_recovery (int arg)
+{
+  uint32 cpu = get_pcpu_id ();
+  struct netif * netif = NULL;
+  struct ip_addr ipaddr, netmask, gw;
+
+  switch (arg) {
+    case 0:
+      //cli ();
+      shm->network_transmit_enabled[0] = FALSE;
+      shm->network_transmit_enabled[1] = TRUE;
+      //sti ();
+      break;
+    case 1:
+      restart_networks_local ();
+      break;
+    case 3:
+      netif = netif_find ("en0");
+      netif_set_down (netif);
+      logger_printf ("Interface en0 down in Sandbox %d!\n", cpu);
+      if (netif) {
+        IP4_ADDR(&ipaddr, 192, 168, 2, 11);
+        IP4_ADDR(&netmask, 255, 255, 255, 0);
+        IP4_ADDR(&gw, 192, 168, 2, 1);
+        netif_set_addr (netif, &ipaddr, &netmask, &gw);
+        netif_set_up (netif);
+        logger_printf ("Interface en0 up in Sandbox %d!\n", cpu);
+      } else {
+        logger_printf ("Cannot find interface\n");
+      }
+      cli ();
+      shm->network_transmit_enabled[1] = FALSE;
+      sti ();
+      logger_printf ("Hot Backup Set Up!\n");
+      break;
+    default:
+      logger_printf ("Unknown recovery!\n");
+  }
+  return 0;
+}
+
 sys_call_ptr_t _socket_syscall_table [] ALIGNED (0x1000) = {
   (sys_call_ptr_t) sys_call_open_socket,    /* 00 */
   (sys_call_ptr_t) sys_call_close,          /* 01 */
@@ -1061,7 +1115,7 @@ sys_call_ptr_t _socket_syscall_table [] ALIGNED (0x1000) = {
   (sys_call_ptr_t) sys_call_get_time,       /* 10 */
   (sys_call_ptr_t) sys_call_get_sb_id,      /* 11 */
   (sys_call_ptr_t) sys_call_getsockname,    /* 12 */
-  (sys_call_ptr_t) NULL,                    /* 13 */
+  (sys_call_ptr_t) sys_call_recovery,       /* 13 */
   (sys_call_ptr_t) NULL,                    /* 14 */
   (sys_call_ptr_t) NULL                     /* 15 */
 };

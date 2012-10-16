@@ -19,6 +19,7 @@
 #include "module/header.h"
 #include "drivers/net/ethernet.h"
 #include "sched/sched.h"
+#include "vm/shm.h"
 
 #define STATIC_IP_ASSIGNMENT
 
@@ -102,7 +103,6 @@ netsetup_thread (void)
     struct netif *netif = netif_find ("en0");
     if (netif) {
       IP4_ADDR(&ipaddr, 192, 168, 2, 11 + cpu);
-      //IP4_ADDR(&ipaddr, 192, 168, 2, 11);
       IP4_ADDR(&netmask, 255, 255, 255, 0);
       IP4_ADDR(&gw, 192, 168, 2, 1);
       netif_set_addr (netif, &ipaddr, &netmask, &gw);

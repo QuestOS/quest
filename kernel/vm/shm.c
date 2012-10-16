@@ -139,6 +139,7 @@ shm_init (uint32 cpu)
     return;
   }
 
+  shm->network_transmit_enabled[cpu] = FALSE;
   shm_initialized = TRUE;
 
   shm_screen_init (cpu);

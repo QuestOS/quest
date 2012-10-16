@@ -499,7 +499,7 @@ init (multiboot * pmb)
   char * name = "/boot/shell";
   memcpy (lookup_TSS (tss[0])->name, name, strlen (name));
   lookup_TSS (tss[0])->name[strlen(name)] = '\0';
-  
+
 #ifdef USE_VMX
   /* Back up shell module for sandboxes */
   shell_tss = load_module (pmb->mods_addr, NR_MODS - 1);
@@ -556,9 +556,12 @@ init (multiboot * pmb)
 #ifdef USE_VMX
   { extern bool migration_init (void); migration_init (); }
 #endif
+  //{ extern bool msgt_bandwidth_init (void); msgt_bandwidth_init (); }
   //{ extern bool udp_bandwith_init (void); udp_bandwith_init (); }
   //{ extern bool ipc_send_init (void); ipc_send_init (); }
+  //{ extern bool ipc_recv_init (void); ipc_recv_init (); }
   //{ extern bool msgt_init (void); msgt_init (); }
+  //{ extern bool hog_thread_init (void); hog_thread_init (); }
   //{
   //  extern bool netsetup_custom_init (struct ip_addr, struct ip_addr, struct ip_addr, int);
   //  struct ip_addr ipaddr, netmask, gw;

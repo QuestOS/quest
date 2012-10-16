@@ -531,6 +531,7 @@ abort:
   return 0;
 }
 
+//#define MIGRATION_EXPERIMENT
 bool migration_thread_ready = FALSE;
 
 /* Migration thread which is responsible for duplicating the address space should
@@ -540,6 +541,21 @@ bool migration_thread_ready = FALSE;
 static void
 migration_thread (void)
 {
+#ifdef MIGRATION_EXPERIMENT
+  /* Experiment Data */
+  u64 start = 0, end = 0;
+  struct msgt_stat_report {
+    unsigned int canny_frame_count;
+    unsigned int msg_sent;
+    unsigned int msg_recv;
+    u64 counter1;
+    u64 tsc;
+  };
+
+  extern uint32 msgt_stat_phy_page;
+  extern struct msgt_stat_report * msgt_report;
+#endif
+
   int cpu = 0;
   quest_tss * new_tss = NULL;
   cpu = get_pcpu_id ();
@@ -563,13 +579,27 @@ migration_thread (void)
     return;
   }
 
+#ifdef MIGRATION_EXPERIMENT
+  if (msgt_stat_phy_page) {
+    if (!msgt_report)
+      msgt_report = (struct msgt_stat_report *) map_virtual_page (msgt_stat_phy_page | 3);
+  }
+#endif
+
   logger_printf ("Migration thread started in sandbox %d\n", cpu);
 
   for (;;) {
+#ifdef MIGRATION_EXPERIMENT
+    RDTSC (start);
+#endif
     if (((!shm->migration_queue[cpu]) && (!mig_working_flag)) || !migration_thread_ready) {
 
 #ifdef MIGRATION_THREAD_PREEMPTIBLE
 yield:
+#endif
+#ifdef MIGRATION_EXPERIMENT
+      RDTSC (end);
+      msgt_report->tsc += (end - start);
 #endif
       if (migration_thread_ready) {
         sched_usleep (1000000);
@@ -636,6 +666,9 @@ resume:
           } else {
             overrun = 0;
           }
+#ifdef MIGRATION_EXPERIMENT
+          msgt_report->counter1 += overrun;
+#endif
           RDTSC (prev_tsc);
           goto yield;
         }
@@ -656,6 +689,9 @@ resume:
           overrun = cur_tsc - deadline;
           /* TODO: Convert from T/C please... */
           next_act = next_act + overrun * 5;
+#ifdef MIGRATION_EXPERIMENT
+          msgt_report->counter1 += overrun;
+#endif
           RDTSC (prev_tsc);
           goto yield;
         }
@@ -696,6 +732,11 @@ resume_attach:
       }
       /* TODO: Convert from T/C please... */
       next_act = next_act + overrun * 5;
+#ifdef MIGRATION_EXPERIMENT
+      RDTSC (end);
+      msgt_report->tsc += (end - start);
+      msgt_report->counter1 += overrun;
+#endif
     }
   }
 }

@@ -989,6 +989,12 @@ _time (void)
 #endif
 
 #if 0
+  uint64 now;
+  RDTSC (now);
+  return (uint32) now;
+#endif
+
+#if 0
   int i = 0;
   uint32 *paddr = NULL;
 
@@ -996,6 +1002,26 @@ _time (void)
     paddr = get_phys_addr ((void*) (i << 12));
     com1_printf ("0x%X mapped to: 0x%X\n", i << 12, (uint32) paddr);
   }
+#endif
+
+#if 0
+#ifdef USE_VMX
+  struct msgt_stat_report {
+    unsigned int canny_frame_count;
+    unsigned int msg_sent;
+    unsigned int msg_recv;
+    u64 tsc;
+  };
+
+  extern uint32 msgt_stat_phy_page;
+  extern struct msgt_stat_report * msgt_report;
+
+  if (msgt_stat_phy_page) {
+    if (!msgt_report)
+      msgt_report = (struct msgt_stat_report *) map_virtual_page (msgt_stat_phy_page | 3);
+    msgt_report->canny_frame_count++;
+  }
+#endif
 #endif
 
   return tick;

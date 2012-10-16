@@ -49,7 +49,6 @@
 
 static spinlock * r8169_tx_lock = NULL;
 static spinlock * r8169_rx_int_lock = NULL;
-static spinlock * r8169_tx_int_lock = NULL;
 static spinlock * r8169_reg_lock = NULL;
 uint32 r8169_master_sandbox = 0;
 atomic_t num_sharing = ATOMIC_T_INIT;
@@ -60,6 +59,7 @@ static void * global_ioa_backup = NULL;
 
 //#define DEBUG_R8169
 //#define TX_TIMING
+//#define R8169_USE_IOVCPU
 
 #define MAX_NUM_SHARE    4
 
@@ -187,7 +187,7 @@ pci_read_config_word (pci_device *p, u32 offset, u16 *val)
 
 #define R8169_REGS_SIZE         256
 #define R8169_NAPI_WEIGHT       64
-#define NUM_TX_DESC     64      /* Number of Tx descriptor registers */
+#define NUM_TX_DESC     256     /* Number of Tx descriptor registers */
 #define NUM_RX_DESC     256     /* Number of Rx descriptor registers */
 #define RX_BUF_SIZE     1536    /* Rx Buffer size */
 #define R8169_TX_RING_BYTES     (NUM_TX_DESC * sizeof(struct TxDesc))
@@ -1653,8 +1653,14 @@ rx_int (struct rtl8169_private *tp)
         if ((cpu != i) && (tp->cur_rx[i] <= tp->cur_rx[cpu])) {
           read = FALSE;
           /* --??-- Hack! Let's handle this case later */
-          if ((tp->cur_rx[cpu] - tp->cur_rx[i]) >= 200)
+          if ((tp->cur_rx[cpu] - tp->cur_rx[i]) >= 200) {
+            /* TODO:
+             * We need to bring the index falling behind forward
+             * and mark the descriptors skipped as available. This
+             * should be done by any sandbox who detects the problem.
+             */
             com1_printf ("rx falling behind!\n");
+          }
         }
       }
 
@@ -1676,7 +1682,7 @@ tx_int (struct rtl8169_private *tp)
   void __iomem *ioaddr = tp->mmio_addr;
   uint dirty_tx, tx_left;
 #ifdef USE_VMX
-  spinlock_lock (r8169_tx_int_lock);
+  spinlock_lock (r8169_tx_lock);
 #endif
   dirty_tx = tp->dirty_tx;
   tx_left = tp->cur_tx - dirty_tx;
@@ -1689,8 +1695,9 @@ tx_int (struct rtl8169_private *tp)
     status = __le32_to_cpu(tp->TxDescArray[entry].opts1);
     if (status & DescOwn) {
       //com1_printf ("tx own\n");
-      //if ((tp->cur_tx - dirty_tx) > 50)
+      //if ((tp->cur_tx - dirty_tx) > 50) {
       //  com1_printf ("dirty behind\n");
+      //}
       break;
     }
 
@@ -1715,7 +1722,7 @@ tx_int (struct rtl8169_private *tp)
       RTL_W8(TxPoll, NPQ);
   }
 #ifdef USE_VMX
-  spinlock_unlock (r8169_tx_int_lock);
+  spinlock_unlock (r8169_tx_lock);
 #endif
 }
 
@@ -1729,7 +1736,7 @@ r8169_bh_thread (void)
   logger_printf ("r8169: bh: hello from 0x%x, cpu=%d\n", str (), cpu);
   for (;;) {
     struct rtl8169_private *tp = pci_get_drvdata(&pdev);
-    int handled = 0;
+    //int handled = 0;
     int status;
     void __iomem *ioaddr = tp->mmio_addr;
 
@@ -1737,7 +1744,7 @@ r8169_bh_thread (void)
 
     //while (status && status != 0xffff) {
       DLOG ("IRQ status=0x%p, cpu=%d", status, cpu);
-      handled = 1;
+      //handled = 1;
 
       /* Handle all of the error cases first. These will reset
        * the chip, so just exit the loop.
@@ -1748,7 +1755,7 @@ r8169_bh_thread (void)
         //netif_stop_queue(dev);
         //rtl8169_tx_timeout(&tp->ethdev);
         com1_printf ("rx fifo overflow\n");
-        break;
+        //break;
       }
 
       if (unlikely(status & SYSErr)) {
@@ -1770,6 +1777,14 @@ r8169_bh_thread (void)
 #endif
       //}
 
+      /* TODO:
+       * For now, onely the master sandbox will process tx interrupt. Exp showed that
+       * the performance is reasonable and asking all sandboxes to process it introduces
+       * more synchronization issues. But asking only master sandbox to process tx int
+       * introduces a possible single point of failure. As a result, we should have some
+       * mechanism in the future that can dynamically decide the master sandbox in runtime
+       * based on availability.
+       */
       if ((status & TxOK) && (cpu == r8169_master_sandbox)) {
         tx_int (tp);
       }
@@ -1795,7 +1810,6 @@ r8169_bh_thread (void)
 static u64 tx_start = 0, tx_finish;
 #endif
 
-unsigned int n_int = 0;
 bool print_int = FALSE;
 
 static uint
@@ -1815,11 +1829,77 @@ irq_handler (u8 vec)
   }
 #endif
 
-  if (cpu == 0) n_int++;
   if (r8169_bh_id[cpu]) {
     extern vcpu *vcpu_lookup (int);
+#ifdef R8169_USE_IOVCPU
     /* hack: use VCPU2's period */
     iovcpu_job_wakeup (r8169_bh_id[cpu], vcpu_lookup (2)->T);
+#else
+    struct rtl8169_private *tp = pci_get_drvdata(&pdev);
+    int status;
+    void __iomem *ioaddr = tp->mmio_addr;
+
+    status = RTL_R16(IntrStatus);
+
+      DLOG ("PHYstatus=0x%x\n", RTL_R8(PHYstatus));
+      DLOG ("IRQ status=0x%p, cpu=%d", status, cpu);
+
+      /* Handle all of the error cases first. These will reset
+       * the chip, so just exit the loop.
+       */
+
+      /* Work around for rx fifo overflow */
+      if (unlikely(status & RxFIFOOver)) {
+        //netif_stop_queue(dev);
+        //rtl8169_tx_timeout(&tp->ethdev);
+        //com1_printf ("rx fifo overflow\n");
+        //com1_printf ("IRQ status=0x%p, cpu=%d\n", status, cpu);
+        //return 0;
+      }
+
+      if (unlikely(status & SYSErr)) {
+        //rtl8169_pcierr_interrupt(&tp->ethdev);
+        com1_printf ("System Error\n");
+        return 0;
+      }
+
+      //if (status & LinkChg)
+        //rtl8169_check_link_status(&tp->ethdev[0], tp, ioaddr);
+
+      //if (status & RxOK) {
+#ifdef USE_VMX
+      spinlock_lock (r8169_rx_int_lock);
+#endif
+      rx_int (tp);
+#ifdef USE_VMX
+      spinlock_unlock (r8169_rx_int_lock);
+#endif
+      //}
+
+      /* TODO:
+       * For now, onely the master sandbox will process tx interrupt. Exp showed that
+       * the performance is reasonable and asking all sandboxes to process it introduces
+       * more synchronization issues. But asking only master sandbox to process tx int
+       * introduces a possible single point of failure. As a result, we should have some
+       * mechanism in the future that can dynamically decide the master sandbox in runtime
+       * based on availability.
+       */
+      if ((status & TxOK) && (cpu == r8169_master_sandbox)) {
+        tx_int (tp);
+      }
+
+      /* We only get a new MSI interrupt when all active irq
+       * sources on the chip have been acknowledged. So, ack
+       * everything we've seen and check if new sources have become
+       * active to avoid blocking all interrupts from the chip.
+       */
+      if (cpu == r8169_master_sandbox) {
+        status = RTL_R16(IntrStatus);
+        RTL_W16(IntrStatus,
+            (status & RxFIFOOver) ? (status | RxOK | TxOK | RxOverflow) : status | RxOK | TxOK);
+      }
+#endif
+
   }
 
   return 0;
@@ -3322,7 +3402,10 @@ alloc_skb (u32 size)
   if (!skb) return NULL;
   skb->len = size;
   pow2_alloc (size, (u8 **) &skb->data);
-  if (!skb->data) return NULL;
+  if (!skb->data) {
+    pow2_free ((u8 *) skb);
+    return NULL;
+  }
   memset (skb->data, 0, size);
   return skb;
 }
@@ -3486,6 +3569,11 @@ uint32 alloc_skb_count = 0;
 static sint
 r8169_transmit (u8 *buffer, sint len)
 {
+  uint32 cpu = get_pcpu_id ();
+  if (!shm->network_transmit_enabled[cpu]) {
+    /* Transmit is disabled */
+    return len;
+  }
   DLOG ("TX: buffer=0x%p len=%d, cpu=%d", buffer, len, get_pcpu_id ());
   u8 *p = buffer;
   DLOG ("  %.02X %.02X %.02X %.02X %.02X %.02X",
@@ -3506,8 +3594,51 @@ r8169_transmit (u8 *buffer, sint len)
   u32 opts1;
 
   if (le32_to_cpu (txd->opts1) & DescOwn) {
-    com1_printf ("TX ring overflow\n");
+    //com1_printf ("TX ring overflow\n");
+    tsc_delay_usec (1000);
     goto abort;
+  }
+  if (/*txd->addr != 0*/1) {
+    //com1_printf ("TX not released\n");
+    uint dirty_tx, tx_left;
+    dirty_tx = tp->dirty_tx;
+    tx_left = tp->cur_tx - dirty_tx;
+    //com1_printf ("tx_left=%d\n", tx_left);
+    while (tx_left > 1) {
+      uint entry_d = dirty_tx & (NUM_TX_DESC - 1);
+      struct ring_info *tx_skb = tp->tx_skb + entry_d;
+      struct TxDesc *desc = tp->TxDescArray + entry_d;
+      u32 status;
+
+      status = __le32_to_cpu(tp->TxDescArray[entry_d].opts1);
+      if (status & DescOwn) {
+        //com1_printf ("tx own\n");
+        //if ((tp->cur_tx - dirty_tx) > 50) {
+        //  com1_printf ("dirty behind\n");
+        //}
+        break;
+      }
+
+      desc->opts1 = desc->opts2 = desc->addr = 0;
+      tx_skb->len = 0;
+      free_skb (tx_skb->skb);
+      free_skb_count++;
+
+      dirty_tx++;
+      tx_left--;
+    }
+    if (tp->dirty_tx != dirty_tx) {
+      tp->dirty_tx = dirty_tx;
+      /*
+       * 8168 hack: TxPoll requests are lost when the Tx packets are
+       * too close. Let's kick an extra TxPoll request when a burst
+       * of start_xmit activity is detected (if it is not detected,
+       * it is slow enough). -- FR
+       */
+      if (tp->cur_tx != dirty_tx)
+        RTL_W8(TxPoll, NPQ);
+    }
+    //goto abort;
   }
   if (len > MAX_FRAME_SIZE) {
     com1_printf ("TX frame too large\n");
@@ -3678,6 +3809,7 @@ r8169_init (void)
 
   /* Set master sandbox to be the one doing the hardware initialization */
   r8169_master_sandbox = get_pcpu_id ();
+  shm->network_transmit_enabled[r8169_master_sandbox] = TRUE;
 
   ioaddr = map_virtual_page (phys_addr | 3);
   global_ioa_backup = ioaddr;
@@ -3821,10 +3953,12 @@ r8169_init (void)
 
   rtl8169_check_link_status(&tp->ethdev[0], tp, tp->mmio_addr);
 
-//  r8169_bh_id[0] = create_kernel_thread_args ((u32) r8169_bh_thread,
-//                                              (u32) &r8169_bh_stack[0][1023],
-//                                              "Realtek r8169", FALSE, 0);
-//  set_iovcpu (r8169_bh_id[0], IOVCPU_CLASS_NET);
+#ifdef R8169_USE_IOVCPU
+  r8169_bh_id[0] = create_kernel_thread_args ((u32) r8169_bh_thread,
+                                              (u32) &r8169_bh_stack[0][1023],
+                                              "Realtek r8169", FALSE, 0);
+  set_iovcpu (r8169_bh_id[0], IOVCPU_CLASS_NET);
+#endif
 
 #ifdef USE_VMX
   r8169_tx_lock = shm_alloc_drv_lock ();
@@ -3839,13 +3973,6 @@ r8169_init (void)
     logger_printf ("Driver lock allocation failed!\n");
   } else {
     spinlock_init (r8169_rx_int_lock);
-  }
-
-  r8169_tx_int_lock = shm_alloc_drv_lock ();
-  if (r8169_tx_int_lock == NULL) {
-    logger_printf ("Driver lock allocation failed!\n");
-  } else {
-    spinlock_init (r8169_tx_int_lock);
   }
 
   r8169_reg_lock = shm_alloc_drv_lock ();
@@ -3896,6 +4023,8 @@ r8169_register (void)
   if (!r8169_initialized) {
     return FALSE;
   }
+
+  shm->network_transmit_enabled[cpu] = TRUE;
 
 #ifdef USE_VMX
   spinlock_lock (r8169_reg_lock);

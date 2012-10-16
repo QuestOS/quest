@@ -102,7 +102,7 @@ printf("after loop\n");
       printf ("30 frame mark\n");
     }
     time ();
-    if (i == 120) {
+    if (i == 240) {
       param.affinity = 1;
       sched_setparam (-1, &param);
     }

@@ -104,9 +104,14 @@ check_control_alt_del (void)
     //RDTSC (ipi_rt_start);
     //LAPIC_send_ipi (0x1 << 1, LAPIC_ICR_LEVELASSERT | LAPIC_ICR_DM_LOGICAL | vec);
     //RDTSC (vm_time_start);
-    vm_exit (0);
+    //vm_exit (0);
     //RDTSC (vm_time_end);
     //com1_printf ("VM-Enter Time: 0x%llX\n", vm_time_end - vm_time_start);
+    cli ();
+    shm->network_transmit_enabled[0] = FALSE;
+    shm->network_transmit_enabled[1] = TRUE;
+    sti ();
+    com1_printf ("Hot backup activated\n");
 #else
     uint8 state;
     printf ("REBOOTING...\n");

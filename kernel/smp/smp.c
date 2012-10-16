@@ -303,14 +303,22 @@ ap_init (void)
 
   { extern bool vcpu_init (void); vcpu_init (); }
   { extern void net_init (void); net_init (); }
+  //if (phys_id == 1) {
   { extern bool r8169_register (void); r8169_register (); }
   { extern bool netsetup_init (void); netsetup_init (); }
   { extern bool vfs_init (void); vfs_init (); }
+  //}
   { extern bool migration_init (void); migration_init (); }
   { extern bool logger_init (void); logger_init (); }
+  //if (phys_id == 1)
+  //{ extern bool hog_thread_init (void); hog_thread_init (); }
+  //{ extern bool msgt_bandwidth_init (void); msgt_bandwidth_init (); }
   //{ extern bool udp_bandwidth_init (void); udp_bandwidth_init (); }
+  //if (phys_id == 1)
   //{ extern bool ipc_recv_init (void); ipc_recv_init (); }
   //{ extern bool msgt_init (void); msgt_init (); }
+  //if (phys_id == 3)
+  //{ extern bool stat_thread_init (void); stat_thread_init (); }
 
   /*
    * For SeQuest, each sandbox kernel will have a shell running

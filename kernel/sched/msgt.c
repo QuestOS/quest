@@ -183,21 +183,35 @@ msg_bandwidth_thread (void)
   return;
 }
 
+static void
+hog_thread (void)
+{
+  int sandbox = 0;
+  sandbox = get_pcpu_id ();
+  logger_printf ("Hog started in sandbox %d\n", sandbox);
+
+  unlock_kernel ();
+  sti ();
+  for (;;) {
+  }
+}
+
 #define RECV_SB           1
 #define META_PAGE         3
 #define IPC_SB_SIZE       512
-#define NUM_ITERATIONS    2000000
+#define NUM_ITERATIONS    8000L
 
 static void
 ipc_send_thread (void)
 {
-  uint64 start = 0, end = 0, cost = 0;
+  uint64 start = 0, end = 0, cost = 0, worst = (0x0L), best = ~(0x0L);
+  uint64 local_worst = 0L;
+  u64 shift_start = 0, shift_end = 0;
   int i = 0, j = 0, m = 0;
-  //int k = 0;
   uint32 index = 0;
   void * channel = NULL;
   void * data = NULL;
-  uint32 * meta = NULL;
+  volatile uint32 * meta = NULL;
   volatile uint32 * mailbox = NULL;
   int cpu;
   int count = 1;
@@ -213,46 +227,76 @@ ipc_send_thread (void)
   meta[0] = 16; /* Start from 16 * 4 = 64 bytes */
   meta[1] = 0;
 
-  sched_usleep (5000000);
+  sched_usleep (5054321);
   //check_copied_threads ();
 
   unlock_kernel ();
   sti ();
-  for (i = 1; i < 15; i++) {
+  for (i = 1; i < 14; i++) {
     cost = 0;
     count = ((meta[0] >> 9) == 0) ? 1 : (meta[0] >> 9);
     if (count == 1)
-      multiplier = 10;
+      multiplier = 1;
     else
       multiplier = 1;
     for (m = 0; m < NUM_ITERATIONS * multiplier; m++) {
       //asm volatile ("wbinvd");
+      cli ();
+      tsc_delay_usec (20000);
       RDTSC (start);
+      sti ();
       for (j = 0; j < count; j++) {
         index++;
-        //for (k = 0; k < meta[0] && k < IPC_SB_SIZE; k++) {
-        //  mailbox[k] = index;
-        //}
         if (meta[0] <= IPC_SB_SIZE) {
           memset ((void *) mailbox, index, meta[0] * 4);
         } else {
           memset ((void *) mailbox, index, IPC_SB_SIZE * 4);
         }
         meta[1] = index;
+#if 0
+        cli ();
+        lock_kernel ();
+        if (recv_id) wakeup (recv_id);
+        sched_usleep (100000000);
+        unlock_kernel ();
+        sti ();
+#else
         while (index == meta[1]);
+#endif
         index = meta[1];
       }
       RDTSC (end);
       cost += (end - start);
-      //cli ();
-      //lock_kernel ();
-      //sched_usleep (10);
-      //unlock_kernel ();
-      //sti ();
+      if ((end - start) > worst) worst = end - start;
+      if ((end - start) < best) best = end - start;
+      if ((end - start) > local_worst) local_worst = end - start;
+
+      RDTSC (shift_end);
+      if ((shift_end - shift_start) > (16459895000L)) {
+        cli ();
+        lock_kernel ();
+        sched_usleep (112000);
+        unlock_kernel ();
+        sti ();
+        RDTSC (shift_start);
+        logger_printf ("Shifted\n");
+        logger_printf ("Current Worst: 0x%llX\n", worst);
+        logger_printf ("Local Worst: 0x%llX\n", local_worst);
+        local_worst = 0;
+      } else {
+        cli ();
+        lock_kernel ();
+        sched_usleep (200000);
+        unlock_kernel ();
+        sti ();     
+      }
+      if ((m % (NUM_ITERATIONS >> 2)) == 0) logger_printf ("%d Mark!\n", NUM_ITERATIONS >> 2);
     }
-    logger_printf ("Cycles: 0x%llX          Message Size: %d    Count: %d   Mult: %d\n",
-                   cost, 4 * meta[0], count, multiplier);
+    logger_printf ("Cycles: 0x%llX    0x%llX      Message Size: %d    Count: %d   Mult: %d\n",
+                   best, worst, 4 * meta[0], count, multiplier);
     meta[0] = meta[0] * 2;
+    worst = (0x0L);
+    best = ~(0x0L);
   }
 
   logger_printf ("Sender Done!\n");
@@ -265,8 +309,7 @@ ipc_recv_thread (void)
   void * channel = NULL;
   volatile uint32 * mailbox = NULL;
   void * data = NULL;
-  uint32 * meta = NULL;
-  //int k = 0;
+  volatile uint32 * meta = NULL;
   uint32 index = 0;
   int cpu;
 
@@ -281,11 +324,6 @@ ipc_recv_thread (void)
   sti ();
   for (;;) {
     while (index == meta[1]);
-    index = meta[1] + 1;
-
-    //for (k = 0; k < meta[0] && k < IPC_SB_SIZE; k++) {
-    //  mailbox[k] = index;
-    //}
     if (meta[0] <= IPC_SB_SIZE) {
       memset ((void *) mailbox, index, meta[0] * 4);
     } else {
@@ -350,13 +388,7 @@ statistics_thread (void)
       logger_printf ("Time: %d FPS: %d IPC 1: %d IPC 2: %d MIG: 0x%llX Overrun: 0x%llX\n",
                      i, diff, diff_sent >> 1, diff_recv >> 1, diff_tsc, diff_c1);
     i++;
-#if 0
-    lock_kernel ();
-    sched_usleep (1000000);
-    unlock_kernel ();
-#else
     tsc_delay_usec (1000000);
-#endif
   }
 }
 
@@ -404,6 +436,15 @@ msgt_bandwidth_init (void)
                                   "msg bandwidth", 4, TRUE, 0);
 
   DLOG ("IPC Bandwidth Thread Created on Sandbox %d...\n", sandbox);
+  return TRUE;
+}
+
+extern bool
+hog_thread_init (void)
+{
+  create_kernel_thread_vcpu_args ((u32) hog_thread, (u32) &msgt_stack[1023],
+                                  "Hog thread", 4, TRUE, 0);
+
   return TRUE;
 }
 
