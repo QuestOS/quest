@@ -8,3 +8,6 @@ libc.a : $(OBJS)
 
 clean :
 	rm -f $(OBJS) src/*~ include/*~ libc.a
+
+install:
+	@echo "Nothing to install for libc"

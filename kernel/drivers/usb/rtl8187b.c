@@ -1,5 +1,5 @@
 /*                    The Quest Operating System
- *  Copyright (C) 2005-2010  Richard West, Boston University
+ *  Copyright (C) 2005-2012  Richard West, Boston University
  *
  *  This program is free software: you can redistribute it and/or modify
  *  it under the terms of the GNU General Public License as published by
@@ -715,7 +715,7 @@ do_status (void)
   bool tok;
 
   if (usb_bulk_transfer (usbdev, STATUS_EPT, &buf, sizeof (buf),
-                         STATUS_MAXPKT, DIR_IN, &act_len) == 0) {
+                         STATUS_MAXPKT, USB_DIR_IN, &act_len) == 0) {
     if (act_len > 0) {
       DLOGTX ("status: 0x%.08X %.08X",
               (u32) (buf >> 32), (u32) buf);
@@ -822,7 +822,7 @@ _tx (uint8 *pkt, u32 len)
     ep = tx_endps[cur_tx_ep];
 
   if (usb_bulk_transfer (usbdev, ep, &buf, len,
-                         TX_MAXPKT, DIR_OUT, &act_len) == 0) {
+                         TX_MAXPKT, USB_DIR_OUT, &act_len) == 0) {
     do_status ();
     DLOGTX ("tx: sent %d bytes", act_len);
     ret=act_len;
@@ -1229,7 +1229,7 @@ rx_thread (void)
   lookup_TSS (str ())->priority = 0;
   for (;;) {
     if (usb_bulk_transfer (usbdev, RX_EPT, &buf, sizeof (buf),
-                           RX_MAXPKT, DIR_IN, &act_len) == 0) {
+                           RX_MAXPKT, USB_DIR_IN, &act_len) == 0) {
       if (act_len > sizeof (struct rtl8187b_rx_hdr)) {
         struct sk_buff skb;
 #ifdef DEBUG_RTL8187B
@@ -2527,7 +2527,7 @@ static const struct module_ops mod_ops = {
   .init = usb_rtl8187b_driver_init
 };
 
-DEF_MODULE (usb___rtl8187b, "USB rtl8187b wifi driver", &mod_ops, {"usb", "net___ethernet"});
+//DEF_MODULE (usb___rtl8187b, "USB rtl8187b wifi driver", &mod_ops, {"usb", "net___ethernet"});
 
 /*
  * Local Variables:

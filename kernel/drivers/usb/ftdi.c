@@ -1,5 +1,5 @@
 /*                    The Quest Operating System
- *  Copyright (C) 2005-2010  Richard West, Boston University
+ *  Copyright (C) 2005-2012  Richard West, Boston University
  *
  *  This program is free software: you can redistribute it and/or modify
  *  it under the terms of the GNU General Public License as published by
@@ -206,7 +206,7 @@ ftdi_init (USB_DEVICE_INFO *dev, USB_CFG_DESC *cfg, USB_IF_DESC *ifd)
   uint8_t latency = 0;
   USB_EPT_DESC *ftdiept;
 
-  ftdi_dev = *(dev);
+  memcpy(&ftdi_dev, dev, sizeof(USB_DEVICE_INFO));
   memset (tmp, 0, 50);
 
   /* Parsing endpoints */
@@ -375,7 +375,7 @@ usb_ftdi_write (unsigned char * buf, uint32_t len)
   int status = 0;
 
   if ((status = usb_bulk_transfer (&ftdi_dev, out_ept, (addr_t) buf,
-        len, 64, DIR_OUT, &act_len)))
+        len, 64, USB_DIR_OUT, &act_len)))
     DLOG ("Bulk write failed. Error Code: 0x%X", status);
   
   return act_len;
@@ -415,7 +415,7 @@ usb_ftdi_read (unsigned char * buf, uint32_t len)
   int status = 0;
 
   if ((status = usb_bulk_transfer (&ftdi_dev, in_ept, (addr_t) buf,
-        len, 64, DIR_IN, &act_len)))
+        len, 64, USB_DIR_IN, &act_len)))
     DLOG ("Bulk read failed. Error Code: 0x%X", status);
   
   return act_len;
@@ -437,7 +437,7 @@ static const struct module_ops mod_ops = {
   .init = usb_ftdi_driver_init
 };
 
-DEF_MODULE (usb___ftdi, "USB FTDI driver", &mod_ops, {"usb"});
+//DEF_MODULE (usb___ftdi, "USB FTDI driver", &mod_ops, {"usb"});
 
 /*
  * Local Variables:

@@ -1,29 +1,35 @@
 include config.mk
 GRUBLIB = grub/x86_64-pc
-GRUB2 = grub2
 TFTPDIR=tftp
 LD = ld -melf_i386
 CC = gcc
 TAR = tar
-ATSCC = atscc 
-ATSOPT = atsopt
 CFLAGS = -m32 -march=i586 -fno-builtin -fno-stack-protector -fno-strict-aliasing -fno-delete-null-pointer-checks -nostdinc -g -Wall -Wno-attributes -O$(OPT) $(CFG) $(EXTRA_CFLAGS)
 CPPFLAGS = $(CFG) -D_QUEST -Wa,--32 -MMD -Iinclude -Iinclude/drivers/acpi -I. -I../libc/include 
-ATSFLAGS = -IATS include -I. -Iinclude -Iinclude/drivers/acpi -I../libc/include -g -O$(OPT) -D_ATS_PRELUDE_NONE -D_ATS_DYNLOADFUN_NONE -D_ATS_STALOADFUN_NONE -DATS_TYPES_H -DATS_EXCEPTION_H -DATS_MEMORY_H -D_QUEST
 INDENT = indent
 INDENTFLAGS = -gnu -br -ce --no-tabs
 
 ##################################################
 
-MNT_POINT=/tftp
-PROGS = quest \
-	sysprogs/shell sysprogs/spinner sysprogs/iotest sysprogs/ipctest \
-	sysprogs/udpclient sysprogs/udpserver sysprogs/tcpserver \
-	sysprogs/tcpclient sysprogs/webserver \
-	tests/exec tests/race tests/test1 tests/test2 tests/migtest \
-	tests/test3 tests/test4 tests/test5 tests/test6 tests/test7
+ifndef INSTALL_DIR
+INSTALL_DIR=/tftp
+endif
+
+ifndef INSTALL_CMD
+INSTALL_CMD = cp
+endif
+
+PROGS = quest
 
 ##################################################
+
+
+# The following we removed because I changed the USB interface and broke them
+# drivers/usb/ftdi.o drivers/usb/pl2303.o 
+# drivers/usb/rtl8187b.o 
+# drivers/usb/net.o drivers/usb/asix.o
+# drivers/usb/uhci_hcd.o
+# drivers/usb/usb_test.o
 
 OBJS =  boot/boot.o boot/init.o kernel.o module/loader.o \
 	interrupt.o interrupt_handler.o socket.o \
@@ -33,7 +39,7 @@ OBJS =  boot/boot.o boot/init.o kernel.o module/loader.o \
 	sched/task.o sched/sched.o sched/sleep.o sched/vcpu.o sched/ipc.o sched/msgt.o sched/proc.o \
 	mem/physical.o mem/virtual.o mem/pow2.o \
 	util/cpuid.o util/printf.o util/screen.o util/debug.o util/circular.o \
-	util/crc32.o util/bitrev.o util/logger.o util/perfmon.o \
+	util/crc32.o util/bitrev.o util/logger.o util/perfmon.o util/sort.o \
 	drivers/ata/ata.o drivers/ata/diskio.o \
 	drivers/input/keyboard_8042.o drivers/input/keymap.o \
 	drivers/pci/pci.o drivers/pci/pci_irq.o \
@@ -41,6 +47,7 @@ OBJS =  boot/boot.o boot/init.o kernel.o module/loader.o \
 	drivers/net/e1000.o drivers/net/e1000e.o \
 	drivers/net/bnx2.o \
 	drivers/net/mac80211.o drivers/net/netsetup.o \
+	drivers/serial/mcs9922.o \
 	fs/fsys.o \
 	fs/ext2/fsys_ext2fs.o \
 	fs/iso9660/fsys_iso9660.o \
@@ -49,17 +56,18 @@ OBJS =  boot/boot.o boot/init.o kernel.o module/loader.o \
 	drivers/sb16/sound.o \
 	drivers/acpi/quest-acpica.o \
 	drivers/eeprom/93cx6.o \
-	drivers/usb/uhci_hcd.o drivers/usb/uvc.o drivers/usb/umsc.o \
-	drivers/usb/hub.o drivers/usb/net.o drivers/usb/asix.o \
-	drivers/usb/ftdi.o drivers/usb/pl2303.o \
-	drivers/usb/rtl8187b.o \
-	drivers/usb/usb_tests.o \
+	drivers/usb/umsc.o \
+	drivers/usb/hub.o drivers/usb/uvc.o drivers/usb/gadget.o drivers/usb/gadget2.o \
+	drivers/usb/ehci_hcd.o drivers/usb/ehci_mem.o drivers/usb/ehci_debug.o \
 	drivers/usb/usb.o drivers/usb/enumeration.o \
 	kdb/i386-stub.o
 
 CFILES = $(patsubst %.o,%.c,$(OBJS))
 DFILES = $(patsubst %.o,%.d,$(OBJS))
+DFILES += $(patsubst %,%.d,$(PROGS))
 MAPFILES = $(patsubst %.o,%.map,$(OBJS))
+MAPFILES += $(patsubst %,%.map,$(PROGS))
+
 
 ##################################################
 
@@ -123,7 +131,7 @@ LWIP_DEPS = $(patsubst %.c,%.d,$(LWIP_CFILES))
 
 ##################################################
 
-.PHONY: all tags clean cleanacpi cleanlwip vmware cleanall indent netboot
+.PHONY: all tags clean cleanacpi cleanlwip vmware indent netboot
 
 all: $(PROGS)
 
@@ -136,29 +144,13 @@ quest: $(OBJS) $(ACPI_OBJS) $(LWIP_OBJS) $(SHARED_COMPS)
 
 %: %.c
 
-%.o: %.dats
-	$(ATSCC) $(ATSFLAGS) -fno-builtin -m32 -o $@ -c $^
-
 install: $(PROGS)
-	cp $(PROGS) welcome.raw $(MNT_POINT)/boot
-	sync
-	quest_turn_on
+	$(INSTALL_CMD) $(PROGS) welcome.raw $(INSTALL_DIR)/boot
 
 vmware: install quest.iso
 	qemu-img convert c.img -O vmdk c-img.vmdk
 	cp c-img.vmdk /mnt/hgfs/shared/quest/
 	cp quest.iso /mnt/hgfs/shared/quest/
-
-quest.iso: quest $(PROGS) iso-grub.cfg
-	mkdir -p iso/boot/grub 
-	cp iso-grub.cfg iso/boot/grub/grub.cfg
-	cp $(GRUB2)/eltorito.img iso/boot/grub/
-	$(TAR) -C iso/boot/grub -jxf $(GRUB2)/mods.tar.bz2
-	cp $(PROGS) welcome.raw iso/boot/ 
-	mkisofs -quiet $(MSINFO) \
-		-R -b boot/grub/eltorito.img \
-		-no-emul-boot -boot-load-size 4 \
-		-boot-info-table -o $@ iso
 
 indent:
 	(for f in $(CFILES); do [ -f "$$f" ] && $(INDENT) $(INDENTFLAGS) "$$f"; done)
@@ -167,18 +159,16 @@ tags:
 	find . -name '*.[ch]' | xargs etags -o TAGS 
 	find . -name '*.[ch]' | xargs ctags -o tags
 
-clean:
-	-rm -f $(OBJS) $(DFILES) $(MAPFILES) $(PROGS) quest.iso quest.map
-	-rm -rf iso tftp
+clean: cleanacpi cleanlwip cleanshared
+	-rm -f $(OBJS) $(DFILES) $(MAPFILES) $(PROGS) $(PROG_OBJS) quest.map
+	-rm -rf tftp
 
 cleanacpi:
 	-rm -f $(ACPI_OBJS) $(ACPI_DEPS)
 
-cleanall: clean cleanacpi cleanlwip cleanshared
-
 define ACPI_template
 $(1): $(patsubst %.o,%.c,$(1))
-	$(CC) $(CFLAGS) $(CPPFLAGS) -o $$@ -c $$^
+	$(CC) $(CFLAGS) $(CPPFLAGS) -o $$@ -c $$<
 endef
 
 $(foreach obj,$(ACPI_OBJS),$(eval $(call ACPI_template,$(obj))))
@@ -214,4 +204,6 @@ cleanshared:
 config.mk: default-config.mk
 	cp -f default-config.mk config.mk
 
-#-include $(shell find . -name '*.d')
+-include $(DFILES)
+
+$(OBJS) $(LWIP_OBJS) $(ACPI_OBJS) : config.mk

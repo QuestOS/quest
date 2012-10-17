@@ -1,5 +1,5 @@
 /*                    The Quest Operating System
- *  Copyright (C) 2005-2010  Richard West, Boston University
+ *  Copyright (C) 2005-2012  Richard West, Boston University
  *
  *  This program is free software: you can redistribute it and/or modify
  *  it under the terms of the GNU General Public License as published by
@@ -60,8 +60,6 @@
 #define QH_POOL_SIZE 16
 #define TYPE_TD 0
 #define TYPE_QH 1
-#define DIR_IN  0
-#define DIR_OUT 1
 
 /*
  * frm_lst_ptr : UHCI Frame List Pointer

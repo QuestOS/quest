@@ -1,5 +1,5 @@
 /*                    The Quest Operating System
- *  Copyright (C) 2005-2010  Richard West, Boston University
+ *  Copyright (C) 2005-2012  Richard West, Boston University
  *
  *  This program is free software: you can redistribute it and/or modify
  *  it under the terms of the GNU General Public License as published by
@@ -17,6 +17,7 @@
 
 #ifndef _SYSCALL_H_
 #define _SYSCALL_H_
+
 
 #include "types.h"
 #include "sys/socket.h"
@@ -40,6 +41,8 @@ struct sched_param
 #define CLOBBERS3 "memory","cc","%ebx","%edx","%esi","%edi"
 #define CLOBBERS4 "memory","cc","%ebx","%ecx","%esi","%edi"
 #define CLOBBERS5 "memory","cc","%edx","%esi","%edi"
+#define CLOBBERS6 "memory","cc","%esi","%edi"
+#define CLOBBERS7 "memory","cc","%edi"
 
 
 /* Syscall 0 used as a test syscall 
@@ -62,6 +65,15 @@ usleep (unsigned usec)
 
   asm volatile ("int $0x30\n"::"a" (1L), "b" (usec):CLOBBERS2);
 
+}
+
+static inline int
+usb_syscall(int device_id, int operation, void* buf, int data_len)
+{
+  int ret;
+  asm volatile ("int $0x30\n":"=a" (ret) : "a" (2L), "b"(device_id), "c" (operation),
+                "d" (buf), "S" (data_len) : CLOBBERS7);
+  return ret;
 }
 
 static inline unsigned short

@@ -1,5 +1,5 @@
 /*                    The Quest Operating System
- *  Copyright (C) 2005-2010  Richard West, Boston University
+ *  Copyright (C) 2005-2012  Richard West, Boston University
  *
  *  This program is free software: you can redistribute it and/or modify
  *  it under the terms of the GNU General Public License as published by
@@ -129,7 +129,7 @@ pl2303_init (USB_DEVICE_INFO *dev, USB_CFG_DESC *cfg, USB_IF_DESC *ifd)
   PL2303_CONFIG conf;
   memset (&conf, 0, sizeof (PL2303_CONFIG));
 
-  pl2303_dev = *(dev);
+  memcpy(&pl2303_dev, dev, sizeof(USB_DEVICE_INFO));
   memset (tmp, 0, 70);
 
   /* Parsing endpoints */
@@ -257,9 +257,8 @@ usb_pl2303_write (unsigned char * buf, uint32_t len)
   int status = 0;
 
   if ((status = usb_bulk_transfer (&pl2303_dev, out_ept, (addr_t) buf,
-        len, 64, DIR_OUT, &act_len))) {
-    _print ("PL2302 bulk write failed\n");
-  }
+        len, 64, USB_DIR_OUT, &act_len)))
+    DLOG ("Bulk write failed. Error Code: 0x%X", status);
   
   return act_len;
 }
@@ -285,9 +284,8 @@ usb_pl2303_read (unsigned char * buf, uint32_t len)
   int status = 0;
 
   if ((status = usb_bulk_transfer (&pl2303_dev, in_ept, (addr_t) buf,
-        len, 64, DIR_IN, &act_len))) {
-    _print ("PL2302 bulk read failed\n");
-  }
+        len, 64, USB_DIR_IN, &act_len)))
+    DLOG ("Bulk read failed. Error Code: 0x%X", status);
 
   return act_len;
 }

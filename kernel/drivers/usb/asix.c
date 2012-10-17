@@ -1,5 +1,5 @@
 /*                    The Quest Operating System
- *  Copyright (C) 2005-2010  Richard West, Boston University
+ *  Copyright (C) 2005-2012  Richard West, Boston University
  *
  *  This program is free software: you can redistribute it and/or modify
  *  it under the terms of the GNU General Public License as published by
@@ -344,7 +344,7 @@ transmit (uint8* buf, sint len)
 #endif
 
   if (usb_bulk_transfer (ethusbdev, data_ept_out, frame, len+4,
-                         data_maxpkt, DIR_OUT, &act_len) == 0)
+                         data_maxpkt, USB_DIR_OUT, &act_len) == 0)
     ret = act_len;
   else
     ret = 0;
@@ -358,7 +358,7 @@ poll (void)
   uint8 buffer[1600];
   uint32 act_len;
   if (usb_bulk_transfer (ethusbdev, data_ept_in, buffer, 1514,
-                         data_maxpkt, DIR_IN, &act_len) == 0) {
+                         data_maxpkt, USB_DIR_IN, &act_len) == 0) {
     if (act_len > 0) {
 #ifdef DEBUG_ASIX_DATA
       DLOG ("receiving data len=%.04d: %.02X %.02X %.02X %.02X",
@@ -395,7 +395,7 @@ status_loop (void)
   DLOG ("status_loop pid=0x%x", str ());
   for (;;) {
     if (usb_bulk_transfer (ethusbdev, status_ept, (uint8 *)&status, 8,
-                           status_maxpkt, DIR_IN, &act_len) == 0) {
+                           status_maxpkt, USB_DIR_IN, &act_len) == 0) {
       if (act_len > 0) {
         DLOG ("status update 0x%.08X %.08X", status[1], status[0]);
         if (status[0] & 0x10000)
@@ -515,7 +515,7 @@ static const struct module_ops mod_ops = {
   .init = usb_asix_driver_init
 };
 
-DEF_MODULE (usb___asix, "USB asix network driver", &mod_ops, {"usb", "net___ethernet"});
+//DEF_MODULE (usb___asix, "USB asix network driver", &mod_ops, {"usb", "net___ethernet"});
 
 
 /*

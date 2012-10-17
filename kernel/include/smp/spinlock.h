@@ -1,5 +1,5 @@
 /*                    The Quest Operating System
- *  Copyright (C) 2005-2010  Richard West, Boston University
+ *  Copyright (C) 2005-2012  Richard West, Boston University
  *
  *  This program is free software: you can redistribute it and/or modify
  *  it under the terms of the GNU General Public License as published by
@@ -59,6 +59,20 @@ spinlock_lock (spinlock * lock)
     }
 #endif
   }
+}
+
+static inline bool spinlock_attempt_lock(spinlock * lock)
+{
+  if (mp_enabled) {
+
+    int x = 1;
+    volatile uint32 *addr = &lock->lock;
+    asm volatile ("lock xchgl %1,(%0)":"=r" (addr),
+                  "=ir" (x):"0" (addr), "1" (x));
+    
+    return x == 0;
+  }
+  return TRUE;
 }
 
 static inline void

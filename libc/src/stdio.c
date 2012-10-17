@@ -1,5 +1,5 @@
 /*                    The Quest Operating System
- *  Copyright (C) 2005-2010  Richard West, Boston University
+ *  Copyright (C) 2005-2012  Richard West, Boston University
  *
  *  This program is free software: you can redistribute it and/or modify
  *  it under the terms of the GNU General Public License as published by
@@ -425,6 +425,15 @@ extern char *strdup(const char *s) {
   return dup;
 }
 
+strncmp (const char *a, const char *b, int n)
+{
+  int i = 0;
+  while (*a && *b && n-- > 0) {
+    i = *(a++) - *(b++);
+    if (i != 0) return i;
+  }
+  return i;
+}
 
 int strcmp(const char *s1, const char *s2) {
 

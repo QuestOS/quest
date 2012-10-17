@@ -29,6 +29,7 @@ SECTIONS {
   /* Maps kernel in upper 4MB of virtual address space on 32-bit machines */
   . = 0xFFC00000;
   _kernelstart = .;
+
   .text : AT ( _physicalkernelstart )
              { *(.text) } : virtualtext
   . = ALIGN(32);
@@ -49,6 +50,7 @@ SECTIONS {
 
   . = ALIGN(0x1000);
    _kernel_readwrite = .;
+
 
   /* Place shared drivers data in separate pages for Quest virtual
    * extension. We also have to exclude them in the kernel readwrite
@@ -81,6 +83,7 @@ SECTIONS {
               { shared.o (.bss COMMON)} : virtualdata
   _shared_driver_bss_end = ALIGN(0x1000);
   _shared_driver_bss_pages = (_shared_driver_bss_end - _shared_driver_bss) / 0x1000;
+
 
   _kernelend = ALIGN(0x1000);
   _readwrite_pages = ( _kernelend - _kernel_readwrite ) / 0x1000;

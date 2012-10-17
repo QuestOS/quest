@@ -1,5 +1,5 @@
 /*                    The Quest Operating System
- *  Copyright (C) 2005-2010  Richard West, Boston University
+ *  Copyright (C) 2005-2012  Richard West, Boston University
  *
  *  This program is free software: you can redistribute it and/or modify
  *  it under the terms of the GNU General Public License as published by
@@ -163,7 +163,7 @@ struct uvc_ia_desc
   uint8_t bFunctionSubClass;
   uint8_t bFunctionProtocol;
   uint8_t iFunction;
-} __attribute__ ((packed));
+} PACKED;
 
 typedef struct uvc_ia_desc UVC_IA_DESC;
 
@@ -184,7 +184,7 @@ struct uvc_csvc_if_hdr_desc
   uint32_t dwClockFrequency;
   uint8_t bInCollection;
   uint8_t baInterface1;
-} __attribute__ ((packed));
+} PACKED;
 
 typedef struct uvc_csvc_if_hdr_desc UVC_CSVC_IF_HDR_DESC;
 
@@ -204,7 +204,7 @@ struct uvc_in_term_desc
   uint16_t wTerminalType;
   uint8_t bAssocTerminal;
   uint8_t iTerminal;
-} __attribute__ ((packed));
+} PACKED;
 
 typedef struct uvc_in_term_desc UVC_IN_TERM_DESC;
 
@@ -229,7 +229,7 @@ struct uvc_csvs_if_hdr_desc
   uint8_t bTriggerSupport;
   uint8_t bTriggerUsage;
   uint8_t bControlSize;
-} __attribute__ ((packed));
+} PACKED;
 
 typedef struct uvc_csvs_if_hdr_desc UVC_CSVS_IF_HDR_DESC;
 
@@ -250,7 +250,7 @@ struct uvc_out_term_desc
   uint8_t bAssocTerminal;
   uint8_t bSourceID;
   uint8_t iTerminal;
-} __attribute__ ((packed));
+} PACKED;
 
 typedef struct uvc_out_term_desc UVC_OUT_TERM_DESC;
 
@@ -279,7 +279,7 @@ struct uvc_vs_ctl_par_block
   uint8_t bPreferedVersion;
   uint8_t bMinVersion;
   uint8_t bMaxVersion;
-} __attribute__ ((packed));
+} PACKED;
 
 typedef struct uvc_vs_ctl_par_block UVC_VS_CTL_PAR_BLOCK;
 
@@ -303,7 +303,7 @@ struct uvc_mjpeg_format_desc
   uint8_t bAspectRatioY;
   uint8_t bmInterlaceFlags;
   uint8_t bCopyProtect;
-} __attribute__ ((packed));
+} PACKED;
 
 typedef struct uvc_mjpeg_format_desc UVC_MJPEG_FORMAT_DESC;
 
@@ -328,9 +328,83 @@ struct uvc_mjpeg_frame_desc
   uint32_t dwMaxVideoFrameBufferSize;
   uint32_t dwDefaultFrameInterval;
   uint8_t bFrameIntervalType;
-} __attribute__ ((packed));
+} PACKED;
 
 typedef struct uvc_mjpeg_frame_desc UVC_MJPEG_FRAME_DESC;
+
+/*
+ * Uncompressed Video Payload Format Descriptor
+ *
+ * Reference USB Device Class Definition for Video Devices: Uncompressed Payload
+ */
+struct uvc_uncompressed_format_desc
+{
+  uint8_t bLength;
+  uint8_t bDescriptorType;
+  uint8_t bDescriptorSubtype;
+  uint8_t bFormatIndex;
+  uint8_t bNumFrameDescriptors;
+  uint8_t guidFormat[16];
+  uint8_t bBitsPerPixel;
+  uint8_t bDefaultFrameIndex;
+  uint8_t bAspectRatioX;
+  uint8_t bAspectRatioY;
+  uint8_t bmInterlaceFlags;
+  uint8_t bCopyProtect;
+} PACKED;
+
+typedef struct uvc_uncompressed_format_desc UVC_UNCOMPRESSED_FORMAT_DESC;
+
+/*
+ * Uncompressed Video Payload Frame Descriptor
+ *
+ * Reference USB Device Class Definition for Video Devices: Uncompressed Payload
+ */
+
+struct uvc_uncompressed_frame_desc
+{
+  uint8_t bLength;
+  uint8_t bDescriptorType;
+  uint8_t bDescriptorSubType;
+  uint8_t bFrameIndex;
+  uint8_t bmCapabilities;
+  uint16_t wWidth;
+  uint16_t wHeight;
+  uint32_t dwMinBitRate;
+  uint32_t dwMaxBitRate;
+  uint32_t dwMaxVideoFrameBufferSize;
+  uint32_t dwDefaultFrameInterval;
+  uint8_t bFrameIntervalType;
+} PACKED;
+
+typedef struct uvc_uncompressed_frame_desc UVC_UNCOMPRESSED_FRAME_DESC;
+
+#define UVC_MAX_NUM_MJPEG_FRAME_DESC 20
+#define UVC_MAX_DESC                 20
+
+typedef struct
+{
+  bool initialised;
+  struct urb* urb;
+  int mjpeg_format_index;
+  UVC_MJPEG_FRAME_DESC mjpeg_frame_desc[UVC_MAX_NUM_MJPEG_FRAME_DESC];
+  int num_mjpeg_frame_desc;
+  USB_IF_DESC interfaces[UVC_MAX_DESC];
+  USB_EPT_DESC endpoints[UVC_MAX_DESC];
+  int num_interfaces;
+  int num_endpoints;
+  int transaction_size;
+  int next_packet_to_read;
+  int packets_available;
+
+  /*
+   * -- EM -- hack since pow2 is broken
+   */
+  char urb_arena_hack[sizeof(struct urb) +
+                      sizeof(usb_iso_packet_descriptor_t) * 8 * 1024];
+} uvc_device_info_t;
+
+#define get_uvc_dev_info(dev) ((uvc_device_info_t*) (dev)->device_priv)
 
 extern bool usb_uvc_driver_init (void);
 

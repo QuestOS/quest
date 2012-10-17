@@ -1,5 +1,5 @@
 /*                    The Quest Operating System
- *  Copyright (C) 2005-2010  Richard West, Boston University
+ *  Copyright (C) 2005-2012  Richard West, Boston University
  *
  *  This program is free software: you can redistribute it and/or modify
  *  it under the terms of the GNU General Public License as published by
@@ -42,29 +42,62 @@ void
 _start ()
 {
   int pid;
+  int info = meminfo ();
+  unsigned shared_id;
+  int *shared_mem;
+
+  print ("MEMINFO: ");
+  putx (info);
+  print ("\n");
+
+  shared_id = shared_mem_alloc ();
+  if (shared_id < 0) {
+    _exit (1);
+  }
+  print ("shared_id = ");
+  putx (shared_id);
+  print ("\n");
+
+
+
   if ((pid = fork ())) {
-    print ("00000000");
-    waitpid (pid);
+    /* PARENT */
+    if (waitpid (pid) < 0) {
+      print ("waitpid returned -1\n");
+    }
+
+    shared_mem = shared_mem_attach (shared_id);
+    if ((unsigned) shared_mem == -1) {
+      shared_mem_free (shared_id);
+      _exit (1);
+    }
+    print ("parent shared_mem = ");
+    putx ((unsigned) shared_mem);
     print ("\n");
+
+    print ("PARENT (");
+    putx (*shared_mem);
+    print (")\n");
+
+    shared_mem_detach (shared_mem);
+    shared_mem_free (shared_id);
     _exit (0);
-  } else if ((pid = fork ())) {
-    print ("11111111");
-    waitpid (pid);
-    _exit (0);
-  } else if ((pid = fork ())) {
-    print ("22222222");
-    waitpid (pid);
-    _exit (0);
-  } else if ((pid = fork ())) {
-    print ("33333333");
-    waitpid (pid);
-    _exit (0);
-  } else if ((pid = fork ())) {
-    print ("44444444");
-    waitpid (pid);
-    _exit (0);
+
   } else {
-    print ("55555555");
+    /* CHILD */
+    shared_mem = shared_mem_attach (shared_id);
+    if ((unsigned) shared_mem == -1) {
+      shared_mem_free (shared_id);
+      _exit (1);
+    }
+    print ("child shared_mem = ");
+    putx ((unsigned) shared_mem);
+    print ("\n");
+
+    *shared_mem = 1;
+
+    shared_mem_detach (shared_mem);
+
     _exit (0);
   }
 }

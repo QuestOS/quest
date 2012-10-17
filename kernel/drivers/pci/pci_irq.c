@@ -1,5 +1,5 @@
 /*                    The Quest Operating System
- *  Copyright (C) 2005-2010  Richard West, Boston University
+ *  Copyright (C) 2005-2012  Richard West, Boston University
  *
  *  This program is free software: you can redistribute it and/or modify
  *  it under the terms of the GNU General Public License as published by
@@ -94,7 +94,7 @@ pci_irq_map (pci_irq_t *irq, uint8 vector,
   return IOAPIC_map_GSI (irq->gsi, vector, flags) >= 0;
 }
 
-extern bool
+extern u8
 pci_irq_map_handler (pci_irq_t *irq, vector_handler handler,
                      uint8 destmask,
                      IOAPIC_destination_mode_t destmode,
@@ -103,11 +103,11 @@ pci_irq_map_handler (pci_irq_t *irq, vector_handler handler,
   u8 vector = find_unused_vector (MINIMUM_VECTOR_PRIORITY);
   DLOG ("vector=0x%X", vector);
   if (!vector)
-    return FALSE;
+    return 0;
   if (!pci_irq_map (irq, vector, destmask, destmode, delivmode))
-    return FALSE;
+    return 0;
   set_vector_handler (vector, handler);
-  return TRUE;
+  return vector;
 }
 
 /* Unmap given PCI IRQ routing entry */

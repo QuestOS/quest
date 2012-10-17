@@ -1,5 +1,5 @@
 /*                    The Quest Operating System
- *  Copyright (C) 2005-2010  Richard West, Boston University
+ *  Copyright (C) 2005-2012  Richard West, Boston University
  *
  *  This program is free software: you can redistribute it and/or modify
  *  it under the terms of the GNU General Public License as published by
@@ -15,19 +15,30 @@
  *  along with this program.  If not, see <http://www.gnu.org/licenses/>.
  */
 
-#include <stdlib.h>
 #include <stdio.h>
 
 int
 main ()
 {
 
-  char *p;
+  int i, child, grandchild;
 
-  for (p = "In exec'd program!\n"; *p; p++)
-    putchar (*p);
+  if ((child = fork ())) {
+    /* parent */
+    for (i = 0; i < 10; i++)
+      puts ("Parent!");
 
-  printf ("memory = %d\n", meminfo ());
+    waitpid (child);
+  } else if ((grandchild = fork ())) {
+    /* child */
+    for (i = 0; i < 10; i++)
+      puts ("Child!");
+
+    waitpid (grandchild);
+  } else
+    /* grandchild */
+    for (i = 0; i < 10; i++)
+      puts ("Grandchild!");
 
   return 0;
 }

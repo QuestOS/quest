@@ -1,5 +1,5 @@
 /*                    The Quest Operating System
- *  Copyright (C) 2005-2010  Richard West, Boston University
+ *  Copyright (C) 2005-2012  Richard West, Boston University
  *
  *  This program is free software: you can redistribute it and/or modify
  *  it under the terms of the GNU General Public License as published by
@@ -74,15 +74,8 @@ _start ()
     putx ((unsigned) shared_mem);
     print ("\n");
 
-    for (i = 0; i < ITERATIONS; i++) {
-      int ebx, j;
-
-    asm ("cpuid": "=b" (ebx):"a" (1));
-
-      for (j = 0; j < (ebx >> 24); j++)
-        asm volatile ("lock decl %0":"=m" (*shared_mem):);
-    }
-
+    for (i = 0; i < ITERATIONS; i++)
+      (*shared_mem)--;
 
     if (waitpid (pid) < 0) {
       print ("waitpid returned -1\n");
@@ -108,14 +101,8 @@ _start ()
     putx ((unsigned) shared_mem);
     print ("\n");
 
-    for (i = 0; i < ITERATIONS; i++) {
-      int ebx, j;
-
-    asm ("cpuid": "=b" (ebx):"a" (1));
-
-      for (j = 0; j < (ebx >> 24); j++)
-        asm volatile ("lock incl %0":"=m" (*shared_mem):);
-    }
+    for (i = 0; i < ITERATIONS; i++)
+      (*shared_mem)++;
 
     shared_mem_detach (shared_mem);
 

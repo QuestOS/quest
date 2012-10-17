@@ -1,5 +1,5 @@
 /*                    The Quest Operating System
- *  Copyright (C) 2005-2010  Richard West, Boston University
+ *  Copyright (C) 2005-2012  Richard West, Boston University
  *
  *  This program is free software: you can redistribute it and/or modify
  *  it under the terms of the GNU General Public License as published by
@@ -37,6 +37,7 @@
 #include "drivers/input/keyboard.h"
 #include "sched/sched.h"
 #include "sched/vcpu.h"
+#include "drivers/usb/usb.h"
 #include "lwip/pbuf.h"
 #include "lwip/tcp.h"
 #include "lwip/udp.h"
@@ -126,6 +127,8 @@ find_unused_vector (u8 min_prio)
   }
   return (vector_handlers[i] == default_vector_handler ? i : 0);
 }
+
+
 
 char *exception_messages[] = {
   "Division Error",
@@ -386,11 +389,11 @@ splash_screen (void)
 
 #ifdef USE_VMX
   fun_printf (_user_putchar_attr_4,
-              "* Copyright Boston University, 2011 *"
+              "* Copyright Boston University, 2012 *"
               "  \\\\--\\ ||-- ||   | ||  | ||-- \\\\--\\   || \n");
 #else
   fun_printf (_user_putchar_attr_4,
-              "* Copyright Boston University, 2011 *"
+              "* Copyright Boston University, 2012 *"
               "   ||   | ||  | ||-- \\\\--\\   || \n");
 #endif
 
@@ -409,7 +412,7 @@ splash_screen (void)
 
 /* Syscalls */
 static u32
-syscall_putchar (u32 eax, u32 ebx)
+syscall_putchar (u32 eax, u32 ebx, u32 ecx, u32 edx, u32 esi)
 {
   static bool first = TRUE;
 
@@ -436,28 +439,52 @@ syscall_putchar (u32 eax, u32 ebx)
 }
 
 static u32
-syscall_usleep (u32 eax, u32 ebx)
+syscall_usleep (u32 eax, u32 ebx, u32 ecx, u32 edx, u32 esi)
 {
   sched_usleep (ebx);
   return ebx;
 }
 
+
+/*
+ * Syscall: _usb_syscall This is just a hack right now to give user
+ * space access to usb devices
+ */
+static int
+syscall_usb (u32 eax, u32 ebx, u32 ecx, u32 edx, u32 esi)
+{
+  u32 device_id = (int)ebx;
+  u32 operation = (int)ecx;
+  char* buf = (char*)edx;
+  u32 data_len = (int)esi;
+  int ret;
+#if 0
+  com1_printf("In %s called with arguments: (%d, %d, %d, %d, %d)\n", __FUNCTION__,
+              eax, ebx, ecx, edx, esi);
+
+  com1_printf("buf = 0x%X\n", buf);
+#endif
+  ret = usb_syscall_handler(device_id, operation, buf, data_len);
+  return ret;
+}
+
 struct syscall {
-  u32 (*func) (u32, u32);
+  u32 (*func) (u32, u32, u32, u32, u32);
 };
 struct syscall syscall_table[] = {
   { .func = syscall_putchar },
   { .func = syscall_usleep },
+  { .func = syscall_usb },
 };
 #define NUM_SYSCALLS (sizeof (syscall_table) / sizeof (struct syscall))
 
 u32
-handle_syscall0 (u32 eax, u32 ebx)
+handle_syscall0 (u32 eax, u32 ebx, u32 ecx, u32 edx, u32 esi)
 {
   u32 res;
   lock_kernel ();
   if (eax < NUM_SYSCALLS)
-    res = syscall_table[eax].func (eax, ebx);
+    res = syscall_table[eax].func (eax, ebx, ecx, edx, esi);
   else
     res = 0;
   unlock_kernel ();
@@ -1093,6 +1120,13 @@ _timer (void)
       vcpu_dump_stats ();
 #endif
 
+#if 0
+    {
+      void umsc_tmr_test (void);
+      umsc_tmr_test ();
+    }
+#endif
+
     unlock_kernel ();
 
 #ifdef GDBSTUB_TCP
@@ -1104,12 +1138,7 @@ _timer (void)
       }
     }      
 #endif
-#if 0
-    {
-      void umsc_tmr_test (void);
-      umsc_tmr_test ();
-    }
-#endif
+
   }
 
   if (!mp_ISA_PC) {

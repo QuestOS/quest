@@ -1,0 +1,8 @@
+*.o
+*.map
+*.d
+*~
+TAGS
+tags
+*.cap
+*.a

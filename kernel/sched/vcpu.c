@@ -1,5 +1,5 @@
 /*                    The Quest Operating System
- *  Copyright (C) 2005-2010  Richard West, Boston University
+ *  Copyright (C) 2005-2012  Richard West, Boston University
  *
  *  This program is free software: you can redistribute it and/or modify
  *  it under the terms of the GNU General Public License as published by
@@ -420,7 +420,7 @@ vcpu_dump_stats (void)
   u32 stime = percpu_read (pcpu_sched_time);
   extern u32 uhci_sample_bps (void);
   extern u32 atapi_sample_bps (void);
-  u32 uhci_bps = uhci_sample_bps ();
+  u32 uhci_bps = 0;//uhci_sample_bps ();
   u32 atapi_bps = atapi_sample_bps ();
   u64 now; RDTSC (now);
 

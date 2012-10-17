@@ -1,5 +1,5 @@
 /*                    The Quest Operating System
- *  Copyright (C) 2005-2010  Richard West, Boston University
+ *  Copyright (C) 2005-2012  Richard West, Boston University
  *
  *  This program is free software: you can redistribute it and/or modify
  *  it under the terms of the GNU General Public License as published by
@@ -136,7 +136,7 @@ extern bool pci_irq_map (pci_irq_t *irq, uint8 vector,
                          uint8 destmask,
                          IOAPIC_destination_mode_t destmode,
                          IOAPIC_delivery_mode_t delivmode);
-extern bool pci_irq_map_handler (pci_irq_t *irq, vector_handler handler,
+extern u8 pci_irq_map_handler (pci_irq_t *irq, vector_handler handler,
                                  uint8 destmask,
                                  IOAPIC_destination_mode_t destmode,
                                  IOAPIC_delivery_mode_t delivmode);
@@ -248,6 +248,18 @@ pci_write_dword (pci_config_addr a, uint32 v)
   a32 = *((uint32 *) &a) & (~0x3);       /* zero out lowest 2 bits */
   outl (a32, PCI_CONFIG_ADDRESS);
   outl (v, PCI_CONFIG_DATA);
+}
+
+static inline uint16
+pci_get_status(uint8 bus, uint8 device, uint8 func)
+{
+  return pci_read_word(pci_addr(bus, device, func, 0x06));
+}
+
+static inline uint16
+pci_get_command(uint8 bus, uint8 device, uint8 func)
+{
+  return pci_read_word(pci_addr(bus, device, func, 0x04));
 }
 
 #endif

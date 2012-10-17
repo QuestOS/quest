@@ -1,5 +1,5 @@
 /*                    The Quest Operating System
- *  Copyright (C) 2005-2010  Richard West, Boston University
+ *  Copyright (C) 2005-2012  Richard West, Boston University
  *
  *  This program is free software: you can redistribute it and/or modify
  *  it under the terms of the GNU General Public License as published by
@@ -18,7 +18,6 @@
 /* USB Hub driver */
 #include <smp/apic.h>
 #include <drivers/usb/usb.h>
-#include <drivers/usb/uhci.h>
 #include <util/printf.h>
 #include <kernel.h>
 #include <sched/sched.h>
@@ -33,7 +32,7 @@
 #define DLOG(fmt,...) ;
 #endif
 
-bool uhci_enumerate (void);
+
 
 #define HUB_PORT_STAT_POWER 0x0100
 #define HUB_PORT_RESET 4
@@ -61,19 +60,14 @@ struct usb_hub_desc
 typedef struct usb_hub_desc USB_HUB_DESC;
 
 static uint16
-hub_port_status (uint address, uint port)
+hub_port_status (USB_DEVICE_INFO* info, uint port)
 {
   sint status;
-  USB_DEV_REQ req;
   uint8 data[4];
 
-  req.bmRequestType = 0xA3;
-  req.bRequest = USB_GET_STATUS;
-  req.wValue = 0;
-  req.wIndex = port;
-  req.wLength = 4;
   /* We assume this is a full speed device, use the maximum, 64 bytes */
-  status = uhci_control_transfer (address, &req, sizeof (req), data, 4, 64);
+  status = usb_control_msg(info, usb_rcvctrlpipe(info, 0), USB_GET_STATUS, 0xA3,
+                           0, port, data, 4, USB_DEFAULT_CONTROL_MSG_TIMEOUT);
   DLOG ("GET_PORT_STATUS: status=%d port status: %.04X",
         status, *((uint16 *)data));
 
@@ -81,83 +75,73 @@ hub_port_status (uint address, uint port)
 }
 
 static bool
-hub_set_port_feature (uint address, uint port, uint feature)
+hub_set_port_feature (USB_DEVICE_INFO* info, uint port, uint feature)
 {
   sint status;
-  USB_DEV_REQ req;
-
-  req.bmRequestType = 0x23;
-  req.bRequest = USB_SET_FEATURE;
-  req.wValue = feature;
-  req.wIndex = port;
-  req.wLength = 0;
   /* We assume this is a full speed device, use the maximum, 64 bytes */
-  status = uhci_control_transfer (address, &req, sizeof (req), NULL, 0, 64);
+  status = usb_control_msg(info, usb_sndctrlpipe(info, 0), USB_SET_FEATURE,
+                           0x23, feature, port, NULL, 0, USB_DEFAULT_CONTROL_MSG_TIMEOUT);
   DLOG ("SET_PORT_FEATURE: status=%d", status);
 
   return status == 0;
 }
 
 static bool
-hub_clr_port_feature (uint address, uint port, uint feature)
+hub_clr_port_feature (USB_DEVICE_INFO* info, uint port, uint feature)
 {
   sint status;
-  USB_DEV_REQ req;
 
-  req.bmRequestType = 0x23;
-  req.bRequest = USB_CLEAR_FEATURE;
-  req.wValue = feature;
-  req.wIndex = port;
-  req.wLength = 0;
   /* We assume this is a full speed device, use the maximum, 64 bytes */
-  status = uhci_control_transfer (address, &req, sizeof (req), NULL, 0, 64);
+  status = usb_control_msg(info, usb_sndctrlpipe(info, 0), USB_CLEAR_FEATURE,
+                           0x23, feature, port, NULL, 0, USB_DEFAULT_CONTROL_MSG_TIMEOUT);
   DLOG ("CLEAR_PORT_FEATURE: status=%d", status);
 
   return status == 0;
 }
 
 static bool
-probe_hub (USB_DEVICE_INFO *info, USB_CFG_DESC *cfgd, USB_IF_DESC *ifd)
+probe_hub (USB_DEVICE_INFO* info, USB_CFG_DESC *cfgd, USB_IF_DESC *ifd)
 {
-  sint status, i, address = info->address;
-  USB_DEV_REQ req;
+  sint status, i;
   USB_HUB_DESC hubd;
+
 
   if (ifd->bInterfaceClass != USB_HUB_CLASS)
     return FALSE;
 
   /* it's a hub, set the configuration */
-  usb_set_configuration (info, cfgd->bConfigurationValue);
+  if(usb_set_configuration (info, cfgd->bConfigurationValue) < 0) {
+    return FALSE;
+  }
 
   memset (&hubd, 0, sizeof (hubd));
 
-  DLOG ("Probing hub @ %d", address);
+  DLOG ("Probing hub @ %d", info->address);
   delay (100);
-  req.bmRequestType = 0xA0;
-  req.bRequest = USB_GET_DESCRIPTOR;
-  req.wValue = 0x29 << 8;
-  req.wIndex = 0;
-  req.wLength = sizeof (USB_HUB_DESC);
   /* We assume this is a full speed device, use the maximum, 64 bytes */
-  status = uhci_control_transfer (address, &req, sizeof (req), &hubd, sizeof (hubd), 64);
+
+  status = usb_control_msg(info, usb_rcvctrlpipe(info, 0), USB_GET_DESCRIPTOR, 0xA0,
+                           0x29 << 8, 0, &hubd, sizeof(hubd),
+                           USB_DEFAULT_CONTROL_MSG_TIMEOUT);
   DLOG ("GET_HUB_DESCRIPTOR: status=%d len=%d nbrports=%d delay=%d",
         status, hubd.bDescLength, hubd.bNbrPorts, hubd.bPwrOn2PwrGood);
-  if (status != 0) return FALSE;
+
+  if (status < 0) return FALSE;
   for (i=1; i<=hubd.bNbrPorts; i++) {
     /* power-on port if necessary */
-    while (!((status=hub_port_status (address, i)) & HUB_PORT_STAT_POWER)) {
-      hub_set_port_feature (address, i, HUB_PORT_POWER);
+    while (!((status = hub_port_status (info, i)) & HUB_PORT_STAT_POWER)) {
+      hub_set_port_feature (info, i, HUB_PORT_POWER);
       delay (2*hubd.bPwrOn2PwrGood);
     }
     if (status & 1) {
       /* potential device on port i */
-      hub_set_port_feature (address, i, HUB_PORT_RESET);
+      hub_set_port_feature (info, i, HUB_PORT_RESET);
       delay (10);
-      hub_port_status (address, i);
-      hub_clr_port_feature (address, i, HUB_PORT_C_RESET);
-      hub_port_status (address, i);
+      hub_port_status (info, i);
+      hub_clr_port_feature (info, i, HUB_PORT_C_RESET);
+      hub_port_status (info, i);
       delay (2*hubd.bPwrOn2PwrGood);
-      uhci_enumerate ();
+      usb_enumerate(info->hcd);
     }
   }
   return TRUE;

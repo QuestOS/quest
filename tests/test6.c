@@ -1,5 +1,5 @@
 /*                    The Quest Operating System
- *  Copyright (C) 2005-2010  Richard West, Boston University
+ *  Copyright (C) 2005-2012  Richard West, Boston University
  *
  *  This program is free software: you can redistribute it and/or modify
  *  it under the terms of the GNU General Public License as published by
@@ -45,6 +45,7 @@ _start ()
   int info = meminfo ();
   unsigned shared_id;
   int *shared_mem;
+  int i;
 
   print ("MEMINFO: ");
   putx (info);
@@ -58,13 +59,11 @@ _start ()
   putx (shared_id);
   print ("\n");
 
+  /* try to test a race condition */
 
-
+#define ITERATIONS 1000000
   if ((pid = fork ())) {
     /* PARENT */
-    if (waitpid (pid) < 0) {
-      print ("waitpid returned -1\n");
-    }
 
     shared_mem = shared_mem_attach (shared_id);
     if ((unsigned) shared_mem == -1) {
@@ -75,11 +74,26 @@ _start ()
     putx ((unsigned) shared_mem);
     print ("\n");
 
-    print ("PARENT (");
+    for (i = 0; i < ITERATIONS; i++) {
+      int ebx, j;
+
+    asm ("cpuid": "=b" (ebx):"a" (1));
+
+      for (j = 0; j < (ebx >> 24); j++)
+        asm volatile ("lock decl %0":"=m" (*shared_mem):);
+    }
+
+
+    if (waitpid (pid) < 0) {
+      print ("waitpid returned -1\n");
+    }
+
+    print ("value = ");
     putx (*shared_mem);
-    print (")\n");
+    print ("\n");
 
     shared_mem_detach (shared_mem);
+
     shared_mem_free (shared_id);
     _exit (0);
 
@@ -94,7 +108,14 @@ _start ()
     putx ((unsigned) shared_mem);
     print ("\n");
 
-    *shared_mem = 1;
+    for (i = 0; i < ITERATIONS; i++) {
+      int ebx, j;
+
+    asm ("cpuid": "=b" (ebx):"a" (1));
+
+      for (j = 0; j < (ebx >> 24); j++)
+        asm volatile ("lock incl %0":"=m" (*shared_mem):);
+    }
 
     shared_mem_detach (shared_mem);
 

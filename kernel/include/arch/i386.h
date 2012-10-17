@@ -1,5 +1,5 @@
 /*                    The Quest Operating System
- *  Copyright (C) 2005-2010  Richard West, Boston University
+ *  Copyright (C) 2005-2012  Richard West, Boston University
  *
  *  This program is free software: you can redistribute it and/or modify
  *  it under the terms of the GNU General Public License as published by
@@ -52,10 +52,10 @@
 #define PTE_AVAIL2 0x800
 #define PTE_FRAME 0xFFFFF000    /* page frame address */
 
-#define PORT1 0x03F8            /* COM1 */
-
 #define PIC1_BASE_IRQ 0x20
 #define PIC2_BASE_IRQ 0x28
+
+extern uint16 serial_port1;
 
 typedef struct _tss
 {
@@ -113,6 +113,9 @@ typedef struct _idt_descriptor
   uint32 fPresent:1;      /* present bit */
   uint32 pBase1:16;       /* Offset (bits 16-31) */
 } idt_descriptor;
+
+
+#define gccmb()    asm volatile ("" : : : "memory")
 
 static inline void
 cli (void)

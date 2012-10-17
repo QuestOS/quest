@@ -1,5 +1,5 @@
 /*                    The Quest Operating System
- *  Copyright (C) 2005-2010  Richard West, Boston University
+ *  Copyright (C) 2005-2012  Richard West, Boston University
  *
  *  This program is free software: you can redistribute it and/or modify
  *  it under the terms of the GNU General Public License as published by
@@ -15,32 +15,46 @@
  *  along with this program.  If not, see <http://www.gnu.org/licenses/>.
  */
 
-#include <stdio.h>
+#include "syscall.h"
 
-int
-main ()
+void
+putx (unsigned long l)
 {
 
-  int i, child, grandchild;
+  int i, li;
 
-  if ((child = fork ())) {
-    /* parent */
-    for (i = 0; i < 10; i++)
-      puts ("Parent!");
+  for (i = 7; i >= 0; i--)
+    if ((li = (l >> (i << 2)) & 0x0F) > 9)
+      putchar ('A' + li - 0x0A);
+    else
+      putchar ('0' + li);
+}
 
-    waitpid (child);
-  } else if ((grandchild = fork ())) {
-    /* child */
-    for (i = 0; i < 10; i++)
-      puts ("Child!");
+void
+print (char *s)
+{
+  while (*s) {
+    putchar (*s++);
+  }
+}
 
-    waitpid (grandchild);
-  } else
-    /* grandchild */
-    for (i = 0; i < 10; i++)
-      puts ("Grandchild!");
+void
+_start ()
+{
+  int pid;
+  int var = 0;
 
-  return 0;
+  if ((pid = fork ())) {
+    waitpid (pid);
+    print ("parent (");
+    putx (var);
+    print (")\n");
+    _exit (0);
+  } else {
+    print ("child          \n");
+    var = 1;
+    _exit (0);
+  }
 }
 
 /* 

@@ -1,5 +1,5 @@
 /*                    The Quest Operating System
- *  Copyright (C) 2005-2010  Richard West, Boston University
+ *  Copyright (C) 2005-2012  Richard West, Boston University
  *
  *  This program is free software: you can redistribute it and/or modify
  *  it under the terms of the GNU General Public License as published by
@@ -16,14 +16,54 @@
  */
 
 #include "kernel.h"
+#include "drivers/usb/usb.h"
 #include "module/header.h"
+#include <util/printf.h>
+
+#define DEBUG_USB_ENUM
+
+
+#ifdef DEBUG_USB_ENUM
+#define DLOG(fmt,...) DLOG_PREFIX("USB ENUM",fmt,##__VA_ARGS__)
+#else
+#define DLOG(fmt,...) ;
+#endif
+
 
 /* Enumerate the USB bus */
 bool
 usbenumeration_init (void)
 {
-  extern bool usb_do_enumeration (void);
-  return usb_do_enumeration ();
+  // Turn UHCI enumeration off
+  //extern bool usb_do_enumeration (void);
+  //if(!usb_do_enumeration()) return FALSE;
+
+  uint32_t index = 0;
+  usb_hcd_t* hcd = NULL;
+
+  DLOG("IN USB ENUM");
+
+  while( (hcd = get_usb_hcd(index)) != NULL) {
+    index++;
+    if(!hcd->reset_root_ports(hcd)) {
+      DLOG("Failed to reset root ports for device %d", index-1);
+      panic("Failed to reset root ports for device");
+      continue;
+    }
+    if(!usb_enumerate(hcd))  {
+      DLOG("Failed to enumerate device %d", index-1);
+      continue;
+    }
+    
+    if(!hcd->post_enumeration(hcd)) {
+      DLOG("post enumeration failed for device %d", index-1);
+      continue;
+    }
+  }
+
+  DLOG("Number of USB HCD enumerated %d", index);
+  
+  return TRUE;
 }
 
 static const struct module_ops mod_ops = {

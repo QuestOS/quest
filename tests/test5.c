@@ -1,5 +1,5 @@
 /*                    The Quest Operating System
- *  Copyright (C) 2005-2010  Richard West, Boston University
+ *  Copyright (C) 2005-2012  Richard West, Boston University
  *
  *  This program is free software: you can redistribute it and/or modify
  *  it under the terms of the GNU General Public License as published by
@@ -43,11 +43,28 @@ _start ()
 {
   int pid;
   if ((pid = fork ())) {
-    print ("parent\n");
+    print ("00000000");
+    waitpid (pid);
+    print ("\n");
+    _exit (0);
+  } else if ((pid = fork ())) {
+    print ("11111111");
+    waitpid (pid);
+    _exit (0);
+  } else if ((pid = fork ())) {
+    print ("22222222");
+    waitpid (pid);
+    _exit (0);
+  } else if ((pid = fork ())) {
+    print ("33333333");
+    waitpid (pid);
+    _exit (0);
+  } else if ((pid = fork ())) {
+    print ("44444444");
     waitpid (pid);
     _exit (0);
   } else {
-    print ("child\n");
+    print ("55555555");
     _exit (0);
   }
 }

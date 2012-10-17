@@ -23,3 +23,6 @@ OPT = 0
 
 # Share UHCI USB host controller driver
 #CFG += -DSHARED_UHCI
+
+# USB provides real-time guarantees for bulk and control transactions
+CFG += -DUSB_REALTIME_ASYNC 

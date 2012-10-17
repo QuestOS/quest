@@ -1,5 +1,5 @@
 /*                    The Quest Operating System
- *  Copyright (C) 2005-2010  Richard West, Boston University
+ *  Copyright (C) 2005-2012  Richard West, Boston University
  *
  *  This program is free software: you can redistribute it and/or modify
  *  it under the terms of the GNU General Public License as published by
@@ -25,14 +25,14 @@
 #ifndef GDBSTUB_TCP
 void putDebugChar (int c)
 {
-  while (!(inb (PORT1 + 5) & 0x20));    /* check line status register, empty transmitter bit */
-  outb (c, PORT1);
+  while (!(inb (serial_port1 + 5) & 0x20));    /* check line status register, empty transmitter bit */
+  outb (c, serial_port1);
 }
 
 int getDebugChar (void)
 {
-  while (!(inb (PORT1 + 5) & 1));
-  return inb (PORT1);
+  while (!(inb (serial_port1 + 5) & 1));
+  return inb (serial_port1);
 }
 #endif
 
@@ -44,12 +44,13 @@ com1_putc (char c)
 #elif !defined(ENABLE_GDBSTUB) || defined(GDBSTUB_TCP)
   if (c == '\n') {
     /* output CR before NL */
-    while (!(inb (PORT1 + 5) & 0x20));  /* check line status register, empty transmitter bit */
-    outb ('\r', PORT1);
+    while (!(inb (serial_port1 + 5) & 0x20));  /* check line status register, empty transmitter bit */
+    outb ('\r', serial_port1);
   }
 
-  while (!(inb (PORT1 + 5) & 0x20));    /* check line status register, empty transmitter bit */
-  outb (c, PORT1);
+
+  while (!(inb (serial_port1 + 5) & 0x20));    /* check line status register, empty transmitter bit */
+  outb (c, serial_port1);
 #ifdef USE_PL2303
   if (pl2303_initialized && shared_driver_available) {
     if (c == '\n') {
@@ -173,8 +174,8 @@ dump_page (u8 *addr)
 
 static int getc (void)
 {
-  while (!(inb (PORT1 + 5) & 1));
-  return inb (PORT1);
+  while (!(inb (serial_port1 + 5) & 1));
+  return inb (serial_port1);
 }
 
 void

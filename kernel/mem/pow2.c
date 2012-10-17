@@ -1,5 +1,5 @@
 /*                    The Quest Operating System
- *  Copyright (C) 2005-2010  Richard West, Boston University
+ *  Copyright (C) 2005-2012  Richard West, Boston University
  *
  *  This program is free software: you can redistribute it and/or modify
  *  it under the terms of the GNU General Public License as published by
@@ -199,7 +199,9 @@ pow2_alloc (uint32 size, uint8 ** ptr)
   *ptr = pow2_get_free_block (index);
   pow2_insert_used_table (*ptr, index);
   spinlock_unlock (&pow2_lock);
-  memset (*ptr, 0, size);
+  if(*ptr != NULL) {
+    memset(*ptr, 0, size);
+  }
   return index;
 }
 
