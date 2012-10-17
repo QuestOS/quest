@@ -1,0 +1,44 @@
+# *** Choose your compiler. Make it ANSI-compatible (e.g. 'cc -ansi').
+CC	= gcc
+LD	= ld -melf_i386 -T../kernel/ldscripts/module.ld
+
+
+ifndef INSTALL_DIR
+INSTALL_DIR=/tftp
+endif
+
+ifndef INSTALL_CMD
+INSTALL_CMD = cp
+endif
+
+# *** architecture.
+
+# quest
+
+LIBS   = -L../libc/ -L../libc/include -L../softfloat/ -lc -lsoftfloat
+INCS   = -I../libc/include -I../quest/include -I.
+CFLAGS = -m32 -march=i586 -fno-builtin -fno-stack-protector -fno-strict-aliasing \
+         -fno-delete-null-pointer-checks -nostdinc -g -Wall -Wno-attributes -O0 \
+         -D_QUEST -Wa,--32 -MMD -msoft-float $(INCS) $(LIBS)
+
+OBJS = torcs.o
+
+#mame:  $(OBJS) /../libc/libc.a
+#	$(LD) -o mame $(OBJS) $(LIBS.$(ARCH))
+#obj/%.o: src/%.c
+#	 $(CC) $(DEFS.$(ARCH)) $(MS) $(CFLAGS) -O3 -o $@ -c $<
+
+all:  torcs
+
+torcs: $(OBJS) 
+	$(LD) -o torcs $(OBJS) $(LIBS)
+
+
+%.o: %.c
+	$(CC)  $(CFLAGS) -o $@ -c $<
+
+clean:
+	rm -f *.o *.d *~ torcs
+
+install: torcs
+	$(INSTALL_CMD) torcs $(INSTALL_DIR)/boot

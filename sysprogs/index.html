@@ -1,0 +1,356 @@
+<!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd">
+<!--
+Layout based on designs by Free CSS Templates
+http://www.freecsstemplates.org
+Released for free under a Creative Commons Attribution 2.5 License
+Heavily modified by Rich West -- Boston University
+-->
+<html xmlns="http://www.w3.org/1999/xhtml"><head>
+    <meta http-equiv="Content-Type" content="text/html; charset=UTF-8">
+    <title>Quest</title>
+    <meta name="Keywords" content="">
+    <meta name="Description" content="">
+    <link href="default.css" rel="stylesheet" type="text/css">
+  </head>
+  <body>
+    <div id="header-simple"> </div>
+    <div id="content">
+      <!-- Insert content here -->
+      <div id="colWide"> <img alt="Quest" src="quest.png" style="width: 229px; height: 42px;"><span style="font-weight: bold;"><br>
+          &nbsp;&nbsp;&nbsp; A lightweight, predictable and dependable
+          kernel for multicore processors</span><br>
+        <br>
+        <span style="font-weight: bold;"></span>
+        <h1><span style="font-weight: bold;"></span>Overview</h1>
+        <ul>
+        </ul>
+        <p>Quest is a small operating system designed to be used as the
+          basis for research and education. Richard West and Gary Wong
+          developed the beginning of Quest in the summer of 2005. Since
+          that time, several others such as Matt Danish and Ye Li have
+          contributed to developments, including SMP support and
+          extended driver development.<br>
+        </p>
+        <p>Quest is open source software available under the terms of
+          the GNU General Public License v3.</p>
+        <h1>Features</h1>
+        <ul class="sections">
+          <li> <span class="title"></span>Supports Intel® 32-bit x86
+            architecture in protected mode</li>
+          <li>Software-based preemptive multi-tasking</li>
+          <li>Static priority-based, real-time Virtual CPU scheduler</li>
+          <li>Real-time hardware performance monitoring <br>
+          </li>
+          <li>Symmetric multi-processing, up to 8 logical CPUs</li>
+          <li>Boots from HD, CD-ROM, USB or Network (PXE)</li>
+          <li>Simple ATA and ATAPI support with ext2 and iso9660
+            filesystems</li>
+          <li>USB (v. 1.1) UHCI support: mass storage, network, serial
+            port, video camera</li>
+          <li>PCI network cards: e1000, pcnet32, realtek 8169</li>
+          <li>TCP/IP networking provided by <a href="http://savannah.nongnu.org/projects/lwip/">lwIP</a></li>
+          <li>Integration with <a href="http://www.acpica.org/">ACPICA</a>,
+            a reference ACPI implementation</li>
+          <li>Sound Blaster 16 driver using DMA</li>
+          <li>Intel® hardware virtualization (VMX) support<br>
+          </li>
+          <li>Minimal Unix-style system call interface: <tt>fork/exec/open</tt></li>
+          <li> Basic shell and 8042 keyboard driver<br>
+          </li>
+        </ul>
+        <h1>Why a New OS?</h1>
+        Given the current state-of-the-art in OS development, and the
+        numerous systems already available, this is a natural question
+        to ask. In particular, writing a new OS is time-consuming, and
+        technically difficult. It is unlikely that without many
+        man-years of development a new OS will ever have the maturity to
+        support commercial-grade applications, partly due to the lack of
+        driver support and rich APIs/libraries on which such
+        applications depend. However, from our experience the code
+        complexity of existing modern systems often becomes a hindrance
+        when developing new policies and mechanisms. Similarly, many
+        pre-existing systems have evolved from designs that are
+        fundamentally based on principles from several decades ago, yet
+        in that time there have been significant hardware changes. We
+        now have multicore processors with hardware virtualization
+        support, simultaneous multi-threading (SMT), shared on-chip
+        caches, NUMA topologies with on-chip integrated memory
+        controllers and interconnection networks, and power management
+        features. It is true that many modern OSes have evolved to
+        support these new hardware features but there is evidence to
+        suggest a new approach is worthwhile considering e.g., due to
+        scalability concerns associated with the management of many
+        on-chip cores, and also the micro-architectural resource
+        contention due to the inherent parallel access to caches, bus
+        interconnects and memory. <br>
+        <br>
+        With this in mind, Quest is a new OS that aims to support "time
+        as a first-class resource". From the ground up, Quest manages
+        all resources via time-budgeted and temporally-isolated virtual
+        CPUs (VCPUs). The system features a hierarchical scheduling
+        infrastructure, with both main and IO VCPUs to handle the
+        execution of conventional tasks and system events associated
+        with interrupts.&nbsp; This means that real-time and
+        non-real-time tasks can co-exist without interference, at least
+        in terms of the resource time budgets they are guaranteed. This
+        does not, however, guarantee the amount of progress a task makes
+        in real-time, because micro-architectural resource contention is
+        still possible. For example, one task may evict another's memory
+        contents from a shared on-chip cache, or may compete for memory
+        bus bandwidth. These factors all affect the execution time of
+        tasks. <br>
+        <br>
+        To ensure efficient progress is made by all tasks, and to try to
+        bound the amount of interference between tasks caused by
+        micro-architectural resource contention, Quest incorporates a
+        real-time performance monitoring sub-system that uses hardware
+        performance counters to track micro-architectural resource
+        usage. From this, we are able to construct performance curves
+        and various resource usage models, including predictions of
+        cache occupancy and the effect this will have on task execution.
+        <br>
+        <br>
+        Aside from predictability and efficiency objectives, Quest also
+        aims to ensure its integrity is not compromised by ill-written
+        or malicious third party software. This aspect of safety is to
+        prevent system failure when any sub-component behaves
+        erroneously. In this regard, Quest utilizes various hardware and
+        software features (including hardware virtualization) to isolate
+        system components, so that if one component fails the system can
+        recover. <br>
+        <br>
+        <h1>Further Information<br>
+        </h1>
+        <table style="text-align: left; width: 100%;" cellpadding="2" cellspacing="2" border="0">
+          <tbody>
+            <tr>
+              <td style="vertical-align: top;">
+                <ul>
+                  <li>Ye Li, Matthew Danish and Richard West, <span style="font-weight: bold;">"Quest-V: A Virtualized
+                      Multikernel for High-Confidence Systems"</span>,
+                    Technical Report: arXiv:1112.5136, arXiv.org</li>
+                </ul>
+              </td>
+              <td style="background-color: rgb(204, 204, 204);">[<a href="http://arxiv.org/pdf/1112.5136v1">pdf</a>]<br>
+              </td>
+            </tr>
+            <tr>
+              <td style="vertical-align: top;">
+                <ul>
+                  <li>Ye Li, Eric Missimer, Richard West, Matthew Danish
+          and Ying Ye, <span style="font-weight: bold;">"Quest-V: A Virtualized
+                      Multikernel for High-Confidence Systems"</span>,
+                    Poster for the BU Science Day, Spring 2012</li>
+                </ul>
+              </td>
+              <td style="background-color: rgb(204, 204, 204);">[<a href="http://www.cs.bu.edu/fac/richwest/slides/questv_poster.pdf">pdf</a>]<br>
+              </td>
+            </tr>
+            <tr>
+              <td style="vertical-align: top;">
+                <ul>
+                  <li>Matthew Danish, Ye Li and Richard West, <span style="font-weight: bold;">"Virtual-CPU Scheduling
+                      in the Quest Operating System"</span>, in
+                    Proceedings of the 17th IEEE Real-Time and Embedded
+                    Technology and Applications Symposium, Chicago, IL,
+                    USA, April 11-14, 2011<br>
+                  </li>
+                </ul>
+              </td>
+              <td style="background-color: rgb(204, 204, 204);">[<a href="http://www.cs.bu.edu/fac/richwest/papers/rtas11-quest-vcpu.pdf">pdf</a>] </td>
+            </tr>
+            <tr>
+              <td style="vertical-align: top;">
+                <ul>
+                  <li>Slides presented at Charles River Analytics (CRA),
+                    Cambridge, MA on Quest VCPU Scheduling</li>
+                </ul>
+              </td>
+              <td style="background-color: rgb(204, 204, 204);">[<a href="http://www.cs.bu.edu/fac/richwest/slides/quest-vcpu-slides.pdf">pdf</a>]<br>
+              </td>
+            </tr>
+            <tr>
+              <td style="vertical-align: top;">
+                <ul>
+                  <li>Slides for the talk at the 17th IEEE Real-Time and
+                    Embedded Technology and Applications Symposium,
+                    Chicago, USA, April 13, 2011</li>
+                </ul>
+              </td>
+              <td style="background-color: rgb(204, 204, 204);">[<a href="http://www.cs.bu.edu/fac/richwest/slides/VCPU_Quest.pdf">pdf</a>]<br>
+              </td>
+            </tr>
+            <tr>
+              <td style="vertical-align: top;">
+                <ul>
+                  <li>Poster presented at the BU Science Day, Spring
+                    2011 on Quest’s VCPU Scheduling Infrastructure</li>
+                </ul>
+              </td>
+              <td style="background-color: rgb(204, 204, 204);">[<a href="http://www.cs.bu.edu/fac/richwest/slides/quest-vcpu-poster.pdf">pdf</a>]<br>
+              </td>
+            </tr>
+            <tr>
+              <td style="vertical-align: top;">
+                <ul>
+                  <li>Poster describing the background to the hardware
+                    performance monitoring subsystem in Quest, based on
+                    collaborations with VMware</li>
+                </ul>
+              </td>
+              <td style="background-color: rgb(204, 204, 204);">[<a href="http://www.cs.bu.edu/fac/richwest/slides/quest_perf.pdf">pdf</a>]<br>
+              </td>
+            </tr>
+            <tr>
+              <td style="vertical-align: top;">
+                <ul>
+                  <li>Paper with colleagues at VMware on the design of a
+          hardware performance monitoring technique for predicting cache
+          occupancy -- we use this technique in Quest as part of our strategy
+          for multicore resource management</li>
+                </ul>
+              </td>
+              <td style="background-color: rgb(204, 204, 204);">[<a href="http://www.cs.bu.edu/fac/richwest/papers/osr2010.pdf">pdf</a>]<br>
+              </td>
+            </tr>
+            <tr>
+              <td style="vertical-align: top;">
+                <ul>
+                  <li>Early design overview (for the original
+                    uniprocessor version of Quest)<br>
+                  </li>
+                </ul>
+              </td>
+              <td style="background-color: rgb(204, 204, 204);">[<a href="http://www.cs.bu.edu/fac/richwest/slides/quest.pdf">pdf</a>]<br>
+              </td>
+            </tr>
+          </tbody>
+        </table>
+        <br>
+        <h1>Downloads</h1>
+        <ul>
+          <li>The Quest source code can be obtained from <a href="http://questos.github.com/">github</a></li>
+        </ul>
+        <h1>Reference Development Platform</h1>
+        <ul>
+          <li>While Quest will work on most x86 platforms with the right
+            driver support, the hardware virtualization capabilities
+            currently used for enhanced system safety require Intel
+            processors with the following hardware flags (as reported
+            under Linux via /proc/cpuinfo): vmx, ept, mtrr. Given our
+            manpower resources, we have focused on Intel
+            hardware-virtualization but AMD support wil be added in the
+            future. This means you will need a multicore processor such
+            as a Sandybridge, with extended page tables and memory type
+            range registers. <br>
+          </li>
+          <li>To boot Quest we recommend using a motherboard with a
+            PXE-compliant BIOS for network boots. Similarly, a
+            motherboard with a built-in serial device (16550A-compatible
+            UART or a PCI/PCIe slotcard) is recommended for serial
+            debugging. <br>
+          </li>
+          <li>The following is a recommended base system:</li>
+          <ul>
+            <li>Intel "Sandybridge" Core i3 2100 LGA 1155 3.1 GHz
+              processor (alternatively, i5, i7 will do)</li>
+            <li>LGA 1155 motherboard. A Gigabyte GA-H67N-USB3-B3
+              mini-ITX board is quite nice if you desire a small
+              form-factor. The ASRock Pro3-M mATX is slightly larger
+              but another excellent board.</li>
+            <li>NOTE: For the motherboard, it is desirable to have
+              either the Z68 or H67 Intel chipset. These chipsets both
+              support integrated graphics on the Core i3/i5/i7 CPUs. You
+              also want a motherboard with a Realtek 8168/8111E
+              integrated network chip. It is desirable but not required
+              to have an RS232 serial header on the board, as well as
+              PS/2 keyboard connectivity and a traditional PCI slot. The
+              ASRock board above has all this, but is hard to find. 
+	      The Gigabyte board is a mini-ITX small form-factor board.
+              It lacks the serial header and PS/2 but this is not critical 
+	      if you get a serial PCI-express card.</li>
+          </ul>
+        </ul>
+        <ul>
+          <ul>
+            <li>RECOMMENDED BUILD 1:</li>
+            <ul>
+              <li>Intel Core i3 2100 LGA 1155 3.1GHz Processor</li>
+              <li>ASRock Z68 Pro3-M mATX Motherboard</li>
+              <li>2x2GB Corsair DDR3-1333 Memory</li>
+              <li>Serial DB-9 header connector (provides serial cable
+                interface to back&nbsp; of case, and plugs into
+                motherboard)</li>
+              <li>PS/2 or USB keyboard</li>
+              <li>Any mATX case with 200W+ power supply</li>
+              <li>CAT5 Ethernet cable to connect to another development
+                machine</li>
+              <li>DB9 Serial cable to connect to another development
+                machine</li>
+            </ul>
+          </ul>
+        </ul>
+        <ul>
+          <ul>
+            <li>RECOMMENDED BUILD 2:</li>
+            <ul>
+              <li>Intel Core i3 2100 LGA 1155 3.1GHz Processor</li>
+              <li>Gigabyte GA-H67N-USB3-B3 LGA 1155 H67 mini ITX Intel
+                Motherboard</li>
+              <li>2x2GB Corsair DDR3-1333 Memory</li>
+              <li>Syba 1-port DB-9 Serial (RS-232) PCI-e Controller
+                Card, Moschip 9820 Chipset</li>
+              <li>USB keyboard</li>
+              <li>Thermaltake Element Q case/power supply, or similar</li>
+              <li>Ethernet cable to connect to another development
+                machine</li>
+              <li>DB9 Serial cable to connect to another development
+                machine<br>
+              </li>
+            </ul>
+          </ul>
+        </ul>
+        <h1>People</h1>
+        <ul>
+          <li><a href="http://www.cs.bu.edu/fac/richwest/">Richard West
+              <br>
+            </a></li>
+          <li><a href="http://cs-people.bu.edu/liye/">Ye Li</a><br>
+          </li>
+          <li><a href="http://cs-people.bu.edu/missimer/">Eric Missimer</a><br>
+          </li>
+          <li><a href="http://cs-people.bu.edu/yingy/">Ying (Chris) Ye</a><br>
+          </li>
+          <li><a href="http://cs-people.bu.edu/md/">Matt Danish</a></li>
+          <li>Gary Wong</li>
+        </ul>
+        <h1>Been there, done that, <a href="http://www.customink.com/designs/questos/yjp0-000k-9z23/retrieve">bought
+            the t-shirt</a>?</h1>
+        <ul>
+          <li>If you're interested in joining the Quest group, we're
+            always keen to work with driver writers, library and
+            application developers, and anyone with knowledge of
+            computer architecture and operating systems. Consider being
+            a developer and buy the t-shirt! Join our Quest for
+            knowledge!<br>
+          </li>
+        </ul>
+        <span style="text-decoration: underline;"></span>
+        <h1>Acknowledgement</h1>
+        This work is funded in part by various grants, including: NSF
+        #0615153 and&nbsp; #1117025.
+        <hr size="2" width="100%">
+        <div align="center">
+          <p><a href="http://www.cs.bu.edu/" target="_top">Department of
+              Computer Science</a>, <a href="http://www.bu.edu/" target="_top">Boston University</a> </p>
+          <p align="center"><font size="-1">Page maintained by <a href="mailto:richwest@cs.bu.edu">Rich West</a> </font></p>
+        </div>
+        <br>
+        <br>
+      </div>
+      <div style="clear: both;">&nbsp;</div>
+    </div>
+    <div id="footer"> </div>
+  
+
+</body></html>

@@ -6,7 +6,7 @@ TAR = tar
 SYNC = sync
 export INSTALL_CMD = cp
 
-DIRS = kernel libc canny netperf/src softfloat sysprogs tests
+DIRS = kernel libc canny netperf/src softfloat sysprogs tests torcs
 # the sets of directories to do various things in
 BUILDDIRS = $(DIRS:%=build-%)
 CLEANDIRS = $(DIRS:%=clean-%)
@@ -33,6 +33,7 @@ build-sysprogs: build-libc build-softfloat
 build-tests: build-libc build-softfloat
 build-netperf/src: build-libc build-softfloat
 build-libc: build-softfloat
+build-torcs: build-softfloat build-libc
 
 
 

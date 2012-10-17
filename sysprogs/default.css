@@ -1,0 +1,188 @@
+
+/*
+Modified CSS Template by Rich West -- Boston University
+Based on a design by Free CSS Templates
+http://www.freecsstemplates.org
+Released for free under a Creative Commons Attribution 2.5 License
+*/
+
+body {
+	background: #A0A0A0;
+	text-align: justify;
+	font-family: "Trebuchet MS", Arial, Helvetica, sans-serif;
+	font-size: small;
+	text-align: justify;
+	color: #696E77;
+}
+
+h1, h2, h3, h4, h5 {
+	margin: 0;
+}
+
+/* Header */
+
+#header {
+	width: 800px;
+	height: 120px;
+	margin: 0 auto;
+	padding: 0;
+	border: 10px solid #FFFFFF;
+	border-bottom: none;
+	background: #5E789C;
+}
+
+#header-simple {
+	width: 800px;
+#	height: 120px;
+	margin: 0 auto;
+	padding: 0;
+	border: 10px solid #FFFFFF;
+	border-bottom: none;
+	background: #5E789C;
+}
+
+#header a {
+        color: #FFFFFF;
+}
+
+#header a:link {
+        text-decoration:none;
+}
+
+#header a:visited {
+        text-decoration:none;
+}
+
+#header h1 {
+	position: absolute;
+	margin: 20px 0 0 130px;
+	font-size: 40px;
+	letter-spacing: 0px;
+	color: #303030;
+}
+
+#header h2 {
+	float: right;
+	margin: 30px 20px 0 0;
+	font-size: 18px;
+	letter-spacing: 0px;
+	color: #FFFFFF;
+}
+
+#header h3 {
+	position: absolute;
+	margin: 65px 0 0 130px;
+	font-size: 18px;
+	letter-spacing: 0px;
+	color: #303030;
+}
+
+a {
+	color: #303030;
+	text-decoration: none;
+}
+
+a:hover {
+	color: #A0A0A0;
+	text-decoration: none;
+}
+
+#photo img {
+        float: left;
+        margin: 20px 0 0 20px;
+        width: 100px;
+        height: 85px;
+}
+
+/* Menu */
+
+#menu1 {
+	float: left;
+	width: 160px;
+	margin: 0px auto;
+	padding-bottom: 20px;
+	text-transform: uppercase;
+	font-weight: bold;
+	font-size: 14px;
+	color: #323B2E;
+}
+
+#menu1 ul {
+	margin: 0px;
+	list-style: none;
+	padding: 0px;
+}
+
+#menu1 li {
+}
+
+#menu1 a {
+	display: block;
+	width: 160px;
+	padding: 15px 0px;
+	background-color: #5E789C;
+	border-top: 1px solid #323B2E;
+#	border-bottom: 1px solid #323B2E;
+	text-align: center;
+	text-decoration: none;
+	text-transform: uppercase;
+	font-weight: bold;
+	color: #FFFFFF;
+}
+
+#menu1 a:hover {
+	background-color: #AFB3A5;
+	border-top: 1px solid #555E4F;
+#	border-bottom: 1px solid #555E4F;
+}
+
+/* Content */
+
+#content {
+	width: 800px;
+	margin: 0 auto;
+	border: 10px solid #FFFFFF;
+	border-top: none;
+	background: #E9EAE2;
+}
+
+#colOne {
+	float: left;
+	width: 160px;
+	margin-top: 20px;
+	padding: 0 10px 0 20px;
+}
+
+#colTwo {
+	float: right;
+	margin-top: 20px;
+	width: 580px;
+	padding: 0 20px 0 10px;
+}
+
+#colWide {
+	float: right;
+	margin-top: 20px;
+	width: 760px;
+	padding: 0 20px 0 20px;
+}
+
+#content h2 {
+	margin-bottom: 10px;
+	font-size: 18px;
+	letter-spacing: 0px;
+}
+
+
+#footer {
+	width: 800px;
+	margin: 0 auto;
+	padding-top: 20px;
+}
+
+
+#footer p {
+	text-align: center;
+	padding: 0;
+	font-size: 10px;
+}
