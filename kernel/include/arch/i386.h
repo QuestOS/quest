@@ -151,6 +151,14 @@ get_pdbr (void)
   return p;
 }
 
+static inline uint32
+get_cr0(void)
+{
+  uint32 cr;
+  asm volatile ("movl %%cr0, %0":"=r" (cr));
+  return cr;
+}
+
 #if 0
 static inline void
 jmp_gate (uint16 us)

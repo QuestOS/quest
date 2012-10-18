@@ -23,10 +23,45 @@ static int round_down_division(float n, float d)
   return (int)(n / d);
 }
 
+static int complicated_float_function(float a, float b, float c, float d, float e)
+{
+  float temp, temp2;
+
+
+  temp =  (a + b);
+  temp2 = (d - e);
+  return temp / c * temp2;
+}
+
 int
 main ()
 {
-  printf("50.0f / 4.0f %d", round_down_division(50.0f, 4.0f));
+  printf("In float_test\n");
+  int result;
+  if(fork()) {
+    while(1) {
+      result = complicated_float_function(133.0f, 332.0f, 21.0f, 12.0f, 3.0f);
+      
+      if(result != 199) {
+        printf("complicated float function = %d (Should be 199)\n",
+               result);
+        printf("FAILED\n");
+        while(1);
+      }
+    }
+  }
+  else {
+    while(1) {
+      result = complicated_float_function(533.0f, 432.0f, 4321.0f, 312.0f, 4123.0f);
+      
+      if(result != -851) {
+        printf("complicated float function = %d (Should be -851)\n",
+               result);
+        printf("FAILED\n");
+        while(1);
+      }
+    }
+  }
   while(1);
 }
 
