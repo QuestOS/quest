@@ -174,7 +174,7 @@ interrupt7:
         pushl $7
         SREGS_SAVE
         pushal
-	call handle_interrupt
+	call handle_coprocessor_interrupt
 	popal
         REGS_RESTORE
         addl $8, %esp

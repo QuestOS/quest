@@ -15,7 +15,8 @@
  *  along with this program.  If not, see <http://www.gnu.org/licenses/>.
  */
 
-#include <arch/i386-div64.h>
+
+#include <arch/i386.h>
 #include <kernel.h>
 #include <util/printf.h>
 
@@ -36,8 +37,15 @@
 
 bool fpu_init()
 {
-  DLOG("Spinning in FPU");
-  while(1);
+  DLOGV("In FPU");
+
+  uint32 cr = get_cr0();
+
+  DLOGV("Before cr = 0x%X", cr);
+  set_cr0(cr | 1 << 2);
+  cr = get_cr0();
+  DLOGV("After cr = 0x%X", cr);
+  //while(1);
   return TRUE;
 }
 

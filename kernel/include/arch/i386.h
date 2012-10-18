@@ -159,6 +159,12 @@ get_cr0(void)
   return cr;
 }
 
+static inline void
+set_cr0(uint32 cr)
+{
+  asm volatile ("movl %0, %%cr0"::"r" (cr));
+}
+
 #if 0
 static inline void
 jmp_gate (uint16 us)

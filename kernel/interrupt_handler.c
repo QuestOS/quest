@@ -243,6 +243,16 @@ handle_interrupt (u32 edi, u32 esi, u32 ebp, u32 _esp, u32 ebx, u32 edx, u32 ecx
   send_eoi ();
 }
 
+void
+handle_coprocessor_interrupt (u32 edi, u32 esi, u32 ebp, u32 _esp, u32 ebx, u32 edx, u32 ecx, u32 eax,
+                              u32 fs_gs, u32 ds_es, u32 ulInt, u32 ulCode,
+                              u32 eip, u32 cs, u32 eflags, u32 esp, u32 ss)
+{
+  com1_printf ("In %s\n", __FUNCTION__);
+  crash_debug ("Unhandled exception");
+  while(1);
+}
+
 static int
 user_putchar (int ch, int attribute)
 {
