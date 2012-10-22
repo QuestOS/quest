@@ -468,6 +468,10 @@ init (multiboot * pmb)
 
   pow2_init ();                 /* initialize power-of-2 memory allocator */
 
+  /* Initialise the floating-point unit (FPU) */
+  initialise_fpu();
+  
+  
   /* Setup per-CPU area for bootstrap CPU */
   percpu_per_cpu_init ();
 

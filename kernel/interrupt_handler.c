@@ -174,6 +174,8 @@ handle_interrupt (u32 edi, u32 esi, u32 ebp, u32 _esp, u32 ebx, u32 edx, u32 ecx
 {
   u32 cr0, cr2, cr3;
   u16 tr, fs, ds;
+  u16 fpu_status;
+  
 
   asm volatile ("movl %%cr0, %%eax\n"
                 "movl %%eax, %0\n"
@@ -227,6 +229,11 @@ handle_interrupt (u32 edi, u32 esi, u32 ebp, u32 _esp, u32 ebx, u32 edx, u32 ecx
   _printf ("CURRENT=0x%X\n", percpu_read (current_task));
   stacktrace_frame (esp, ebp);
 
+    if(ulInt == 0x10) {
+      asm volatile("fnstsw": "=a"(fpu_status));
+      _printf("fpu_status = 0x%X\n", fpu_status);
+    }
+  
 #ifndef ENABLE_GDBSTUB
 #undef _putx
 #undef _putchar

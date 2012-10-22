@@ -56,7 +56,7 @@ static const struct module_ops mod_ops = {
   .init = fpu_init
 };
 
-DEF_MODULE (fpu, "FPU driver", &mod_ops, {});
+//DEF_MODULE (fpu, "FPU driver", &mod_ops, {});
 
 /*
  * Local Variables:
