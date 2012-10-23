@@ -16,12 +16,11 @@ newlib_make: $(NEWLIB)/$(BUILD_DIR)/Makefile
 	cd $(NEWLIB)/$(BUILD_DIR); $(MAKE)
 
 
-newlib_libs: $(NEWLIB)/$(BUILD_DIR)/$(NEWLIB_TARGET)/newlib/libc.a $(NEWLIB)/$(BUILD_DIR)/$(NEWLIB_TARGET)/newlib/libc.a
+newlib_libs: $(NEWLIB)/$(BUILD_DIR)/$(NEWLIB_TARGET)/newlib/libc.a
 
 
-$(NEWLIB)/$(BUILD_DIR)/$(NEWLIB_TARGET)/newlib/libc.a: newlib_make
-
-
+$(NEWLIB)/$(BUILD_DIR)/$(NEWLIB_TARGET)/newlib/libc.a:
+	$(MAKE) newlib_make
 
 cleanall:
 	rm -rf $(NEWLIB)
