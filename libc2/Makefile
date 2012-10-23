@@ -3,7 +3,7 @@ BUILD_DIR = newlib-build
 QUEST_CONFIG_SCRIPT = quest_newlib_configure
 NEWLIB_TARGET = i586-elf
 
-all: newlib_libs
+all: libc.a libm.a
 
 
 $(NEWLIB)/$(BUILD_DIR)/Makefile:
@@ -22,7 +22,17 @@ newlib_libs: $(NEWLIB)/$(BUILD_DIR)/$(NEWLIB_TARGET)/newlib/libc.a
 $(NEWLIB)/$(BUILD_DIR)/$(NEWLIB_TARGET)/newlib/libc.a:
 	$(MAKE) newlib_make
 
-cleanall:
+libm.a: $(NEWLIB)/$(BUILD_DIR)/$(NEWLIB_TARGET)/newlib/libc.a
+	cp $(NEWLIB)/$(BUILD_DIR)/$(NEWLIB_TARGET)/newlib/libm.a libm.a 
+
+libc.a: $(NEWLIB)/$(BUILD_DIR)/$(NEWLIB_TARGET)/newlib/libc.a
+	cp $(NEWLIB)/$(BUILD_DIR)/$(NEWLIB_TARGET)/newlib/libc.a libc.a
+
+clean:
+	-cd $(NEWLIB)/$(BUILD_DIR)/ && $(MAKE) clean
+	rm -rf *~ libc.a libm.a
+
+cleanall: clean
 	rm -rf $(NEWLIB)
 
 .PHONY: all newlib_make newlib_libc clean cleanall
