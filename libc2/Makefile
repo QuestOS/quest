@@ -1,6 +1,6 @@
 NEWLIB = newlib-1.20.0
 BUILD_DIR = newlib-build
-QUEST_CONFIG_SCRIPT = quest_newlib_configure
+QUEST_CONFIG_SCRIPT = quest-newlib-configure
 NEWLIB_TARGET = i586-elf
 BROKEN_CONFIG_FILE = ./newlib-1.20.0/newlib/libc/include/sys/config.h
 
