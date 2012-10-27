@@ -19,12 +19,13 @@
 #define _SYSCALL_H_
 
 
-#include "types.h"
+#include "ctype.h"
 #include "sys/socket.h"
 #include "sys/select.h"
 #include "netinet/in.h"
-#include "stat.h"
-
+#include "sys/stat.h"
+#include <sys/time.h>
+#include <time.h>
 
 struct sched_param
 {
@@ -79,7 +80,7 @@ inline unsigned shared_mem_detach (void *addr);
 
 inline unsigned shared_mem_free (unsigned id);
 
-inline unsigned time (void);
+//inline unsigned time (void);
 
 inline void _exit (int) __attribute__ ((noreturn));
 inline void _exit (int status);
@@ -111,7 +112,7 @@ inline ssize_t socket_recv (int sockfd, void *buf, size_t nbytes, void *addr,
                             void *addrlen);
 
 inline int socket_select (int maxfdp1, fd_set * readfds, fd_set * writefds,
-               fd_set * exceptfds, struct timeval * tvptr);
+                          fd_set * exceptfds, struct timeval * tvptr);
 
 inline int socket_get_sb_id ();
 

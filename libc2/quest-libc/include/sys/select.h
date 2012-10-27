@@ -24,6 +24,8 @@
 
 #include <sys/types.h>
 #include <time.h>
+#include <sys/time.h>
+#include <time.h>
 
 //#define FD_SETSIZE  MAX_FD
 

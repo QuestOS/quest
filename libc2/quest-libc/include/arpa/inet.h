@@ -18,7 +18,7 @@
 #ifndef _ARPA_INET_H
 #define _ARPA_INET_H
 
-#include <types.h>
+#include <ctype.h>
 #include <sys/socket.h>
 #include <netinet/in.h>
 

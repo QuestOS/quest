@@ -45,11 +45,11 @@ ntohs (uint16_t netint16)
 }
 
 #define in_range(c, lo, up)  ((uint8_t)c >= lo && (uint8_t)c <= up)
-#define isprint(c)           in_range(c, 0x20, 0x7f)
-#define isdigit(c)           in_range(c, '0', '9')
-#define isxdigit(c)          (isdigit(c) || in_range(c, 'a', 'f') || in_range(c, 'A', 'F'))
-#define islower(c)           in_range(c, 'a', 'z')
-#define isspace(c)           (c == ' ' || c == '\f' || c == '\n' || c == '\r' || c == '\t' || c == '\v')
+//#define isprint(c)           in_range(c, 0x20, 0x7f)
+//#define isdigit(c)           in_range(c, '0', '9')
+//#define isxdigit(c)          (isdigit(c) || in_range(c, 'a', 'f') || in_range(c, 'A', 'F'))
+//#define islower(c)           in_range(c, 'a', 'z')
+//#define isspace(c)           (c == ' ' || c == '\f' || c == '\n' || c == '\r' || c == '\t' || c == '\v')
 
 int
 inet_pton(int domain, const char *cp, void *addr)

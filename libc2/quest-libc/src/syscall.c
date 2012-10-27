@@ -209,7 +209,7 @@ shared_mem_free (unsigned id)
 }
 
 
-
+/*
 inline unsigned
 time (void)
 {
@@ -220,6 +220,7 @@ time (void)
 
   return c;
 }
+*/
 
 
 inline void _exit (int) __attribute__ ((noreturn));
