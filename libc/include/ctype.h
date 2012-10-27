@@ -1,8 +1,1 @@
-#ifndef _CTYPE_H_
-#define _CTYPE_H_
-
-int tolower(int c);
-
-
-
-#endif
+../newlib-1.20.0/newlib/libc/include/ctype.h
