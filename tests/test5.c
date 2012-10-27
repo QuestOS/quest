@@ -39,7 +39,7 @@ print (char *s)
 }
 
 void
-_start ()
+main ()
 {
   int pid;
   if ((pid = fork ())) {

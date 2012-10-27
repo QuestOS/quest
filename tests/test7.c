@@ -58,7 +58,7 @@ child (int idx)
 }
 
 void
-_start ()
+main ()
 {
   int pid[NUM_THREADS];
   int i;

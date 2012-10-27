@@ -1,8 +1,8 @@
 OUTPUT_FORMAT("elf32-i386")
 OUTPUT_ARCH(i386)
 ENTRY(_start)
-/* SEARCH_DIR(../libc2) */
-/* GROUP(-lc) */
+SEARCH_DIR(../libc)
+GROUP(-lc)
 SECTIONS
 {
   . = 0x1000 + SIZEOF_HEADERS;

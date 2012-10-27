@@ -47,7 +47,7 @@ struct sched_param
  * writing to video RAM
  */
 
-inline void putchar (int c);
+//inline void putchar (int c);
 inline void usleep (unsigned usec);
 inline int usb_syscall(int device_id, int operation, void* buf, int data_len);
 
@@ -60,7 +60,7 @@ inline void switch_to (unsigned pid);
 
 inline void exec (char *file, char *argv[]);
 
-inline char getchar (void);
+//inline char getchar (void);
 
 inline unsigned int getcode (void);
 

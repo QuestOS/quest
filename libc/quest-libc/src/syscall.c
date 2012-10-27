@@ -33,6 +33,7 @@ void _start ( int argc, char *argv[] ) {
   exit ( main( argc, argv ) );
 }
 
+/*
 inline void
 putchar (int c)
 {
@@ -40,6 +41,7 @@ putchar (int c)
   asm volatile ("int $0x30\n"::"a" (0L), "b" (c):CLOBBERS2);
 
 }
+*/
 
 inline void
 usleep (unsigned usec)
@@ -98,7 +100,7 @@ exec (char *file, char *argv[])
   asm volatile ("int $0x33\n"::"a" (file), "b" (argv):CLOBBERS2);
 }
 
-
+/*
 inline char
 getchar (void)
 {
@@ -109,6 +111,7 @@ getchar (void)
 
   return c;
 }
+*/
 
 inline unsigned int
 getcode (void)

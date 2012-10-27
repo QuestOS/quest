@@ -45,7 +45,7 @@ main ()
   char* read_arena = ARENA_START + (0x400000 * (ARENA_PAGE_SIZE - 2));
   char* device_memory[NUM_DEVICES];
   int device_is_input_map[NUM_DEVICES];
-  BOOL report_results = FALSE;
+  int report_results = 0;
   int device_is_open_map[NUM_DEVICES];
 
   for(i = 0 ; i < NUM_DEVICES; ++i) {
@@ -86,7 +86,7 @@ main ()
   while(1) {
 
     if((i > LOOPS_BEFORE_REPORT * NUM_DEVICES) && (dev_num == 0)) {
-      report_results = TRUE;
+      report_results = 1;
     }
     
     if(report_results) {

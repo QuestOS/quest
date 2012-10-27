@@ -1,1 +1,1 @@
-../configure --prefix=`pwd` --target=i586-elf CC_FOR_TARGET="gcc -m32 -nostdinc -I`pwd`/../../compiler-include/ -fno-builtin -fno-stack-protector" AR_FOR_TARGET=ar RANLIB_FOR_TARGET=ranlib READELF_FOR_TARGET=readelf
+../configure --prefix=`pwd` --target=i586-elf

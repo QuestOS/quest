@@ -45,11 +45,11 @@ main ()
   char* arena = (char*)ARENA_START;
   char* read_arena = (char*)(ARENA_START + (0x400000 * (ARENA_PAGE_SIZE - 2)));
   char* device_memory[(NUM_RTT_DEVICES*2) + NUM_NON_RRT_DEVICES];
-  BOOL report_results = FALSE;
+  int report_results = 0;
   int next_write;
   int num_rtt = 0;
   int successful_other_dev_num = 0;
-  BOOL reported_other_devs = FALSE;
+  int reported_other_devs = 0;
   
   for(i = 0; i < (40 * 0x400000); ++i) {
     arena[i] = 'a';
@@ -115,12 +115,12 @@ main ()
     ++i; ++dev_num;
 
     if(num_rtt >= NUM_RTT_BEFORE_OPENING_OTHER_DEV) {
-      BOOL report = FALSE;
+      int report = 0;
 
       if(num_rtt == (MAX_TRIP_TIMES-1) && next_write == (NUM_RTT_DEVICES - 1)
          && !reported_other_devs) {
-        report = TRUE;
-        reported_other_devs = TRUE;
+        report = 1;
+        reported_other_devs = 1;
       }
       
       for(j = 0; j < successful_other_dev_num; ++j) {

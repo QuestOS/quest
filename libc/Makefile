@@ -27,7 +27,6 @@ $(NEWLIB)/$(BUILD_DIR)/Makefile:
 	mkdir $(NEWLIB)/$(BUILD_DIR)
 	cp $(QUEST_CONFIG_SCRIPT) $(NEWLIB)/$(BUILD_DIR)/
 	cd $(NEWLIB)/$(BUILD_DIR); ./$(QUEST_CONFIG_SCRIPT);
-	sed -i 's/#define __LARGE64_FILES 1/\/\/#define __LARGE64_FILES 1/' $(BROKEN_CONFIG_FILE)
 
 
 newlib_make: $(NEWLIB)/$(BUILD_DIR)/Makefile

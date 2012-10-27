@@ -39,7 +39,7 @@ print (char *s)
 }
 
 void
-_start ()
+main()
 {
   int pid;
   int var = 0;
