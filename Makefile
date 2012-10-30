@@ -6,7 +6,7 @@ TAR = tar
 SYNC = sync
 export INSTALL_CMD = cp
 
-DIRS = kernel libc canny netperf/src softfloat sysprogs tests torcs
+DIRS = kernel canny netperf/src softfloat sysprogs tests
 # the sets of directories to do various things in
 BUILDDIRS = $(DIRS:%=build-%)
 CLEANDIRS = $(DIRS:%=clean-%)
@@ -28,12 +28,11 @@ $(BUILDDIRS):
 	$(MAKE) -C $(@:build-%=%)
 
 # set dependencies
-build-canny: build-libc build-softfloat
-build-sysprogs: build-libc build-softfloat
-build-tests: build-libc build-softfloat
-build-netperf/src: build-libc build-softfloat
-build-libc: build-softfloat
-build-torcs: build-softfloat build-libc
+build-canny: build-softfloat
+build-sysprogs: build-softfloat
+build-tests: build-softfloat
+build-netperf/src: build-softfloat
+build-torcs: build-softfloat
 
 
 
@@ -63,9 +62,21 @@ quest.iso: $(ISO_DIR)/boot/grub/eltorito.img all
 		-no-emul-boot -boot-load-size 4 \
 		-boot-info-table -o $@ iso
 
+toolchain:
+	cd toolchain; $(MAKE) all
+
+toolchain-clean:
+	cd toolchain; $(MAKE) clean
+
+toolchain-uninstall:
+	cd toolchain; $(MAKE) uninstall
+
+
+
 
 .PHONY: subdirs $(DIRS)
 .PHONY: subdirs $(BUILDDIRS)
 .PHONY: subdirs $(CLEANDIRS)
 .PHONY: subdirs $(INSTALLDIRS)
 .PHONY: all clean install
+.PHONY: toolchain toolchain-clean toolchain-uninstall

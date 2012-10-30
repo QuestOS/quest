@@ -1,60 +1,38 @@
-NEWLIB = newlib-1.20.0
-BUILD_DIR = newlib-build
-QUEST_CONFIG_SCRIPT = quest-newlib-configure
-NEWLIB_TARGET = i586-elf
-BROKEN_CONFIG_FILE = ./newlib-1.20.0/newlib/libc/include/sys/config.h
+TARGET := i586-pc-quest
+PREFIX := ${HOME}/bin/cross
+
+LIBC = newlib-1.18.0
+LIBC-BUILD-DIR = build-$(LIBC)
+LIBC-WEB-LOCATION = ftp://sources.redhat.com/pub/newlib/$(LIBC).tar.gz
 
 all: libc
 
-libc: 
-	$(MAKE) newlib-libc.a
-	cd quest-libc; $(MAKE) quest-libc.a
-	$(MAKE) libc.a
+install: 
+	mkdir -p ${PREFIX}
+	cd $(LIBC-BUILD-DIR); make install
 
-libc.a: newlib-libc.a quest-libc/quest-libc.a
-	rm -rf temp_objects
-	mkdir temp_objects
-	cp newlib-libc.a quest-libc/quest-libc.a temp_objects
-	cd temp_objects; ar -x newlib-libc.a
-	cd temp_objects; ar -x quest-libc.a
-	cd temp_objects; ar rcs libc.a *.o
-	cd temp_objects; cp libc.a ..
-	rm -rf temp_objects
+libc: $(LIBC-BUILD-DIR)/Makefile
+	cp newlib-files/vanilla-syscalls.c $(LIBC)/newlib/libc/sys/quest/syscalls.c
+	cd $(LIBC-BUILD-DIR); $(MAKE)
+	cp newlib-files/syscalls.c $(LIBC)/newlib/libc/sys/quest/syscalls.c
+	cd $(LIBC-BUILD-DIR); $(MAKE)
 
 
-$(NEWLIB)/$(BUILD_DIR)/Makefile:
-	tar xzf $(NEWLIB).tar.gz
-	mkdir $(NEWLIB)/$(BUILD_DIR)
-	cp $(QUEST_CONFIG_SCRIPT) $(NEWLIB)/$(BUILD_DIR)/
-	cd $(NEWLIB)/$(BUILD_DIR); ./$(QUEST_CONFIG_SCRIPT);
-
-
-newlib_make: $(NEWLIB)/$(BUILD_DIR)/Makefile
-	cd $(NEWLIB)/$(BUILD_DIR); $(MAKE)
-
-quest-libc/quest-libc.a: $(NEWLIB)/$(BUILD_DIR)/$(NEWLIB_TARGET)/newlib/libc.a
-	cd quest-libc/; $(MAKE)
-
-
-newlib_libs: $(NEWLIB)/$(BUILD_DIR)/$(NEWLIB_TARGET)/newlib/libc.a
-
-
-$(NEWLIB)/$(BUILD_DIR)/$(NEWLIB_TARGET)/newlib/libc.a:
-	$(MAKE) newlib_make
-
-libm.a: $(NEWLIB)/$(BUILD_DIR)/$(NEWLIB_TARGET)/newlib/libc.a
-	cp $(NEWLIB)/$(BUILD_DIR)/$(NEWLIB_TARGET)/newlib/libm.a libm.a 
-
-newlib-libc.a: $(NEWLIB)/$(BUILD_DIR)/$(NEWLIB_TARGET)/newlib/libc.a
-	cp $(NEWLIB)/$(BUILD_DIR)/$(NEWLIB_TARGET)/newlib/libc.a newlib-libc.a
+$(LIBC-BUILD-DIR)/Makefile:
+	wget -c $(LIBC-WEB-LOCATION)
+	mkdir -p $(LIBC-BUILD-DIR)
+	tar zxf $(LIBC).tar.gz
+	patch -p0 -d $(LIBC) < newlib.patch
+	mkdir -p $(LIBC)/newlib/libc/sys/quest/
+	cp -r newlib-files/* $(LIBC)/newlib/libc/sys/quest
+	cd $(LIBC)/newlib/libc/sys; autoconf
+	cd $(LIBC)/newlib/libc/sys/quest; autoreconf
+	cd $(LIBC-BUILD-DIR); ../$(LIBC)/configure --target=${TARGET} --prefix=${PREFIX}
 
 clean:
-	-cd $(NEWLIB)/$(BUILD_DIR)/ && $(MAKE) clean
-	cd quest-libc/; $(MAKE) clean
-	rm -rf *~ libc.a libm.a newlib-libc.a temp_objects
+	rm -rf $(LIBC-BUILD-DIR)
+	rm -rf $(LIBC)
+	cd newlib-files; rm -rf *~ *.o
 
-cleanall: 
-	rm -rf $(NEWLIB)
-	$(MAKE) clean
-
-.PHONY: all newlib_make newlib_libc clean cleanall libc
+uninstall:
+	rm -rf ${PREFIX}/*

@@ -26,23 +26,6 @@
 #define CLOBBERS6 "memory","cc","%esi","%edi"
 #define CLOBBERS7 "memory","cc","%edi"
 
-
-void _start ( int argc, char *argv[] ) {
-
-  //mem_init();
-  exit ( main( argc, argv ) );
-}
-
-/*
-inline void
-putchar (int c)
-{
-
-  asm volatile ("int $0x30\n"::"a" (0L), "b" (c):CLOBBERS2);
-
-}
-*/
-
 inline void
 usleep (unsigned usec)
 {
@@ -58,17 +41,6 @@ usb_syscall(int device_id, int operation, void* buf, int data_len)
   asm volatile ("int $0x30\n":"=a" (ret) : "a" (2L), "b"(device_id), "c" (operation),
                 "d" (buf), "S" (data_len) : CLOBBERS7);
   return ret;
-}
-
-inline unsigned short
-fork (void)
-{
-
-  unsigned int retval;
-
-  asm volatile ("int $0x31\n":"=a" (retval)::CLOBBERS1);
-
-  return (unsigned short) retval;
 }
 
 inline int
@@ -92,27 +64,6 @@ switch_to (unsigned pid)
 
 }
 
-
-inline void
-exec (char *file, char *argv[])
-{
-
-  asm volatile ("int $0x33\n"::"a" (file), "b" (argv):CLOBBERS2);
-}
-
-/*
-inline char
-getchar (void)
-{
-
-  char c;
-
-  asm volatile ("int $0x34\n":"=a" (c): "b" (0):CLOBBERS2);
-
-  return c;
-}
-*/
-
 inline unsigned int
 getcode (void)
 {
@@ -120,29 +71,6 @@ getcode (void)
   unsigned int c;
 
   asm volatile ("int $0x34\n":"=a" (c): "b" (1):CLOBBERS2);
-
-  return c;
-}
-
-inline int
-open (const char *pathname, int flags)
-{
-
-  int c;
-
-  asm volatile ("int $0x35\n":"=a" (c):"a" (pathname), "b" (flags):CLOBBERS2);
-
-  return c;
-}
-
-inline int
-read (char *pathname, void *buf, int count)
-{
-
-  int c;
-
-  asm volatile ("int $0x36\n":"=a" (c):"a" (pathname), "b" (buf),
-                "c" (count):CLOBBERS5);
 
   return c;
 }
@@ -225,16 +153,6 @@ time (void)
 }
 */
 
-
-inline void _exit (int) __attribute__ ((noreturn));
-inline void
-_exit (int status)
-{
-
-  asm volatile ("int $0x3a\n"::"a" (status):CLOBBERS1);
-
-  while (1);                    /* Shouldn't get here but stops gcc warning */
-}
 
 inline int
 waitpid (int pid)
@@ -338,19 +256,6 @@ socket_accept (int sockfd, void *addr, void *len)
 }
 
 inline ssize_t
-write (int fd, const void *buf, size_t nbytes)
-{
-  int ret;
-
-  asm volatile ("int $0x3D\n"
-                :"=a" (ret)
-                :"a" (6), "b" (fd), "c" (buf), "d" (nbytes), "S" (0), "D" (0)
-                :"memory", "cc");
-
-  return ret;
-}
-
-inline ssize_t
 socket_sendto (int sockfd, const void *buf, size_t nbytes, uint32_t destaddr, uint16_t port)
 {
   ssize_t ret;
@@ -440,32 +345,3 @@ switch_screen (int dir)
   return ret;
 }
 #endif
-
-
-
-/* The following are the newlib no op versions of these functions */
-
-int fstat(int fd, struct stat *buf)
-{
-  buf->st_mode = S_IFCHR;	/* Always pretend to be a tty */
-  buf->st_blksize = 0;
-
-  return 0;
-}
-
-int isatty(int fd)
-{
-  return 1;
-}
-
-off_t lseek( int fd, off_t offset, int whence)
-{
-  errno = ESPIPE;
-  return ((off_t)-1);
-}
-
-/* Going to add an sbrk syscall soon so just return error for now */
-char* sbrk(int nbytes)
-{
-  return (char*)-1;
-}

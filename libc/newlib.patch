@@ -1,0 +1,32 @@
+--- ../../newlib-1.18.0/config.sub	2009-11-20 05:10:09.000000000 -0500
++++ config.sub	2010-04-03 15:47:27.000000000 -0400
+@@ -1281,6 +1281,7 @@ case $os in
+ 	      | -kopensolaris* \
+ 	      | -amigaos* | -amigados* | -msdos* | -newsos* | -unicos* | -aof* \
+ 	      | -aos* | -aros* \
++		  | -quest* \
+ 	      | -nindy* | -vxsim* | -vxworks* | -ebmon* | -hms* | -mvs* \
+ 	      | -clix* | -riscos* | -uniplus* | -iris* | -rtu* | -xenix* \
+ 	      | -hiux* | -386bsd* | -knetbsd* | -mirbsd* | -netbsd* \
+--- ../../newlib-1.18.0/newlib/libc/sys/configure.in	2007-05-24 13:33:37.000000000 -0400
++++ newlib/libc/sys/configure.in	2010-04-03 15:55:26.000000000 -0400
+@@ -44,6 +44,7 @@ if test -n "${sys_dir}"; then
+ 	sysvnecv70) AC_CONFIG_SUBDIRS(sysvnecv70) ;;
+ 	tic80) AC_CONFIG_SUBDIRS(tic80) ;;
+ 	w65) AC_CONFIG_SUBDIRS(w65) ;;
++	quest) AC_CONFIG_SUBDIRS(quest) ;;
+ 	z8ksim) AC_CONFIG_SUBDIRS(z8ksim) ;;
+   esac;
+ fi
+--- ../../newlib-1.18.0/newlib/configure.host	2009-12-10 12:12:11.000000000 -0500
++++ newlib/configure.host	2010-04-03 15:57:57.000000000 -0400
+@@ -519,6 +519,9 @@ case "${host}" in
+   w65-*-*)
+ 	sys_dir=w65
+ 	;;
++  i[34567]86-*-quest*)
++	sys_dir=quest
++	;;
+   xscale-*-*)
+ 	sys_dir=arm
+ 	if [ "x${newlib_may_supply_syscalls}" = "xno" ] ; then

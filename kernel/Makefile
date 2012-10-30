@@ -1,10 +1,10 @@
 include config.mk
 GRUBLIB = grub/x86_64-pc
 TFTPDIR=tftp
-LD = ld -melf_i386
-CC = gcc
+LD = i586-pc-quest-ld
+CC = i586-pc-quest-gcc
 TAR = tar
-CFLAGS = -m32 -march=i586 -fno-builtin -fno-stack-protector -fno-strict-aliasing -fno-delete-null-pointer-checks -nostdinc -g -Wall -Wno-attributes -O$(OPT) $(CFG) $(EXTRA_CFLAGS)
+CFLAGS = -fno-builtin -fno-stack-protector -fno-strict-aliasing -fno-delete-null-pointer-checks -nostdinc -g -Wall -Wno-attributes -O$(OPT) $(CFG) $(EXTRA_CFLAGS)
 CPPFLAGS = $(CFG) -D_QUEST -Wa,--32 -MMD -Iinclude -Iinclude/drivers/acpi -I. -I../libc/include 
 INDENT = indent
 INDENTFLAGS = -gnu -br -ce --no-tabs

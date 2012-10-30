@@ -15,7 +15,9 @@
  *  along with this program.  If not, see <http://www.gnu.org/licenses/>.
  */
 
-#include "syscall.h"
+//#include "syscall.h"
+#include "stdio.h"
+#include "unistd.h"
 
 void
 putx (unsigned long l)
@@ -38,8 +40,7 @@ print (char *s)
   }
 }
 
-void
-main()
+int main()
 {
   int pid;
   int var = 0;
