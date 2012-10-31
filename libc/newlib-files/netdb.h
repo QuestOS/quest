@@ -1,5 +1,5 @@
 /*                    The Quest Operating System
- *  Copyright (C) 2005-2012  Richard West, Boston University
+ *  Portions Copyright (C) 2005-2012  Richard West, Boston University
  *
  *  This program is free software: you can redistribute it and/or modify
  *  it under the terms of the GNU General Public License as published by
@@ -15,40 +15,28 @@
  *  along with this program.  If not, see <http://www.gnu.org/licenses/>.
  */
 
-#include "stdlib.h"
+#ifndef _NETDB_H_
+#define _NETDB_H_
 
-#define NUM_THREADS 4
+#include <netinet/in.h>
+#include <sys/socket.h>
 
-void
-child (int idx)
-{
-  unsigned long i = 0;
-  char ch;
-  if (idx <= 9)
-    ch = idx + '0';
-  else
-    ch = (idx - 10) + 'A';
-  for (;;) {
-    if (!(i & 0xFFFFF)) {
-      putchar (ch);
-    }
-    i++;
-  }
-}
+struct addrinfo {
+  int ai_flags;
+  int ai_family;
+  int ai_socktype;
+  int ai_protocol;
+  size_t ai_addrlen;
+  char *ai_canonname;
+  struct sockaddr *ai_addr;
+  struct addrinfo *ai_next;
+};
 
-void
-main ()
-{
-  int pid[NUM_THREADS];
-  int i;
+extern int getaddrinfo (const char *host, const char *service,
+                        const struct addrinfo *hint, struct addrinfo **res);
+extern void freeaddrinfo (struct addrinfo *ai);
 
-  for (i=1; i<NUM_THREADS; i++) {
-    if ((pid[i]=fork ()) == 0) {
-      child (i);
-    }
-  }
-  child (0);
-}
+#endif
 
 /*
  * Local Variables:

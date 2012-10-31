@@ -5,8 +5,8 @@
 #include <netinet/in.h>
 #include <arpa/inet.h>
 
-char *optarg;
-int optind = 1, opterr = 1, optopt;
+//char *optarg;
+//int optind = 1, opterr = 1, optopt;
 
 #define unimplemented_funcion_called()					\
   do {									\
@@ -26,10 +26,10 @@ double atof(const char * s)
   return 0;
 }
 
-int fflush(FILE *stream)
-{
-  return 0;
-}
+//int fflush(FILE *stream)
+//{
+//  return 0;
+//}
 
 int dup (int filedes)
 {
@@ -43,16 +43,16 @@ int fileno (FILE *fp)
   return 0;
 }
 
-int stat (const char *pathname, struct stat *buf)
-{
-  unimplemented_funcion_called();
-  return 0;
-}
+//int stat (const char *pathname, struct stat *buf)
+//{
+//  unimplemented_funcion_called();
+//  return 0;
+//}
 
-int unlink (const char *pathname)
-{
-  return 0;
-}
+//int unlink (const char *pathname)
+//{
+//  return 0;
+//}
 
 int chmod (const char *pathname, mode_t mode)
 {
@@ -60,11 +60,11 @@ int chmod (const char *pathname, mode_t mode)
   return 0;
 }
 
-int sigemptyset(sigset_t *set)
-{
-  unimplemented_funcion_called();
-  return 0;
-}
+//int sigemptyset(sigset_t *set)
+//{
+//  unimplemented_funcion_called();
+//  return 0;
+//}
 
 int sigaction(int signum, const struct sigaction *act,
               struct sigaction *oldact)
@@ -75,11 +75,11 @@ int sigaction(int signum, const struct sigaction *act,
 }
 
 
-int sigaddset(sigset_t *set, int signum)
-{
-  unimplemented_funcion_called();
-  return 0;
-}
+//int sigaddset(sigset_t *set, int signum)
+//{
+//  unimplemented_funcion_called();
+//  return 0;
+//}
 
 
 unsigned int alarm(unsigned int seconds)
@@ -88,13 +88,13 @@ unsigned int alarm(unsigned int seconds)
   return 0;
 }
 
-pid_t getpid(void)
-{
-  /*
-   * --!!-- Returning a number to make this work
-   */
-  return 80;
-}
+//pid_t getpid(void)
+//{
+//  /*
+//   * --!!-- Returning a number to make this work
+//   */
+//  return 80;
+//}
 
 
 
@@ -113,11 +113,11 @@ void assert(scalar expression)
 }
 
 
-int feof(FILE *stream)
-{
-  unimplemented_funcion_called();
-  return 0;
-}
+//int feof(FILE *stream)
+//{
+//  unimplemented_funcion_called();
+//  return 0;
+//}
 
 
 void rewind(FILE *stream)
@@ -125,11 +125,11 @@ void rewind(FILE *stream)
   unimplemented_funcion_called();
 }
 
-long double sqrt ( long double x )
-{
-  unimplemented_funcion_called();
-  return 0;
-}
+//long double sqrt ( long double x )
+//{
+//  unimplemented_funcion_called();
+//  return 0;
+//}
 
 int nftw(const char *dirpath,
         int (*fn) (const char *fpath, const struct stat *sb,
@@ -176,11 +176,11 @@ const char * gai_strerror(int ecode)
   return 0;
 }
 
-off_t lseek(int fd, off_t offset, int whence)
-{
-  unimplemented_funcion_called();
-  return 0;
-}
+//off_t lseek(int fd, off_t offset, int whence)
+//{
+//  unimplemented_funcion_called();
+//  return 0;
+//}
 
 unsigned int sleep(unsigned int seconds)
 {
@@ -220,12 +220,13 @@ long double powl(long double x, long double y)
   return 0;
 }
 
-long int strtol(const char *nptr, char **endptr, int base)
-{
-  unimplemented_funcion_called();
-  return 0;
-}
+//long int strtol(const char *nptr, char **endptr, int base)
+//{
+//  unimplemented_funcion_called();
+//  return 0;
+//}
 
+#if 0
 int getopt(int argc, char **argv, char *ostr)
 {
   static char *place = EMSG;    /* option letter processing */
@@ -275,6 +276,7 @@ int getopt(int argc, char **argv, char *ostr)
   }
   return optopt;                        /* return option letter */
 }
+#endif
 
 int isdigit(int c)
 {

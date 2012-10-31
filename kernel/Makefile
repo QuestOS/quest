@@ -1,8 +1,15 @@
 include config.mk
 GRUBLIB = grub/x86_64-pc
 TFTPDIR=tftp
-LD = i586-pc-quest-ld
-CC = i586-pc-quest-gcc
+
+ifndef TARGET
+TARGET = i586-pc-quest
+endif
+
+CC = $(TARGET)-gcc
+LD = $(TARGET)-ld
+AR = $(TARGET)-ar
+
 TAR = tar
 CFLAGS = -fno-builtin -fno-stack-protector -fno-strict-aliasing -fno-delete-null-pointer-checks -nostdinc -g -Wall -Wno-attributes -O$(OPT) $(CFG) $(EXTRA_CFLAGS)
 CPPFLAGS = $(CFG) -D_QUEST -Wa,--32 -MMD -Iinclude -Iinclude/drivers/acpi -I. -I../libc/include 
@@ -12,7 +19,7 @@ INDENTFLAGS = -gnu -br -ce --no-tabs
 ##################################################
 
 ifndef INSTALL_DIR
-INSTALL_DIR=/tftp
+INSTALL_DIR=/tftp/boot
 endif
 
 ifndef INSTALL_CMD
@@ -145,7 +152,7 @@ quest: $(OBJS) $(ACPI_OBJS) $(LWIP_OBJS) $(SHARED_COMPS)
 %: %.c
 
 install: $(PROGS)
-	$(INSTALL_CMD) $(PROGS) welcome.raw $(INSTALL_DIR)/boot
+	$(INSTALL_CMD) $(PROGS) welcome.raw $(INSTALL_DIR)
 
 vmware: install quest.iso
 	qemu-img convert c.img -O vmdk c-img.vmdk

@@ -262,9 +262,9 @@ SpeedStrategy(int idx, float Vtarget, float aspect)
 	    slip = 0;
 	}
 	if (gear == 1) {
-	    car.accel = car.accel * q_exp(-q_fabs(car.steer) * 0.1) * q_exp(-q_fabs(aspect) * 5.0) + .1;
+	    car.accel = car.accel * exp(-fabs(car.steer) * 0.1) * exp(-fabs(aspect) * 5.0) + .1;
 	} else if ((gear > 1) && (car.speed < 40.0)) {
-	    car.accel = car.accel * q_exp(-q_fabs(aspect) * 4.0) + 0.15;
+	    car.accel = car.accel * exp(-fabs(aspect) * 4.0) + 0.15;
 	}
 	
 	
@@ -273,7 +273,7 @@ SpeedStrategy(int idx, float Vtarget, float aspect)
 	} else {
 	    RELAXATION(car.accel, lastAccel[idx], 50.0);
 	}
-	car.accel = MIN(car.accel, q_fabs(Dv/6.0));
+	car.accel = MIN(car.accel, fabs(Dv/6.0));
 	//lastBrkCmd[idx] = 0.8;
     } else {
 	float meanSpd = 0;
@@ -294,12 +294,12 @@ SpeedStrategy(int idx, float Vtarget, float aspect)
 	}
 	car.brake = MIN(-Dv * Dxb + Dvv * Dxxb, 1.0);
 	if (slip > 0.3) {
-	    float maxslp = q_exp(-3.47*(slip - 0.2));
+	    float maxslp = exp(-3.47*(slip - 0.2));
 	    car.brake = MIN(car.brake, maxslp);
 	} else {
 	    RELAXATION(car.brake, lastBrkCmd[idx], 50.0);
 	}
-	car.brake = MIN(car.brake, q_fabs(Dv/5.0));
+	car.brake = MIN(car.brake, fabs(Dv/5.0));
 	//lastAccel[idx] = 1.0;
     }
 
@@ -578,9 +578,9 @@ CollDet(int idx, float dny)
 	if ((car.laps < otherCar->laps) && 
 	    (dlg > -maxdlg) && (dlg < (car.dimension + 1.0)) &&
 	    (dlg > (dspd * 6.0))) {
-	    if ((q_fabs(car.toright - otherCar->toright) < (MARGIN / 2.0)) &&
+	    if ((fabs(car.toright - otherCar->toright) < (MARGIN / 2.0)) &&
 		(otherCar->speed > car.speed)) {
-		maxdlg = q_fabs(dlg);
+		maxdlg = fabs(dlg);
 		hold[idx] = s.cur_t + 1.0;
 		if (car.toright < otherCar->toright) {
 		    Tright[idx] = otherCar->toright - (MARGIN * 3.0);
@@ -593,11 +593,11 @@ CollDet(int idx, float dny)
 		     (dlg < (car.dimension * 4.0)))) {
 
 	    if (canOverlap) {
-		maxdlg = q_fabs(dlg);
+		maxdlg = fabs(dlg);
 		/* risk of collision */
 		car.light |= RM_LIGHT_HEAD2;
 
-		if (q_fabs(car.toright - otherCar->toright) < (MARGIN  - 2.0)) {
+		if (fabs(car.toright - otherCar->toright) < (MARGIN  - 2.0)) {
 		    if (car.toright < otherCar->toright) {
 			if (otherCar->toright > MARGIN / 2.0) {
 			    Tright[idx] = otherCar->toright - (MARGIN * 2.0 - 1.0);
@@ -610,7 +610,7 @@ CollDet(int idx, float dny)
 			    }
 			} else {
 			    if ((dlg > (car.dimension * 2.0)) &&
-				(q_fabs(car.toright - otherCar->toright) < MARGIN)) {
+				(fabs(car.toright - otherCar->toright) < MARGIN)) {
 				MaxSpeed[idx] = otherCar->speed * .99;
 				Tright[idx] = otherCar->toright + (MARGIN * 2.0);
 			    }
@@ -627,14 +627,14 @@ CollDet(int idx, float dny)
 			    }
 			} else {
 			    if ((dlg > (car.dimension * 2.0)) &&
-				(q_fabs(car.toright - otherCar->toright) < (MARGIN / 2.0))) {
+				(fabs(car.toright - otherCar->toright) < (MARGIN / 2.0))) {
 				MaxSpeed[idx] = otherCar->speed * .99;
 				Tright[idx] = otherCar->toright - (MARGIN * 2.0);
 			    }
 			}
 		    }
 		    hold[idx] = s.cur_t + 1.0;
-		    if ((dlg > (car.dimension /2.0)) && (dlg < (car.dimension * 3.0)) && (q_fabs(car.toright - otherCar->toright) < 2.0)) {
+		    if ((dlg > (car.dimension /2.0)) && (dlg < (car.dimension * 3.0)) && (fabs(car.toright - otherCar->toright) < 2.0)) {
 			MaxSpeed[idx] = otherCar->speed * .95;
 			car.light |= RM_LIGHT_HEAD1;
 		    }
@@ -680,9 +680,9 @@ void RPC_drive(int data)
   X = car.pos_x;
   Y = car.pos_y;
 
-  CosA = q_cos(car.yaw);
-  SinA = q_sin(car.yaw);
-  lgfs = car.dist + q_fabs(preDy[idx]);
+  CosA = cos(car.yaw);
+  SinA = sin(car.yaw);
+  lgfs = car.dist + fabs(preDy[idx]);
   
   if (lgfs < track.n_len) {
     curidx = 0;
@@ -691,7 +691,7 @@ void RPC_drive(int data)
     }
   }
 
-  adv[idx] = Advance[idx] + 5.0 * q_sqrt(q_fabs(car.speed));
+  adv[idx] = Advance[idx] + 5.0 * sqrt(fabs(car.speed));
 
   if (s.cur_t > hold[idx]) {
     Tright[idx] = car.width / 2.0 + Offset[idx] + DynOffset[idx];
@@ -731,10 +731,10 @@ void RPC_drive(int data)
   /*
    * speed control
    */
-  CosA = q_cos(car.yaw + car.steer*2.0);
-  SinA = q_sin(car.yaw + car.steer*2.0);
+  CosA = cos(car.yaw + car.steer*2.0);
+  SinA = sin(car.yaw + car.steer*2.0);
   curAdv = Advance2[idx];
-  AdvMax = q_fabs(car.speed) * 5.0 + 1.0;
+  AdvMax = fabs(car.speed) * 5.0 + 1.0;
   Amax = max;
   
   Db = car.rate;
@@ -742,7 +742,7 @@ void RPC_drive(int data)
   Amax = Amax * Amax;
   if (tgtSpeed < 0) {
     tgtSpeed = (vtgt1 * Amax  + vtgt2) *
-	(1.0 + q_tan(q_fabs(car.angle_e + car.angle_s)));
+	(1.0 + tan(fabs(car.angle_e + car.angle_s)));
     tgtSpeed -= (car.dammage / s.maxdammage) * 0.2;
     tgtSpeed = MIN(tgtSpeed, MaxSpeed[idx] / 1.15);
   }
@@ -754,7 +754,7 @@ void RPC_drive(int data)
     (car.gear < 2) && (car.speed < 1.0)) {
     car.steer = -car.steer * 3.0;
     car.gearcmd = -1;
-  } else if ((q_fabs(Da) > (PI - (PI/4.0))) &&
+  } else if ((fabs(Da) > (PI - (PI/4.0))) &&
 	       ((car.toright < 0) ||
 		(car.toright > car.width))) {
 	car.steer = -car.steer * 3.0;
@@ -1218,7 +1218,7 @@ no_fault:
 
 #if 0
       float diff = car.brake - old_brake;
-      if(q_fabs(diff) < 1e-10) brake_mon++;
+      if(fabs(diff) < 1e-10) brake_mon++;
       else{
         old_brake = car.brake;
         brake_mon = 0;

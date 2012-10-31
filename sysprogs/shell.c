@@ -15,7 +15,8 @@
  *  along with this program.  If not, see <http://www.gnu.org/licenses/>.
  */
 
-#include "syscall.h"
+#include <stdio.h>
+#include <stdlib.h>
 
 void
 putx (unsigned long l)
@@ -60,8 +61,8 @@ scanline (char *line)
 }
 
 
-void
-_start ()
+int
+main ()
 {
 
   char line[80];

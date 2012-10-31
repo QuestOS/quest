@@ -15,7 +15,8 @@
  *  along with this program.  If not, see <http://www.gnu.org/licenses/>.
  */
 
-#include "syscall.h"
+#include "stdio.h"
+#include "unistd.h"
 
 #define ITERATIONS 1000000
 #define NUM_THREADS 4

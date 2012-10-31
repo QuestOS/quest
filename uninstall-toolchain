@@ -1,0 +1,8 @@
+#!/bin/bash
+
+if [ "$#" -ne 0 ]
+then
+	make -C toolchain clean uninstall -j $1
+else
+	make -C toolchain clean uninstall
+fi

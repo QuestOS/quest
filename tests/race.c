@@ -16,25 +16,27 @@
  */
 
 #include <stdio.h>
+#include <sys/types.h>
+#include <sys/wait.h>
 
 int
 main ()
 {
 
-  int i, child, grandchild;
+  int i, child, grandchild, status;
 
   if ((child = fork ())) {
     /* parent */
     for (i = 0; i < 10; i++)
       puts ("Parent!");
 
-    waitpid (child);
+    waitpid (child, &status, 0);
   } else if ((grandchild = fork ())) {
     /* child */
     for (i = 0; i < 10; i++)
       puts ("Child!");
 
-    waitpid (grandchild);
+    waitpid (grandchild, &status, 0);
   } else
     /* grandchild */
     for (i = 0; i < 10; i++)

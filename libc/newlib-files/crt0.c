@@ -5,7 +5,7 @@ extern char __bss_start, _end; // BSS should be the last think before _end
 
 // XXX: environment
 char *__env[1] = { 0 };
-char **environ = __env;
+//extern char **environ = __env;
 
 void _start() {
   char *i;

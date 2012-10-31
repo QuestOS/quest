@@ -1,5 +1,5 @@
 /*                    The Quest Operating System
- *  Copyright (C) 2005-2012  Richard West, Boston University
+ *  Portions Copyright (C) 2005-2012  Richard West, Boston University
  *
  *  This program is free software: you can redistribute it and/or modify
  *  it under the terms of the GNU General Public License as published by
@@ -15,40 +15,16 @@
  *  along with this program.  If not, see <http://www.gnu.org/licenses/>.
  */
 
-#include "stdlib.h"
+#ifndef _SYS_SELECT_H
+#define _SYS_SELECT_H
 
-#define NUM_THREADS 4
+#include <sys/types.h>
+#include <sys/time.h>
 
-void
-child (int idx)
-{
-  unsigned long i = 0;
-  char ch;
-  if (idx <= 9)
-    ch = idx + '0';
-  else
-    ch = (idx - 10) + 'A';
-  for (;;) {
-    if (!(i & 0xFFFFF)) {
-      putchar (ch);
-    }
-    i++;
-  }
-}
+extern int select (int maxfdp1, fd_set * readfds, fd_set * writefds,
+                   fd_set * exceptfds, struct timeval * tvptr);
 
-void
-main ()
-{
-  int pid[NUM_THREADS];
-  int i;
-
-  for (i=1; i<NUM_THREADS; i++) {
-    if ((pid[i]=fork ()) == 0) {
-      child (i);
-    }
-  }
-  child (0);
-}
+#endif
 
 /*
  * Local Variables:

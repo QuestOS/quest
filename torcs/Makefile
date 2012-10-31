@@ -1,32 +1,28 @@
-# *** Choose your compiler. Make it ANSI-compatible (e.g. 'cc -ansi').
-CC	= gcc
-LD	= ld -melf_i386 -T../kernel/ldscripts/module.ld
+ifndef TARGET
+TARGET = i586-pc-quest
+endif
 
+CC = $(TARGET)-gcc
+LD = $(TARGET)-ld
+AR = $(TARGET)-ar
 
 ifndef INSTALL_DIR
-INSTALL_DIR=/tftp
+INSTALL_DIR=/tftp/boot
+endif
+
+ifndef TOOLCHAIN-INSTALL-DIR
+TOOLCHAIN-INSTALL-DIR=$(HOME)/bin/cross
 endif
 
 ifndef INSTALL_CMD
 INSTALL_CMD = cp
 endif
 
-# *** architecture.
-
-# quest
-
-LIBS   = -L../libc/ -L../libc/include -L../softfloat/ -lc -lsoftfloat
-INCS   = -I../libc/include -I../quest/include -I.
-CFLAGS = -m32 -march=i586 -fno-builtin -fno-stack-protector -fno-strict-aliasing \
-         -fno-delete-null-pointer-checks -nostdinc -g -Wall -Wno-attributes -O0 \
-         -D_QUEST -Wa,--32 -MMD -msoft-float $(INCS) $(LIBS)
+LIBS   = -lc -lm -lsoftfloat $(TOOLCHAIN-INSTALL-DIR)/$(TARGET)/lib/crt0.o
+INCS   = 
+CFLAGS =  -g -Wall -O0 -MMD -msoft-float $(INCS)
 
 OBJS = torcs.o
-
-#mame:  $(OBJS) /../libc/libc.a
-#	$(LD) -o mame $(OBJS) $(LIBS.$(ARCH))
-#obj/%.o: src/%.c
-#	 $(CC) $(DEFS.$(ARCH)) $(MS) $(CFLAGS) -O3 -o $@ -c $<
 
 all:  torcs
 

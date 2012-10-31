@@ -1,11 +1,11 @@
 
 
-#ifndef __OUR_FUNC_H
-#define __OUR_FUNC_H
+#ifndef __OUR_FUNC_H_
+#define __OUR_FUNC_H_
 
 #include "our_stuff.h"
-#include "../../kernel/include/types.h"
-#include "sys/select.h"
+#include <sys/select.h>
+#include <sys/types.h>
 
 ssize_t sendmsg (int sockfd, const struct msghdr *msg, int flags);
 
@@ -34,13 +34,13 @@ int unlink (const char *pathname);
 
 int chmod (const char *pathname, mode_t mode);
 
-int sigemptyset(sigset_t *set);
+//int sigemptyset(sigset_t *set);
 
 
-int sigaction(int signum, const struct sigaction *act,
-              struct sigaction *oldact);
+//int sigaction(int signum, const struct sigaction *act,
+//              struct sigaction *oldact);
 
-int sigaddset(sigset_t *set, int signum);
+//int sigaddset(sigset_t *set, int signum);
 
 unsigned int alarm(unsigned int seconds);
 
@@ -53,9 +53,9 @@ void perror(const char *s);
 void assert(scalar expression);
 
 
-long double sqrt ( long double x );
+//long double sqrt ( long double x );
 
-int feof(FILE *stream);
+//int feof(FILE *stream);
 
 void rewind(FILE *stream);
 
@@ -78,7 +78,7 @@ long double powl(long double x, long double y);
 
 long int strtol(const char *nptr, char **endptr, int base);
 
-int getopt(int argc, char ** argv, char *ostr);
+//int getopt(int argc, char ** argv, char *ostr);
 
 int isdigit(int c);
 

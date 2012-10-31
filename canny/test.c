@@ -4,6 +4,7 @@
 #include <sys/socket.h>
 #include <arpa/inet.h>
 #include <netinet/in.h>
+#include <vcpu.h>
 
 unsigned char buf[WIDTH * HEIGHT * 3];
 

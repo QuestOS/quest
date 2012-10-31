@@ -135,8 +135,8 @@ C_process(CEDetector *detect)
     C_normalizeContrast(detect);
   }
   C_computeGradients(detect, detect->gaussianKernelRadius, detect->gaussianKernelWidth);
-  int low = q_lroundf(detect->lowThreshold * MAGNITUDE_SCALE);
-  int high = q_lroundf(detect->highThreshold * MAGNITUDE_SCALE);
+  int low = lroundf(detect->lowThreshold * MAGNITUDE_SCALE);
+  int high = lroundf(detect->highThreshold * MAGNITUDE_SCALE);
   C_performHysteresis(detect, low, high);
   C_thresholdEdges(detect);
   C_writeEdges(detect, detect->data);
@@ -263,28 +263,28 @@ C_computeGradients(CEDetector *detect, float kernelRadius, int kernelWidth)
 
       xGrad = detect->xGradient[index];
       yGrad = detect->yGradient[index];
-      gradMag = q_hypot(xGrad, yGrad);
+      gradMag = hypot(xGrad, yGrad);
 
-      nMag = q_hypot(detect->xGradient[indexN], detect->yGradient[indexN]);
-      sMag = q_hypot(detect->xGradient[indexS], detect->yGradient[indexS]);
-      wMag = q_hypot(detect->xGradient[indexW], detect->yGradient[indexW]);
-      eMag = q_hypot(detect->xGradient[indexE], detect->yGradient[indexE]);
-      neMag = q_hypot(detect->xGradient[indexNE], detect->yGradient[indexNE]);
-      seMag = q_hypot(detect->xGradient[indexSE], detect->yGradient[indexSE]);
-      swMag = q_hypot(detect->xGradient[indexSW], detect->yGradient[indexSW]);
-      nwMag = q_hypot(detect->xGradient[indexNW], detect->yGradient[indexNW]);
+      nMag = hypot(detect->xGradient[indexN], detect->yGradient[indexN]);
+      sMag = hypot(detect->xGradient[indexS], detect->yGradient[indexS]);
+      wMag = hypot(detect->xGradient[indexW], detect->yGradient[indexW]);
+      eMag = hypot(detect->xGradient[indexE], detect->yGradient[indexE]);
+      neMag = hypot(detect->xGradient[indexNE], detect->yGradient[indexNE]);
+      seMag = hypot(detect->xGradient[indexSE], detect->yGradient[indexSE]);
+      swMag = hypot(detect->xGradient[indexSW], detect->yGradient[indexSW]);
+      nwMag = hypot(detect->xGradient[indexNW], detect->yGradient[indexNW]);
 
       if(xGrad * yGrad <= (float)0 
-        ? q_fabsf(xGrad) >= q_fabsf(yGrad)
-          ? (tmp = q_fabsf(xGrad * gradMag)) >= q_fabsf(yGrad * neMag - (xGrad + yGrad) * eMag)
-            && tmp > q_fabsf(yGrad * swMag - (xGrad + yGrad) * wMag)
-          : (tmp = q_fabsf(yGrad * gradMag)) >= q_fabsf(xGrad * neMag - (yGrad + xGrad) * nMag)
-            && tmp > q_fabsf(xGrad * swMag - (yGrad + xGrad) * sMag)
-        : q_fabsf(xGrad) >= q_fabsf(yGrad)
-          ? (tmp = q_fabsf(xGrad * gradMag)) >= q_fabsf(yGrad * seMag + (xGrad - yGrad) * eMag)
-            && tmp > q_fabsf(yGrad * nwMag + (xGrad - yGrad) * wMag)
-          : (tmp = q_fabsf(yGrad * gradMag)) >= q_fabsf(xGrad * seMag + (yGrad - xGrad) * sMag)
-            && tmp > q_fabsf(xGrad * nwMag + (yGrad - xGrad) * nMag)
+        ? fabsf(xGrad) >= fabsf(yGrad)
+          ? (tmp = fabsf(xGrad * gradMag)) >= fabsf(yGrad * neMag - (xGrad + yGrad) * eMag)
+            && tmp > fabsf(yGrad * swMag - (xGrad + yGrad) * wMag)
+          : (tmp = fabsf(yGrad * gradMag)) >= fabsf(xGrad * neMag - (yGrad + xGrad) * nMag)
+            && tmp > fabsf(xGrad * swMag - (yGrad + xGrad) * sMag)
+        : fabsf(xGrad) >= fabsf(yGrad)
+          ? (tmp = fabsf(xGrad * gradMag)) >= fabsf(yGrad * seMag + (xGrad - yGrad) * eMag)
+            && tmp > fabsf(yGrad * nwMag + (xGrad - yGrad) * wMag)
+          : (tmp = fabsf(yGrad * gradMag)) >= fabsf(xGrad * seMag + (yGrad - xGrad) * sMag)
+            && tmp > fabsf(xGrad * nwMag + (yGrad - xGrad) * nMag)
         ){
         if(gradMag >= MAGNITUDE_LIMIT){
           detect->magnitude[index] = MAGNITUDE_MAX;
@@ -304,7 +304,7 @@ C_computeGradients(CEDetector *detect, float kernelRadius, int kernelWidth)
 float
 gaussian(float x, float sigma)
 {
-  return (float)q_pow(M_E, - (x * x) / ((float)2 * sigma * sigma));
+  return (float)pow(M_E, - (x * x) / ((float)2 * sigma * sigma));
 }
 
 void
@@ -357,7 +357,7 @@ C_thresholdEdges(CEDetector *detect)
 int
 luminance(float r, float g, float b)
 {
-  return q_lroundf((float)0.299 * r + (float)0.587 * g + (float)0.114 * b);
+  return lroundf((float)0.299 * r + (float)0.587 * g + (float)0.114 * b);
 }
 
 void

@@ -1,5 +1,5 @@
 /*                    The Quest Operating System
- *  Copyright (C) 2005-2012  Richard West, Boston University
+ *  Portions Copyright (C) 2005-2012  Richard West, Boston University
  *
  *  This program is free software: you can redistribute it and/or modify
  *  it under the terms of the GNU General Public License as published by
@@ -15,40 +15,24 @@
  *  along with this program.  If not, see <http://www.gnu.org/licenses/>.
  */
 
-#include "stdlib.h"
+#ifndef _ARPA_INET_H
+#define _ARPA_INET_H
 
-#define NUM_THREADS 4
+#include <unistd.h>
+#include <sys/socket.h>
+#include <netinet/in.h>
 
-void
-child (int idx)
-{
-  unsigned long i = 0;
-  char ch;
-  if (idx <= 9)
-    ch = idx + '0';
-  else
-    ch = (idx - 10) + 'A';
-  for (;;) {
-    if (!(i & 0xFFFFF)) {
-      putchar (ch);
-    }
-    i++;
-  }
-}
+extern uint32_t htonl (uint32_t hostint32);
+extern uint16_t htons (uint16_t hostint16);
+extern uint32_t ntohl (uint32_t netint32);
+extern uint16_t ntohs (uint16_t netint16);
+extern const char *inet_ntop (int domain, const void *addr, char *str, socklen_t size);
+extern int inet_pton (int domain, const char *str, void *addr);
+extern uint32_t inet_addr (const char *cp);
+extern char *inet_ntoa(struct in_addr addr);
+extern int inet_aton(const char *cp, struct in_addr *addr);
 
-void
-main ()
-{
-  int pid[NUM_THREADS];
-  int i;
-
-  for (i=1; i<NUM_THREADS; i++) {
-    if ((pid[i]=fork ()) == 0) {
-      child (i);
-    }
-  }
-  child (0);
-}
+#endif
 
 /*
  * Local Variables:

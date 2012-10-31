@@ -1,5 +1,6 @@
-TARGET := i586-pc-quest
-PREFIX := ${HOME}/bin/cross
+TARGET=i586-pc-quest
+TOOLCHAIN-INSTALL-DIR=$(HOME)/bin/cross
+
 
 COMPILER = gcc-4.7.2
 COMPILER-BUILD-DIR = build-$(COMPILER)
@@ -13,7 +14,7 @@ all:
 	$(MAKE) compiler
 
 binutils: $(BINUTILS-BUILD-DIR)/Makefile
-	mkdir -p ${PREFIX}
+	mkdir -p $(TOOLCHAIN-INSTALL-DIR)
 	cd $(BINUTILS-BUILD-DIR); $(MAKE) all; $(MAKE) install;
 
 $(BINUTILS-BUILD-DIR)/Makefile:
@@ -21,14 +22,14 @@ $(BINUTILS-BUILD-DIR)/Makefile:
 	mkdir -p $(BINUTILS-BUILD-DIR)
 	tar xf $(BINUTILS).tar.gz
 	cd binutils-files; find . -type f -name "*" -exec cp {} ../$(BINUTILS)/{} \;
-	cd $(BINUTILS-BUILD-DIR); ../$(BINUTILS)/configure --target=${TARGET} --prefix=${PREFIX} \
-		--disable-nls
+	cd $(BINUTILS-BUILD-DIR); ../$(BINUTILS)/configure --target=$(TARGET) \
+		--prefix=$(TOOLCHAIN-INSTALL-DIR) --disable-nls
 
 compiler: $(COMPILER-BUILD-DIR)/Makefile
-	mkdir -p ${PREFIX}
+	mkdir -p $(TOOLCHAIN-INSTALL-DIR)
 	cd $(COMPILER-BUILD-DIR); $(MAKE) all-gcc; $(MAKE) install-gcc; 
-	-cd ${HOME}/bin/cross/bin; ln -s ${TARGET}-gcc ${TARGET}-cc
-	cd ../libc/; $(MAKE) all; $(MAKE) install
+	-cd ${HOME}/bin/cross/bin; ln -s $(TARGET)-gcc $(TARGET)-cc
+	$(MAKE) -C ../libc/ all;
 	cd $(COMPILER-BUILD-DIR); $(MAKE) all; $(MAKE) install
 
 
@@ -38,7 +39,8 @@ $(COMPILER-BUILD-DIR)/Makefile:
 	tar xf $(COMPILER).tar.gz
 	cd compiler-files; find . -type f -name "*" -exec cp {} ../$(COMPILER)/{} \;
 	cp compiler-files/gcc/config/quest.h $(COMPILER)/gcc/config/quest.h
-	cd $(COMPILER-BUILD-DIR); ../$(COMPILER)/configure --target=${TARGET} --prefix=${PREFIX} \
+	cd $(COMPILER-BUILD-DIR); ../$(COMPILER)/configure --target=$(TARGET) \
+		--prefix=$(TOOLCHAIN-INSTALL-DIR) \
 		--disable-nls --enable-languages=c --with-newlib
 
 clean:
@@ -49,4 +51,5 @@ clean:
 
 # Need to fix uninstall to not delete everything
 uninstall:
-	rm -rf ${PREFIX}/*
+	rm -rf $(TOOLCHAIN-INSTALL-DIR)/*
+	$(MAKE) -C ../libc uninstall

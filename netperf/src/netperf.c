@@ -103,8 +103,6 @@ char	netperf_id[]="\
  /* this file contains the main for the netperf program. all the other */
  /* routines can be found in the file netsh.c */
 
-#include "syscall.h"
-
 int _cdecl
 main(int argc, char *argv[])
 {

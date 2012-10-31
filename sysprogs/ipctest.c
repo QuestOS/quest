@@ -15,7 +15,7 @@
  *  along with this program.  If not, see <http://www.gnu.org/licenses/>.
  */
 
-#include "syscall.h"
+#include "stdlib.h"
 
 static void
 client (void)
@@ -34,7 +34,7 @@ server (void)
 }
 
 void
-_start ()
+main ()
 {
   if (fork () == 0)
     client ();

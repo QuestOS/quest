@@ -420,7 +420,7 @@ struct sendfile_ring_elt {
 #define KSTAT_10       11
 #define OSX            12
 
-#define BADCH ('?')
+//#define BADCH ('?')
 
 #ifndef NETLIB
 #ifdef WIN32

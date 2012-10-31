@@ -1,18 +1,21 @@
 #include "errno.h"
-#include "../../libc/include/time.h"
-#include "../../libc/include/stdio.h"
-#include "../../libc/include/stdlib.h"
-#include "../../libc/include/string.h"
-#include "../../kernel/include/types.h"
+#include "sys/types.h"
+#include "stdio.h"
+#include "stdlib.h"
+#include "string.h"
 #include "sys/time.h"
-
+#include "sys/times.h"
+#include "stdint.h"
+#include "netdb.h"
+#include "sys/signal.h"
+#include "sys/stat.h"
 
 #ifndef _OUR_STUFF_H_
 #define _OUR_STUFF_H_
 
 #define fprintf(f,fmt,...)  printf(fmt,##__VA_ARGS__)
 
-#define BUFSIZ 8192
+//#define BUFSIZ 8192
 #define MAX_PATH 256
 #define STDIN_FILENO  0
 #define STDOUT_FILENO 1
@@ -21,19 +24,19 @@
 #define _SS_ALIGNSIZE   (sizeof(sint64))
 #define _SS_MAXSIZE     128U
 
-#define _SC_ARG_MAX        1
-#define _SC_CHILD_MAX      2
-#define _SC_CLOCKS_PER_SEC 3
-#define _SC_CLK_TCK        3
-#define _SC_NGROUPS_MAX    4
-#define _SC_OPEN_MAX       5
-#define _SC_JOB_CONTROL    6
-#define _SC_SAVED_IDS      7
-#define _SC_VERSION        8
-#define _SC_STREAM_MAX     9
-#define _SC_TZNAME_MAX    10
-#define _SC_PAGESIZE      11
-#define _SC_PAGE_SIZE     _SC_PAGESIZE
+//#define _SC_ARG_MAX        1
+//#define _SC_CHILD_MAX      2
+//#define _SC_CLOCKS_PER_SEC 3
+//#define _SC_CLK_TCK        3
+//#define _SC_NGROUPS_MAX    4
+//#define _SC_OPEN_MAX       5
+//#define _SC_JOB_CONTROL    6
+//#define _SC_SAVED_IDS      7
+//#define _SC_VERSION        8
+//#define _SC_STREAM_MAX     9
+//#define _SC_TZNAME_MAX    10
+//#define _SC_PAGESIZE      11
+//#define _SC_PAGE_SIZE     _SC_PAGESIZE
 
 
 #define IP_HDRINCL      3
@@ -99,10 +102,10 @@ typedef unsigned long u_long;
 typedef socklen_t netperf_socklen_t;
 typedef char* caddr_t;
 
-typedef unsigned long ino_t;
-typedef unsigned short mode_t;
-typedef short nlink_t;
-typedef char gid_t;
+//typedef unsigned long ino_t;
+//typedef unsigned short mode_t;
+//typedef short nlink_t;
+//typedef char gid_t;
 typedef short dev_t;
 typedef long off_t;
 typedef	int blksize_t;
@@ -130,7 +133,7 @@ struct msghdr {
 
 int errno;
 
-#define stdout 0
+//#define stdout 0
 
 #define F_DUPFD		0	/* Duplicate file descriptor.  */
 #define F_GETFD		1	/* Get file descriptor flags.  */
@@ -156,10 +159,10 @@ int errno;
 
 typedef long int __fd_mask;
 
-struct timezone {
-        int     tz_minuteswest; /* minutes west of Greenwich */
-        int     tz_dsttime;     /* type of dst correction */
-};
+//struct timezone {
+//        int     tz_minuteswest; /* minutes west of Greenwich */
+//        int     tz_dsttime;     /* type of dst correction */
+//};
 
 /* Some versions of <linux/posix_types.h> define these macros.  */
 #undef	__NFDBITS
@@ -189,7 +192,7 @@ struct utsname {
 #endif
 };
 
-#define stderr 2
+//#define stderr 2
 
 #define SOL_SOCKET	0xffff
 
@@ -227,41 +230,41 @@ struct utsname {
 #define SIGTRAP          5
 #define SIGABRT          6
 #define SIGIOT           6
-#define SIGBUS           7
+//#define SIGBUS           7
 #define SIGFPE           8
 #define SIGKILL          9
-#define SIGUSR1         10
+//#define SIGUSR1         10
 #define SIGSEGV         11
-#define SIGUSR2         12
+//#define SIGUSR2         12
 #define SIGPIPE         13
 #define SIGALRM         14
 #define SIGTERM         15
 #define SIGSTKFLT       16
-#define SIGCHLD         17
-#define SIGCONT         18
-#define SIGSTOP         19
-#define SIGTSTP         20
+//#define SIGCHLD         17
+//#define SIGCONT         18
+//#define SIGSTOP         19
+//#define SIGTSTP         20
 #define SIGTTIN         21
 #define SIGTTOU         22
-#define SIGURG          23
+//#define SIGURG          23
 #define SIGXCPU         24
 #define SIGXFSZ         25
 #define SIGVTALRM       26
 #define SIGPROF         27
 #define SIGWINCH        28
-#define SIGIO           29
+//#define SIGIO           29
 #define SIGPOLL         SIGIO
 /*
 #define SIGLOST         29
 */
 #define SIGPWR          30
-#define SIGSYS          31
+//#define SIGSYS          31
 #define SIGUNUSED       31
 
 #define SI_MAX_SIZE 128
 #define SI_PAD_SIZE ((SI_MAX_SIZE/sizeof(int)) - 3)
 
-typedef int pid_t, uid_t, sigval_t, sigset_t;
+typedef int pid_t, sigval_t;
 
 struct protoent {
     char  *p_name;       /* official protocol name */
@@ -319,13 +322,13 @@ typedef struct siginfo {
 } siginfo_t;
 
 
-struct sigaction {
-    void     (*sa_handler)(int);
-    void     (*sa_sigaction)(int, siginfo_t *, void *);
-    sigset_t   sa_mask;
-    int        sa_flags;
-    void     (*sa_restorer)(void);
-};
+  //struct sigaction {
+//    void     (*sa_handler)(int);
+//    void     (*sa_sigaction)(int, siginfo_t *, void *);
+//    sigset_t   sa_mask;
+//    int        sa_flags;
+//    void     (*sa_restorer)(void);
+//};
 
 
 #define _SS_PAD1SIZE (_SS_ALIGNSIZE - sizeof(sa_family_t))
@@ -350,19 +353,19 @@ struct ifmap {
 struct ifreq {
     char ifr_name[IFNAMSIZ]; /* Interface name */
     union {
-        struct sockaddr ifr_addr;
-        struct sockaddr ifr_dstaddr;
-        struct sockaddr ifr_broadaddr;
-        struct sockaddr ifr_netmask;
-        struct sockaddr ifr_hwaddr;
-        short           ifr_flags;
-        int             ifr_ifindex;
-        int             ifr_metric;
-        int             ifr_mtu;
-        struct ifmap    ifr_map;
-        char            ifr_slave[IFNAMSIZ];
-        char            ifr_newname[IFNAMSIZ];
-        char           *ifr_data;
+      struct sockaddr ifr_addr;
+      struct sockaddr ifr_dstaddr;
+      struct sockaddr ifr_broadaddr;
+      struct sockaddr ifr_netmask;
+      struct sockaddr ifr_hwaddr;
+      short           ifr_flags;
+      int             ifr_ifindex;
+      int             ifr_metric;
+      int             ifr_mtu;
+      struct ifmap    ifr_map;
+      char            ifr_slave[IFNAMSIZ];
+      char            ifr_newname[IFNAMSIZ];
+      char           *ifr_data;
     };
 };
 
@@ -371,7 +374,7 @@ struct ifreq {
 #define ETHTOOL_BUSINFO_LEN     32
 
 struct ethtool_drvinfo {
-  u32     cmd;
+  uint32_t     cmd;
   char    driver[32];     /* driver short name, "tulip", "eepro100" */
   char    version[32];    /* driver version string */
   char    fw_version[32]; /* firmware version string, if applicable */
@@ -379,10 +382,10 @@ struct ethtool_drvinfo {
   /* For PCI devices, use pci_dev->slot_name. */
   char    reserved1[32];
   char    reserved2[16];
-  u32     n_stats;        /* number of u64's from ETHTOOL_GSTATS */
-  u32     testinfo_len;
-  u32     eedump_len;     /* Size of data from ETHTOOL_GEEPROM (bytes) */
-  u32     regdump_len;    /* Size of data from ETHTOOL_GREGS (bytes) */
+  uint32_t     n_stats;        /* number of u64's from ETHTOOL_GSTATS */
+  uint32_t     testinfo_len;
+  uint32_t     eedump_len;     /* Size of data from ETHTOOL_GEEPROM (bytes) */
+  uint32_t     regdump_len;    /* Size of data from ETHTOOL_GREGS (bytes) */
 };
 
 
@@ -399,21 +402,21 @@ struct FTW {
 
 
 
-struct stat {
-    dev_t     st_dev;     /* ID of device containing file */
-    ino_t     st_ino;     /* inode number */
-    mode_t    st_mode;    /* protection */
-    nlink_t   st_nlink;   /* number of hard links */
-    uid_t     st_uid;     /* user ID of owner */
-    gid_t     st_gid;     /* group ID of owner */
-    dev_t     st_rdev;    /* device ID (if special file) */
-    off_t     st_size;    /* total size, in bytes */
-    blksize_t st_blksize; /* blocksize for file system I/O */
-    blkcnt_t  st_blocks;  /* number of 512B blocks allocated */
-    time_t    st_atime;   /* time of last access */
-    time_t    st_mtime;   /* time of last modification */
-    time_t    st_ctime;   /* time of last status change */
-};
+//struct stat {
+//    dev_t     st_dev;     /* ID of device containing file */
+//    ino_t     st_ino;     /* inode number */
+//    mode_t    st_mode;    /* protection */
+//    nlink_t   st_nlink;   /* number of hard links */
+//    uid_t     st_uid;     /* user ID of owner */
+//    gid_t     st_gid;     /* group ID of owner */
+//    dev_t     st_rdev;    /* device ID (if special file) */
+//    off_t     st_size;    /* total size, in bytes */
+//    blksize_t st_blksize; /* blocksize for file system I/O */
+//    blkcnt_t  st_blocks;  /* number of 512B blocks allocated */
+//    time_t    st_atime;   /* time of last access */
+//    time_t    st_mtime;   /* time of last modification */
+//    time_t    st_ctime;   /* time of last status change */
+//};
 
 struct sockaddr_nl {
     sa_family_t     nl_family;  /* AF_NETLINK */

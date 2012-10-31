@@ -1,18 +1,27 @@
 # *** Choose your compiler. Make it ANSI-compatible (e.g. 'cc -ansi').
-CC	= i586-pc-quest-gcc
-LD	= i586-pc-quest-ld 
+ifndef TARGET
+TARGET = i586-pc-quest
+endif
+
+CC = $(TARGET)-gcc
+LD = $(TARGET)-ld
+AR = $(TARGET)-ar
 
 ifndef INSTALL_DIR
-INSTALL_DIR=/tftp
+INSTALL_DIR=/tftp/boot
+endif
+
+ifndef TOOLCHAIN-INSTALL-DIR
+TOOLCHAIN-INSTALL-DIR=$(HOME)/bin/cross
 endif
 
 ifndef INSTALL_CMD
 INSTALL_CMD = cp
 endif
 
-LIBS   =
+LIBS   = $(TOOLCHAIN-INSTALL-DIR)/$(TARGET)/lib/crt0.o -lc
 INCS   = 
-CFLAGS =
+CFLAGS = -g
 
 
 PROGS = exec migtest race test1 test2 test3 test4 test5 \
@@ -20,13 +29,10 @@ PROGS = exec migtest race test1 test2 test3 test4 test5 \
 
 .PHONY: all clean install
 
-#test2.o : test2.c
-#	$(CC) test2.c -c -o test2.o
-
 all: $(PROGS)
 
 %: %.o
-	$(LD)  -o $@ $< /home/missimer/bin/cross/i586-pc-quest/lib/crt0.o -lc -Map $@.map
+	$(LD)  -o $@ $< $(LIBS) -Map $@.map
 
 %: %.c
 
@@ -34,4 +40,4 @@ clean:
 	rm -f *.o *.d *.map *~ $(PROGS)
 
 install: $(PROGS)
-	$(INSTALL_CMD) $(PROGS) $(INSTALL_DIR)/boot
+	$(INSTALL_CMD) $(PROGS) $(INSTALL_DIR)

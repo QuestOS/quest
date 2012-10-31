@@ -1,5 +1,7 @@
 #include "softfloat.h"
 #include "stdio.h"
+#include "stdlib.h"
+#include "limits.h"
 #include "helper.h"
 
 

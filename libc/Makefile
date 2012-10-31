@@ -1,21 +1,40 @@
-TARGET := i586-pc-quest
-PREFIX := ${HOME}/bin/cross
+ifndef TARGET
+TARGET = i586-pc-quest
+endif
+
+ifndef TOOLCHAIN-INSTALL-DIR
+TOOLCHAIN-INSTALL-DIR=$(HOME)/bin/cross
+endif
 
 LIBC = newlib-1.18.0
 LIBC-BUILD-DIR = build-$(LIBC)
 LIBC-WEB-LOCATION = ftp://sources.redhat.com/pub/newlib/$(LIBC).tar.gz
 
-all: libc
+QUEST-LIBC-FILES = $(shell find newlib-files -type f)
 
-install: 
-	mkdir -p ${PREFIX}
-	cd $(LIBC-BUILD-DIR); make install
+LIB_DEST = $(TOOLCHAIN-INSTALL-DIR)/$(TARGET)/lib
+INC_DEST = $(TOOLCHAIN-INSTALL-DIR)/$(TARGET)/include
 
-libc: $(LIBC-BUILD-DIR)/Makefile
+
+all: $(LIB_DEST)/libc.a
+
+install:
+	@echo "libc.a is installed via make all"
+
+$(LIB_DEST)/libc.a: $(LIBC-BUILD-DIR)/Makefile $(QUEST-LIBC-FILES)
+	cd newlib-files; find . -type d -exec mkdir -p ../$(LIBC)/newlib/libc/sys/quest/{} \;
+	cd newlib-files; find . -type f -name "*.[ch]" \
+		-exec cp {} ../$(LIBC)/newlib/libc/sys/quest/{} \;
 	cp newlib-files/vanilla-syscalls.c $(LIBC)/newlib/libc/sys/quest/syscalls.c
 	cd $(LIBC-BUILD-DIR); $(MAKE)
 	cp newlib-files/syscalls.c $(LIBC)/newlib/libc/sys/quest/syscalls.c
 	cd $(LIBC-BUILD-DIR); $(MAKE)
+# Install portion
+	mkdir -p $(TOOLCHAIN-INSTALL-DIR)
+	cd $(LIBC-BUILD-DIR); $(MAKE) install
+	cd newlib-files; find . -type d -exec mkdir -p $(INC_DEST)/{} \;
+	cd newlib-files; find . -type f -name "*.[h]" \
+		-exec cp {} $(INC_DEST)/{} \;
 
 
 $(LIBC-BUILD-DIR)/Makefile:
@@ -27,12 +46,15 @@ $(LIBC-BUILD-DIR)/Makefile:
 	cp -r newlib-files/* $(LIBC)/newlib/libc/sys/quest
 	cd $(LIBC)/newlib/libc/sys; autoconf
 	cd $(LIBC)/newlib/libc/sys/quest; autoreconf
-	cd $(LIBC-BUILD-DIR); ../$(LIBC)/configure --target=${TARGET} --prefix=${PREFIX}
+	cd $(LIBC-BUILD-DIR); ../$(LIBC)/configure --target=$(TARGET) \
+		--prefix=$(TOOLCHAIN-INSTALL-DIR)
 
 clean:
-	rm -rf $(LIBC-BUILD-DIR)
-	rm -rf $(LIBC)
-	cd newlib-files; rm -rf *~ *.o
+	make -C $(LIBC-BUILD-DIR) clean
+	rm -f $(LIB_DEST)/libc.a
+	rm -f $(LIB_DEST)/libm.a
+	find newlib-files/ -name "*~" -exec rm {} \;
 
 uninstall:
-	rm -rf ${PREFIX}/*
+	rm -rf $(LIBC-BUILD-DIR)
+	rm -rf $(LIBC)
