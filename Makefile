@@ -12,7 +12,7 @@ export LD = $(TARGET)-ld
 export AR = $(TARGET)-ar
 
 
-DIRS = kernel canny netperf/src softfloat sysprogs tests libc torcs
+DIRS = kernel canny netperf softfloat sysprogs tests libc torcs
 
 # the sets of directories to do various things in
 BUILDDIRS   = $(DIRS:%=build-%)
@@ -39,7 +39,7 @@ $(BUILDDIRS):
 build-canny: build-softfloat build-libc
 build-sysprogs: build-softfloat build-libc
 build-tests: build-softfloat build-libc
-build-netperf/src: build-softfloat build-libc
+build-netperf: build-softfloat build-libc
 build-torcs: build-softfloat build-libc
 build-softfloat: build-libc
 
