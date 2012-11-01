@@ -1,1 +1,17 @@
-See kernel/README.
+Steps for building Quest:
+
+1) Set your PATH to include $HOME/bin/cross/bin as this is where the
+toolchain is installed by default.
+
+2) Run ./install-toolchain.  This takes an optional parameter which is
+the number parallel builds you want to use in the build process (the
+number for the make -j parameter).  On some machines two large of a
+number will actually slow the build processes down to a halt.  If no
+parameter is specified it defaults to 1.  install-toolchain will build
+binutils, a compiler, and libc (since part of it is needed to finish
+the compiler build).
+
+3) Run make.  This will build the kernel and all user level programs.
+
+
+See kernel/README for instructions on building the kernel specifically.
