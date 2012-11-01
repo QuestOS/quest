@@ -1,4 +1,5 @@
-Steps for building Quest:
+Steps for building Quest (See the toolchain Quest white paper for more
+information about the toolchain and libc build):
 
 1) Set your PATH to include $HOME/bin/cross/bin as this is where the
 toolchain is installed by default.
@@ -14,4 +15,5 @@ the compiler build).
 3) Run make.  This will build the kernel and all user level programs.
 
 
-See kernel/README for instructions on building the kernel specifically.
+See kernel/README for instructions on building the kernel
+specifically.
