@@ -23,4 +23,4 @@ clean:
 	rm -f *.o *.d *~ torcs
 
 install: torcs
-	$(INSTALL_CMD) torcs $(INSTALL_DIR)/boot
+	$(INSTALL_CMD) torcs $(INSTALL_DIR)

@@ -3,13 +3,13 @@ information about the toolchain and libc build):
 
 1) Set your PATH to include $HOME/bin/cross/bin as this is where the
 toolchain is installed by default.  If you wish to change this you
-must change the variable TOOLCHAIN-INSTALL-DIR (default value of
+must change the variable TOOLCHAIN_INSTALL_DIR (default value of
 $HOME/bin/cross) in both the config.mk in this directory and in
 toolchain/Makefile.
 
 2) Run ./install-toolchain.  This takes an optional parameter which is
 the number parallel builds you want to use in the build process (the
-number for the make -j parameter).  On some machines two large of a
+number for the make -j parameter).  On some machines too large of a
 number will actually slow the build processes down to a halt.  If no
 parameter is specified it defaults to 1.  install-toolchain will build
 binutils, a compiler, and libc (since part of it is needed to finish

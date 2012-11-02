@@ -9,7 +9,7 @@ all: $(LIB_DEST)/$(AR_FILE)
 
 
 $(LIB_DEST)/$(AR_FILE): $(AR_FILE)
-	cp $(AR_FILE) $(TOOLCHAIN-INSTALL-DIR)/$(TARGET)/lib/
+	cp $(AR_FILE) $(LIB_DEST)
 
 $(AR_FILE): $(OBJS)
 	$(AR) rcs $@ $(OBJS)

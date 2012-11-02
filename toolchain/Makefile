@@ -1,55 +1,55 @@
 TARGET=i586-pc-quest
-TOOLCHAIN-INSTALL-DIR=$(HOME)/bin/cross
+TOOLCHAIN_INSTALL_DIR=$(HOME)/bin/cross
 
 
 COMPILER = gcc-4.7.2
-COMPILER-BUILD-DIR = build-$(COMPILER)
-COMPILER-WEB-LOCATION = http://ftp.gnu.org/gnu/gcc/$(COMPILER)/$(COMPILER).tar.gz
+COMPILER_BUILD_DIR = build-$(COMPILER)
+COMPILER_WEB_LOCATION = http://ftp.gnu.org/gnu/gcc/$(COMPILER)/$(COMPILER).tar.gz
 BINUTILS = binutils-2.23
-BINUTILS-BUILD-DIR = build-$(BINUTILS)
-BINUTILS-WEB-LOCATION = http://ftp.gnu.org/gnu/binutils/$(BINUTILS).tar.gz
+BINUTILS_BUILD_DIR = build-$(BINUTILS)
+BINUTILS_WEB_LOCATION = http://ftp.gnu.org/gnu/binutils/$(BINUTILS).tar.gz
 
 all:
 	$(MAKE) binutils
 	$(MAKE) compiler
 
-binutils: $(BINUTILS-BUILD-DIR)/Makefile
-	mkdir -p $(TOOLCHAIN-INSTALL-DIR)
-	cd $(BINUTILS-BUILD-DIR); $(MAKE) all; $(MAKE) install;
+binutils: $(BINUTILS_BUILD_DIR)/Makefile
+	mkdir -p $(TOOLCHAIN_INSTALL_DIR)
+	cd $(BINUTILS_BUILD_DIR); $(MAKE) all; $(MAKE) install;
 
-$(BINUTILS-BUILD-DIR)/Makefile:
-	wget -c $(BINUTILS-WEB-LOCATION)
-	mkdir -p $(BINUTILS-BUILD-DIR)
+$(BINUTILS_BUILD_DIR)/Makefile:
+	wget -c $(BINUTILS_WEB_LOCATION)
+	mkdir -p $(BINUTILS_BUILD_DIR)
 	tar xf $(BINUTILS).tar.gz
 	cd binutils-files; find . -type f -name "*" -exec cp {} ../$(BINUTILS)/{} \;
-	cd $(BINUTILS-BUILD-DIR); ../$(BINUTILS)/configure --target=$(TARGET) \
-		--prefix=$(TOOLCHAIN-INSTALL-DIR) --disable-nls
+	cd $(BINUTILS_BUILD_DIR); ../$(BINUTILS)/configure --target=$(TARGET) \
+		--prefix=$(TOOLCHAIN_INSTALL_DIR) --disable-nls
 
-compiler: $(COMPILER-BUILD-DIR)/Makefile
-	mkdir -p $(TOOLCHAIN-INSTALL-DIR)
-	cd $(COMPILER-BUILD-DIR); $(MAKE) all-gcc; $(MAKE) install-gcc; 
+compiler: $(COMPILER_BUILD_DIR)/Makefile
+	mkdir -p $(TOOLCHAIN_INSTALL_DIR)
+	cd $(COMPILER_BUILD_DIR); $(MAKE) all-gcc; $(MAKE) install-gcc; 
 	-cd ${HOME}/bin/cross/bin; ln -s $(TARGET)-gcc $(TARGET)-cc
 	$(MAKE) -C ../libc/ all;
-	cd $(COMPILER-BUILD-DIR); $(MAKE) all; $(MAKE) install
+	cd $(COMPILER_BUILD_DIR); $(MAKE) all; $(MAKE) install
 
 
-$(COMPILER-BUILD-DIR)/Makefile:
-	wget -c $(COMPILER-WEB-LOCATION)
-	mkdir -p $(COMPILER-BUILD-DIR)
+$(COMPILER_BUILD_DIR)/Makefile:
+	wget -c $(COMPILER_WEB_LOCATION)
+	mkdir -p $(COMPILER_BUILD_DIR)
 	tar xf $(COMPILER).tar.gz
 	cd compiler-files; find . -type f -name "*" -exec cp {} ../$(COMPILER)/{} \;
 	cp compiler-files/gcc/config/quest.h $(COMPILER)/gcc/config/quest.h
-	cd $(COMPILER-BUILD-DIR); ../$(COMPILER)/configure --target=$(TARGET) \
-		--prefix=$(TOOLCHAIN-INSTALL-DIR) \
+	cd $(COMPILER_BUILD_DIR); ../$(COMPILER)/configure --target=$(TARGET) \
+		--prefix=$(TOOLCHAIN_INSTALL_DIR) \
 		--disable-nls --enable-languages=c --with-newlib
 
 clean:
-	rm -rf $(BINUTILS-BUILD-DIR)
-	rm -rf $(COMPILER-BUILD-DIR)
+	rm -rf $(BINUTILS_BUILD_DIR)
+	rm -rf $(COMPILER_BUILD_DIR)
 	rm -rf $(BINUTILS)
 	rm -rf $(COMPILER)
 
 # Need to fix uninstall to not delete everything
 uninstall:
-	rm -rf $(TOOLCHAIN-INSTALL-DIR)/*
+	rm -rf $(TOOLCHAIN_INSTALL_DIR)/*
 	$(MAKE) -C ../libc uninstall

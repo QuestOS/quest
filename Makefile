@@ -54,7 +54,7 @@ clean: $(CLEANDIRS)
 $(CLEANDIRS): 
 	$(MAKE) -C $(@:clean-%=%) clean
 
-$(ISO_DIR)/boot/grub/eltorito.img:  iso-grub.cfg 
+$(ISO_DIR)/grub/eltorito.img:  iso-grub.cfg 
 	mkdir -p iso/boot/grub 
 	cp iso-grub.cfg iso/boot/grub/grub.cfg
 	cp $(GRUB2)/eltorito.img iso/boot/grub/
