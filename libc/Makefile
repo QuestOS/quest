@@ -1,19 +1,10 @@
-ifndef TARGET
-TARGET = i586-pc-quest
-endif
-
-ifndef TOOLCHAIN-INSTALL-DIR
-TOOLCHAIN-INSTALL-DIR=$(HOME)/bin/cross
-endif
+include ../config.mk
 
 LIBC = newlib-1.18.0
 LIBC-BUILD-DIR = build-$(LIBC)
 LIBC-WEB-LOCATION = ftp://sources.redhat.com/pub/newlib/$(LIBC).tar.gz
 
 QUEST-LIBC-FILES = $(shell find newlib-files -type f)
-
-LIB_DEST = $(TOOLCHAIN-INSTALL-DIR)/$(TARGET)/lib
-INC_DEST = $(TOOLCHAIN-INSTALL-DIR)/$(TARGET)/include
 
 
 all: $(LIB_DEST)/libc.a

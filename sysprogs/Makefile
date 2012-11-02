@@ -1,27 +1,11 @@
-# *** Choose your compiler. Make it ANSI-compatible (e.g. 'cc -ansi').
+include ../config.mk
 include ../kernel/config.mk
-
-ifndef TARGET
-TARGET = i586-pc-quest
-endif
-
-CC = $(TARGET)-gcc
-LD = $(TARGET)-ld
-AR = $(TARGET)-ar
 
 ifndef INSTALL_DIR
 INSTALL_DIR=/tftp/boot
 endif
 
-ifndef TOOLCHAIN-INSTALL-DIR
-TOOLCHAIN-INSTALL-DIR=$(HOME)/bin/cross
-endif
-
-ifndef INSTALL_CMD
-INSTALL_CMD = cp
-endif
-
-LIBS   = 
+LIBS   = $(LIB_DEST)/crt0.o -lc
 INCS   = 
 CFLAGS = $(CFG)
 
@@ -35,7 +19,7 @@ PROGS = shell iotest ipctest spinner tcpclient tcpserver  \
 all: $(PROGS)
 
 %: %.o
-	$(LD)  -o $@ $< $(TOOLCHAIN-INSTALL-DIR)/$(TARGET)/lib/crt0.o -lc -Map $@.map
+	$(LD)  -o $@ $< $(LIBS) -Map $@.map
 
 %: %.c
 

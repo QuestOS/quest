@@ -1,26 +1,11 @@
-ifndef TARGET
-TARGET = i586-pc-quest
-endif
-
-CC = $(TARGET)-gcc
-LD = $(TARGET)-ld
-AR = $(TARGET)-ar
-
+include ../config.mk
 ifndef INSTALL_DIR
 INSTALL_DIR=/tftp/boot
 endif
 
-ifndef TOOLCHAIN-INSTALL-DIR
-TOOLCHAIN-INSTALL-DIR=$(HOME)/bin/cross
-endif
-
-ifndef INSTALL_CMD
-INSTALL_CMD = cp
-endif
-
 PROGS = netperf netserver
 
-LIBS   = -lc -lm -lsoftfloat $(TOOLCHAIN-INSTALL-DIR)/$(TARGET)/lib/crt0.o
+LIBS   = -lc -lm -lsoftfloat $(LIB_DEST)/crt0.o
 INCS   = -I./mk_netperf_on_quest
 CFLAGS =  -g -Wall -O0 -MMD -msoft-float $(INCS)
 
