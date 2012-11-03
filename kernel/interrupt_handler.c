@@ -598,8 +598,7 @@ strncpy (char *s1, const char *s2, int length)
 int
 _exec (char *filename, char *argv[], uint32 *curr_stack)
 {
-
-  uint32 *plPageDirectory = map_virtual_page ((uint32) get_pdbr () | 3);
+  uint32 *plPageDirectory;
   uint32 *plPageTable;
   uint32 pStack;
   Elf32_Ehdr *pe = (Elf32_Ehdr *) 0xFF400000;   /* 4MB below KERN_STK virt address */
@@ -608,25 +607,32 @@ _exec (char *filename, char *argv[], uint32 *curr_stack)
   int filesize, orig_filesize;
   /* Temporary storage for frame pointers for a file image up to 4MB
      discounting bss */
-  uint32 phys_addr = alloc_phys_frame () | 3;
+  uint32 phys_addr;
   /* frame_map is a 1024 bit bitmap to mark frames not needed for 
      file of specific size when not all sections need loading into RAM */
   uint32 frame_map[32];
-  uint32 *frame_ptr = map_virtual_page (phys_addr);
+  uint32 *frame_ptr;
   uint32 *tmp_page;
   int i, j, c;
   char command_args[80];
   char filename_bak[256];
   quest_tss * tss;
 
+  lock_kernel ();
+
+  plPageDirectory = map_virtual_page ((uint32) get_pdbr () | 3);
+  phys_addr = alloc_phys_frame () | 3;
+  frame_ptr = map_virtual_page (phys_addr);
+  
   if (!argv || !argv[0]) {
     BITMAP_SET (mm_table, phys_addr >> 12);
     unmap_virtual_page (plPageDirectory);
     unmap_virtual_page (frame_ptr);
+    unlock_kernel ();
     return -1;
   }
-
-  lock_kernel ();
+  
+  
 #ifdef DEBUG_SYSCALL
   com1_printf ("_exec (%s, [%s,...], %p)\n", filename, argv[0], curr_stack);
 #endif
