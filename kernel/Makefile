@@ -181,7 +181,7 @@ netboot: quest.iso
 
 $(LIBLWIP): $(LWIP_OBJS)
 	$(AR) r $@ $(LWIP_OBJS)
-	ranlib $@
+	$(RANLIB) $@
 
 cleanlwip:
 	-rm -f $(LWIP_OBJS) $(LWIP_DEPS) $(LIBLWIP)
