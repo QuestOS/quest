@@ -95,12 +95,12 @@ load_module (multiboot_module * pmm, int mod_num)
   void *pEntry = (void *) pe0->e_entry;
   int i, c, j;
   uint32 *stack_virt_addr;
-  uint32 page_count = 1;
+  uint32 page_count = 0;
 
   /* find out how many pages for the module */
   for (i = 0; i < pe0->e_phnum; i++) {
     if (pph->p_type == PT_LOAD)
-      page_count += (pph->p_memsz >> 12);
+      page_count += ((pph->p_offset + pph->p_memsz - 1) >> 12) - (pph->p_offset >> 12) + 1;
     pph = (void *) pph + pe0->e_phentsize;
   }
 

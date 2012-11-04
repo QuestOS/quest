@@ -1,18 +1,4 @@
-ifndef TARGET
-TARGET = i586-pc-quest
-endif
-
-CC = $(TARGET)-gcc
-LD = $(TARGET)-ld
-AR = $(TARGET)-ar
-
-LIB_DEST = $(TOOLCHAIN-INSTALL-DIR)/$(TARGET)/lib
-INC_DEST = $(TOOLCHAIN-INSTALL-DIR)/$(TARGET)/include
-
-
-ifndef TOOLCHAIN-INSTALL-DIR
-TOOLCHAIN-INSTALL-DIR=$(HOME)/bin/cross
-endif
+include ../config.mk
 
 CFLAGS    = -msoft-float -g -I./include
 OBJS = src/softfloat.o src/helper.o
@@ -23,7 +9,7 @@ all: $(LIB_DEST)/$(AR_FILE)
 
 
 $(LIB_DEST)/$(AR_FILE): $(AR_FILE)
-	cp $(AR_FILE) $(TOOLCHAIN-INSTALL-DIR)/$(TARGET)/lib/
+	cp $(AR_FILE) $(LIB_DEST)
 
 $(AR_FILE): $(OBJS)
 	$(AR) rcs $@ $(OBJS)

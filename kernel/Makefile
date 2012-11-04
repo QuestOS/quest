@@ -1,14 +1,7 @@
 include config.mk
+include ../config.mk
 GRUBLIB = grub/x86_64-pc
 TFTPDIR=tftp
-
-ifndef TARGET
-TARGET = i586-pc-quest
-endif
-
-CC = $(TARGET)-gcc
-LD = $(TARGET)-ld
-AR = $(TARGET)-ar
 
 TAR = tar
 CFLAGS = -fno-builtin -fno-stack-protector -fno-strict-aliasing -fno-delete-null-pointer-checks -nostdinc -g -Wall -Wno-attributes -O$(OPT) $(CFG) $(EXTRA_CFLAGS)
@@ -20,10 +13,6 @@ INDENTFLAGS = -gnu -br -ce --no-tabs
 
 ifndef INSTALL_DIR
 INSTALL_DIR=/tftp/boot
-endif
-
-ifndef INSTALL_CMD
-INSTALL_CMD = cp
 endif
 
 PROGS = quest
@@ -192,7 +181,7 @@ netboot: quest.iso
 
 $(LIBLWIP): $(LWIP_OBJS)
 	$(AR) r $@ $(LWIP_OBJS)
-	ranlib $@
+	$(RANLIB) $@
 
 cleanlwip:
 	-rm -f $(LWIP_OBJS) $(LWIP_DEPS) $(LIBLWIP)

@@ -1,15 +1,12 @@
+include config.mk
 GRUB2 = grub2
 PWD := $(shell pwd)
 MNT_POINT = /tftp/boot
 ISO_DIR = $(PWD)/iso/boot
 TAR = tar
 SYNC = sync
-export INSTALL_CMD = cp
-export TARGET = i586-pc-quest
-export TOOLCHAIN-INSTALL-DIR = $(HOME)/bin/cross
-export CC = $(TARGET)-gcc
-export LD = $(TARGET)-ld
-export AR = $(TARGET)-ar
+
+
 
 
 DIRS = kernel canny netperf softfloat sysprogs tests libc torcs
@@ -57,7 +54,7 @@ clean: $(CLEANDIRS)
 $(CLEANDIRS): 
 	$(MAKE) -C $(@:clean-%=%) clean
 
-$(ISO_DIR)/boot/grub/eltorito.img:  iso-grub.cfg 
+$(ISO_DIR)/grub/eltorito.img:  iso-grub.cfg 
 	mkdir -p iso/boot/grub 
 	cp iso-grub.cfg iso/boot/grub/grub.cfg
 	cp $(GRUB2)/eltorito.img iso/boot/grub/

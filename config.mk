@@ -1,0 +1,9 @@
+INSTALL_CMD = cp
+TARGET = i586-pc-quest
+TOOLCHAIN_INSTALL_DIR = $(HOME)/bin/cross
+CC = $(TARGET)-gcc
+LD = $(TARGET)-ld
+AR = $(TARGET)-ar
+RANLIB = $(TARGET)-ranlib
+LIB_DEST = $(TOOLCHAIN_INSTALL_DIR)/$(TARGET)/lib
+INC_DEST = $(TOOLCHAIN_INSTALL_DIR)/$(TARGET)/include
