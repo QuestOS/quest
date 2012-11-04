@@ -15,6 +15,7 @@ void _start() {
     *i = 0; 
   } 
 
+  asm volatile("finit");
 
   // XXX: get argc and argv
 
