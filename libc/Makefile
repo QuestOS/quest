@@ -41,7 +41,7 @@ $(LIBC_BUILD_DIR)/Makefile:
 		--prefix=$(TOOLCHAIN_INSTALL_DIR)
 
 clean:
-	make -C $(LIBC_BUILD_DIR) clean
+	-make -C $(LIBC_BUILD_DIR) clean
 	rm -f $(LIB_DEST)/libc.a
 	rm -f $(LIB_DEST)/libm.a
 	find newlib-files/ -name "*~" -exec rm {} \;
