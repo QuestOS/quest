@@ -17,7 +17,9 @@
 
 #ifndef __I386_DIV64_H__
 #define __I386_DIV64_H__
-#include"types.h"
+
+#include "types.h"
+#include <arch/i386.h>
 
 /* Courtesy of Linux */
 

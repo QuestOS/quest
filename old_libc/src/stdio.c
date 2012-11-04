@@ -539,6 +539,7 @@ int puts(const char *s) {
 void _start ( int argc, char *argv[] ) {
 
   mem_init();
+  asm volatile("finit");
   exit ( main( argc, argv ) );
 }
 

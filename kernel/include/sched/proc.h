@@ -68,6 +68,7 @@ typedef struct _quest_tss
   u32 initial_EIP;
   u32 CR3;
   u32 EFLAGS;
+  u8 fpu_state[108];            /* Always assume FPU state is 108 bytes */
   struct _semaphore Msem;
   u32 M[NUM_M];
 
@@ -99,7 +100,7 @@ typedef struct _quest_tss
   replenishment vcpu_backup[MAX_REPL];
   /* common VCPU scheduling parameters backup */
   u64 C_bak, T_bak, b_bak, usage_bak;
-} quest_tss;
+} PACKED quest_tss;
 
 static inline int
 find_fd (quest_tss *tss)

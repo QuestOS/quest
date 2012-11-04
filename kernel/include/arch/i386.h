@@ -151,6 +151,37 @@ get_pdbr (void)
   return p;
 }
 
+static inline uint32
+get_cr0(void)
+{
+  uint32 cr;
+  asm volatile ("movl %%cr0, %0":"=r" (cr));
+  return cr;
+}
+
+static inline void
+set_cr0(uint32 cr)
+{
+  asm volatile ("movl %0, %%cr0"::"r" (cr));
+}
+
+static inline void save_fpu_state(void* mem)
+{
+  asm volatile("fsave (%0)\n" :: "r"(mem));
+}
+
+static inline void initialise_fpu(void)
+{
+  uint32 cr;
+  asm volatile ("fninit");
+  cr = get_cr0();
+  
+  /* MP (bit 1) = 1
+     EM (bit 2) = 0
+     NE (bit 5) = 0 */
+  set_cr0((cr & ~(0x24)) | 0x2);
+}
+
 #if 0
 static inline void
 jmp_gate (uint16 us)
