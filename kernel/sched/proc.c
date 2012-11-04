@@ -185,12 +185,13 @@ duplicate_TSS (uint32 ebp,
   pTSS->ESP = child_esp;
   pTSS->EBP = child_ebp;
   pTSS->tid = new_task_id ();
+  save_fpu_state(pTSS->fpu_state);
   pTSS->sandbox_affinity = get_pcpu_id ();
 
   semaphore_init (&pTSS->Msem, 1, 0);
 
   pTSS->cpu = 0xFF;
-
+  
   /* Return the index into the GDT for the segment */
   return pTSS->tid;
 }

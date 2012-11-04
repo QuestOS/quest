@@ -48,14 +48,15 @@ static inline void
 software_context_switch (task_id next)
 {
   task_id tr = percpu_read (current_task);
-  tss *cur_TSS = (tr == 0 ? NULL : (tss *) lookup_TSS (tr));
-  tss *nxt_TSS = (tss *) lookup_TSS (next);
+  quest_tss *cur_TSS = (tr == 0 ? NULL : lookup_TSS (tr));
+  quest_tss *nxt_TSS = lookup_TSS (next);
 
   percpu_write (current_task, next);
-
+  
   asm volatile ("call _sw_jmp_task":
                 :"S" (cur_TSS), "D" (nxt_TSS)
                 :"eax", "ebx", "ecx", "edx");
+  
 }
 
 

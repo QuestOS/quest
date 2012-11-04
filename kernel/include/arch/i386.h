@@ -165,6 +165,11 @@ set_cr0(uint32 cr)
   asm volatile ("movl %0, %%cr0"::"r" (cr));
 }
 
+static inline void save_fpu_state(void* mem)
+{
+  asm volatile("fsave (%0)\n" :: "r"(mem));
+}
+
 static inline void initialise_fpu(void)
 {
   uint32 cr;

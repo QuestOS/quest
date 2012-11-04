@@ -48,6 +48,7 @@ main ()
         printf("FAILED\n");
         while(1);
       }
+      //printf("S1\n");
     }
   }
   else {
@@ -60,6 +61,7 @@ main ()
         printf("FAILED\n");
         while(1);
       }
+      //printf("S2\n");
     }
   }
   while(1);
