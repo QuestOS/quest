@@ -1062,6 +1062,7 @@ restart_networks_local ()
 static int
 sys_call_recovery (int arg)
 {
+#ifdef USE_VMX
   uint32 cpu = get_pcpu_id ();
   struct netif * netif = NULL;
   struct ip_addr ipaddr, netmask, gw;
@@ -1098,6 +1099,7 @@ sys_call_recovery (int arg)
     default:
       logger_printf ("Unknown recovery!\n");
   }
+#endif
   return 0;
 }
 

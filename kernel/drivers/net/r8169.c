@@ -3570,10 +3570,12 @@ static sint
 r8169_transmit (u8 *buffer, sint len)
 {
   uint32 cpu = get_pcpu_id ();
+#ifdef USE_VMX
   if (!shm->network_transmit_enabled[cpu]) {
     /* Transmit is disabled */
     return len;
   }
+#endif
   DLOG ("TX: buffer=0x%p len=%d, cpu=%d", buffer, len, get_pcpu_id ());
   u8 *p = buffer;
   DLOG ("  %.02X %.02X %.02X %.02X %.02X %.02X",
@@ -3809,8 +3811,9 @@ r8169_init (void)
 
   /* Set master sandbox to be the one doing the hardware initialization */
   r8169_master_sandbox = get_pcpu_id ();
+#if USE_VMX
   shm->network_transmit_enabled[r8169_master_sandbox] = TRUE;
-
+#endif
   ioaddr = map_virtual_page (phys_addr | 3);
   global_ioa_backup = ioaddr;
 
@@ -4023,9 +4026,10 @@ r8169_register (void)
   if (!r8169_initialized) {
     return FALSE;
   }
-
+#ifdef USE_VMX
   shm->network_transmit_enabled[cpu] = TRUE;
-
+#endif
+  
 #ifdef USE_VMX
   spinlock_lock (r8169_reg_lock);
 #endif
