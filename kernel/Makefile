@@ -201,5 +201,6 @@ config.mk: default-config.mk
 	cp -f default-config.mk config.mk
 
 -include $(DFILES)
+-include $(SHARED_COMPS_DEPS)
 
-$(OBJS) $(LWIP_OBJS) $(ACPI_OBJS) : config.mk
+$(SHARED_COMPS_OBJS) $(OBJS) $(LWIP_OBJS) $(ACPI_OBJS) : config.mk
