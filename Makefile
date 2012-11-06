@@ -34,12 +34,12 @@ $(BUILDDIRS):
 	$(MAKE) -C $(@:build-%=%)
 
 # set dependencies
-build-canny: build-softfloat build-libc
-build-sysprogs: build-softfloat build-libc
-build-tests: build-softfloat build-libc
-build-netperf: build-softfloat build-libc
-build-torcs: build-softfloat build-libc
-build-softfloat: build-libc
+build-canny:  build-libc
+build-sysprogs:  build-libc
+build-tests:  build-libc
+build-netperf:  build-libc
+build-torcs:  build-libc
+
 
 
 install: $(INSTALLDIRS)

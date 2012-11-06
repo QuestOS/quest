@@ -5,9 +5,9 @@ endif
 
 PROGS = netperf netserver
 
-LIBS   = -lc -lm -lsoftfloat $(LIB_DEST)/crt0.o
+LIBS   = -lc -lm $(LIB_DEST)/crt0.o
 INCS   = -I./mk_netperf_on_quest
-CFLAGS =  -g -Wall -O0 -MMD -msoft-float $(INCS)
+CFLAGS =  -g -Wall -O0 -MMD $(INCS)
 
 # These are needed for both netperf and netserver
 OBJS = netlib.o netsh.o nettest_bsd.o nettest_dlpi.o nettest_unix.o nettest_xti.o \
