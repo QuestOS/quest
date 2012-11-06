@@ -7,15 +7,15 @@ TAR = tar
 SYNC = sync
 
 
-USER_PROGS_DIRS = canny netperf sysprogs tests torcs
-LIB_DIRS = libc
-DIRS = $(USER_PROGS_DIRS) $(LIB_DIRS)
+QUEST_USER_PROGS_DIRS = canny netperf sysprogs tests torcs
+QUEST_LIB_DIRS = libc
+DIRS = $(QUEST_USER_PROGS_DIRS) $(QUEST_LIB_DIRS) kernel
 
 # the sets of directories to do various things in
 BUILDDIRS   = $(DIRS:%=build-%)
 CLEANDIRS   = $(DIRS:%=clean-%)
 INSTALLDIRS = $(DIRS:%=install-%)
-CLEANUSERPROGS = $(USER_PROGS_DIRS:%=clean-%)
+CLEANUSERPROGS = $(QUEST_USER_PROGS_DIRS:%=clean-%)
 
 # Uncomment the line below for parallel builds
 #MAKEFLAGS += -j
