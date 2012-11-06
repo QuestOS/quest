@@ -251,7 +251,7 @@ handle_interrupt (u32 edi, u32 esi, u32 ebp, u32 _esp, u32 ebx, u32 edx, u32 ecx
 }
 
 
-static int
+int
 user_putchar (int ch, int attribute)
 {
   static int x, y;
@@ -369,7 +369,7 @@ _user_putchar_attr_4 (char c)
   user_putchar (c, 4);
 }
 
-static void
+void
 splash_screen (void)
 {
   int _uname (char *);
@@ -422,26 +422,6 @@ splash_screen (void)
 static u32
 syscall_putchar (u32 eax, u32 ebx, u32 ecx, u32 edx, u32 esi)
 {
-  static bool first = TRUE;
-
-#ifdef USE_VMX
-  uint32 cpu;
-  cpu = get_pcpu_id ();
-  if (shm_screen_initialized) {
-    if ((shm->virtual_display.cursor[cpu].x == -1) &&
-        (shm->virtual_display.cursor[cpu].y == -1)) {
-          splash_screen ();
-          shm->virtual_display.cursor[cpu].x = 0;
-          shm->virtual_display.cursor[cpu].y = 0;
-          first = FALSE;
-        }
-  } else if (first) {
-    splash_screen ();
-    first = FALSE;
-  }
-#else
-  if (first) { splash_screen (); first = FALSE; }
-#endif
   user_putchar (ebx, 7);
   return 0;
 }
@@ -858,7 +838,7 @@ _getchar (uint ebx)
   lock_kernel ();
 
   if (ebx == 0)
-    c = keymap_getchar ();
+    c = keymap_getchar(TRUE);
   else {
     key_event e;
     uint i;
@@ -897,24 +877,183 @@ _switch_to (uint32 pid)
 
 /* Syscall: open --??-- Flags not used for now...a crude open call as
  * it stands  */
+/* -- EM -- File descriptor part as yet to be tested */
 int
 _open (char *pathname, int flags)
 {
+  quest_tss * tss;
+  task_id cur;
+  int fd;
+  fd_table_entry_t* fd_table_entry;
+
+  com1_printf("In open\n!");
+  
   lock_kernel ();
-  //logger_printf ("_open (\"%s\", 0x%x)\n", pathname, flags);
+  
+  cur = percpu_read (current_task);
+  
+  if (!cur) {
+    com1_printf ("No current task\n");
+    unlock_kernel ();
+    return -1;
+  }
+  
+  tss = lookup_TSS (cur);
+  
+  if (tss == NULL) {
+    com1_printf ("Task 0x%x does not exist\n", cur);
+    unlock_kernel ();
+    return -1;
+  }
+  
+  //com1_printf ("_open (\"%s\", 0x%x)\n", pathname, flags);
   int res = vfs_dir (pathname);
+  
+  /* File exists lets assign it a descriptor if a free one is available */
+  if(res >= 0) {
+    
+    fd = find_fd(tss);
+    if(fd < 0) {
+      unlock_kernel ();
+      return -1;
+    }
+    fd_table_entry = &tss->fd_table[fd];
+    fd_table_entry->entry = alloc_fd_table_file_entry(pathname);
+    
+    if(!fd_table_entry->entry) {
+      com1_printf("alloc for fd_table_entry->entry failed\n");
+      unlock_kernel ();
+      return -1;
+    }
+
+    fd_table_entry->type = FD_TYPE_FILE;
+    
+  }
   unlock_kernel ();
   return res;
 }
 
 /* Syscall: read --??-- proess-global file handle */
 int
-_read (char *pathname, void *buf, int count)
+_read (int fd, char *buf, int count)
 {
+  int i, j;
+  quest_tss * tss;
+  task_id cur;
+  fd_table_entry_t* fd_table_entry;
+  fd_table_file_entry_t* file_entry;
+  int act_len;
+  int res, char_returned;
+  char* temp_buf;
+  uint c = 0;
+  key_event e;
+  
   lock_kernel ();
-  //logger_printf ("_read (\"%s\", %p, 0x%x)\n", pathname, buf, count);
-  int act_len = vfs_dir (pathname);
-  int res = vfs_read (pathname, buf, count < act_len ? count : act_len);
+  //com1_printf ("_read (%d, %p, 0x%x)\n", fd, buf, count);
+
+  /* Check for STDIN, STDOUT or STDERR */
+  switch(fd) {
+
+    
+  case 0: /* STDIN */
+    i = 0;
+    while(i < count) {
+      char_returned = keymap_getchar(i == 0);
+      if(char_returned < 0) {
+        break;
+      }
+      buf[i++] = char_returned;
+    }
+    //com1_printf("Read returning %d\n", i);
+    unlock_kernel();
+    return i;
+
+    /* Can't read on STDOUT or STDERR */
+  case 1:
+  case 2:
+    unlock_kernel();
+    return -1;
+  }
+  
+
+  if(fd < 0 || fd >= MAX_FD) {
+    unlock_kernel ();
+    return -1;
+  }
+  
+  cur = percpu_read (current_task);
+  
+  if (!cur) {
+    com1_printf ("No current task\n");
+    unlock_kernel ();
+    return -1;
+  }
+  
+  tss = lookup_TSS (cur);
+  
+  if (tss == NULL) {
+    com1_printf ("Task 0x%x does not exist\n", cur);
+    unlock_kernel ();
+    return -1;
+  }
+
+  fd_table_entry = &tss->fd_table[fd];
+
+  if(!fd_table_entry->entry) {
+    unlock_kernel ();
+    return -1;
+  }
+
+  
+
+  switch(fd_table_entry->type) {
+  case FD_TYPE_FILE:
+
+    file_entry = (fd_table_file_entry_t*)fd_table_entry->entry;
+    
+    act_len = vfs_dir(file_entry->pathname);
+    
+    pow2_alloc(act_len, &temp_buf);
+    
+    if(!temp_buf) {
+      com1_printf("Failed to allocate temp buffer for read\n");
+      unlock_kernel();
+      return -1;
+    }
+    
+    /* -- EM -- Read the entire file, a hack right now but good enough
+       to let us to get a semi-functioning read */
+    
+    res = vfs_read (file_entry->pathname, temp_buf, act_len);
+    
+    if(res < 0) {
+      pow2_free(temp_buf);
+      unlock_kernel();
+      return res;
+    }
+
+    res = act_len - file_entry->current_pos;
+
+    if(count < res) {
+      res = count;
+    }
+
+    memcpy(buf, &temp_buf[file_entry->current_pos], res);
+    file_entry->current_pos += res;
+    
+    pow2_free(temp_buf);
+
+    break;
+    
+  default:
+    
+    com1_printf("Unsupported file type in read\n");
+    unlock_kernel ();
+    return -1;
+  }
+  
+  
+  
   unlock_kernel ();
   return res;
 }

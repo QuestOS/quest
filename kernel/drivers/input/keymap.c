@@ -26,8 +26,8 @@ static char ucase_scancode[128] =
 
 /* Retrieve the next keyboard event and translate it into an ASCII
  * char, or block. */
-uint8
-keymap_getchar (void)
+int
+keymap_getchar(bool blocking)
 {
   int i;
   key_event e;
@@ -35,8 +35,14 @@ keymap_getchar (void)
   uint8 char_code = 0;
 
   while (!char_code) {
-    keyboard_8042_next (&e);
-
+    if(blocking) {
+      keyboard_8042_next (&e);
+    }
+    else {
+      if(keyboard_8042_next_no_wait(&e) < 0) {
+        return -1;
+      }
+    }
     shiftmod = ctrlmod = altmod = FALSE;  
     for (i=0; i<KEY_EVENT_MAX; i++) {
       /* FIXME */

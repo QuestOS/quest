@@ -19,7 +19,7 @@
 #define _KEYMAP_H_
 #include "types.h"
 
-uint8 keymap_getchar (void);
+int keymap_getchar(bool blocking);
 
 #endif
 

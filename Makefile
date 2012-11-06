@@ -7,14 +7,15 @@ TAR = tar
 SYNC = sync
 
 
-
-
-DIRS = kernel canny netperf softfloat sysprogs tests libc torcs
+USER_PROGS_DIRS = canny netperf sysprogs tests torcs
+LIB_DIRS = libc
+DIRS = $(USER_PROGS_DIRS) $(LIB_DIRS)
 
 # the sets of directories to do various things in
 BUILDDIRS   = $(DIRS:%=build-%)
 CLEANDIRS   = $(DIRS:%=clean-%)
 INSTALLDIRS = $(DIRS:%=install-%)
+CLEANUSERPROGS = $(USER_PROGS_DIRS:%=clean-%)
 
 # Uncomment the line below for parallel builds
 #MAKEFLAGS += -j
@@ -54,6 +55,8 @@ clean: $(CLEANDIRS)
 $(CLEANDIRS): 
 	$(MAKE) -C $(@:clean-%=%) clean
 
+clean-user-progs: $(CLEANUSERPROGS)
+
 $(ISO_DIR)/grub/eltorito.img:  iso-grub.cfg 
 	mkdir -p iso/boot/grub 
 	cp iso-grub.cfg iso/boot/grub/grub.cfg
@@ -71,4 +74,4 @@ quest.iso: $(ISO_DIR)/grub/eltorito.img all
 .PHONY: subdirs $(BUILDDIRS)
 .PHONY: subdirs $(CLEANDIRS)
 .PHONY: subdirs $(INSTALLDIRS)
-.PHONY: all clean install
+.PHONY: all clean clean-user-progs install

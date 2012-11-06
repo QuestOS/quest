@@ -273,6 +273,12 @@ keyboard_8042_next (key_event *e)
   circular_remove (&keyb_buffer, (void *)e);
 }
 
+int
+keyboard_8042_next_no_wait(key_event *e)
+{
+  return circular_remove_nowait(&keyb_buffer, (void *)e);
+}
+
 #include "module/header.h"
 
 static const struct module_ops mod_ops = {

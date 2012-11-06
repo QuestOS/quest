@@ -78,77 +78,20 @@ int write(int file, char *ptr, int len)
    file descriptor */
 int read(int file, char *ptr, int len)
 {
-  errno = ENOSYS;
-  return -1;
-}
+  
+  int c;
 
-/* The following are no-ops */
+  asm volatile ("int $0x36\n":"=a" (c):"a" (file), "b" (ptr),
+                "c" (len):CLOBBERS5);
 
-int fstat(int file, struct stat *st)
-{
-  errno = ENOSYS;
-  return -1;
-}
-
-int getpid()
-{
-  errno = ENOSYS;
-  return -1;
+  return c;
 }
 
 int isatty(int file)
 {
-  errno = ENOSYS;
-  return 0;
+  return file < 3;
 }
 
-int kill(int pid, int sig)
-{
-  errno = ENOSYS;
-  return -1;
-}
-
-int link(char *old, char *new)
-{
-  errno = ENOSYS;
-  return -1;
-}
-
-int lseek(int file, int ptr, int dir)
-{
-  errno = ENOSYS;
-  return -1;
-}
-
-/* Need to implement an sbrk syscall */
-caddr_t sbrk(int incr)
-{
-  return -1;
-}
-
-int stat(const char *file, struct stat *st)
-{
-  errno = ENOSYS;
-  return -1;
-}
-
-clock_t times(struct tms *buf)
-{
-  errno = ENOSYS;
-  return -1;
-}
-
-int unlink(char *name)
-{
-  errno = ENOSYS;
-  return -1;
-}
-
-int wait(int *status)
-{
-  errno = ENOSYS;
-  return -1;
-}
 
 int waitpid(int pid, int *status, int options)
 {
@@ -161,6 +104,123 @@ int gettimeofday (struct timeval *tp, void *tzp)
 {
   return get_time (tp);
 }
+
+/* The following are no-ops */
+
+/* -- EM -- This is just a minimal implementation mostly to get libc
+      to flush stdout and stderr before a read to stdin */
+int fstat(int file, struct stat *st)
+{
+  st->st_nlink = 1;
+  st->st_uid = 0;
+  st->st_gid = 0;
+  st->st_rdev = 0;
+  st->st_size = 0;
+  st->st_blocks = 0;
+  st->st_dev = 0;
+  st->st_ino = 0;
+    
+  if(file < 3) {
+    st->st_mode = 8592;
+    st->st_blksize = 1024;
+
+  }
+  else {
+    /* -- EM -- Assume file (not true because it could be a socket) */
+    st->st_mode = 35552;
+    st->st_blksize = 4096;
+  }
+  return 0;
+}
+
+int getpid()
+{
+  write(1, "In getpid which is a no op\n", sizeof("In getpid which is a no op\n"));
+  while(1);
+  errno = ENOSYS;
+  return -1;
+}
+
+
+
+int kill(int pid, int sig)
+{
+  write(1, "In kill which is a no op\n", sizeof("In kill which is a no op\n"));
+  while(1);
+  errno = ENOSYS;
+  return -1;
+}
+
+int link(char *old, char *new)
+{
+  write(1, "In link which is a no op\n", sizeof("In link which is a no op\n"));
+  while(1);
+  errno = ENOSYS;
+  return -1;
+}
+
+int lseek(int file, int ptr, int dir)
+{
+  write(1, "In lseek which is a no op\n", sizeof("In lseek which is a no op\n"));
+  while(1);
+  errno = ENOSYS;
+  return -1;
+}
+
+/* Need to implement an sbrk syscall */
+caddr_t sbrk(int incr)
+{
+  extern char _end;		/* Defined by the linker */
+  static char *heap_end;
+  char *prev_heap_end;
+  
+  if (heap_end == 0) {
+    heap_end = &_end;
+  }
+  prev_heap_end = heap_end;
+  if (heap_end + incr > 4193280) {
+    write (1, "Heap and stack collision\n", 25);
+    abort ();
+  }
+  
+  heap_end += incr;
+  return (caddr_t) prev_heap_end;
+}
+
+int stat(const char *file, struct stat *st)
+{
+  write(1, "In stat which is a no op\n", sizeof("In stat which is a no op\n"));
+  while(1);
+  errno = ENOSYS;
+  return -1;
+}
+
+clock_t times(struct tms *buf)
+{
+  write(1, "In times which is a no op\n", sizeof("In times which is a no op\n"));
+  while(1);
+  errno = ENOSYS;
+  return -1;
+}
+
+int unlink(char *name)
+{
+  write(1, "In unlink which is a no op\n", sizeof("In unlink which is a no op\n"));
+
+  while(1);
+  errno = ENOSYS;
+  return -1;
+}
+
+int wait(int *status)
+{
+  write(1, "In wait which is a no op\n", sizeof("In wait which is a no op\n"));
+  while(1);
+  errno = ENOSYS;
+  return -1;
+}
+
+
 
 
 /* The following are not required by newlib (as far as I know) */

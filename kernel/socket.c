@@ -35,6 +35,7 @@
 #include "linux_socket.h"
 #include "select.h"
 #include "arch/i386-div64.h"
+#include "interrupt_handler.h"
 
 #ifdef USE_VMX
 #include "vm/shm.h"
@@ -219,6 +220,10 @@ sys_call_close (int filedes)
   if (tss == NULL) {
     logger_printf ("Task 0x%x does not exist\n", cur);
     return -1;
+  }
+
+  if(filedes < 3) {
+    return 0;
   }
 
   switch (tss->fd_table[filedes].type) {
@@ -504,6 +509,26 @@ sys_call_write (int filedes, const void *buf, int nbytes)
   task_id cur = percpu_read (current_task);
   uint16 sndbuf_len = 0;
   int nbytes_sent = nbytes;
+  static bool first = TRUE;
+
+#ifdef USE_VMX
+  uint32 cpu;
+  cpu = get_pcpu_id ();
+  if (shm_screen_initialized) {
+    if ((shm->virtual_display.cursor[cpu].x == -1) &&
+        (shm->virtual_display.cursor[cpu].y == -1)) {
+      splash_screen ();
+      shm->virtual_display.cursor[cpu].x = 0;
+      shm->virtual_display.cursor[cpu].y = 0;
+      first = FALSE;
+    }
+  } else if (first) {
+    splash_screen ();
+    first = FALSE;
+  }
+#else
+  if (first) { splash_screen (); first = FALSE; }
+#endif
 
   if (!cur) {
     logger_printf ("No current task\n");
@@ -519,7 +544,11 @@ sys_call_write (int filedes, const void *buf, int nbytes)
 
   /* HACK for STDOUT and STDERR */
   if ((filedes == 1) || (filedes == 2)) {
-    print ((char *) buf);
+    int i;
+    char* char_buf = buf;
+    for(i = 0; i < nbytes; ++i) {
+      user_putchar (char_buf[i], 7);
+    }
     return nbytes;
   }
 

@@ -44,6 +44,14 @@ typedef struct _fd_table_entry {
   void * entry;
 } fd_table_entry_t;
 
+typedef struct _fd_table_file_entry
+{
+  char* pathname;
+  int current_pos;
+} fd_table_file_entry_t;
+
+fd_table_file_entry_t* alloc_fd_table_file_entry(char* pathname);
+
 /* --YL-- We have a cyclic include in kernel.h involves proc.h and vcpu.h */
 #ifndef _SCHED_VCPU_REPL_
 #define _SCHED_VCPU_REPL_

@@ -18,6 +18,7 @@
 #include "arch/i386.h"
 #include "kernel.h"
 #include "smp/spinlock.h"
+#include "mem/pow2.h"
 #include "mem/virtual.h"
 #include "mem/physical.h"
 #include "sched/proc.h"
@@ -253,6 +254,30 @@ alloc_TSS (void *pPageDirectory, void *pEntry, int mod_num)
 
   /* Return the index into the GDT for the segment */
   return pTSS->tid;
+}
+
+
+/* -- EM -- This should probably be put someplace else but for now
+      this is good enough */
+
+fd_table_file_entry_t* alloc_fd_table_file_entry(char* pathname)
+{
+  fd_table_file_entry_t* res;
+  pow2_alloc(sizeof(fd_table_file_entry_t), &res);
+
+  if(!res) {
+    return NULL;
+  }
+
+  pow2_alloc(strlen(pathname) + 1, &res->pathname);
+
+  if(!res->pathname) {
+    pow2_free(res);
+    return NULL;
+  }
+
+  strcpy(res->pathname, pathname);
+  return res;
 }
 
 /*
