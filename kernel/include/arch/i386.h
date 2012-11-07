@@ -465,6 +465,19 @@ hw_ltr (uint16 us)
 
 }
 
+static inline void
+get_pg_dir_and_table_indices(void* address, int* pg_dir_index,
+                             int* pg_tbl_index)
+{
+  if(pg_dir_index) {
+    *pg_dir_index = (((uint)address) & 0xFFC00000) >> 22;
+  }
+
+  if(pg_tbl_index) {
+    *pg_tbl_index = (((uint)address) & 0x3FF000) >> 12;
+  }
+}
+
 
 static inline uint32
 ffs (uint32 word)

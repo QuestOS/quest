@@ -50,6 +50,9 @@ uint32 kl_stack[NR_MODS][1024] ALIGNED (0x1000);
 /* Declare space for a page table mappings for kernel stacks */
 uint32 kls_pg_table[NR_MODS][1024] ALIGNED (0x1000);
 
+/* Declare space for a page table for the user stack (only used if different than pg_dir table */
+uint32 uls_pg_table[NR_MODS][1024] ALIGNED(0x1000);
+
 /* Each CPU gets an IDLE task -- something to do when nothing else */
 quest_tss idleTSS[MAX_CPUS];
 task_id idleTSS_selector[MAX_CPUS];
@@ -81,6 +84,52 @@ void
 unlock_kernel (void)
 {
   spinlock_unlock (&kernel_lock);
+}
+
+void map_user_level_stack(uint32_t* plPageDirectory, void* start_addr,
+                          int num_frames, uint32_t* frames, bool invalidate_pages)
+{
+  int pg_dir_index, pg_tbl_index;
+  uint32* plPageTable;
+  get_pg_dir_and_table_indices(start_addr - 1, &pg_dir_index, &pg_tbl_index);
+  if(!plPageDirectory[pg_dir_index]) {
+    /* Not present */
+    plPageDirectory[pg_dir_index] = alloc_phys_frame() | 7;
+    plPageTable = map_virtual_page (plPageDirectory[pg_dir_index]);
+    memset (plPageTable, 0, 0x1000);
+  }
+  else {
+    plPageTable = map_virtual_page (plPageDirectory[pg_dir_index]);
+  }
+  
+  
+  while(num_frames--) {
+    if(pg_tbl_index < 0) {
+      pg_tbl_index = 1023;
+      unmap_virtual_page(plPageTable);
+      pg_dir_index--;
+      if(pg_dir_index < 0) {
+        com1_printf("Attempted to map a stack that was larger than its starting position");
+        panic("Attempted to map a stack that was larger than its starting position");
+      }
+      if(!plPageDirectory[pg_dir_index]) {
+        /* Not present */
+        plPageDirectory[pg_dir_index] = alloc_phys_frame() | 7;
+        plPageTable = map_virtual_page (plPageDirectory[pg_dir_index]);
+        memset (plPageTable, 0, 0x1000);
+      }
+      else {
+        plPageTable = map_virtual_page (plPageDirectory[pg_dir_index]);
+      }
+    }
+
+    
+    plPageTable[pg_tbl_index] = frames[num_frames] | 7;
+    invalidate_page((void*)((pg_tbl_index) << 12) + ((1 << 22) * pg_dir_index));
+    pg_tbl_index--;
+  }
+
+  unmap_virtual_page(plPageTable);
 }
 
 extern void *

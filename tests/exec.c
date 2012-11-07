@@ -28,7 +28,7 @@ main ()
   for (p = "In exec'd program!\n"; *p; p++)
     putchar (*p);
 
-  //printf ("memory = %d\n", meminfo ());
+  printf ("memory = %u\n", meminfo ());
 
   return 0;
 }

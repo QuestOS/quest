@@ -15,7 +15,6 @@ PROGS = shell iotest ipctest spinner tcpclient tcpserver  \
 
 .PHONY: all clean install
 
-
 all: $(PROGS)
 
 %: %.o
@@ -28,3 +27,5 @@ clean:
 
 install: $(PROGS)
 	$(INSTALL_CMD) $(PROGS) index.html default.css quest.png $(INSTALL_DIR)
+
+$(PROGS): ../kernel/config.mk

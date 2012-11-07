@@ -64,6 +64,11 @@
 #include "arch/i386.h"
 #include "smp/spinlock.h"
 #include "sched/proc.h"
+#include "types.h"
+
+//#define USER_STACK_START 0x400000
+#define USER_STACK_START 0x40000000
+#define USER_STACK_SIZE 16
 
 struct sched_param
 {
@@ -76,6 +81,9 @@ struct sched_param
   int k;                        /* window of requests  */
   int affinity;                 /* CPU (or Quest-V sandbox affinity) */
 };
+
+void map_user_level_stack(uint32_t* plPageDirectory, void* start_addr, int num_frames,
+                          uint32_t* frames, bool invalidate_pages);
 
 extern char *kernel_version;
 extern uint16 runqueue[];       /* TSS of next runnable task; 0 if none */
@@ -138,6 +146,9 @@ extern uint32 kl_stack[][1024] __attribute__ ((aligned (4096)));
 
 /* Declare space for a page table mappings for kernel stacks */
 extern uint32 kls_pg_table[][1024] __attribute__ ((aligned (4096)));
+
+/* Declare space for a page table for the user stack (only used if different than pg_dir table */
+extern uint32 uls_pg_table[NR_MODS][1024] ALIGNED(0x1000);
 
 extern quest_tss idleTSS[MAX_CPUS];
 

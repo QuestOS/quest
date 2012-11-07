@@ -337,6 +337,10 @@ ap_init (void)
   //quest_tss * usr_mod = (quest_tss *) ul_tss[mod_num];
   uint32 * plPageDirectory = get_phys_addr (pg_dir[mod_num]);
   uint32 * plPageTable = get_phys_addr (pg_table[mod_num]);
+  uint32 * plStackPageTable = get_phys_addr(uls_pg_table[mod_num]);
+  uint32* page_directory_virt = pg_dir[mod_num];
+  uint32* stack_page_table;
+  int stack_dir_index, stack_tbl_index;
   void * pStack = get_phys_addr (ul_stack[mod_num]);
   int i = 0;
   uint32 * vpdbr = map_virtual_page ((uint32) get_pdbr () | 3);
@@ -348,9 +352,15 @@ ap_init (void)
 
   unmap_virtual_page (vpdbr);
 
+  
+  get_pg_dir_and_table_indices(USER_STACK_START - 1, &stack_dir_index, &stack_tbl_index);
+
   /* Populate ring 3 page directory with entries for its private address
      space */
   pg_dir[mod_num][0] = (uint32) plPageTable | 7;
+  if(stack_dir_index != 0) {
+    pg_dir[mod_num][stack_dir_index] = (uint32) plStackPageTable | 7;
+  }
 
   pg_dir[mod_num][1022] = (uint32) get_phys_addr (kls_pg_table[mod_num]) | 3;
   kls_pg_table[mod_num][0] = (uint32) get_phys_addr (kl_stack[mod_num]) | 3;
@@ -366,11 +376,18 @@ ap_init (void)
     }
   }
 
-  pg_table[mod_num][1023] = (uint32) pStack | 7;
+  
+  /* Shift stack page */
+  if(stack_dir_index != 0) {
+    uls_pg_table[mod_num][stack_tbl_index] = (uint32) pStack | 7;
+  }
+  else {
+    pg_table[mod_num][stack_tbl_index] = (uint32) pStack | 7;
+  }
 
   usr_mod->CR3 = (uint32) plPageDirectory;
-  usr_mod->ESP = 0x400000 - 100;
-  usr_mod->EBP = 0x400000 - 100;
+  usr_mod->ESP = USER_STACK_START - 100;
+  usr_mod->EBP = USER_STACK_START - 100;
   usr_mod->sandbox_affinity = phys_id;
 
   ltr (shell_tss);

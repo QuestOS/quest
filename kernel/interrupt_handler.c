@@ -588,7 +588,7 @@ _exec (char *filename, char *argv[], uint32 *curr_stack)
 {
   uint32 *plPageDirectory;
   uint32 *plPageTable;
-  uint32 pStack;
+  uint32 pStack[USER_STACK_SIZE];
   Elf32_Ehdr *pe = (Elf32_Ehdr *) 0xFF400000;   /* 4MB below KERN_STK virt address */
   Elf32_Phdr *pph;
   void *pEntry;
@@ -782,12 +782,18 @@ _exec (char *filename, char *argv[], uint32 *curr_stack)
   //  plPageTable[0x200 + i] = 0xA0000 | (i << 12) | 7;
 
   /* map stack and clear its contents -- Here, setup 16 pages for stack */
-  for (i = 0; i < 16; i++) {
-    pStack = alloc_phys_frame ();
-    plPageTable[1023 - i] = pStack | 7;
-    invalidate_page ((void *) ((1023 - i) << 12));
+  
+  for (i = 0; i < USER_STACK_SIZE; i++) {
+    pStack[i] = alloc_phys_frame ();
   }
-  memset ((void *) 0x3F0000, 0, 0x10000);       /* Clear 16 page stack */
+
+  map_user_level_stack(plPageDirectory, USER_STACK_START, USER_STACK_SIZE, pStack, TRUE);
+
+  //invalidate_page ((void *) ((1023 - i) << 12));
+  
+  
+  memset ((void *) USER_STACK_START - (0x1000 * USER_STACK_SIZE),
+          0, 0x1000 * USER_STACK_SIZE);       /* Clear 16 page stack */
 
   plPageDirectory[1021] = 0;
   unmap_virtual_page (plPageDirectory);
@@ -798,19 +804,19 @@ _exec (char *filename, char *argv[], uint32 *curr_stack)
   flush_tlb_all ();
 
   /* Copy command-line arguments to top of new stack */
-  memcpy ((void *) (0x400000 - 80), command_args, 80);
+  memcpy ((void *) (USER_STACK_START - 80), command_args, 80);
 
   /* Push onto stack argument vector for when we call _start in our "libc"
      library. Here, we work with user-level virtual addresses for when we
      return to user. */
-  *(uint32 *) (0x400000 - 84) = 0;    /* argv[1] -- not used right now */
-  *(uint32 *) (0x400000 - 88) = 0x400000 - 80;        /* argv[0] */
-  *(uint32 *) (0x400000 - 92) = 0x400000 - 88;        /* argv */
-  *(uint32 *) (0x400000 - 96) = 1;    /* argc -- hard-coded right now */
+  *(uint32 *) (USER_STACK_START - 84) = 0;    /* argv[1] -- not used right now */
+  *(uint32 *) (USER_STACK_START - 88) = USER_STACK_START - 80;        /* argv[0] */
+  *(uint32 *) (USER_STACK_START - 92) = USER_STACK_START - 88;        /* argv */
+  *(uint32 *) (USER_STACK_START - 96) = 1;    /* argc -- hard-coded right now */
 
   /* Dummy return address placed here for the simulated "call" to our
      library */
-  *(uint32 *) (0x400000 - 100) = 0;   /* NULL return address -- never
+  *(uint32 *) (USER_STACK_START - 100) = 0;   /* NULL return address -- never
                                            used */
 
   /* Patch up kernel stack with new values so that we can start new program
@@ -821,7 +827,7 @@ _exec (char *filename, char *argv[], uint32 *curr_stack)
   curr_stack[3] = 0x1B;         /* cs selector */
   /* --??-- Temporarily set IOPL 3 in exec()ed program for VGA/keyboard testing */
   curr_stack[4] = F_1 | F_IF | 0x3000;  /* EFLAGS */
-  curr_stack[5] = 0x400000 - 100;       /* -100 after pushing command-line args */
+  curr_stack[5] = USER_STACK_START - 100;       /* -100 after pushing command-line args */
   curr_stack[6] = 0x23;         /* ss selector */
 
   unlock_kernel ();

@@ -245,8 +245,8 @@ alloc_TSS (void *pPageDirectory, void *pEntry, int mod_num)
     pTSS->EFLAGS = F_1 | F_IF | F_IOPL;       /* Give terminal server access to
                                                * screen memory */
 
-  pTSS->ESP = 0x400000 - 100;
-  pTSS->EBP = 0x400000 - 100;
+  pTSS->ESP = USER_STACK_START - 100;
+  pTSS->EBP = USER_STACK_START - 100;
   pTSS->tid = new_task_id ();
   pTSS->sandbox_affinity = get_pcpu_id ();
 

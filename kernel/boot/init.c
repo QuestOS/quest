@@ -85,9 +85,11 @@ alloc_CPU_TSS (tss *tssp)
 static task_id
 load_module (multiboot_module * pmm, int mod_num)
 {
-
+  /* Still have one to one mapping of first 4 megabytes some of the
+     below code relies on this */
   uint32 *plPageDirectory = get_phys_addr (pg_dir[mod_num]);
   uint32 *plPageTable = get_phys_addr (pg_table[mod_num]);
+  uint32_t* plStackPageTable = get_phys_addr (uls_pg_table[mod_num]);
   void *pStack = get_phys_addr (ul_stack[mod_num]);
   /* temporarily map pmm->pe in order to read pph->p_memsz */
   Elf32_Ehdr *pe, *pe0 = map_virtual_page ((uint) pmm->pe | 3);
@@ -96,6 +98,7 @@ load_module (multiboot_module * pmm, int mod_num)
   int i, c, j;
   uint32 *stack_virt_addr;
   uint32 page_count = 0;
+  int pg_dir_index, pg_tbl_index;
 
   /* find out how many pages for the module */
   for (i = 0; i < pe0->e_phnum; i++) {
@@ -166,15 +169,24 @@ load_module (multiboot_module * pmm, int mod_num)
   }
 
   /* map stack */
-  plPageTable[1023] = (uint32) pStack | 7;
+  get_pg_dir_and_table_indices(USER_STACK_START - 1, &pg_dir_index, &pg_tbl_index);
+  if(pg_dir_index != 0) {
+    /* The stack resides in a different page table than the rest
+       of the program */
+    plPageDirectory[pg_dir_index] = (uint32) plStackPageTable | 7;
+    plStackPageTable[pg_tbl_index] = (uint32) pStack | 7;
+  }
+  else {
+    plPageTable[pg_tbl_index] = (uint32) pStack | 7;
+  }
 
   stack_virt_addr = map_virtual_page ((uint32) pStack | 3);
 
   /* This sets up the module's stack with command-line args from grub */
   memcpy ((char *) stack_virt_addr + 0x1000 - 80, pmm->string, 80);
   *(uint32 *) ((char *) stack_virt_addr + 0x1000 - 84) = 0;   /* argv[1] */
-  *(uint32 *) ((char *) stack_virt_addr + 0x1000 - 88) = 0x400000 - 80;       /* argv[0] */
-  *(uint32 *) ((char *) stack_virt_addr + 0x1000 - 92) = 0x400000 - 88;       /* argv */
+  *(uint32 *) ((char *) stack_virt_addr + 0x1000 - 88) = USER_STACK_START - 80;       /* argv[0] */
+  *(uint32 *) ((char *) stack_virt_addr + 0x1000 - 92) = USER_STACK_START - 88;       /* argv */
   *(uint32 *) ((char *) stack_virt_addr + 0x1000 - 96) = 1;   /* argc -- hard-coded right now */
   /* Dummy return address placed here for the simulated "call" to our
      library */

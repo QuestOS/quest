@@ -167,24 +167,30 @@ int lseek(int file, int ptr, int dir)
   return -1;
 }
 
+#define HEAPSIZE (0x100000)
+
+unsigned char _heap[HEAPSIZE];
+
 /* Need to implement an sbrk syscall */
 caddr_t sbrk(int incr)
 {
-  extern char _end;		/* Defined by the linker */
-  static char *heap_end;
-  char *prev_heap_end;
-  
-  if (heap_end == 0) {
-    heap_end = &_end;
-  }
-  prev_heap_end = heap_end;
-  if (heap_end + incr > 4193280) {
-    write (1, "Heap and stack collision\n", 25);
-    abort ();
-  }
-  
-  heap_end += incr;
-  return (caddr_t) prev_heap_end;
+   static unsigned char *heap_end;
+   unsigned char *prev_heap_end;
+
+   /* initialize */
+   if( heap_end == 0 ) heap_end = _heap;
+
+   prev_heap_end = heap_end;
+
+   if( heap_end + incr - _heap > HEAPSIZE ) {
+      /* heap overflow—announce on stderr */
+      write( 2, "Heap overflow!\n", 15 );
+      abort();
+   }
+
+   heap_end += incr;
+
+   return (caddr_t) prev_heap_end;
 }
 
 int stat(const char *file, struct stat *st)
