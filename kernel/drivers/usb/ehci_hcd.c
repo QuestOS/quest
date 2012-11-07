@@ -4121,7 +4121,7 @@ static const struct module_ops mod_ops = {
   .init = ehci_init
 };
 
-DEF_MODULE (usb___ehci, "EHCI driver", &mod_ops, {"usb", "pci"});
+//DEF_MODULE (usb___ehci, "EHCI driver", &mod_ops, {"usb", "pci"});
 
 /*
  * Local Variables:
