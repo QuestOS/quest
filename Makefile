@@ -39,7 +39,7 @@ build-sysprogs:  build-libc
 build-tests:  build-libc
 build-netperf:  build-libc
 build-torcs:  build-libc
-
+build-sysprogs: build-kernel
 
 
 install: $(INSTALLDIRS)
