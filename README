@@ -2,11 +2,9 @@ Steps for building Quest (See the toolchain Quest white paper for more
 information about the toolchain and libc build):
 
 1) Make sure you have the necessary versions of GMP MPFR and MPC.  If
-you are on a 64 bit machine you will most likely need the 32 bit
-version of these.  If you do not have the correct versions the build
-processes will fail in the beginning.  It is recommended to run
-uninstall-toolchain if it fails just as a precaution (although it
-probably isn't needed).
+you do not have the correct versions the build processes will fail in
+the beginning. It is recommended to run uninstall-toolchain if it fails
+just as a precaution (although it probably isn't needed).
 
 2) Set your PATH to include $HOME/bin/cross/bin as this is where the
 toolchain is installed by default.  If you wish to change this you
