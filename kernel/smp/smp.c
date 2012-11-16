@@ -28,11 +28,17 @@
 #include "util/printf.h"
 #include "util/perfmon.h"
 #include "sched/sched.h"
+
 #ifdef USE_VMX
 #include "vm/ept.h"
 #include "vm/shm.h"
 #include "vm/vmx.h"
 #include "sched/vcpu.h"
+
+#ifdef USE_LINUX_SANDBOX
+#include "vm/linux_boot.h"
+#endif
+
 #endif
 
 //#define DEBUG_SMP 1
@@ -338,8 +344,8 @@ ap_init (void)
   uint32 * plPageDirectory = get_phys_addr (pg_dir[mod_num]);
   uint32 * plPageTable = get_phys_addr (pg_table[mod_num]);
   uint32 * plStackPageTable = get_phys_addr(uls_pg_table[mod_num]);
-  uint32* page_directory_virt = pg_dir[mod_num];
-  uint32* stack_page_table;
+  //uint32* page_directory_virt = pg_dir[mod_num];
+  //uint32* stack_page_table;
   int stack_dir_index, stack_tbl_index;
   void * pStack = get_phys_addr (ul_stack[mod_num]);
   int i = 0;
@@ -352,8 +358,8 @@ ap_init (void)
 
   unmap_virtual_page (vpdbr);
 
-  
-  get_pg_dir_and_table_indices(USER_STACK_START - 1, &stack_dir_index, &stack_tbl_index);
+  get_pg_dir_and_table_indices ((void *) (USER_STACK_START - 1), &stack_dir_index,
+                                &stack_tbl_index);
 
   /* Populate ring 3 page directory with entries for its private address
      space */

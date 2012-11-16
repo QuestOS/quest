@@ -38,6 +38,8 @@
 #define SHM_MAX_SCREEN          0x08
 #define SHM_MAX_SANDBOX         0x08
 
+#ifndef __ASSEMBLER__
+
 typedef struct _cursor {
   int x;
   int y;
@@ -103,6 +105,8 @@ extern void shm_free_phys_frame (uint32);
 extern void shm_free_phys_frames (uint32, uint32);
 extern spinlock * shm_alloc_drv_lock (void);
 extern void shm_free_drv_lock (spinlock *);
+
+#endif /* __ASSEMBLER__ */
 
 #endif
 

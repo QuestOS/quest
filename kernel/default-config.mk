@@ -26,3 +26,6 @@ OPT = 0
 
 # USB provides real-time guarantees for bulk and control transactions
 CFG += -DUSB_REALTIME_ASYNC 
+
+# Enable Linux sandbox
+# CFG += -DUSE_LINUX_SANDBOX

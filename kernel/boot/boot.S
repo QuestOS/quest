@@ -26,6 +26,7 @@
 
 
 #include "kernel.h"
+#include "vm/linux_boot.h"
 
         .globl initial_gdt
 
@@ -132,6 +133,21 @@ real_start:
         movl %eax, pgd+0xFEC
 
         #ifdef USE_VMX
+
+        #ifdef USE_LINUX_SANDBOX
+        /* Setup out-of-band memory region for Linux kernel load */
+        movl $LINUX_KERNEL_LOAD_PAGE, %ecx
+        movl $LINUX_KERNEL_LOAD_VA+0x83, %eax
+        movl %eax, %ebx
+        shrl $20, %ebx
+        addl $pgd, %ebx
+1:      movl %eax, (%ebx)
+        addl $0x00400000, %eax
+        addl $0x4, %ebx
+        loop 1b
+        #endif
+
+        /* --YL-- Use header value instead of hard code it */
         /* Shared Memory Pool for power-of-two allocator (Quest-V)*/
         movl $0x9F000083, %eax
         movl %eax, pgd+0x9F0
