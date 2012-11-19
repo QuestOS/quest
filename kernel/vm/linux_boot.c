@@ -56,22 +56,19 @@ int
 load_linux_kernel (uint32 * load_addr, char * pathname)
 {
 #ifdef USE_LINUX_SANDBOX
-  int act_len = 0, rlen = 0;
+  int act_len = 0;
   linux_setup_header_t * setup_header;
+  int eztftp_bulk_read (char *, uint32 *);
 
-  act_len = vfs_dir (pathname);
+  act_len = eztftp_bulk_read (pathname, load_addr);
+
+  if (act_len < 0) {
+    DLOG ("Linux kernel load failed!");
+    return -1;
+  }
   DLOG ("Linux kernel size: 0x%X", act_len);
 
-  rlen = vfs_read (pathname, (char *) load_addr, act_len);
-
-  if (rlen < 0) {
-    DLOG ("Linux kernel load failed!");
-    return rlen;
-  }
-
   setup_header = (linux_setup_header_t *) (((uint8 *) load_addr) + LINUX_SETUP_HEADER_OFFSET);
-
-  DLOG ("Linux kernel loaded (0x%X bytes)", rlen);
 
   DLOG ("---------------------------");
   DLOG ("| DUMP LINUX SETUP HEADER |");

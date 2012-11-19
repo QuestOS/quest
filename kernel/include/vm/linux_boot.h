@@ -83,7 +83,7 @@ typedef struct _linux_setup_header {
   uint64  setup_data;
   uint64  pref_address;
   uint32  init_size;
-} linux_setup_header_t PACKED;
+} PACKED linux_setup_header_t;
 
 extern int load_linux_kernel (uint32 *, char *);
 extern bool linux_boot_thread_init (void);
