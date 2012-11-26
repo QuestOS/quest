@@ -739,16 +739,13 @@ find_device_driver (USB_DEVICE_INFO *info, USB_CFG_DESC *cfgd, USB_IF_DESC *ifd)
   }
   DLOG("Unknown device bDeviceClass = 0x%X\nbDeviceSubClass = 0x%X\nfile %s line %d",
        info->devd.bDeviceClass, info->devd.bDeviceSubClass, __FILE__, __LINE__);
-  panic("Unknown Device");
+  //panic("Unknown Device");
 }
-
-
-
 
 
 /* figures out what device is attached as address 0 */
 bool
-usb_enumerate(usb_hcd_t* usb_hcd)
+usb_enumerate(usb_hcd_t* usb_hcd, uint dev_speed, uint hub_addr, uint port_num)
 {
   USB_DEV_DESC devd;
   USB_CFG_DESC *cfgd;
@@ -773,20 +770,29 @@ usb_enumerate(usb_hcd_t* usb_hcd)
   info->host_type = usb_hcd->usb_hc_type;
   info->hcd = usb_hcd;
   info->endpoint_toggles = 0;
-  info->speed = USB_SPEED_HIGH;
-  info->ep_in[0].desc.wMaxPacketSize = 64;
-  info->ep_out[0].desc.wMaxPacketSize = 64;
+  info->speed = dev_speed;
+  info->hub_addr = hub_addr;
+  info->port_num = port_num;
+  DLOG("dev_speed = %u", dev_speed);
+  switch(dev_speed) {
+  case USB_SPEED_LOW:
+    info->devd.bMaxPacketSize0
+      = info->ep_in [0].desc.wMaxPacketSize
+      = info->ep_out[0].desc.wMaxPacketSize = 8;
+    break;
+
+  case USB_SPEED_HIGH:
+  case USB_SPEED_FULL:
+    info->devd.bMaxPacketSize0
+      = info->ep_in [0].desc.wMaxPacketSize
+      = info->ep_out[0].desc.wMaxPacketSize = 64;
+    break;
+
+  default:
+    DLOG("Unknown device speed passed to %s", __FUNCTION__);
+    return FALSE;
+  }
   
-
-  /* --WARN-- OK, here is the deal. The spec says you should use the
-   * maximum packet size in the data phase of control transfer if the
-   * data is larger than one packet. Since we do not want to support
-   * low speed device for now, the bMaxPacketSize0 is always set to 64
-   * bytes for full speed device. So, do not be surprised if your USB
-   * mouse does not work in Quest!
-   */
-  info->devd.bMaxPacketSize0 = 64;
-
   memset (&devd, 0, sizeof (USB_DEV_DESC));
 
   /* get device descriptor */
@@ -799,6 +805,9 @@ usb_enumerate(usb_hcd_t* usb_hcd)
   
   dlog_devd(&devd);
 
+  /* -- EM -- I don't think the below is necessary anymore since we
+     pass the device speed to usb_enumerate so I am disabling it */
+#if 0
   if (devd.bMaxPacketSize0 == 8) {
     /* get device descriptor */
     info->devd.bMaxPacketSize0 = 8;
@@ -807,6 +816,7 @@ usb_enumerate(usb_hcd_t* usb_hcd)
     if (status < 0)
       goto abort;
   }
+#endif
   
   if (devd.bNumConfigurations == 255)
     devd.bNumConfigurations = 1; /* --!!-- hack */

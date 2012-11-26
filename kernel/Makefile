@@ -20,8 +20,8 @@ PROGS = quest
 ##################################################
 
 
-# The following we removed because I changed the USB interface and broke them
-# drivers/usb/ftdi.o drivers/usb/pl2303.o 
+# -- EM --The following I removed because I changed the USB interface and broke them
+# drivers/usb/ftdi.o  drivers/usb/pl2303.o
 # drivers/usb/rtl8187b.o 
 # drivers/usb/net.o drivers/usb/asix.o
 # drivers/usb/uhci_hcd.o

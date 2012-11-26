@@ -526,7 +526,7 @@ typedef struct _qh_t{
   list_head_t qtd_list;
   list_head_t reclaim_chain;
   USB_DEVICE_INFO* dev;
-  struct urb* urb;
+  uint interval;
 
 
 #define QH_STATE_NOT_LINKED 1 /* Not in the buffer at all */
@@ -536,7 +536,7 @@ typedef struct _qh_t{
                                  buffer but the HC might still have
                                  links to it */
 
-  frm_lst_lnk_ptr_t* previous;
+  frm_lst_lnk_ptr_t* previous;  /* pointer to physical address */
 } PACKED ALIGNED(32) qh_t;
 
 CASSERT( (sizeof(qh_t) % 32) == 0, ehci_qh_size);
@@ -684,6 +684,14 @@ typedef struct
                              * completion_element pool related
                              * items */
   list_head_t completion_list;
+
+  /* These are used during enumeration because if possible we use the
+     same QH, if all we had were high speed devices we would not need
+     this as the same QH could be used.  For low and full speed
+     devices we need to specify the hub address and port number so we
+     need to change the QH */
+  int zero_qh_hub_addr;         /* Initialized to -1 */
+  int zero_qh_port_num;        /* Initialized to -1 */
 
 #define MAX_RT_URBS 30
   struct urb* rt_urbs[MAX_RT_URBS];

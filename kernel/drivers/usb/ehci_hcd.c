@@ -103,10 +103,10 @@ static void insert_remaining_realtime_itds(ehci_hcd_t* ehci_hcd, bool in_irq_han
     frm_lst_lnk_ptr_t** __nexts_prev =                          \
       get_next_frm_lst_lnk_ptrs_previous(hcd, &(list)[index]);  \
     (itd)->frame_index = index;                                 \
-    if(__nexts_prev) *__nexts_prev = &itd->next_link_pointer;   \
+    if(__nexts_prev) *__nexts_prev = &(itd)->next_link_pointer; \
     (itd)->next_link_pointer = (list)[index];                   \
     (itd)->previous = &(list[index]);                           \
-    (list)[index].raw = ITD_NEXT(hcd, itd);                     \
+    (list)[index].raw = ITD_NEXT(hcd, (itd));                   \
   } while(0)
 
 
@@ -1888,7 +1888,10 @@ initialise_ehci_hcd(uint32_t usb_base,
   ehci_hcd->micro_frame_remaining_time_async  = micro_frame_remaining_time_async;
 #endif
   ehci_hcd->num_rt_urbs = 0;
-
+  
+  ehci_hcd->zero_qh_hub_addr = -1;
+  ehci_hcd->zero_qh_port_num = -1;
+  
   INIT_LIST_HEAD(&ehci_hcd->uninserted_itd_urb_list);
   
   for(i = 0; i < frm_lst_size * 8; ++i) {
@@ -2424,11 +2427,10 @@ static void qh_prep(ehci_hcd_t* ehci_hcd, struct urb* urb, qh_t* qh, uint32_t en
     qh->dev = &usb_hcd->devinfo[device_addr];
   }
 
-  qh->urb = urb;
+  qh->interval = urb->interval;
 
   info1  = device_addr;
   info1 |= endpoint << 8;
-
 
   switch(dev_speed) {
   case USB_SPEED_LOW:
@@ -2448,14 +2450,23 @@ static void qh_prep(ehci_hcd_t* ehci_hcd, struct urb* urb, qh_t* qh, uint32_t en
     info1 |= max_packet_len << 16;
     
     info2 |= (EHCI_TUNE_MULT_TT << 30);
+
+    /* Some Freescale processors have start the numbering from 0
+       instead of 1, if we every test a processor with this bug we
+       should use port_num - 1 instead of port_num. */
+
+    DLOG_UINT(urb->dev->port_num);
+    DLOG_UINT(urb->dev->hub_addr);
     
-    /* -- EM -- Should set ttport not doing it right now */
-    DLOG("this has not been tested if you are seeing this you need "
-         "to know that and then can remove this panic file %s function "
-         "%s line %d",
-         __FILE__, __FUNCTION__, __LINE__);
-    panic("this has not been tested if you are seeing this you need to "
-          "know that and then can remove this panic");
+    info2 |= urb->dev->port_num << 23;
+    
+    /* set the address of the TT; for TDI's integrated
+     * root hub tt, leave it zeroed.
+     */
+    if(urb->dev->hub_addr) {
+      info2 |= urb->dev->hub_addr << 16;
+    }
+    
     break;
 
   case USB_SPEED_HIGH:
@@ -2589,47 +2600,45 @@ static void qh_append_qtd(ehci_hcd_t* ehci_hcd, struct urb* urb,
  * Simplified version of UnlinkQueueHead on page 72 of EHCI
  * specifications because we are only removing one queue head
  */
-static inline void unlink_single_queue_head(qh_t* previous, qh_t* head_to_unlink)
+static inline void unlink_async_queue_head(ehci_hcd_t* ehci_hcd, qh_t* head_to_unlink)
 {
+  qh_t* previous = EHCI_QH_PHYS_TO_VIRT(ehci_hcd, ((*(head_to_unlink->previous)).raw & (~0x1F)));
+  qh_t* next     = EHCI_QH_PHYS_TO_VIRT(ehci_hcd, head_to_unlink->horizontalPointer.raw & (~0x1F));
+  next->previous = head_to_unlink->previous;
   previous->horizontalPointer = head_to_unlink->horizontalPointer;
+  
+  /* Add qh to reclaim list */
+  head_to_unlink->state = QH_STATE_RECLAIM;
+  list_add(&head_to_unlink->reclaim_chain, &ehci_hcd->reclaim_list);
 }
 
-static void add_qh_to_reclaim_list(ehci_hcd_t* ehci_hcd, qh_t* qh)
+void link_qh_to_async(ehci_hcd_t* ehci_hcd, qh_t* qh)
 {
-  qh->state = QH_STATE_RECLAIM;
-  list_add(&qh->reclaim_chain, &ehci_hcd->reclaim_list);
-}
-
-void link_qh_to_async(ehci_hcd_t* ehci_hcd, qh_t* qh, bool ioc_enabled,
-                      uint32_t pipe_type, uint32_t address,
-                      uint16_t endpoint, bool is_input)
-{
-  if(pipe_type == PIPE_BULK) {
-    //print_qh_info(ehci_hcd, qh, TRUE, "before link");
-  }
-  if(qh->state == QH_STATE_NOT_LINKED) {
-    qh_refresh(ehci_hcd, qh);
-  }
-  if(pipe_type == PIPE_BULK) {
-    //print_qh_info(ehci_hcd, qh, TRUE, "right before link");
-  }
+  qh_t* next = EHCI_QH_PHYS_TO_VIRT(ehci_hcd,
+                                    (ehci_hcd->async_head->horizontalPointer.raw & (~0x1F)));
+  qh_refresh(ehci_hcd, qh);
+  qh->previous = next->previous;
+  next->previous = &qh->horizontalPointer;
   qh->state = QH_STATE_LINKED;
   qh->horizontalPointer = ehci_hcd->async_head->horizontalPointer;
+  qh->previous = &ehci_hcd->async_head->horizontalPointer;
   gccmb();
   ehci_hcd->async_head->horizontalPointer.raw = QH_NEXT(ehci_hcd, qh);
-  if(pipe_type == PIPE_BULK) {
-    //print_qh_info(ehci_hcd, qh, TRUE, "after link");
-  }
+  
 }
 
 static sint32 spin_for_transfer_completion(ehci_hcd_t* ehci_hcd,
                                            struct urb* urb,
                                            qh_t* qh, uint8_t address,
                                            uint32_t endpoint,
-                                           uint8_t pipe_type, bool is_input)
+                                           uint8_t pipe_type, bool is_input,
+                                           int timeout)
 {
+  int i;
   qtd_t* last_qtd;
   qtd_t* temp_qtd;
+  qtd_t* qtd_to_remove;
+  qtd_t* qtd_tmp;
   list_for_each_entry(temp_qtd, &qh->qtd_list, chain_list) {
     last_qtd = temp_qtd;
   }
@@ -2672,19 +2681,13 @@ static sint32 spin_for_transfer_completion(ehci_hcd_t* ehci_hcd,
    * to check various things for errors
    */
   /* Step 2 */
-  uint32_t spin_tick = 0;
-  while(last_qtd->token & QTD_ACTIVE) {
-    tsc_delay_usec(100);
-    if(++spin_tick == 100000) {
-      print_qh_info(ehci_hcd, qh, TRUE, "In Spin");
-      print_caps_and_regs_info(ehci_hcd, "In Spin");
-      DLOG("pci status in failure = 0x%X",
-           pci_get_status(ehci_hcd->bus, ehci_hcd->dev,ehci_hcd->func));
-      DLOG("pci command in failure = 0x%X",
-           pci_get_command(ehci_hcd->bus, ehci_hcd->dev,ehci_hcd->func));
-      
-      while(1);
-    }
+
+  for(i = 0; (last_qtd->token & QTD_ACTIVE) && (i < (timeout / USB_MSG_SLEEP_INTERVAL) + 1 ); ++i) {
+    sched_usleep(4000 * USB_MSG_SLEEP_INTERVAL);
+  }
+
+  if(last_qtd->token & QTD_ACTIVE) {
+    return -1;
   }
   
   if(pipe_type == PIPE_BULK) {
@@ -2714,8 +2717,7 @@ static sint32 spin_for_transfer_completion(ehci_hcd_t* ehci_hcd,
     }
   }
 
-  qtd_t* qtd_to_remove;
-  qtd_t* qtd_tmp;
+
   
   list_for_each_entry_safe(qtd_to_remove, qtd_tmp, &qh->qtd_list, chain_list) {
     if(EHCI_QTD_VIRT_TO_PHYS(ehci_hcd, qtd_to_remove) == qh->current_qtd_ptr_raw) {
@@ -2731,8 +2733,9 @@ static sint32 spin_for_transfer_completion(ehci_hcd_t* ehci_hcd,
     /*
      * -- EM -- ALL QTDS REMOVED this can happen because a silicon
      * quirk with some ehci host controllers moving the dummy qtd as
-     * the active one, I have not tested the functionally when this
-     * occurs so all bets are off
+     * the active one, I have not tested the functionally (since I
+     * haven't found a chip that does this) when this occurs so all
+     * bets are off
      */
     DLOG("ALL QTDS REMOVED see comment at file %s line %d", __FILE__, __LINE__);
     panic("ALL QTDS REMOVED");
@@ -2778,9 +2781,7 @@ static int submit_async_qtd_chain(ehci_hcd_t* ehci_hcd, struct urb* urb, qh_t** 
   }
   qh_append_qtds(ehci_hcd, urb, *qh, qtd_list);
   if((*qh)->state == QH_STATE_NOT_LINKED) {
-    //DLOG("Linking QH");
-    link_qh_to_async(ehci_hcd, *qh, ioc_enabled, pipe_type,
-                     device_addr, endpoint, is_input);
+    link_qh_to_async(ehci_hcd, *qh);
   }
   if(ioc_enabled) {
     return 0;
@@ -2788,7 +2789,7 @@ static int submit_async_qtd_chain(ehci_hcd_t* ehci_hcd, struct urb* urb, qh_t** 
   else {
     
     if((result = spin_for_transfer_completion(ehci_hcd, urb, *qh, device_addr,
-                                              endpoint, pipe_type, is_input)) < 0) {
+                                              endpoint, pipe_type, is_input, urb->timeout)) < 0) {
 
       DLOG("spin_for_transfer_completion returned %d", result);
       return result;
@@ -2840,7 +2841,7 @@ void link_qh_to_periodic_list(ehci_hcd_t* ehci_hcd, qh_t* qh, struct urb* urb)
               not_inserted = FALSE;
               break;
             }
-            temp_frame_interval = temp_qh->urb->interval / 8;
+            temp_frame_interval = temp_qh->interval / 8;
             if(temp_frame_interval == 0) {
               temp_frame_interval = 1;
             }
@@ -2994,7 +2995,7 @@ ehci_interrupt_transfer(ehci_hcd_t* ehci_hcd, struct urb* urb)
   }
   
   if(submit_interrupt_qtd(ehci_hcd, urb, &qh, endpoint, address,
-                          USB_SPEED_HIGH, pipe_type, packet_len,
+                          urb->dev->speed, pipe_type, packet_len,
                           is_input, mp_enabled,
                           &qtd_list) < 0) {
     return -1;
@@ -3010,7 +3011,7 @@ ehci_interrupt_transfer(ehci_hcd_t* ehci_hcd, struct urb* urb)
     else {
       int result;
       if((result = spin_for_transfer_completion(ehci_hcd, urb, qh, address,
-                                                endpoint, pipe_type, is_input)) < 0) {
+                                                endpoint, pipe_type, is_input, urb->timeout)) < 0) {
         
         DLOG("spin_for_transfer_completion returned %d", result);
         return result;
@@ -3027,13 +3028,53 @@ ehci_async_transfer(ehci_hcd_t* ehci_hcd, struct urb* urb)
   uint8_t address = usb_pipedevice(pipe);
   bool is_input = usb_pipein(pipe);
   uint8_t endpoint = usb_pipeendpoint(pipe);
-  qh_t* qh  = EHCI_GET_DEVICE_QH(ehci_hcd, address, is_input, endpoint);
+  qh_t* qh;
   list_head_t qtd_list;
   uint8_t pipe_type = usb_pipetype(pipe);
   int packet_len = usb_maxpacket(urb->dev, urb->pipe);
+  
+  qh = EHCI_GET_DEVICE_QH(ehci_hcd, address, is_input, endpoint);
+  
+  if(address == 0 && qh) {
+    bool change_qh;
+    /* Check to see if we need to change the QH for address zero */
+    switch(urb->dev->speed) {
+    case USB_SPEED_LOW:
+    case USB_SPEED_FULL:
+      change_qh =
+        urb->dev->hub_addr != ehci_hcd->zero_qh_hub_addr ||
+        urb->dev->port_num != ehci_hcd->zero_qh_port_num;
+      break;
+    case USB_SPEED_HIGH:
+      change_qh = ehci_hcd->zero_qh_hub_addr > 0 || ehci_hcd->zero_qh_port_num > 0;
+      break;
+    default:
+      DLOG("Unknown device speed");
+      return -1;
+    }
 
+    if(change_qh) {
+      unlink_async_queue_head(ehci_hcd, EHCI_GET_DEVICE_QH(ehci_hcd, address, is_input, endpoint));
+      EHCI_SET_DEVICE_QH(ehci_hcd, address, is_input, endpoint, NULL);
+      qh = NULL;
+      switch(urb->dev->speed) {
+      case USB_SPEED_LOW:
+      case USB_SPEED_FULL:
+        ehci_hcd->zero_qh_hub_addr = urb->dev->hub_addr;
+        ehci_hcd->zero_qh_port_num = urb->dev->port_num;
+        break;
+
+      case USB_SPEED_HIGH:
+        ehci_hcd->zero_qh_hub_addr = -1;
+        ehci_hcd->zero_qh_port_num = -1;
+        break;
+        /* Don't have a default case here since we have one above */
+      }
+    }
+  }
+  
   INIT_LIST_HEAD(&qtd_list);
-    
+
   if(usb_pipetype(pipe) != PIPE_BULK &&
      mp_enabled && !urb->realtime) {
     DLOG("Can only do control transactions at boot or real time bulk transactions");
@@ -3097,7 +3138,7 @@ ehci_async_transfer(ehci_hcd_t* ehci_hcd, struct urb* urb)
     }
   
     if(submit_async_qtd_chain(ehci_hcd, urb, &qh, endpoint, address,
-                              USB_SPEED_HIGH, pipe_type, packet_len,
+                              urb->dev->speed, pipe_type, packet_len,
                               is_input, mp_enabled,
                               &qtd_list) < 0) {
       return -1;
@@ -3111,9 +3152,12 @@ ehci_async_transfer(ehci_hcd_t* ehci_hcd, struct urb* urb)
                        mp_enabled, &qtd_list)) {
     return -1;
   }
+
+  /* -- EM -- If interrupts are off need to free resources after
+     submit_async_qtd_chain call */
   
   return submit_async_qtd_chain(ehci_hcd, urb, &qh, endpoint, address,
-                                USB_SPEED_HIGH, pipe_type, packet_len,
+                                urb->dev->speed, pipe_type, packet_len,
                                 is_input, mp_enabled,
                                 &qtd_list);
 }

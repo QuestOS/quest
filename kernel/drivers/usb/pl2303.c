@@ -57,8 +57,10 @@ pl2303_set_control (USB_DEVICE_INFO * dev, uint8_t on)
   req.wIndex = 0;
   req.wLength = 0;
 
-  return usb_control_transfer (dev, (addr_t) & req,
-      sizeof (USB_DEV_REQ), 0, 0);
+  return usb_control_msg(dev, usb_sndctrlpipe(dev, 0), USB_PL2303_SET_CONTROL, 0x21,
+                         control, 0, & req, 0, USB_DEFAULT_CONTROL_MSG_TIMEOUT);
+  //return usb_control_transfer (dev, (addr_t) & req,
+  //    sizeof (USB_DEV_REQ), 0, 0);
 }
 
 static PL2303_CONFIG
@@ -74,8 +76,10 @@ pl2303_get_line (USB_DEVICE_INFO * dev)
   req.wIndex = 0;
   req.wLength = 7;
 
-  if (usb_control_transfer (dev, (addr_t) & req, sizeof (USB_DEV_REQ),
-      (addr_t) & data, req.wLength)) {
+  if(usb_control_msg(dev, usb_rcvctrlpipe(dev, 0), USB_PL2303_GET_LINE, 0xA1, 0, 0, &data,
+                     7, USB_DEFAULT_CONTROL_MSG_TIMEOUT) < 0) {
+  //if (usb_control_transfer (dev, (addr_t) & req, sizeof (USB_DEV_REQ),
+  //    (addr_t) & data, req.wLength)) {
     DLOG ("pl2303_get_line failed!");
     memset (&data, 0, sizeof (PL2303_CONFIG));
   }
@@ -256,9 +260,13 @@ usb_pl2303_write (unsigned char * buf, uint32_t len)
   uint32_t act_len = 0;
   int status = 0;
 
-  if ((status = usb_bulk_transfer (&pl2303_dev, out_ept, (addr_t) buf,
-        len, 64, USB_DIR_OUT, &act_len)))
+  if((status = usb_bulk_msg(&pl2303_dev, usb_sndbulkpipe(&pl2303_dev, out_ept), buf, len,
+                            &act_len, USB_DEFAULT_BULK_MSG_TIMEOUT))) {
+  
+  //if((status = usb_bulk_transfer (&pl2303_dev, out_ept, (addr_t) buf,
+  //                              len, 64, USB_DIR_OUT, &act_len))) {
     DLOG ("Bulk write failed. Error Code: 0x%X", status);
+  }
   
   return act_len;
 }

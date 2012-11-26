@@ -307,12 +307,21 @@ typedef struct usb_device
   uint8 speed;
   usb_hcd_t* hcd;
   uint8 *configurations;
+  
+  /* The device number of the hub the device is connected to is 0 is
+     connected to the root hub */
+  uint hub_addr;
+
+  /* The port number of the hub the device is connected to */
+  uint port_num;
+
   struct _USB_DRIVER* driver;
   void* device_priv; /* A place for a device to put its own private data */
-
+  
   /*
-   *  device can have 32 endpoints (16 endpoint numbers and each
-   *  number can be shared by 2 endpoints one IN and one OUT
+   *  device can have at most 31 endpoints, 16 endpoint numbers and
+   *  each number can be shared by 2 endpoints one IN and one OUT
+   *  except endpoint 0 which is a bidirectional control endpoint
    */
   uint32 endpoint_toggles;
   
@@ -715,7 +724,7 @@ static inline uint usb_create_pipe(USB_DEVICE_INFO *device, USB_EPT_DESC* ept)
   }
 }
 
-bool usb_enumerate(usb_hcd_t* usb_hcd);
+bool usb_enumerate(usb_hcd_t* usb_hcd, uint dev_speed, uint hub_addr, uint port_num);
 
 typedef bool (*usb_reset_root_ports_func) (usb_hcd_t* usb_hcd);
 typedef bool (*usb_post_enumeration_func)(usb_hcd_t* usb_hcd);

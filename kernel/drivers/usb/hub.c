@@ -134,14 +134,32 @@ probe_hub (USB_DEVICE_INFO* info, USB_CFG_DESC *cfgd, USB_IF_DESC *ifd)
       delay (2*hubd.bPwrOn2PwrGood);
     }
     if (status & 1) {
+      int attached_dev_speed;
+      uint16 port_status;
       /* potential device on port i */
       hub_set_port_feature (info, i, HUB_PORT_RESET);
       delay (10);
       hub_port_status (info, i);
       hub_clr_port_feature (info, i, HUB_PORT_C_RESET);
-      hub_port_status (info, i);
+      port_status = hub_port_status (info, i);
       delay (2*hubd.bPwrOn2PwrGood);
-      usb_enumerate(info->hcd);
+      switch((port_status >> 9) & 0x3) {
+      case 1:
+      case 3:
+        attached_dev_speed = USB_SPEED_LOW;
+        break;
+        
+      case 0:
+        attached_dev_speed = USB_SPEED_FULL;
+        break;
+
+      case 2:
+        attached_dev_speed = USB_SPEED_HIGH;
+        break;
+        
+      }
+      DLOG("status = %X, masked status = %X, attached_dev_speed = %d", port_status, (port_status >> 9) & 0x3, attached_dev_speed);
+      usb_enumerate(info->hcd, attached_dev_speed, info->address, i);
     }
   }
   return TRUE;
