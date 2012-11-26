@@ -1997,108 +1997,105 @@ initialise_ehci_hcd(uint32_t usb_base,
  * uhci_hcd
  */
 
- uint32 ehci_itd_page;
- uint32 ehci_itd_page2;
 
- bool
-   ehci_init(void)
- {
+bool ehci_init(void)
+{
   uint32_t usb_base = 0;
   uint i, device_index, irq_pin;
   pci_device ehci_device;
   pci_irq_t irq;
-
-  
+   
+   
   if(mp_ISA_PC) {
-  DLOG("Cannot operate without PCI");
-  DLOGV("Exiting %s with FALSE", __FUNCTION__);
-  return FALSE;
-}
-
+    DLOG("Cannot operate without PCI");
+    DLOGV("Exiting %s with FALSE", __FUNCTION__);
+    return FALSE;
+  }
+   
   /* Find the EHCI device on the PCI bus */
   device_index = ~0;
   i = 0;
-
+   
   /*
    * -- WARN -- Only looking for 1 specific EHCI host controller
    * device this is D29 for Intel 6 C200 or the qemu ehci chip would
    * be best to add all EHCI chips to an array that is iterated, and
    * each time one is found it is pushed to the usb core
    */
-  
+   
   while (pci_find_device (0x8086, 0x1C2D, 0x0C, 0x03, i, &i)) {
-  if (pci_get_device (i, &ehci_device)) { 
-  if (ehci_device.progIF == 0x20) {
-  device_index = i;
-  break;
-}
-  i++;
-} else break;
-}
-
-
+    if (pci_get_device (i, &ehci_device)) { 
+      if (ehci_device.progIF == 0x20) {
+        device_index = i;
+        break;
+      }
+      i++;
+    } else break;
+  }
+   
+   
   if(device_index == ~0) {
-  while (pci_find_device (0x8086, 0x24CD, 0x0C, 0x03, i, &i)) { 
-  if (pci_get_device (i, &ehci_device)) { 
-  if (ehci_device.progIF == 0x20) {
-  device_index = i;
-  break;
-}
-  i++;
-} else break;
-}
-}
-
+    while (pci_find_device (0x8086, 0x24CD, 0x0C, 0x03, i, &i)) { 
+      if (pci_get_device (i, &ehci_device)) { 
+        if (ehci_device.progIF == 0x20) {
+          device_index = i;
+          break;
+        }
+        i++;
+      } else break;
+    }
+  }
+   
   if(device_index == ~0) {
-  while (pci_find_device (0x8086, 0x1c26, 0x0C, 0x03, i, &i)) { 
-  if (pci_get_device (i, &ehci_device)) { 
-  if (ehci_device.progIF == 0x20) {
-  device_index = i;
-  break;
-}
-  i++;
-} else break;
-}
-}
-
-  
+    while (pci_find_device (0x8086, 0x1c26, 0x0C, 0x03, i, &i)) { 
+      if (pci_get_device (i, &ehci_device)) { 
+        if (ehci_device.progIF == 0x20) {
+          device_index = i;
+          break;
+        }
+        i++;
+      } else break;
+    }
+  }
+   
+   
   DLOG("Device %d", device_index);
-  
+   
   if (device_index == ~0) {
-  DLOG ("Unable to find compatible device on PCI bus");
-  DLOGV("Exiting %s with FALSE", __FUNCTION__);
-
-  EHCI_DEBUG_HALT();
-  return FALSE;
-}
-
-  
-
+    DLOG ("Unable to find compatible device on PCI bus");
+    DLOGV("Exiting %s with FALSE", __FUNCTION__);
+     
+    EHCI_DEBUG_HALT();
+    return FALSE;
+  }
+   
+   
+   
   DLOGV("Found device on PCI bus");
-  
+   
   if (!pci_get_device (device_index, &ehci_device)) {
-  DLOG ("Unable to get PCI device from PCI subsystem");
-  DLOGV("Exiting %s with FALSE", __FUNCTION__);
-  EHCI_DEBUG_HALT();
-  return FALSE;
-}
-  
+    DLOG ("Unable to get PCI device from PCI subsystem");
+    DLOGV("Exiting %s with FALSE", __FUNCTION__);
+    EHCI_DEBUG_HALT();
+    return FALSE;
+  }
+   
   ehci_hcd.bus = ehci_device.bus;
   ehci_hcd.dev = ehci_device.slot;
   ehci_hcd.func = ehci_device.func;
-  
+   
   DLOG ("Using PCI bus=%x dev=%x func=%x", ehci_hcd.bus,
         ehci_hcd.dev, ehci_hcd.func);
-
+   
   if (!pci_get_interrupt (device_index, &ehci_hcd.irq_line, &irq_pin)) {
     DLOG ("Unable to get IRQ");
     DLOGV("Exiting %s with FALSE", __FUNCTION__);
     EHCI_DEBUG_HALT();
     return FALSE;
   }
-  
+   
   DLOG ("Using IRQ pin=%X", irq_pin);
-  
+   
   if (pci_irq_find (ehci_hcd.bus, ehci_hcd.dev, irq_pin, &irq)) {
     /* use PCI routing table */
     DLOG ("Found PCI routing entry irq.gsi=0x%x", irq.gsi);
@@ -2111,16 +2108,16 @@ initialise_ehci_hcd(uint32_t usb_base,
     }
     ehci_hcd.irq_line = irq.gsi;
   }
-  
+   
   if (!pci_decode_bar (device_index, 0, &usb_base, NULL, NULL)) {
     DLOG ("unable to decode BAR0");
     EHCI_DEBUG_HALT();
     return FALSE;
   }
-
+   
   DLOG("usb base from BAR0 = 0x%.04X", usb_base);
-
-  
+   
+   
   if(!initialise_ehci_hcd(usb_base, &ehci_hcd, frame_list,
                           last_frame_list_entries,
                           micro_frame_remaining_time_periodic,
@@ -2143,15 +2140,15 @@ initialise_ehci_hcd(uint32_t usb_base,
     EHCI_DEBUG_HALT();
     return FALSE;
   }
-  
+   
   if(!add_usb_hcd(&(ehci_hcd.usb_hcd))) {
     EHCI_DEBUG_HALT();
     return FALSE;
   }
-    
+   
   DLOG("Successfully initialised and registered ehci hcd");
   return TRUE;
- }
+}
 
 static uint32_t
 qtd_fill(qtd_t* qtd,

@@ -535,7 +535,7 @@ static const struct module_ops mod_ops = {
   .init = usb_gadget_driver_init
 };
 
-DEF_MODULE (usb___gadget, "USB gadget driver", &mod_ops, {"usb"});
+DEF_MODULE (usb___beaglegadget, "USB gadget driver", &mod_ops, {"usb"});
 
 /*
  * Local Variables:

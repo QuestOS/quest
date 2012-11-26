@@ -53,6 +53,7 @@ OBJS =  boot/boot.o boot/init.o kernel.o module/loader.o \
 	drivers/acpi/quest-acpica.o \
 	drivers/eeprom/93cx6.o \
 	drivers/usb/umsc.o \
+	drivers/usb/gadget/net2280.o \
 	drivers/usb/hub.o drivers/usb/uvc.o drivers/usb/beagle_gadget.o drivers/usb/beagle_gadget2.o \
 	drivers/usb/ehci_hcd.o drivers/usb/ehci_mem.o drivers/usb/ehci_debug.o \
 	drivers/usb/usb.o drivers/usb/enumeration.o \
