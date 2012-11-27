@@ -48,6 +48,7 @@
 /* Software VM-Exit reasons */
 #define VM_EXIT_REASON_MIGRATION     0x0001  /* Process migration */
 #define VM_EXIT_REASON_GET_HPA       0x0002  /* Get HPA for a given GPA */
+#define VM_EXIT_REASON_LINUX_BOOT    0x0003  /* Boot Linux sandbox */
 
 extern bool shared_driver_available;
 

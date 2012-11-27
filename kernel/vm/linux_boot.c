@@ -33,6 +33,7 @@
 #ifdef USE_VMX
 #include "vm/shm.h"
 #include "vm/spow2.h"
+#include "vm/vmx.h"
 
 #ifdef USE_LINUX_SANDBOX
 #include "vm/linux_boot.h"
@@ -87,7 +88,7 @@ load_linux_kernel (uint32 * load_addr, char * pathname)
   DLOG (" ");
 #endif
 
-  return 0;
+  return act_len;
 }
 
 static u32 boot_thread_stack[1024] ALIGNED (0x1000);
@@ -96,6 +97,13 @@ static u32 boot_thread_stack[1024] ALIGNED (0x1000);
 static task_id boot_thread_id = 0;
 #endif
 
+/* Input parameter for VM-Exit */
+static struct _linux_boot_param {
+  uint32 kernel_addr;
+  int size;
+} exit_param;
+
+
 static void
 linux_boot_thread (void)
 {
@@ -103,6 +111,7 @@ linux_boot_thread (void)
   int cpu;
   cpu = get_pcpu_id ();
 #endif
+  extern void * vm_exit_input_param;
 
   DLOG ("Linux boot thread started in sandbox %d", cpu);
 
@@ -114,10 +123,29 @@ linux_boot_thread (void)
   DLOG ("Loading Linux kernel bzImage...");
   cli ();
   lock_kernel ();
-  load_linux_kernel ((uint32 *) LINUX_KERNEL_LOAD_VA, "/boot/vmlinuz");
+  exit_param.size = load_linux_kernel ((uint32 *) LINUX_KERNEL_LOAD_VA, "/boot/vmlinuz");
   unlock_kernel ();
   sti ();
 
+  if (exit_param.size == -1) {
+    DLOG ("Loading failed.");
+    goto finish;
+  }
+
+  /* Now, trap into monitor and setup Linux VMCS */
+  exit_param.kernel_addr = LINUX_KERNEL_LOAD_VA;
+  vm_exit_input_param = (void *) &exit_param;
+  vm_exit (VM_EXIT_REASON_LINUX_BOOT);
+
+  /* TODO: Go into real mode with ljmp to 0x90200 */
+  /* disable protected mode */
+  asm volatile ("movl %%cr0, %%eax \n\t"
+                "andl $0x7FFFFFFE, %%eax \n\t"
+                "movl %%eax, %%cr0 \n\t"
+                "ljmp $0x9000, $0x200 \n\t"
+                :::"eax");
+
+  finish:
   exit_kernel_thread ();
 }
 

@@ -31,6 +31,10 @@
 #include "vm/shm.h"
 #include "vm/migration.h"
 
+#ifdef USE_LINUX_SANDBOX
+#include "vm/linux_boot.h"
+#endif
+
 #define DEBUG_VMX 2
 #define VMX_EPT
 
@@ -578,6 +582,27 @@ vmx_create_pmode_VM (virtual_machine *vm, u32 rip0, u32 rsp0)
   return -1;
 }
 
+#ifdef USE_LINUX_SANDBOX
+static void
+linux_vm_init (uint32 kernel_addr, int kernel_size)
+{
+  int real_mode_size = 0;
+  uint32 exec_ctrls2 = 0;
+  linux_setup_header_t * setup_header = NULL;
+  setup_header = (linux_setup_header_t *) (((uint8 *) kernel_addr) + LINUX_SETUP_HEADER_OFFSET);
+  /* TODO:Setup EPT for Linux sandbox */
+  /* TODO:Enable Unrestricted Guest */
+  real_mode_size = setup_header->setup_sects * 512;
+  /* Move real mode Linux code to 0x00090000 */
+  memcpy ((void *) 0x90000, (const void *) kernel_addr, real_mode_size);
+  logger_printf ("%d bytes copied to 0x90000\n", real_mode_size);
+  exec_ctrls2 = vmread (VMXENC_PROCBASED_VM_EXEC_CTRLS2);
+  vmwrite (exec_ctrls2 | 0x80, VMXENC_PROCBASED_VM_EXEC_CTRLS2);
+  exec_ctrls2 = vmread (VMXENC_PROCBASED_VM_EXEC_CTRLS2);
+  logger_printf ("exec_ctrls2=0x%X\n", exec_ctrls2);
+}
+#endif
+
 /* --YL-- We use two global variables for input and output of vm_exit routine. These
  * variables should be placed in sandbox kernel memory instead of monitor and some
  * more secure method should be prefered. For now, we just place them in monitor
@@ -600,11 +625,21 @@ vmx_process_exit (uint32 status)
     void * ptss;
     u64 dl;
   };
+  struct _linux_boot_param {
+    uint32 kernel_addr;
+    int size;
+  };
   struct _tm_param * param = (struct _tm_param *) vm_exit_input_param;
   DLOG ("Sandbox%d: performing VM-Exit Status: 0x%X Input: 0x%X\n",
         cpu, status, vm_exit_input_param);
 
   switch (status) {
+    case VM_EXIT_REASON_LINUX_BOOT:
+#ifdef USE_LINUX_SANDBOX
+      linux_vm_init (((struct _linux_boot_param *) vm_exit_input_param)->kernel_addr,
+                     ((struct _linux_boot_param *) vm_exit_input_param)->size);
+#endif
+      break;
     case VM_EXIT_REASON_MIGRATION:
 #ifdef USE_VMX
       if (new_request) {
