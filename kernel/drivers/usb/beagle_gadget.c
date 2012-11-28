@@ -17,7 +17,7 @@
 
 #include <arch/i386.h>
 #include <drivers/usb/usb.h>
-#include <drivers/usb/gadget.h>
+#include <drivers/usb/beagle_gadget.h>
 #include <util/printf.h>
 #include <kernel.h>
 #include <sched/sched.h>
