@@ -23,13 +23,13 @@ void pow2_init (void);
 int pow2_alloc (uint32 size, uint8 ** ptr);
 void pow2_free (uint8 * ptr);
 
-static inline void* malloc(uint32_t size) {
+static inline void* kmalloc(uint32_t size) {
   uint8* temp;
   pow2_alloc(size, &temp);
   return temp;
 }
 
-static inline void free(void* ptr)
+static inline void kfree(void* ptr)
 {
   pow2_free(ptr);
 }
