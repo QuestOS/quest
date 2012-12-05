@@ -18,6 +18,7 @@
 /* USB Hub driver */
 #include <smp/apic.h>
 #include <drivers/usb/usb.h>
+#include <drivers/usb/hub.h>
 #include <util/printf.h>
 #include <kernel.h>
 #include <sched/sched.h>
@@ -32,12 +33,37 @@
 #define DLOG(fmt,...) ;
 #endif
 
-
-
 #define HUB_PORT_STAT_POWER 0x0100
 #define HUB_PORT_RESET 4
 #define HUB_PORT_POWER 8
 #define HUB_PORT_C_RESET 20
+#define MAX_NUM_HUBS 20
+
+#define HUB_HOTPLUG_STACK_SIZE 1024
+u32 usb_hotplug_stack[HUB_HOTPLUG_STACK_SIZE] ALIGNED(0x1000);
+
+/* -- EM -- Right now this is polling would obviously better to have a
+   signal mechanism where the interrupt handler signals to the thread
+   to wake up and check for a status change */
+
+/* This is the thread of control that is responsible for hot plugable USB devices */
+
+static void hub_hot_plugable_thread()
+{
+  unlock_kernel();
+  sti();
+
+  while(1) {
+    cli();
+    lock_kernel();
+    sched_usleep(2 * 1000 * 1000 );
+    unlock_kernel();
+    sti();
+
+    DLOG("IN %s", __FUNCTION__);
+  }
+}
+
 
 struct usb_hub_desc
 {
@@ -104,6 +130,9 @@ probe_hub (USB_DEVICE_INFO* info, USB_CFG_DESC *cfgd, USB_IF_DESC *ifd)
 {
   sint status, i;
   USB_HUB_DESC hubd;
+  hub_info_t* hub_info;
+
+  
 
 
   if (ifd->bInterfaceClass != USB_HUB_CLASS)
@@ -111,6 +140,12 @@ probe_hub (USB_DEVICE_INFO* info, USB_CFG_DESC *cfgd, USB_IF_DESC *ifd)
 
   /* it's a hub, set the configuration */
   if(usb_set_configuration (info, cfgd->bConfigurationValue) < 0) {
+    return FALSE;
+  }
+
+  pow2_alloc(sizeof(hub_info_t), (uint8**)&hub_info);
+
+  if(hub_info == NULL) {
     return FALSE;
   }
 
@@ -126,7 +161,10 @@ probe_hub (USB_DEVICE_INFO* info, USB_CFG_DESC *cfgd, USB_IF_DESC *ifd)
   DLOG ("GET_HUB_DESCRIPTOR: status=%d len=%d nbrports=%d delay=%d",
         status, hubd.bDescLength, hubd.bNbrPorts, hubd.bPwrOn2PwrGood);
 
-  if (status < 0) return FALSE;
+  if (status < 0) {
+    pow2_free((uint8*)hub_info);
+    return FALSE;
+  }
   for (i=1; i<=hubd.bNbrPorts; i++) {
     /* power-on port if necessary */
     while (!((status = hub_port_status (info, i)) & HUB_PORT_STAT_POWER)) {
@@ -158,10 +196,16 @@ probe_hub (USB_DEVICE_INFO* info, USB_CFG_DESC *cfgd, USB_IF_DESC *ifd)
         break;
         
       }
-      DLOG("status = %X, masked status = %X, attached_dev_speed = %d", port_status, (port_status >> 9) & 0x3, attached_dev_speed);
+      DLOG("status = %X, masked status = %X, attached_dev_speed = %d",
+           port_status, (port_status >> 9) & 0x3, attached_dev_speed);
       usb_enumerate(info->hcd, attached_dev_speed, info->address, i);
     }
   }
+
+  info->device_priv = hub_info;
+  usb_register_device(info, NULL);
+  
+  
   return TRUE;
 }
 
@@ -172,6 +216,11 @@ static USB_DRIVER hub_driver = {
 extern bool
 usb_hub_driver_init (void)
 {
+#if 1
+  start_kernel_thread((u32)hub_hot_plugable_thread,
+                       (u32) &usb_hotplug_stack[HUB_HOTPLUG_STACK_SIZE - 1],
+                       "USB Hotplug");
+#endif
   return usb_register_driver (&hub_driver);
 }
 

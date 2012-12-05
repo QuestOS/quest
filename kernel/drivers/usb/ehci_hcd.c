@@ -1359,22 +1359,7 @@ static void ioc_backup_thread(ehci_hcd_t* ehci_hcd)
 
 
 
-static bool
-handshake(uint32_t *ptr, uint32_t mask, uint32_t done, uint32_t usec)
-{
-  uint32_t result;
-  
-  do {
-    result = *ptr;
-    if (result == ~(uint32_t)0) return FALSE; /* card removed */
-    result &= mask;
-    if (result == done) return TRUE;
-    tsc_delay_usec(1);
-    usec--;
-  } while (usec);
-  
-  return FALSE;
-}
+
 
 static uint32_t
 ehci_irq_handler(uint8 vec)
@@ -1946,7 +1931,7 @@ initialise_ehci_hcd(uint32_t usb_base,
     calc_used_qh_bitmap_size(ehci_hcd);
 
   memset(used_qh_bitmap, 0,
-    ehci_hcd->used_qh_bitmap_size * sizeof(*used_qh_bitmap));
+         ehci_hcd->used_qh_bitmap_size * sizeof(*used_qh_bitmap));
   
   ehci_hcd->used_qtd_bitmap_size =
     calc_used_qtd_bitmap_size(ehci_hcd);
@@ -1992,10 +1977,8 @@ initialise_ehci_hcd(uint32_t usb_base,
 }
 
 
-/*
- * Called to initialise EHCI, functionality mimics uhci_init in
- * uhci_hcd
- */
+/* Called to initialise EHCI, functionality mimics uhci_init in
+   uhci_hcd */
 
 
 bool ehci_init(void)
@@ -2016,12 +1999,11 @@ bool ehci_init(void)
   device_index = ~0;
   i = 0;
    
-  /*
-   * -- WARN -- Only looking for 1 specific EHCI host controller
-   * device this is D29 for Intel 6 C200 or the qemu ehci chip would
-   * be best to add all EHCI chips to an array that is iterated, and
-   * each time one is found it is pushed to the usb core
-   */
+  
+  /* -- WARN -- Only looking for 1 specific EHCI host controller
+     device this is D29 for Intel 6 C200 or the qemu ehci chip would
+     be best to add all EHCI chips to an array that is iterated, and
+     each time one is found it is pushed to the usb core */
    
   while (pci_find_device (0x8086, 0x1C2D, 0x0C, 0x03, i, &i)) {
     if (pci_get_device (i, &ehci_device)) { 
@@ -2391,7 +2373,7 @@ static void qh_refresh(ehci_hcd_t* ehci_hcd, qh_t* qh)
     
     if(!(qh->hw_info1 & QH_DATA_TOGGLE_CONTROL)) {
       qh->data_toggle =
-        IS_ENDPOINT_TOGGLED(qh->dev, QH_GET_ENDPOINT(qh), QTD_IS_INPUT(qtd));
+        IS_USB_ENDPOINT_TOGGLED(qh->dev, QH_GET_ENDPOINT(qh), QTD_IS_INPUT(qtd));
     }
   }
   
@@ -2689,7 +2671,7 @@ static sint32 spin_for_transfer_completion(ehci_hcd_t* ehci_hcd,
   
   if(pipe_type == PIPE_BULK) {
     USB_DEVICE_INFO* dev_info = &ehci_hcd_to_hcd(ehci_hcd)->devinfo[address];
-    SET_ENDPOINT_TOGGLE(dev_info, endpoint, is_input, qh->data_toggle );
+    SET_USB_ENDPOINT_TOGGLE(dev_info, endpoint, is_input, qh->data_toggle );
   }
 
   if(last_qtd->token & QTD_HALT) {

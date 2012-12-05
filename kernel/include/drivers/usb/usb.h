@@ -40,6 +40,11 @@
 
 #define delay(x) sched_usleep (x*1000)
 
+/* -- EM -- Both EHCI and net2280 use this so I am putting it here for
+      now */
+bool
+handshake(uint32_t *ptr, uint32_t mask, uint32_t done, uint32_t usec);
+
 /* Async takes  */
 
 #ifdef USB_REALTIME_ASYNC
@@ -83,6 +88,7 @@
 #define PIPE_CONTROL      2
 #define PIPE_BULK         3
 
+#define USB_SPEED_UNKNOWN  0
 #define USB_SPEED_LOW      1
 #define USB_SPEED_FULL     2
 #define USB_SPEED_HIGH     3
@@ -105,6 +111,13 @@
 #define USB_DEFAULT_BULK_MSG_TIMEOUT        1250
 #define USB_DEFAULT_INTERRUPT_MSG_TIMEOUT   1250
 #define USB_DEFAULT_ISOCHRONOUS_MSG_TIMEOUT 2250
+
+#define USB_ENDPOINT_XFERTYPE_MASK      0x03    /* in bmAttributes */
+#define USB_ENDPOINT_XFER_CONTROL       0
+#define USB_ENDPOINT_XFER_ISOC          1
+#define USB_ENDPOINT_XFER_BULK          2
+#define USB_ENDPOINT_XFER_INT           3
+#define USB_ENDPOINT_MAX_ADJUSTABLE     0x80
 
 
 #define USB_MSG_SLEEP_INTERVAL 25 // sleep for (4 * USB_MSG_SLEEP_INTERVAL) ms
@@ -378,11 +391,11 @@ usb_maxpacket(struct usb_device *udev, int pipe)
  */
 
 
-#define IS_ENDPOINT_TOGGLED(dev_info, endpoint, is_input)               \
+#define IS_USB_ENDPOINT_TOGGLED(dev_info, endpoint, is_input)               \
   (!!(((dev_info)->endpoint_toggles) & (1 << (endpoint + ( (!!(is_input)) << 4)))))
 
 
-#define SET_ENDPOINT_TOGGLE(dev_info, endpoint, is_input, val)          \
+#define SET_USB_ENDPOINT_TOGGLE(dev_info, endpoint, is_input, val)          \
   do {                                                                  \
     if(val) {                                                           \
       ((dev_info)->endpoint_toggles) |=                                 \

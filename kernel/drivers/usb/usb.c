@@ -42,6 +42,26 @@ static uint num_drivers = 0;
 static USB_DEVICE_INFO* devices[USB_CORE_MAX_DEVICES];
 static uint num_devices = 0;
 
+
+/* -- EM -- Both EHCI and net2280 use this so I am putting it here for
+      now */
+bool
+handshake(uint32_t *ptr, uint32_t mask, uint32_t done, uint32_t usec)
+{
+  uint32_t result;
+  
+  do {
+    result = *ptr;
+    if (result == ~(uint32_t)0) return FALSE; /* card removed */
+    result &= mask;
+    if (result == done) return TRUE;
+    tsc_delay_usec(1);
+    usec--;
+  } while (usec);
+  
+  return FALSE;
+}
+
 int usb_syscall_handler(uint32_t device_id, uint32_t operation,
                         char* buf, uint32_t data_len)
 {
@@ -53,6 +73,8 @@ int usb_syscall_handler(uint32_t device_id, uint32_t operation,
     DLOG("Unknown device id");
     return -1;
   }
+
+  if(device->driver == NULL) return -1;
   
   switch(operation) {
   case USB_USER_READ:
@@ -739,7 +761,7 @@ find_device_driver (USB_DEVICE_INFO *info, USB_CFG_DESC *cfgd, USB_IF_DESC *ifd)
   }
   DLOG("Unknown device bDeviceClass = 0x%X\nbDeviceSubClass = 0x%X\nfile %s line %d",
        info->devd.bDeviceClass, info->devd.bDeviceSubClass, __FILE__, __LINE__);
-  //panic("Unknown Device");
+  panic("Unknown Device");
 }
 
 
