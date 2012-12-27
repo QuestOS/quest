@@ -117,8 +117,6 @@ real_start:
         rep movsl
         lgdt gdt_ptr /* pass address of 6-byte object */
 
-        /* call realmodetest */
-
         /* set up support for 4MB paging */
         movl %cr4, %eax /* EAX is temporary for CR4 */
         orl $0x10, %eax /* Set PSE bit of CR4 */
@@ -247,23 +245,22 @@ real_start:
         popl %ebx
         movl $stack+0x1000, %esp      /* setup real C stack */
         pushl %ebx                      /* pass GRUB multiboot info */
-        call init /* start of C code */
 
-realmodetest:
-        push %ebp
-        movl %esp, %ebp
-        movl $_code16physicalstart, %esi
-        movl $_code16start, %edi
-        movl $_code16_pages, %ecx
-        shll $12, %ecx
-        rep movsb
-
+        /* Relocate realmodestub to lower 1 MB starting at 0x8000 */
+        /* This memory area should be free for use */
+        /* realmodestub will be used for booting Linux */
         movl $realmodestub, %esi
-        movl $0x7c00, %edi
+        movl $0x8000, %edi
         movl realmodestub_len, %ecx
         rep movsb
 
-        lgdt 0x7c00 + realmodegdtdesc - realmodestub
+        call init /* start of C code */
+
+realmodestub:
+        lgdt 0x8000 + realmodegdtdesc - realmodestub
+        ljmp $0x18, $0x8000 + entry16 - realmodestub
+entry16:
+        .code16
         movw $0x20, %ax
         movw %ax, %ds
         movw %ax, %es
@@ -271,30 +268,48 @@ realmodetest:
         movw %ax, %gs
         movw %ax, %ss
 
-        ljmp $0x18, $0x7c00
+        lidt 0x8000 + ivt - realmodestub
 
-1:      jmp 1b
-        ret
-
-        .code16
-realmodestub:
-        /* disable pmode */
+        /* disable pmode and paging */
         movl %cr0, %eax
-        andb $0xFE, %al
+        andl $0x7FFFFFFE, %eax
         movl %eax, %cr0
 
-        data32 ljmp $0x0, $1f
-1:
+        /* Flush instruction stream to avoid mixed processor mode instructions */
+        data32 ljmp $0x0, $0x8000 + real - realmodestub
+real:
         xorw %ax, %ax
         movw %ax, %ds
         movw %ax, %es
         movw %ax, %fs
         movw %ax, %gs
         movw %ax, %ss
-        movw $0x9000, %sp
-        lidt 0x7c00 + ivt - realmodestub
-        sti
-        ljmp $0x0, $_code16start
+
+#        sti
+#        leaw 0x8000 + msg - realmodestub, %si   
+#        movw $0x8000 + msg_len - realmodestub, %cx 
+#1:
+#        lodsb
+#        movb $0x0E, %ah # Write character to the screen
+#        int $0x10
+#        loop 1b
+
+        movw $0xB800, %ax
+        movw %ax, %es
+        movb $66, %es:0
+        xorw %ax, %ax
+        hlt
+        /* Jump to Linux real mode start address */
+        ljmp $0x9000, $200
+
+        /* Should never reach here */
+        hlt
+
+msg:
+        .asciz "Quest"
+msg_len:
+        .word . - msg
+        
 ivt:    .short 0x3ff
         .long  0x0
         .p2align        2       /* force 4-byte alignment */
@@ -317,21 +332,21 @@ realmodegdt:
         .byte   0, 0x92, 0xCF, 0
 
         /* -- 16 bit real mode CS --
-         * base = 0x00000000, limit 0x0FFFF (1 B Granularity), present
-         * type = 16 bit code execute/read only/conforming, DPL = 0
+         * base = 0x00000000, limit 0xFFFFF (1 B Granularity), present
+         * type = 16 bit code execute/read only, DPL = 0
          */
         .word   0xFFFF, 0
-        .byte   0, 0x9E, 0, 0
+        .byte   0, 0x9A, 0x0F, 0
 
         /* -- 16 bit real mode DS --
-         * base = 0x00000000, limit 0x0FFFF (1 B Granularity), present
+         * base = 0x00000000, limit 0xFFFFF (1 B Granularity), present
          * type = 16 bit data read/write, DPL = 0
          */
         .word   0xFFFF, 0
-        .byte   0, 0x92, 0, 0
+        .byte   0, 0x92, 0x0F, 0
 realmodegdtdesc:
         .word   0x27                    /* limit */
-        .long   realmodegdt             /* addr */
+        .long   0x8000 + realmodegdt - realmodestub             /* addr */
 realmodestub_len:
         .long . - realmodestub
         .code32

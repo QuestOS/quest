@@ -124,8 +124,6 @@ linux_boot_thread (void)
   cli ();
   lock_kernel ();
   exit_param.size = load_linux_kernel ((uint32 *) LINUX_KERNEL_LOAD_VA, "/boot/vmlinuz");
-  unlock_kernel ();
-  sti ();
 
   if (exit_param.size == -1) {
     DLOG ("Loading failed.");
@@ -139,11 +137,17 @@ linux_boot_thread (void)
 
   /* TODO: Go into real mode with ljmp to 0x90200 */
   /* disable protected mode */
-  asm volatile ("movl %%cr0, %%eax \n\t"
-                "andl $0x7FFFFFFE, %%eax \n\t"
-                "movl %%eax, %%cr0 \n\t"
-                "ljmp $0x9000, $0x200 \n\t"
-                :::"eax");
+  uint32 * dump;
+  dump = (uint32 *) 0x8000;
+  int i = 0;
+  com1_printf ("-------------------DUMP------------------------\n");
+  for (i = 0; i < 10; i++) {
+    com1_printf ("%X ", dump[i]);
+  }
+  com1_printf ("\n-------------------DUMP------------------------\n");
+  asm volatile ("jmp 0x8000");
+  unlock_kernel ();
+  sti ();
 
   finish:
   exit_kernel_thread ();

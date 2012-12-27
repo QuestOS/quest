@@ -207,9 +207,9 @@ vmx_init_mem (uint32 cpu)
    * memory is shared, but pages starting at 0x8000 should be re-mapped.
    * Look at vmx_global_init in vmx.c for detail.
    */
-  for (i=0; i<((uint32) &_code16_pages); i++)
-    vm86_pgt[((((uint32) &_code16start) >> 12) & 0x3FF) + i] =
-    ((uint32) &_code16physicalstart + physical_offset + (i << 12)) | 7;
+  //for (i=0; i<((uint32) &_code16_pages); i++)
+  //  vm86_pgt[((((uint32) &_code16start) >> 12) & 0x3FF) + i] =
+  //  ((uint32) &_code16physicalstart + physical_offset + (i << 12)) | 7;
 
   unmap_virtual_page (vm86_pgt);
 

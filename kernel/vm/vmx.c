@@ -35,7 +35,7 @@
 #include "vm/linux_boot.h"
 #endif
 
-#define DEBUG_VMX 2
+#define DEBUG_VMX 3
 #define VMX_EPT
 
 #if DEBUG_VMX > 2
@@ -250,11 +250,11 @@ vmx_global_init (void)
   for (i=0; i<256; i++)
     vmx_vm86_pgt[i] = (i << 12) | 7;
   /* but then re-map pages starting at 0x8000 to our real-mode section */
-  for (i=0; i<((uint32) &_code16_pages); i++)
-    vmx_vm86_pgt[((((uint32) &_code16start) >> 12) & 0x3FF) + i] =
-      ((uint32) &_code16physicalstart + (i << 12)) | 7;
+  //for (i=0; i<((uint32) &_code16_pages); i++)
+  //  vmx_vm86_pgt[((((uint32) &_code16start) >> 12) & 0x3FF) + i] =
+  //    ((uint32) &_code16physicalstart + (i << 12)) | 7;
   /* and unmap page 0 so that null pointer dereferences cause faults */
-  vmx_vm86_pgt[0] = 0;
+  //vmx_vm86_pgt[0] = 0;
 
   flush_tlb_all ();
 
