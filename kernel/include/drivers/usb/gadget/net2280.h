@@ -37,6 +37,23 @@
 #include <drivers/usb/linux_usb.h>
 #include <drivers/usb/gadget/gadget.h>
 
+
+enum net2280_state {
+        /* This one isn't used anywhere */
+        NET2280_STATE_COMMAND_PHASE = -10,
+        NET2280_STATE_DATA_PHASE,
+        NET2280_STATE_STATUS_PHASE,
+
+        NET2280_STATE_IDLE = 0,
+        NET2280_STATE_ABORT_BULK_OUT,
+        NET2280_STATE_RESET,
+        NET2280_STATE_INTERFACE_CHANGE,
+        NET2280_STATE_CONFIG_CHANGE,
+        NET2280_STATE_DISCONNECT,
+        NET2280_STATE_EXIT,
+        NET2280_STATE_TERMINATED
+};
+
 typedef struct net2280_dma {
   uint32_t dmacount;
   uint32_t dmaaddr;                /* the buffer */
@@ -115,6 +132,17 @@ struct net2280 {
   
   NET2280_DECLARE_POOL(net2280_dma)
 
+  struct usb_ep           *ep0;           // Handy copy of gadget->ep0
+  struct usb_request      *ep0req;        // For control responses
+  unsigned int            ep0_req_tag;
+  const char              *ep0req_name;
+
+  u8                      config, new_config;
+
+  struct usb_request* requests[20]; /* -- EM -- Just picking a max
+                                       will get rid of this stuff from
+                                       net2280 later */
+  
 #undef NET2280_DECLARE_POOL
 } ;
 

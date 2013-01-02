@@ -325,6 +325,7 @@ typedef struct _qtd_t
     } PACKED;
   };
 
+  
   // dword 3, qTD token
   union {
     uint32_t token;
@@ -357,7 +358,7 @@ typedef struct _qtd_t
       uint32_t data_toggle:1;
 
 #define QTD_TOGGLE (1 << 31)
-      
+#define QTD_REMAINING_DATA(qtd)  ((qtd->token >> 16) & 0x7FFF)
     } PACKED;
   };
 
@@ -620,12 +621,11 @@ typedef struct
 } ehci_dev_info_t;
 
 typedef struct {
-  list_head_t tds;
+  list_head_t itds;             /* -- EM -- Remove this to use urb private data like the rest */
   struct urb* urb;
-  int pipe_type;
+  int pipe_type;                /* -- EM -- Remove this to use pipe in urb */
   list_head_t chain_list;
 } ehci_completion_element_t;
-
 
 
 typedef struct
@@ -860,6 +860,9 @@ typedef struct
   qtd_t* qtds[0];
 } ehci_qh_urb_priv_t;
 
+
+ehci_qh_urb_priv_t* ehci_get_qh_urb_priv(struct urb* urb);
+
 /***************************************************************
  * QH URB private data end
  ***************************************************************/
@@ -948,6 +951,52 @@ ehci_bulk_urb_priv_t* ehci_alloc_bulk_urb_priv(unsigned int num_qtds)
 
 /***************************************************************
  * Bulk URB private data end
+ ***************************************************************/
+
+
+
+
+/***************************************************************
+ * Control URB private data start
+ ***************************************************************/
+
+typedef struct
+{
+  ehci_urb_priv_t ehci_urb_priv;
+  ehci_qh_urb_priv_t qh_urb_priv;
+  /* Nothing can be after this because qh_urb_priv has a variable size
+   * array at the end */
+} ehci_ctrl_urb_priv_t;
+
+static void
+initialise_ctrl_urb_priv(ehci_ctrl_urb_priv_t* priv, unsigned int num_qtds)
+{
+  memset(priv, 0,
+         sizeof(ehci_ctrl_urb_priv_t) + num_qtds * sizeof(qtd_t*));
+  priv->qh_urb_priv.num_qtds = num_qtds;
+}
+
+static inline
+ehci_ctrl_urb_priv_t* ehci_alloc_ctrl_urb_priv(unsigned int num_qtds)
+{
+  ehci_ctrl_urb_priv_t* temp;
+  pow2_alloc(sizeof(ehci_ctrl_urb_priv_t) +
+             num_qtds * sizeof(qtd_t*),
+             (uint8_t**)&temp);
+  if(temp == NULL) {
+    return NULL;
+  }
+  initialise_ctrl_urb_priv(temp, num_qtds);
+  return temp;
+}
+
+#define ctrl_urb_priv_to_urb(ctrl_urb_priv)                       \
+  (container_of((void*)(ctrl_urb_priv), struct urb, hcpriv))
+
+#define get_ctrl_urb_priv(urb) ((ehci_ctrl_urb_priv_t*)urb->hcpriv)
+
+/***************************************************************
+ * Control URB private data end
  ***************************************************************/
 
 

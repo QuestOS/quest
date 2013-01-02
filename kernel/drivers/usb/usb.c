@@ -463,7 +463,7 @@ int usb_bulk_msg(struct usb_device *usb_dev, unsigned int pipe,
    * function won't complete until the callback is called
    */
   struct urb urb;
-  bool done;
+  bool done = FALSE;
   int i;
   int ret;
   usb_complete_t complete_callback;
@@ -526,15 +526,17 @@ int usb_control_msg(struct usb_device *dev, unsigned int pipe,
 {
   /*
    * -- EM -- It should be okay to put these on the stack because this
-   * function won't complete until the callback is called
-   */
+   * function won't complete until the callback is called,
+
+   /* -- EM -- not true if it fails! */
+  
   struct urb urb;
-  bool done;
+  bool done = FALSE;
   int i;
   USB_DEV_REQ cmd;
   int ret;
   usb_complete_t complete_callback;
-  
+
   usb_init_urb(&urb);
   cmd.bmRequestType = requesttype;
   cmd.bRequest = request;
@@ -579,11 +581,14 @@ int usb_control_msg(struct usb_device *dev, unsigned int pipe,
     for(i = 0; (!done) && (i < (timeout / USB_MSG_SLEEP_INTERVAL) + 1 ); ++i) {
       sched_usleep(4000 * USB_MSG_SLEEP_INTERVAL);
     }
+    if(!done) {
+      DLOG("Failed to complete callback for control msg");
+      panic("Failed to complete callback for control msg");
+    }
     ret = done ? 0 : -1;
   }
   
  usb_control_msg_out:
-  
   return ret;  
 }
 
@@ -756,14 +761,76 @@ find_device_driver (USB_DEVICE_INFO *info, USB_CFG_DESC *cfgd, USB_IF_DESC *ifd)
 {
   int d;
   dlog_info(info);
+  DLOG("In %s", __FUNCTION__);
   for (d=0; d<num_drivers; d++) {
     if (drivers[d].probe (info, cfgd, ifd)) return;
   }
-  DLOG("Unknown device bDeviceClass = 0x%X\nbDeviceSubClass = 0x%X\nfile %s line %d",
-       info->devd.bDeviceClass, info->devd.bDeviceSubClass, __FILE__, __LINE__);
+  DLOG("Unknown device bDeviceClass = 0x%X\n\tbDeviceSubClass = 0x%X"
+       "\n\tVendor = 0x%X Product = 0x%X\n\tfile %s line %d",
+       info->devd.bDeviceClass, info->devd.bDeviceSubClass,
+       info->devd.idVendor, info->devd.idProduct,
+       __FILE__, __LINE__);
   panic("Unknown Device");
 }
 
+void print_all_descriptors(void* descriptor_start, uint total_length)
+{
+  struct usb_descriptor_header* temp = descriptor_start;
+  
+  uint total_traversed = 0;
+  
+  while(total_traversed < total_length) {
+    DLOG("Descriptor Type = 0x%X", temp->bDescriptorType);
+#define PRINT_DESCRIPTOR_SWITCH_CASE(desc)      \
+    case desc:                                  \
+      DLOG("\t"#desc);                          \
+      break
+      
+    switch(temp->bDescriptorType) {
+      PRINT_DESCRIPTOR_SWITCH_CASE(USB_TYPE_DEV_DESC);
+      PRINT_DESCRIPTOR_SWITCH_CASE(USB_TYPE_CFG_DESC);
+      PRINT_DESCRIPTOR_SWITCH_CASE(USB_TYPE_STR_DESC);
+      PRINT_DESCRIPTOR_SWITCH_CASE(USB_TYPE_IF_DESC);
+      PRINT_DESCRIPTOR_SWITCH_CASE(USB_TYPE_EPT_DESC);
+      PRINT_DESCRIPTOR_SWITCH_CASE(USB_TYPE_QUA_DESC);
+      PRINT_DESCRIPTOR_SWITCH_CASE(USB_TYPE_SPD_CFG_DESC);
+      PRINT_DESCRIPTOR_SWITCH_CASE(USB_TYPE_IF_PWR_DESC);
+
+#undef PRINT_DESCRIPTOR_SWITCH_CASE
+    default:
+      DLOG("\tUnknown Type");
+    }
+    if(temp->bLength == 0) return;
+    
+    total_traversed += temp->bLength;
+    temp = ((char*)temp) + temp->bLength;
+  }
+}
+
+void* get_next_desc(uint desc_type, void* descriptor_start, uint remaining_length)
+{
+  
+struct usb_descriptor_header* temp = descriptor_start;
+  
+  uint total_traversed = 0;
+
+  while(total_traversed < remaining_length) {
+    if(temp->bDescriptorType == desc_type) {
+      return temp;
+    }
+
+    total_traversed += temp->bLength;
+    temp = ((char*)temp) + temp->bLength;
+  }
+}
+
+void print_ept_desc_info(USB_EPT_DESC* ept_desc)
+{
+  DLOG("Endpoint Address = 0x%X", ept_desc->bEndpointAddress);
+  DLOG("Attributes = 0x%X", ept_desc->bmAttributes);
+  DLOG("wMaxPacketSize = 0x%X", ept_desc->wMaxPacketSize);
+  DLOG("Interval = 0x%X", ept_desc->bInterval);
+}
 
 /* figures out what device is attached as address 0 */
 bool
@@ -903,26 +970,36 @@ usb_enumerate(usb_hcd_t* usb_hcd, uint dev_speed, uint hub_addr, uint port_num)
       usb_get_descriptor (info, USB_TYPE_CFG_DESC, c, 0, cfgd->wTotalLength, ptr);
     if (status < 0)
       goto abort_mem;
+    print_all_descriptors(ptr, 1000);
 
     cfgd = (USB_CFG_DESC *)ptr;
     DLOG ("usb_enumerate: cfg %d has num_if=%d", c, cfgd->bNumInterfaces);
     ptr += cfgd->wTotalLength;
   }
 
+  
+
   /* incr this here because hub drivers may recursively invoke enumerate */
   usb_hcd->next_address++;
 
   /* parse cfg and if descriptors */
   ptr = info->configurations;
+  print_all_descriptors(ptr, total_length);
   for (c=0; c < devd.bNumConfigurations; c++) {
+    DLOG("FFFFFFFF c= %d, devd.bNumConfigurations = %d", c, devd.bNumConfigurations);
     cfgd = (USB_CFG_DESC *) ptr;
     ptr += cfgd->bLength;
     for (i=0; i < cfgd->bNumInterfaces; i++) {
+      DLOG("GGGGGGGGGGGGGGGGGGGG i = %d, cfgd->bNumInterfaces = %d", i, cfgd->bNumInterfaces);
       /* find the next if descriptor, skipping any class-specific stuff */
       for (ifd = (USB_IF_DESC *) ptr;
            ifd->bDescriptorType != USB_TYPE_IF_DESC;
            ifd = (USB_IF_DESC *)((uint8 *)ifd + ifd->bLength)) {
-        //DLOG ("ifd=%p len=%d type=0x%x", ifd, ifd->bLength, ifd->bDescriptorType);
+        DLOG ("ifd=%p len=%d type=0x%x", ifd, ifd->bLength, ifd->bDescriptorType);
+        if(ifd->bLength == 0) {
+          DLOG("Descriptor length is zero");
+          panic("Descriptor length is zero");
+        }
       }
       ptr = (uint8 *) ifd;
       DLOG ("usb_enumerate: examining (%d, %d) if_class=0x%X sub=0x%X proto=0x%X #endp=%d",
@@ -977,6 +1054,25 @@ int usb_payload_size(USB_DEVICE_INFO* dev,
     DLOG("Unhandled USB speed %d for %s", dev->speed, __FUNCTION__);
     return -1;
   }
+}
+
+const char *usb_speed_string(int speed)
+{
+  static const char *const names[] = {
+    [USB_SPEED_UNKNOWN] = "UNKNOWN",
+    [USB_SPEED_LOW] = "low-speed",
+    [USB_SPEED_FULL] = "full-speed",
+    [USB_SPEED_HIGH] = "high-speed",
+    [USB_SPEED_WIRELESS] = "wireless",
+    [USB_SPEED_SUPER] = "super-speed",
+  };
+  
+  if (speed < 0 || speed >= ARRAY_SIZE(names))
+    speed = USB_SPEED_UNKNOWN;
+  
+  return names[speed];
+
+  #undef ARRAY_SIZE
 }
 
 bool

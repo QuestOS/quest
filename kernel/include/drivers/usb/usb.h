@@ -57,26 +57,51 @@ handshake(uint32_t *ptr, uint32_t mask, uint32_t done, uint32_t usec);
 #define USB_MAX_LEN       0x3FE
 #define USB_NULL_PACKET   0x7FF
 
-#define USB_GET_STATUS           0x00
-#define USB_CLEAR_FEATURE        0x01
-#define USB_SET_FEATURE          0x03
-#define USB_SET_ADDRESS          0x05
-#define USB_GET_DESCRIPTOR       0x06
-#define USB_SET_DESCRIPTOR       0x07
-#define USB_GET_CONFIGURATION    0x08
-#define USB_SET_CONFIGURATION    0x09
-#define USB_GET_INTERFACE        0x0A
-#define USB_SET_INTERFACE        0x0B
-#define USB_SYNCH_FRAME          0x0C
+#define USB_GET_STATUS            0x00
+#define USB_REQ_GET_STATUS        0x00
+#define USB_CLEAR_FEATURE         0x01
+#define USB_REQ_CLEAR_FEATURE     0x01
+#define USB_SET_FEATURE           0x03
+#define USB_REQ_SET_FEATURE       0x03
+#define USB_SET_ADDRESS           0x05
+#define USB_REQ_SET_ADDRESS       0x05
+#define USB_GET_DESCRIPTOR        0x06
+#define USB_REQ_GET_DESCRIPTOR    0x06
+#define USB_SET_DESCRIPTOR        0x07
+#define USB_REQ_SET_DESCRIPTOR    0x07
+#define USB_GET_CONFIGURATION     0x08
+#define USB_REQ_GET_CONFIGURATION 0x08
+#define USB_SET_CONFIGURATION     0x09
+#define USB_REQ_SET_CONFIGURATION 0x09
+#define USB_GET_INTERFACE         0x0A
+#define USB_REQ_GET_INTERFACE     0x0A
+#define USB_SET_INTERFACE         0x0B
+#define USB_REQ_SET_INTERFACE     0x0B
+#define USB_SYNCH_FRAME           0x0C
+#define USB_REQ_SYNCH_FRAME       0x0C
+#define USB_SET_SEL               0x30
+#define USB_REQ_SET_SEL           0x30
+#define USB_SET_ISOCH_DELAY       0x31
+#define USB_REQ_SET_ISOCH_DELAY   0x31
 
-#define USB_TYPE_DEV_DESC      0x01
-#define USB_TYPE_CFG_DESC      0x02
-#define USB_TYPE_STR_DESC      0x03
-#define USB_TYPE_IF_DESC       0x04
-#define USB_TYPE_EPT_DESC      0x05
-#define USB_TYPE_QUA_DESC      0x06
-#define USB_TYPE_SPD_CFG_DESC  0x07
-#define USB_TYPE_IF_PWR_DESC   0x08
+#define USB_TYPE_DEV_DESC         0x01
+#define USB_DT_DEVICE             0x01
+#define USB_TYPE_CFG_DESC         0x02
+#define USB_DT_CONFIG             0x02
+#define USB_TYPE_STR_DESC         0x03
+#define USB_DT_STRING             0x03
+#define USB_TYPE_IF_DESC          0x04
+#define USB_DT_INTERFACE          0x04
+#define USB_TYPE_EPT_DESC         0x05
+#define USB_DT_ENDPOINT           0x05
+#define USB_TYPE_QUA_DESC         0x06
+#define USB_DT_DEVICE_QUALIFIER   0x06
+#define USB_TYPE_SPD_CFG_DESC     0x07
+#define USB_DT_OTHER_SPEED_CONFIG 0x07
+#define USB_TYPE_IF_PWR_DESC      0x08
+#define USB_DT_INTERFACE_POWER    0x08
+#define USB_TYPE_BOS_DESC         0x0f
+#define USB_DT_BOS                0x0f
 
 #define USB_TYPE_HC_UHCI    0x00
 #define USB_TYPE_HC_EHCI    0x01
@@ -95,8 +120,62 @@ handshake(uint32_t *ptr, uint32_t mask, uint32_t done, uint32_t usec);
 #define USB_SPEED_WIRELESS 4
 #define USB_SPEED_SUPER    5
 
+/*
+ * Device and/or Interface Class codes
+ * as found in bDeviceClass or bInterfaceClass
+ * and defined by www.usb.org documents
+ */
+#define USB_CLASS_PER_INTERFACE         0       /* for DeviceClass */
+#define USB_CLASS_AUDIO                 1
+#define USB_CLASS_COMM                  2
+#define USB_CLASS_HID                   3
+#define USB_CLASS_PHYSICAL              5
+#define USB_CLASS_STILL_IMAGE           6
+#define USB_CLASS_PRINTER               7
+#define USB_CLASS_MASS_STORAGE          8
+#define USB_CLASS_HUB                   9
+#define USB_CLASS_CDC_DATA              0x0a
+#define USB_CLASS_CSCID                 0x0b    /* chip+ smart card */
+#define USB_CLASS_CONTENT_SEC           0x0d    /* content security */
+#define USB_CLASS_VIDEO                 0x0e
+#define USB_CLASS_WIRELESS_CONTROLLER   0xe0
+#define USB_CLASS_MISC                  0xef
+#define USB_CLASS_APP_SPEC              0xfe
+#define USB_CLASS_VENDOR_SPEC           0xff
+
+#define USB_SUBCLASS_VENDOR_SPEC        0xff
+
+/*
+ * USB types, the second of three bRequestType fields
+ */
+#define USB_TYPE_MASK                   (0x03 << 5)
+#define USB_TYPE_STANDARD               (0x00 << 5)
+#define USB_TYPE_CLASS                  (0x01 << 5)
+#define USB_TYPE_VENDOR                 (0x02 << 5)
+#define USB_TYPE_RESERVED               (0x03 << 5)
+
 #define USB_DIR_IN  0x80
 #define USB_DIR_OUT 0
+
+
+#define USB_INTRF_FUNC_SUSPEND  0       /* function suspend */
+#define USB_ENDPOINT_HALT       0       /* IN/OUT will STALL */
+
+/*
+ * Endpoints
+ */
+#define USB_ENDPOINT_NUMBER_MASK        0x0f    /* in bEndpointAddress */
+#define USB_ENDPOINT_DIR_MASK           0x80
+
+
+/*
+ * USB recipients, the third of three bRequestType fields
+ */
+#define USB_RECIP_MASK                  0x1f
+#define USB_RECIP_DEVICE                0x00
+#define USB_RECIP_INTERFACE             0x01
+#define USB_RECIP_ENDPOINT              0x02
+#define USB_RECIP_OTHER                 0x03
 
 
 #define USB_USER_READ  0
@@ -126,6 +205,17 @@ handshake(uint32_t *ptr, uint32_t mask, uint32_t done, uint32_t usec);
 
 typedef struct _usb_hcd_t usb_hcd_t;
 
+struct usb_string_descriptor {
+  u8  bLength;
+  u8  bDescriptorType;
+  
+  u16 wData[1];                /* UTF-16LE encoded */
+} PACKED;
+
+struct usb_descriptor_header {
+  u8 bLength;
+  u8 bDescriptorType;
+} PACKED;
 
 /*
  * USB_DEV_REQ : USB Device Request
@@ -142,6 +232,8 @@ struct usb_dev_req
   uint16_t wIndex;
   uint16_t wLength;
 } PACKED;
+
+#define usb_ctrlrequest usb_dev_req
 
 #define IS_INPUT_USB_DEV_REQ(dev_req_addr) ( (*((uint8_t*)dev_req_addr) ) & USB_DIR_IN )
 
@@ -172,6 +264,8 @@ struct usb_dev_desc
   uint8_t bNumConfigurations;
 } PACKED;
 
+#define usb_device_descriptor usb_dev_desc
+
 typedef struct usb_dev_desc USB_DEV_DESC;
 
 /*
@@ -190,10 +284,42 @@ struct usb_cfg_desc
   uint8_t bConfigurationValue;
   uint8_t iConfiguration;
   uint8_t bmAttributes;
-  uint8_t MaxPower;
+  uint8_t bMaxPower;
 } PACKED;
 
+
 typedef struct usb_cfg_desc USB_CFG_DESC;
+
+
+#define usb_config_descriptor usb_cfg_desc
+
+#define USB_DT_CONFIG_SIZE              9
+
+/* from config descriptor bmAttributes */
+#define USB_CONFIG_ATT_ONE              (1 << 7)        /* must be set */
+#define USB_CONFIG_ATT_SELFPOWER        (1 << 6)        /* self powered */
+#define USB_CONFIG_ATT_WAKEUP           (1 << 5)        /* can wakeup */
+#define USB_CONFIG_ATT_BATTERY          (1 << 4)        /* battery powered */
+
+
+/* USB 2.0 Extension descriptor */
+#define USB_CAP_TYPE_EXT                2
+
+struct usb_ext_cap_descriptor {         /* Link Power Management */
+  u8  bLength;
+  u8  bDescriptorType;
+  u8  bDevCapabilityType;
+  u32 bmAttributes;
+#define USB_LPM_SUPPORT                 (1 << 1)        /* supports LPM */
+#define USB_BESL_SUPPORT                (1 << 2)        /* supports BESL */
+#define USB_BESL_BASELINE_VALID         (1 << 3)        /* Baseline BESL valid*/
+#define USB_BESL_DEEP_VALID             (1 << 4)        /* Deep BESL valid */
+#define USB_GET_BESL_BASELINE(p)        (((p) & (0xf << 8)) >> 8)
+#define USB_GET_BESL_DEEP(p)            (((p) & (0xf << 12)) >> 12)
+} PACKED;
+
+#define USB_DT_USB_EXT_CAP_SIZE 7
+
 
 /*
  * USB_SPD_CFG_DESC : Other Speed Configuration Descriptor
@@ -238,6 +364,8 @@ struct usb_if_desc
 
 typedef struct usb_if_desc USB_IF_DESC;
 
+#define usb_interface_descriptor usb_if_desc
+
 /*
  * USB_EPT_DESC : Standard Endpoint Descriptor
  *
@@ -257,6 +385,11 @@ struct usb_ept_desc
 
 typedef struct usb_ept_desc USB_EPT_DESC;
 
+#define usb_endpoint_descriptor usb_ept_desc
+
+
+#define USB_DT_ENDPOINT_SIZE            7
+
 /* 
  * USB_STR_DESC: Standard String Descriptor
  *
@@ -273,6 +406,22 @@ struct usb_str_desc
 } PACKED;
 
 typedef struct usb_str_desc USB_STR_DESC;
+
+/* USB_DT_DEVICE_QUALIFIER: Device Qualifier descriptor */
+struct usb_qualifier_descriptor {
+  u8  bLength;
+  u8  bDescriptorType;
+  
+  u16 bcdUSB;
+  u8  bDeviceClass;
+  u8  bDeviceSubClass;
+  u8  bDeviceProtocol;
+  u8  bMaxPacketSize0;
+  u8  bNumConfigurations;
+  u8  bRESERVED;
+} PAKCKED;
+
+
 
 /* ************************************************** */
 
@@ -302,6 +451,7 @@ struct usb_host_endpoint {
 };
 
 typedef struct usb_host_endpoint USB_HOST_ENDPOINT;
+
 
 
 /*
@@ -390,12 +540,16 @@ usb_maxpacket(struct usb_device *udev, int pipe)
  * ********************************************************************
  */
 
+void print_all_descriptors(void* descriptor_start, uint total_length);
+void* get_next_desc(uint desc_type, void* descriptor_start, uint remaining_length);
+void print_ept_desc_info(USB_EPT_DESC* ept_desc);
 
-#define IS_USB_ENDPOINT_TOGGLED(dev_info, endpoint, is_input)               \
+
+#define IS_USB_ENDPOINT_TOGGLED(dev_info, endpoint, is_input)           \
   (!!(((dev_info)->endpoint_toggles) & (1 << (endpoint + ( (!!(is_input)) << 4)))))
 
 
-#define SET_USB_ENDPOINT_TOGGLE(dev_info, endpoint, is_input, val)          \
+#define SET_USB_ENDPOINT_TOGGLE(dev_info, endpoint, is_input, val)      \
   do {                                                                  \
     if(val) {                                                           \
       ((dev_info)->endpoint_toggles) |=                                 \
@@ -813,7 +967,7 @@ usb_hcd_t* get_usb_hcd(uint32_t index);
 
 void dlog_usb_hcd(usb_hcd_t* usb_hcd);
 
-
+const char *usb_speed_string(int speed);
 
 #endif
 

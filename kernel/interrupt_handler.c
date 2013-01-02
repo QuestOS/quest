@@ -1018,8 +1018,7 @@ _read (int fd, char *buf, int count)
     file_entry = (fd_table_file_entry_t*)fd_table_entry->entry;
     
     act_len = vfs_dir(file_entry->pathname);
-    
-    pow2_alloc(act_len, &temp_buf);
+    temp_buf = kmalloc(act_len);
     
     if(!temp_buf) {
       com1_printf("Failed to allocate temp buffer for read\n");
@@ -1033,7 +1032,7 @@ _read (int fd, char *buf, int count)
     res = vfs_read (file_entry->pathname, temp_buf, act_len);
     
     if(res < 0) {
-      pow2_free(temp_buf);
+      kfree(temp_buf);
       unlock_kernel();
       return res;
     }
@@ -1047,7 +1046,7 @@ _read (int fd, char *buf, int count)
     memcpy(buf, &temp_buf[file_entry->current_pos], res);
     file_entry->current_pos += res;
     
-    pow2_free(temp_buf);
+    kfree(temp_buf);
 
     break;
     

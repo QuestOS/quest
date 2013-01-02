@@ -297,6 +297,8 @@ static bool gadget2_probe (USB_DEVICE_INFO *device, USB_CFG_DESC *cfg,
   if(gadget2_dev->initialised) {
     return TRUE;
   }
+
+  gadget2_dev->initialised = TRUE;
   
   DLOG("Descriptor total length = %d", cfg->wTotalLength);
   DLOG("Struct size is %d", sizeof(USB_CFG_DESC));

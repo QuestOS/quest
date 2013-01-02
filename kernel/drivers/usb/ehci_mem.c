@@ -128,7 +128,7 @@ inline bool initialise_ehci_completion_element(ehci_hcd_t* ehci_hcd,
             free_##res(ehci_hcd, items[count]);                         \
             return count;                                               \
           }                                                             \
-          EHCI_MEM_ASSERT( !( ((uint32_t)items[count]) & 0x1F) );       \
+          /*EHCI_MEM_ASSERT( !( ((uint32_t)items[count]) & 0x1F) );*/   \
           if(++count == num) {                                          \
             return count;                                               \
           }                                                             \

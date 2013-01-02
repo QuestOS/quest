@@ -425,7 +425,7 @@ static bool gadget_probe (USB_DEVICE_INFO *device, USB_CFG_DESC *cfg,
   gadget_device_info_t* gadget_dev;
   int i;
   int dev_num;
-  
+  DLOG("gadget_probe called");
   if(device->devd.idVendor != 0xabc4 ||
      device->devd.idProduct != 0xabc7) {
     return FALSE;
@@ -446,6 +446,8 @@ static bool gadget_probe (USB_DEVICE_INFO *device, USB_CFG_DESC *cfg,
   if(gadget_dev->initialised) {
     return TRUE;
   }
+
+  gadget_dev->initialised = TRUE;
   
   DLOG("Descriptor total length = %d", cfg->wTotalLength);
   DLOG("Struct size is %d", sizeof(USB_CFG_DESC));
@@ -510,6 +512,8 @@ static bool gadget_probe (USB_DEVICE_INFO *device, USB_CFG_DESC *cfg,
       DLOG("Failed to register device");
       panic("Failed to register device");
     }
+
+    DLOG("Device number = %d", dev_num);
     
     if(i == 0) {
       gadget_dev->first_dev_num = dev_num;

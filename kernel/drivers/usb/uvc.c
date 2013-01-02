@@ -51,7 +51,7 @@
 
 #define dev_to_uvc_dev(dev) ( (uvc_device_info_t*)dev->device_priv )
 
-#define MAX_UVC_DEVICES 0
+#define MAX_UVC_DEVICES 1
 static int current_uvc_dev_count = 0;
 static uvc_device_info_t uvc_devices[MAX_UVC_DEVICES];
 
@@ -620,14 +620,6 @@ uvc_init (USB_DEVICE_INFO * dev, USB_CFG_DESC * cfg)
     DLOG("Negotiation failed");
     return FALSE;
   }
-
-  delay(6000); /* -- EM -- Why is this here? I'm guessing because of
-                * there is a delay that is required but this should be
-                * done via checking for the control error whether the
-                * last control transaction is complete, unless it is
-                * asynchronous in which case the interrupt endpoint
-                * should be checked
-                */
 
   return TRUE;
 }

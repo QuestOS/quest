@@ -34,6 +34,14 @@ static inline void kfree(void* ptr)
   pow2_free(ptr);
 }
 
+static inline void* kzalloc(uint32_t size) {
+  void* temp = kmalloc(size);
+  if(temp) {
+    memset(temp, 0, size);
+  }
+  return temp;
+}
+
 #endif
 
 /* 

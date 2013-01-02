@@ -18,11 +18,40 @@
 #ifndef _HUB_H_
 #define _HUB_H_
 
+struct usb_hub_desc
+{
+  uint8 bDescLength;
+  uint8 bDescriptorType;
+  uint8 bNbrPorts;
+  union {
+    uint16 wHubCharacteristics;
+    struct {
+      uint16 lpsMode:2;         /* logical power switching */
+      uint16 compound:1;        /* identifies compound device */
+      uint16 opMode:2;          /* over-current protection */
+      uint16 _reserved:11;
+    };
+  };
+  uint8 bPwrOn2PwrGood;         /* (in 2ms intervals) */
+  uint8 bHubContrCurrent;       /* max power requirement in mA */
+  /* followed by DeviceRemovable / PortPwrCtrlMask variable-length fields */
+} PACKED;
+typedef struct usb_hub_desc USB_HUB_DESC;
+
+#define STATUS_CHANGE_BUFFER_SIZE 2
 
 typedef struct
 {
-  int temp;
+  char status_change_buffer[STATUS_CHANGE_BUFFER_SIZE];
+  uint32_t device_bitmap;
+  USB_EPT_DESC status_change_endpoint;
+  uint next_byte_to_read;
+  uint bytes_available;
+  struct urb* urb;
+  USB_HUB_DESC hub_descriptor;
+  USB_DEVICE_INFO* dev;
 } hub_info_t;
+
 
 
 
