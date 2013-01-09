@@ -28,18 +28,20 @@
 //#define DEBUG_GADGET_VERBOSE
 
 #ifdef DEBUG_GADGET
-#define DLOG(fmt,...) DLOG_PREFIX("gadget",fmt,##__VA_ARGS__)
+#define DLOG(fmt,...) DLOG_PREFIX("beagle-gadget",fmt,##__VA_ARGS__)
 #else
 #define DLOG(fmt,...) ;
 #endif
 
 #ifdef DEBUG_GADGET_VERBOSE
-#define DLOGV(fmt,...) DLOG_PREFIX("gadget",fmt,##__VA_ARGS__)
+#define DLOGV(fmt,...) DLOG_PREFIX("beagle-gadget",fmt,##__VA_ARGS__)
 #else
 #define DLOGV(fmt, ...) ;
 #endif
 
 #define DLOG_INT(val) DLOG(#val " = %d", (int)(val));
+
+#define min(x,y) ( x < y ? x : y)
 
 
 static bool gadget_probe (USB_DEVICE_INFO *device, USB_CFG_DESC *cfg,
@@ -119,7 +121,7 @@ static int gadget_open(USB_DEVICE_INFO* device, int dev_num, char* buf, int data
     DLOG("Gadget EP should never be control");
     panic("Gadget EP should never be control");
   }
-  
+
   if((result = usb_submit_urb(gadget_dev->urb, 0)) < 0) {
     //DLOG("Failed to submit rt urb result = %d", result);
     return result;
@@ -137,13 +139,19 @@ static int gadget_close(USB_DEVICE_INFO* device, int dev_num)
 static int gadget_read(USB_DEVICE_INFO* device, int dev_num, char* buf, int data_len)
 {
 #define BYTES_TO_READ (1024 * 800)
-  static unsigned int total_bytes_read = 0;
+  
   gadget_sub_device_info_t* gadget_dev = get_gadget_sub_dev_info(device, dev_num);
   struct urb* urb = gadget_dev->urb;
-  char* data_buf;
+  
   int bytes_freed;
+  int bytes_to_copy = 0;
 
-  data_buf = urb->transfer_buffer;
+  if(!usb_pipein(gadget_dev->pipe)) {
+    DLOG("Called read on an output endpoint/dev");
+    return -1;
+  }
+
+  
   
   if(urb) {
     switch(usb_pipetype(gadget_dev->pipe)) {
@@ -158,36 +166,38 @@ static int gadget_read(USB_DEVICE_INFO* device, int dev_num, char* buf, int data
         if(new_bytes > 0) {
           gadget_dev->data_available += new_bytes;
           gadget_dev->total_bytes_read += new_bytes;
+        }
+        
+        if(gadget_dev->data_available > 0) {
+          
+          bytes_to_copy = min(gadget_dev->data_available, data_len);
+          DLOG_INT(gadget_dev->data_available);
+          DLOG_INT(data_len);
+          DLOG_INT(bytes_to_copy);
 
-          gadget_dev->next_to_read += new_bytes;
+
+          if(gadget_dev->next_to_read + bytes_to_copy > gadget_dev->buffer_size) {
+            int bytes_in_first_copy = gadget_dev->buffer_size - gadget_dev->next_to_read;
+            memcpy(buf, gadget_dev->urb->transfer_buffer + gadget_dev->next_to_read,
+                   bytes_in_first_copy);
+            memcpy(buf + bytes_in_first_copy, gadget_dev->urb->transfer_buffer,
+                    bytes_to_copy - bytes_in_first_copy);
+          }
+          else {
+            memcpy(buf, gadget_dev->urb->transfer_buffer + gadget_dev->next_to_read, bytes_to_copy);
+          }
+          
+          gadget_dev->next_to_read += bytes_to_copy;
           if(gadget_dev->next_to_read > gadget_dev->buffer_size) {
             gadget_dev->next_to_read -= gadget_dev->buffer_size;
           }
-        }
-
-        if(buf[0] == 'e') {
-          uint64_t current_tsc;
-          uint64_t diff_tsc;
-          uint64_t bytes_read = gadget_dev->total_bytes_read;
-          
-          RDTSC(current_tsc);
-          
-          diff_tsc = current_tsc - gadget_dev->start_time;
-          
-          DLOG("\tdev: %d", dev_num);
-          DLOG("\ttime diff =  %llX", diff_tsc);
-          DLOG("\tbytes_read = %llX", bytes_read);
-          
-        }
-
-        if(gadget_dev->data_available > 0) {
-          bytes_freed = usb_rt_int_free_data(urb, gadget_dev->data_available);
+          bytes_freed = usb_rt_int_free_data(urb, bytes_to_copy);
           if(bytes_freed > 0) {
             gadget_dev->data_available -= bytes_freed;
           }
         }
 
-        return new_bytes;
+        return bytes_to_copy;
       }
 
     case PIPE_ISOCHRONOUS:
@@ -249,8 +259,7 @@ static int gadget_read(USB_DEVICE_INFO* device, int dev_num, char* buf, int data
 
     case PIPE_BULK:
       {
-        int new_bytes;
-        new_bytes = usb_rt_bulk_update_data(urb, BYTES_TO_READ);
+        int new_bytes = usb_rt_bulk_update_data(urb, BYTES_TO_READ);
         
         if(new_bytes < 0) {
           DLOG("new bytes < 0");
@@ -259,35 +268,38 @@ static int gadget_read(USB_DEVICE_INFO* device, int dev_num, char* buf, int data
         if(new_bytes > 0) {
           gadget_dev->data_available += new_bytes;
           gadget_dev->total_bytes_read += new_bytes;
-          gadget_dev->next_to_read += new_bytes;
-          if(gadget_dev->next_to_read > gadget_dev->buffer_size) {
-            gadget_dev->next_to_read -= gadget_dev->buffer_size;
-          }
-        }
-
-        if(buf[0] == 'e') {
-          uint64_t current_tsc;
-          uint64_t diff_tsc;
-          uint64_t bytes_read = gadget_dev->total_bytes_read;
-
-          RDTSC(current_tsc);
-          
-          diff_tsc = current_tsc - gadget_dev->start_time;
-          
-          DLOG("\tdev: %d", dev_num);
-          DLOG("\ttime diff =  %llX", diff_tsc);
-          DLOG("\tbytes_read = %llX", bytes_read);
-
         }
         
         if(gadget_dev->data_available > 0) {
-          bytes_freed = usb_rt_bulk_free_data(urb, gadget_dev->data_available);
+          
+          bytes_to_copy = min(gadget_dev->data_available, data_len);
+          DLOG_INT(gadget_dev->data_available);
+          DLOG_INT(data_len);
+          DLOG_INT(bytes_to_copy);
+
+
+          if(gadget_dev->next_to_read + bytes_to_copy > gadget_dev->buffer_size) {
+            int bytes_in_first_copy = gadget_dev->buffer_size - gadget_dev->next_to_read;
+            memcpy(buf, gadget_dev->urb->transfer_buffer + gadget_dev->next_to_read,
+                   bytes_in_first_copy);
+            memcpy(buf + bytes_in_first_copy, gadget_dev->urb->transfer_buffer,
+                    bytes_to_copy - bytes_in_first_copy);
+          }
+          else {
+            memcpy(buf, gadget_dev->urb->transfer_buffer + gadget_dev->next_to_read, bytes_to_copy);
+          }
+          
+          gadget_dev->next_to_read += bytes_to_copy;
+          if(gadget_dev->next_to_read > gadget_dev->buffer_size) {
+            gadget_dev->next_to_read -= gadget_dev->buffer_size;
+          }
+          bytes_freed = usb_rt_int_free_data(urb, bytes_to_copy);
           if(bytes_freed > 0) {
             gadget_dev->data_available -= bytes_freed;
           }
         }
 
-        return new_bytes;
+        return bytes_to_copy;
       }
     default: // case PIPE_CONTROL:
       {
@@ -303,12 +315,12 @@ static int gadget_read(USB_DEVICE_INFO* device, int dev_num, char* buf, int data
 }
 
 #define PUSH_LOTS_DATA
-#define SET_DATA
+//#define SET_DATA
 
 static int gadget_write(USB_DEVICE_INFO* device, int dev_num, char* buf,
                         int data_len)
 {
-  static int rotating_counter = 0;
+  
   static int write_call_counter = 0;
   uint64_t time;
   gadget_sub_device_info_t* gadget_dev = get_gadget_sub_dev_info(device, dev_num);
@@ -317,7 +329,12 @@ static int gadget_write(USB_DEVICE_INFO* device, int dev_num, char* buf,
 #ifdef SET_DATA
   int memset_counter = 0;
 #endif
-  DLOG_INT(write_call_counter);
+
+  if(usb_pipein(gadget_dev->pipe)) {
+    DLOG("Called write on an output endpoint/dev");
+    return -1;
+  }
+  
   write_call_counter++;
 
 #ifdef SET_DATA
@@ -345,8 +362,8 @@ static int gadget_write(USB_DEVICE_INFO* device, int dev_num, char* buf,
 #endif
 #else
         result = usb_rt_int_push_data(urb, "1", 1);
-        DLOG("result = %d", result);
-        while(1);
+
+        
 #endif
         if(result > 0) {
           gadget_dev->total_bytes_written += result;
@@ -373,7 +390,7 @@ static int gadget_write(USB_DEVICE_INFO* device, int dev_num, char* buf,
 #endif
 #else
         result = usb_rt_iso_push_data(urb, "3", 1);
-        DLOG("result = %d", result);
+        
 #endif
         
         return result;
@@ -383,6 +400,7 @@ static int gadget_write(USB_DEVICE_INFO* device, int dev_num, char* buf,
 #if 1
 #ifdef PUSH_LOTS_DATA
         result = usb_rt_bulk_push_data(urb, buf, data_len);
+        
 #else
         result = usb_rt_bulk_push_data(urb, buf, gadget_dev->transaction_size);
 #endif
@@ -390,7 +408,7 @@ static int gadget_write(USB_DEVICE_INFO* device, int dev_num, char* buf,
         result = usb_rt_bulk_push_data(urb, "3", 1);
         
 #endif
-        DLOG("result = %d", result);
+        
         return result;
       }
     default: // case PIPE_CONTROL:
@@ -483,14 +501,14 @@ static bool gadget_probe (USB_DEVICE_INFO *device, USB_CFG_DESC *cfg,
     while(ept->bDescriptorType != USB_TYPE_EPT_DESC) {
       ept = (USB_EPT_DESC*)(((uint8_t*)ept) + ept->bLength);
     }
-
+    
     DLOG("Endpoint address = %d, attributes = 0x%X, "
          "maxPacketSize = %d, interval = %d",
          ept->bEndpointAddress, ept->bmAttributes, ept->wMaxPacketSize,
          ept->bInterval);
 
     sub_dev->pipe = usb_create_pipe(device, ept);
-
+    
     DLOG("sub_dev->pipe = 0x%X", sub_dev->pipe);
 
     DLOG("Pipe is %s", usb_is_endpoint_in(ept) ? "Input" : "Output");

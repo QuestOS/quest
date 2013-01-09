@@ -694,13 +694,19 @@ static int ehci_rt_qh_push_data(struct urb* urb, ehci_qh_urb_priv_t* qh_urb_priv
   list_head_t qtd_list;
   ehci_hcd_t* ehci_hcd = hcd_to_ehci_hcd(urb->dev->hcd);
   uint32_t buffer_size = qh_urb_priv->buffer_size;
-  
+
   list_for_each_entry_safe(qtd_to_remove, temp_qtd, &qh->qtd_list, chain_list) {
+    
     if(qh->current_qtd_ptr_raw == EHCI_QTD_VIRT_TO_PHYS(ehci_hcd, qtd_to_remove)) {
       break;
     }
     else {
+      //DLOG("About to call list function at line %d", __LINE__);
+      //DLOG("qtd_to_remove = 0x%p", qtd_to_remove);
+      //DLOG("qtd_to_remove->chain_list.prev = 0x%p", qtd_to_remove->chain_list.prev);
+      //DLOG("qtd_to_remove->chain_list.next = 0x%p", qtd_to_remove->chain_list.next);
       list_del(&qtd_to_remove->chain_list);
+      //DLOG("Done calling list function");
       qh_urb_priv->next_byte_to_free_for_writing
         += qtd_to_remove->original_total_bytes_to_transfer;
       qh_urb_priv->bytes_in_buffer -= qtd_to_remove->original_total_bytes_to_transfer;
@@ -2492,11 +2498,10 @@ static void qh_append_qtds(ehci_hcd_t* ehci_hcd, struct urb* urb,
     break;
     }
     
-    if(qh_urb_priv != NULL) {
+    if(qh_urb_priv != NULL && qh_urb_priv->num_qtds > 0) {
       num_qtds = qh_urb_priv->num_qtds;
       urb_qtd_list = qh_urb_priv->qtds;
       urb_swap_index = -1;
-      
       for(i = 0; i < num_qtds; ++i) {
         if(urb_qtd_list[i] == qtd) {
           urb_swap_index = i;
@@ -3056,7 +3061,6 @@ ehci_async_transfer(ehci_hcd_t* ehci_hcd, struct urb* urb)
       if(is_input) {
         list_for_each(temp_list, &qtd_list) { num_qtds++; }
       }
-
       urb->hcpriv = ehci_alloc_bulk_urb_priv(num_qtds);
 
       if(ehci_is_rt_schedulable(ehci_hcd, urb) < 0) {

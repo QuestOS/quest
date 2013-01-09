@@ -139,9 +139,18 @@ struct net2280 {
 
   u8                      config, new_config;
 
-  struct usb_request* requests[20]; /* -- EM -- Just picking a max
-                                       will get rid of this stuff from
-                                       net2280 later */
+  #define NET2280_NUM_OUT_REQS 10
+
+  struct usb_request* out_requests[NET2280_NUM_OUT_REQS];
+  /* -- EM -- Replace the following with a circular buffer struct
+    later (or not since it will be moved/deleted/heavily modified
+    later) */
+  struct usb_request* out_requests_with_data[NET2280_NUM_OUT_REQS];
+  int next_out_request_to_read; /* Head */
+  int next_out_request_insert_index; /* Tail */
+  
+  struct usb_ep* out_ep;
+  struct usb_ep* in_ep;
   
 #undef NET2280_DECLARE_POOL
 } ;

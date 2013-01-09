@@ -101,7 +101,7 @@
 #define EP0_BUFSIZE     256
 #define DELAYED_STATUS  (EP0_BUFSIZE + 999)     /* An impossibly large value */
 
-static bool use_dma = 1;
+static bool use_dma = 0;
 static bool use_dma_chaining = 0;
 
 #define cpu_to_le32s(x) do { (void)(x); } while (0)
@@ -111,6 +111,9 @@ static bool use_dma_chaining = 0;
 #define __force        __attribute__((force))
 #define valid_bit       cpu_to_le32 (1 << VALID_BIT)
 #define le16_to_cpu(x) (x)
+
+void net2280_request_complete_callback(struct usb_ep *ep,
+                                       struct usb_request *req);
 
 static const char ep0name [] = "ep0";
 static const char *const ep_name [] = {
@@ -380,7 +383,7 @@ static struct usb_endpoint_descriptor fs_loop_source_desc = {
   .bLength =              USB_DT_ENDPOINT_SIZE,
   .bDescriptorType =      USB_DT_ENDPOINT,
         
-  .bEndpointAddress =     USB_DIR_IN,
+  .bEndpointAddress =     USB_DIR_IN | 1,
   .bmAttributes =         USB_ENDPOINT_XFER_BULK,
 };
 
@@ -388,7 +391,7 @@ static struct usb_endpoint_descriptor fs_loop_sink_desc = {
   .bLength =              USB_DT_ENDPOINT_SIZE,
   .bDescriptorType =      USB_DT_ENDPOINT,
 
-  .bEndpointAddress =     USB_DIR_OUT,
+  .bEndpointAddress =     USB_DIR_OUT | 1,
   .bmAttributes =         USB_ENDPOINT_XFER_BULK,
 };
 
@@ -401,20 +404,20 @@ static struct usb_descriptor_header *net2280_fs_function[] = {
 
 /* high speed support: */
 
-static struct usb_endpoint_descriptor hs_loop_source_desc = {
+static struct usb_endpoint_descriptor hs_out_ept_desc = {
   .bLength =              USB_DT_ENDPOINT_SIZE,
   .bDescriptorType =      USB_DT_ENDPOINT,
 
-  .bEndpointAddress =     USB_DIR_OUT,
+  .bEndpointAddress =     USB_DIR_OUT | 1,
   .bmAttributes =         USB_ENDPOINT_XFER_BULK,
   .wMaxPacketSize =       cpu_to_le16(512),
 };
 
-static struct usb_endpoint_descriptor hs_loop_sink_desc = {
+static struct usb_endpoint_descriptor hs_in_ept_desc = {
   .bLength =              USB_DT_ENDPOINT_SIZE,
   .bDescriptorType =      USB_DT_ENDPOINT,
 
-  .bEndpointAddress =     USB_DIR_IN,
+  .bEndpointAddress =     USB_DIR_IN | 1,
   .bmAttributes =         USB_ENDPOINT_XFER_BULK,
   .wMaxPacketSize =       cpu_to_le16(512),
 };
@@ -426,56 +429,114 @@ static struct usb_endpoint_descriptor hs_loop_sink_desc = {
 static struct usb_descriptor_header *net2280_hs_function[] = {
   (struct usb_descriptor_header *) 1,
   (struct usb_descriptor_header *) &loopback_intf,
-  (struct usb_descriptor_header *) &hs_loop_source_desc,
-  (struct usb_descriptor_header *) &hs_loop_sink_desc,
+  (struct usb_descriptor_header *) &hs_out_ept_desc,
+  (struct usb_descriptor_header *) &hs_in_ept_desc,
   NULL,
 };
 
-static struct usb_endpoint_descriptor **interface_endpoints =
-  (struct usb_endpoint_descriptor **)&net2280_hs_function[2];
 
 static int net2280_write(USB_DEVICE_INFO* device, int dev_num, char* buf, int data_len)
 {
-  return -1;
+  struct usb_request* req = usb_ep_alloc_request(net2280_dev.in_ep, 0);
+  if(req == NULL) {
+    /* -- EM -- Not doing all the necessary cleanup */
+    DLOG("Failed to allocate request");
+    return -1; 
+  }
+  
+  req->buf = kmalloc(req->length = data_len);
+  
+  if(req->buf == NULL) {
+    /* -- EM -- Not doing all the necessary cleanup */
+    DLOG("Failed to allocate buffer");
+    return -1;
+  }
+
+  memcpy(req->buf, buf, data_len);
+  req->dma = (dma_addr_t)NULL;
+  req->complete = net2280_request_complete_callback;
+
+  if(usb_ep_queue(net2280_dev.in_ep, req, 0) < 0) {
+    DLOG("Failed to queue request");
+    return -1;
+  }
+
+  return data_len;
 }
 
 void net2280_request_complete_callback(struct usb_ep *ep,
                                        struct usb_request *req)
 {
   int status = req->status;
+  
   if(status < 0) {
     DLOG("status < 0 in %s", __FUNCTION__);
+    panic("status < 0 in  net2280_request_complete_callback");
     return;
   }
-  if(usb_ep_queue(ep, req, 0) < 0) {
-    DLOG("failed to resubmit urb");
+
+  if(ep == net2280_dev.out_ep) {
+    DLOG("In %s for out ep");
+    net2280_dev.out_requests_with_data[net2280_dev.next_out_request_insert_index++] = req;
+    if(net2280_dev.next_out_request_insert_index == NET2280_NUM_OUT_REQS) {
+      net2280_dev.next_out_request_insert_index = 0;
+    }
   }
+  else {
+    DLOG("In %s for in ep");
+    kfree(req->buf);
+    usb_ep_free_request(ep, req);
+  }
+  
 }
 
 static int net2280_open(USB_DEVICE_INFO* device, int dev_num, char* buf, int data_len)
 {
   int i;
   list_head_t* current_ep_list = &net2280_dev.gadget.ep_list;
+  net2280_dev.out_ep = list_entry(current_ep_list->next, struct usb_ep, ep_list);
+  current_ep_list = current_ep_list->next;
+  net2280_dev.in_ep = list_entry(current_ep_list->next, struct usb_ep, ep_list);
+  net2280_dev.in_ep->driver_data = &net2280_dev;
+  net2280_dev.in_ep->desc = &hs_in_ept_desc;
+
+  if(usb_ep_enable(net2280_dev.in_ep) < 0) {
+    DLOG("Failed to enable in endpoint");
+    return -1;
+  }
   
-  for(i = 0; interface_endpoints[i]; ++i, current_ep_list = current_ep_list->next) {
-    struct usb_ep* ep = list_entry(current_ep_list->next, struct usb_ep, ep_list);
-    struct usb_request* req = net2280_dev.requests[i] = usb_ep_alloc_request(ep, 0);
-    if(net2280_dev.requests[i] == NULL) {
+  memset(net2280_dev.out_requests_with_data, 0, sizeof(struct usb_request*) * NET2280_NUM_OUT_REQS);
+  net2280_dev.next_out_request_to_read = 0;
+  net2280_dev.next_out_request_insert_index = 0;
+  net2280_dev.out_ep->driver_data = &net2280_dev;
+  net2280_dev.out_ep->desc = &hs_out_ept_desc;
+  if(usb_ep_enable(net2280_dev.out_ep) < 0) {
+    DLOG("Failed to enable out endpoint");
+    return -1;
+  }
+  
+
+  for(i = 0; i < NET2280_NUM_OUT_REQS; ++i) {
+    struct usb_request* req = net2280_dev.out_requests[i]
+      = usb_ep_alloc_request(net2280_dev.out_ep, 0);
+    if(req == NULL) {
       /* -- EM -- Not doing all the necessary cleanup */
       DLOG("Failed to allocate request");
-      return -1;
+      return -1; 
     }
+    req->buf = kmalloc(req->length = hs_out_ept_desc.wMaxPacketSize);
     
-    req->buf = kmalloc(req->length = interface_endpoints[i]->wMaxPacketSize);
     if(req->buf == NULL) {
       /* -- EM -- Not doing all the necessary cleanup */
       DLOG("Failed to allocate buffer");
       return -1;
     }
-
+    req->dma = (dma_addr_t)NULL;
+    
+    
     req->complete = net2280_request_complete_callback;
 
-    if(usb_ep_queue(ep, req, 0) < 0) {
+    if(usb_ep_queue(net2280_dev.out_ep, req, 0) < 0) {
       DLOG("Failed to queue request");
       return -1;
     }
@@ -486,7 +547,30 @@ static int net2280_open(USB_DEVICE_INFO* device, int dev_num, char* buf, int dat
 
 static int net2280_read(USB_DEVICE_INFO* device, int dev_num, char* buf, int data_len)
 {
-  return -1;
+  int data_returned = 0;
+
+  while(data_returned < data_len) {
+    struct usb_request* req = net2280_dev.out_requests_with_data[net2280_dev.next_out_request_to_read];
+    if(req != NULL) {
+      if(req->actual > (data_len - data_returned)) {
+        break;
+      }
+      memcpy(&buf[data_returned], req->buf, req->actual);
+      data_returned += req->actual;
+      if(usb_ep_queue(net2280_dev.out_ep, req, 0) < 0) {
+        DLOG("Failed to queue request");
+        panic("Failed to queue request");
+        return -1;
+      }
+      net2280_dev.out_requests_with_data[net2280_dev.next_out_request_to_read] = NULL;
+      net2280_dev.next_out_request_to_read++;
+    }
+    else {
+      break;
+    }
+  }
+
+  return data_returned;
 }
 
 static USB_DRIVER net2280_driver = {
@@ -1736,7 +1820,6 @@ net2280_irq_handler(uint8 vec)
   handle_stat0_irqs(&net2280_dev, readl (&net2280_dev.regs->irqstat0));
   
   spinlock_unlock (&net2280_dev.lock);
-  
   return 1;
 }
 
@@ -2210,10 +2293,23 @@ net2280_alloc_request (struct usb_ep *_ep, gfp_t gfp_flags)
 }
 
 
-void net2280_free_request (struct usb_ep *ep, struct usb_request *req)
+static void
+net2280_free_request (struct usb_ep *_ep, struct usb_request *_req)
 {
-  DLOG("IN %s which is not implemented", __FUNCTION__);
-  panic("In unimplemented net2280 ep op function");
+  //struct net2280_ep       *ep;
+  struct net2280_request  *req;
+  
+  //ep = container_of (_ep, struct net2280_ep, ep);
+  if (!_ep || !_req)
+    return;
+  
+  req = container_of (_req, struct net2280_request, req);
+  //WARN_ON (!list_empty (&req->queue));
+  if (req->td) {
+    free_net2280_dma(&net2280_dev, req->td);
+    //pci_pool_free (ep->dev->requests, req->td, req->td_dma);
+  }
+  kfree (req);
 }
 
 static inline void
@@ -2221,7 +2317,7 @@ queue_dma (struct net2280_ep *ep, struct net2280_request *req, int valid)
 {
   struct net2280_dma      *end;
   dma_addr_t              tmp;
-
+  
   /* swap new dummy for old, link; fill and maybe activate */
   end = ep->dummy;
   ep->dummy = req->td;
@@ -2249,20 +2345,31 @@ net2280_queue (struct usb_ep *_ep, struct usb_request *_req, gfp_t gfp_flags)
    */
   req = container_of (_req, struct net2280_request, req);
   if (!_req || !_req->complete || !_req->buf
-      || !list_empty (&req->queue))
+      || !list_empty (&req->queue)) {
+    DLOGV("Returning -1 at line %d", __LINE__);
     return -1;
-  if (_req->length > (~0 & DMA_BYTE_COUNT_MASK))
+  }
+  if (_req->length > (~0 & DMA_BYTE_COUNT_MASK)) {
+    DLOGV("Returning -1 at line %d", __LINE__);
     return -1;
+  }
   ep = container_of (_ep, struct net2280_ep, ep);
-  if (!_ep || (!ep->desc && ep->num != 0))
+  if (!_ep || (!ep->desc && ep->num != 0)) {
+    DLOG("ep->desc = 0x%p", ep->desc);
+    DLOG("ep->num = %d", ep->num);
+    DLOGV("Returning -1 at line %d", __LINE__);
     return -1;
+  }
   dev = ep->dev;
-  if (!dev->driver || dev->gadget.speed == USB_SPEED_UNKNOWN)
+  if (!dev->driver || dev->gadget.speed == USB_SPEED_UNKNOWN) {
+    DLOGV("Returning -1 at line %d", __LINE__);
     return -1;
+  }
 
   /* FIXME implement PIO fallback for ZLPs with DMA */
-  if (ep->dma && _req->length == 0)
+  if (ep->dma && _req->length == 0) {
     return -1;
+  }
 
   /* set up dma mapping in case the caller didn't */
   if (ep->dma) {

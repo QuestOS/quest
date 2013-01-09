@@ -22,7 +22,7 @@
 #include "sched/sched.h"
 #include <mem/pow2.h>
 
-#define DEBUG_USB
+//#define DEBUG_USB
 
 #ifdef DEBUG_USB
 #define DLOG(fmt,...) DLOG_PREFIX("USB", fmt, ##__VA_ARGS__)
@@ -66,7 +66,11 @@ int usb_syscall_handler(uint32_t device_id, uint32_t operation,
                         char* buf, uint32_t data_len)
 {
   int result;
-  USB_DEVICE_INFO* device = usb_get_device(device_id);
+  USB_DEVICE_INFO* device;
+
+  DLOG("In %s", __FUNCTION__);
+
+  device = usb_get_device(device_id);
 
   
   if(device == NULL) {
@@ -986,16 +990,14 @@ usb_enumerate(usb_hcd_t* usb_hcd, uint dev_speed, uint hub_addr, uint port_num)
   ptr = info->configurations;
   print_all_descriptors(ptr, total_length);
   for (c=0; c < devd.bNumConfigurations; c++) {
-    DLOG("FFFFFFFF c= %d, devd.bNumConfigurations = %d", c, devd.bNumConfigurations);
     cfgd = (USB_CFG_DESC *) ptr;
     ptr += cfgd->bLength;
     for (i=0; i < cfgd->bNumInterfaces; i++) {
-      DLOG("GGGGGGGGGGGGGGGGGGGG i = %d, cfgd->bNumInterfaces = %d", i, cfgd->bNumInterfaces);
       /* find the next if descriptor, skipping any class-specific stuff */
       for (ifd = (USB_IF_DESC *) ptr;
            ifd->bDescriptorType != USB_TYPE_IF_DESC;
            ifd = (USB_IF_DESC *)((uint8 *)ifd + ifd->bLength)) {
-        DLOG ("ifd=%p len=%d type=0x%x", ifd, ifd->bLength, ifd->bDescriptorType);
+        //DLOG ("ifd=%p len=%d type=0x%x", ifd, ifd->bLength, ifd->bDescriptorType);
         if(ifd->bLength == 0) {
           DLOG("Descriptor length is zero");
           panic("Descriptor length is zero");

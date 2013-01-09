@@ -164,7 +164,7 @@ struct urb {
 #define usb_pipecontrol(pipe)   (usb_pipetype((pipe)) == PIPE_CONTROL)
 #define usb_pipebulk(pipe)      (usb_pipetype((pipe)) == PIPE_BULK)
 
-   
+
 struct urb *usb_alloc_urb(int iso_packets, gfp_t mem_flags);
 
 static inline void usb_free_urb(struct urb *urb)

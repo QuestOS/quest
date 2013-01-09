@@ -189,7 +189,7 @@ struct usb_ep {
   unsigned                mult:2;
   unsigned                maxburst:5;
   u8                      address;
-  const struct USB_EPT_DESC    *desc;
+  const USB_EPT_DESC    *desc;
   const struct usb_ss_ep_comp_descriptor  *comp_desc;
 };
 
@@ -352,6 +352,11 @@ usb_gadget_unmap_request(struct usb_gadget *gadget, struct usb_request *req, int
 {
   com1_printf("IN USB_GADGET_UNMAP_REQUEST WHICH IS A DUMMY FUNCTION");
   panic("IN USB_GADGET_UNMAP_REQUEST WHICH IS A DUMMY FUNCTION");
+}
+
+static inline int usb_ep_enable(struct usb_ep *ep)
+{
+  return ep->ops->enable(ep, ep->desc);
 }
 
 static inline int usb_ep_queue(struct usb_ep *ep,
@@ -642,6 +647,21 @@ static inline struct usb_request*
 usb_ep_alloc_request(struct usb_ep *ep, gfp_t gfp_flags)
 {
   return ep->ops->alloc_request(ep, gfp_flags);
+}
+
+/**
+ * usb_ep_free_request - frees a request object
+ * @ep:the endpoint associated with the request
+ * @req:the request being freed
+ *
+ * Reverses the effect of usb_ep_alloc_request().
+ * Caller guarantees the request is not queued, and that it will
+ * no longer be requeued (or otherwise used).
+ */
+static inline void usb_ep_free_request(struct usb_ep *ep,
+                                       struct usb_request *req)
+{
+  ep->ops->free_request(ep, req);
 }
 
 
