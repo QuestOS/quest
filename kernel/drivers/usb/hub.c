@@ -158,7 +158,7 @@ void setup_hub_device_status_urb(hub_info_t* hub_info)
 static void poll_for_port_change(hub_info_t* hub_info)
 {
   struct urb* urb = hub_info->urb;
-  int new_bytes = usb_rt_int_update_data(urb, STATUS_CHANGE_BUFFER_SIZE);
+  int new_bytes = usb_rt_update_data(urb, STATUS_CHANGE_BUFFER_SIZE);
   DLOG("new_bytes = %d", new_bytes);
   
   if(new_bytes > 0) {
@@ -185,7 +185,7 @@ static void poll_for_port_change(hub_info_t* hub_info)
       }
       
       
-      bytes_freed = usb_rt_int_free_data(urb, new_bytes);
+      bytes_freed = usb_rt_free_data(urb, new_bytes);
       if(bytes_freed < 0) {
         DLOG("int_free_data returned < 0");
         panic("int_free_data returned < 0");

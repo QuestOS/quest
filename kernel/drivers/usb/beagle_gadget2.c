@@ -235,7 +235,7 @@ static int gadget2_write(USB_DEVICE_INFO* device, int dev_num, char* buf,
 
     case PIPE_ISOCHRONOUS:
       {
-        result = usb_rt_iso_push_data(urb, buf, data_len);
+        result = usb_rt_push_data(urb, buf, data_len, 0);
         
         return result;
       }

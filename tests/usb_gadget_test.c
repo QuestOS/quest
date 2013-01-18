@@ -23,7 +23,8 @@
 #include <arpa/inet.h>
 #include <netinet/in.h>
 
-#define HOST_DEVICE_NUM 1
+//#define HOST_DEVICE_NUM 1
+#define HOST_DEVICE_NUM 2
 
 int main()
 {
@@ -41,7 +42,7 @@ int main()
   printf("Gadget opened\n");
 
   if(usb_open(HOST_DEVICE_NUM, buf, 1024) < 0) {
-    printf("Failed to open device 1\n");
+    printf("Failed to open device %d\n", HOST_DEVICE_NUM);
     while(1);
   }
 

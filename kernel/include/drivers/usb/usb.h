@@ -607,26 +607,13 @@ int usb_rt_iso_update_packets(struct urb* urb, int max_packets);
 
 int usb_rt_iso_free_packets(struct urb* urb, int number_of_packets);
 
-int usb_rt_iso_data_lost(struct urb* urb);
+int usb_rt_data_lost(struct urb* urb);
 
-int usb_rt_iso_push_data(struct urb* urb, char* data, int count);
+int usb_rt_free_data(struct urb* urb, int count);
 
-int usb_rt_int_data_lost(struct urb* urb);
+int usb_rt_update_data(struct urb* urb, int max_count);
 
-int usb_rt_int_free_data(struct urb* urb, int count);
-
-int usb_rt_int_update_data(struct urb* urb, int max_count);
-
-int usb_rt_int_push_data(struct urb* urb, char* data, int count);
-
-int usb_rt_bulk_data_lost(struct urb* urb);
-
-int usb_rt_bulk_free_data(struct urb* urb, int count);
-
-int usb_rt_bulk_update_data(struct urb* urb, int max_count);
-
-int usb_rt_bulk_push_data(struct urb* urb, char* data, int count);
-
+int usb_rt_push_data(struct urb* urb, char* data, int count, uint interrupt_rate);
 
 /*
  * ********************************************************************
@@ -897,18 +884,12 @@ typedef bool (*usb_reset_root_ports_func) (usb_hcd_t* usb_hcd);
 typedef bool (*usb_post_enumeration_func)(usb_hcd_t* usb_hcd);
 typedef int  (*usb_submit_urb_func)(struct urb* urb, gfp_t mem_flags);
 typedef void (*usb_kill_urb_func)(struct urb* urb);
-typedef int  (*usb_rt_iso_data_lost_func)(struct urb* urb);
 typedef int  (*usb_rt_iso_free_packets_func)(struct urb* urb, int number_of_packets);
 typedef int  (*usb_rt_iso_update_packets_func)(struct urb* urb, int max_packets);
-typedef int  (*usb_rt_iso_push_data_func)(struct urb* urb, char* data, int count);
-typedef int  (*usb_rt_int_data_lost_func)(struct urb* urb);
-typedef int  (*usb_rt_int_free_data_func)(struct urb* urb, int count);
-typedef int  (*usb_rt_int_update_data_func)(struct urb* urb, int max_count);
-typedef int  (*usb_rt_int_push_data_func)(struct urb* urb, char* data, int count);
-typedef int  (*usb_rt_bulk_data_lost_func)(struct urb* urb);
-typedef int  (*usb_rt_bulk_free_data_func)(struct urb* urb, int count);
-typedef int  (*usb_rt_bulk_update_data_func)(struct urb* urb, int max_count);
-typedef int  (*usb_rt_bulk_push_data_func)(struct urb* urb, char* data, int count);
+typedef int  (*usb_rt_data_lost_func)(struct urb* urb);
+typedef int  (*usb_rt_free_data_func)(struct urb* urb, int count);
+typedef int  (*usb_rt_update_data_func)(struct urb* urb, int max_count);
+typedef int  (*usb_rt_push_data_func)(struct urb* urb, char* data, int count, uint interrupt_rate);
 
 
 /*
@@ -923,18 +904,12 @@ struct _usb_hcd_t
   usb_post_enumeration_func      post_enumeration;
   usb_submit_urb_func            submit_urb;
   usb_kill_urb_func              kill_urb;
-  usb_rt_iso_data_lost_func      rt_iso_data_lost;
   usb_rt_iso_update_packets_func rt_iso_update_packets;
   usb_rt_iso_free_packets_func   rt_iso_free_packets;
-  usb_rt_iso_push_data_func      rt_iso_push_data;
-  usb_rt_int_data_lost_func      rt_int_data_lost;
-  usb_rt_int_update_data_func    rt_int_update_data;
-  usb_rt_int_free_data_func      rt_int_free_data;
-  usb_rt_int_push_data_func      rt_int_push_data;
-  usb_rt_bulk_data_lost_func     rt_bulk_data_lost;
-  usb_rt_bulk_free_data_func     rt_bulk_free_data;
-  usb_rt_bulk_update_data_func   rt_bulk_update_data;
-  usb_rt_bulk_push_data_func     rt_bulk_push_data;
+  usb_rt_data_lost_func     rt_data_lost;
+  usb_rt_free_data_func     rt_free_data;
+  usb_rt_update_data_func   rt_update_data;
+  usb_rt_push_data_func     rt_push_data;
   uint32_t next_address;
   
   
@@ -948,18 +923,12 @@ bool initialise_usb_hcd(usb_hcd_t* usb_hcd, uint32_t usb_hc_type,
                         usb_post_enumeration_func post_enumeration,
                         usb_submit_urb_func submit_urb,
                         usb_kill_urb_func kill_urb,
-                        usb_rt_iso_data_lost_func rt_iso_data_lost,
                         usb_rt_iso_update_packets_func rt_iso_update_packets,
                         usb_rt_iso_free_packets_func rt_iso_free_packets,
-                        usb_rt_iso_push_data_func rt_iso_push_data,
-                        usb_rt_int_data_lost_func rt_int_data_lost,
-                        usb_rt_int_update_data_func rt_int_update_data,
-                        usb_rt_int_free_data_func rt_int_free_data,
-                        usb_rt_int_push_data_func rt_int_push_data,
-                        usb_rt_bulk_data_lost_func rt_bulk_data_lost,
-                        usb_rt_bulk_free_data_func rt_bulk_free_data,
-                        usb_rt_bulk_update_data_func rt_bulk_update_data,
-                        usb_rt_bulk_push_data_func rt_bulk_push_data);
+                        usb_rt_data_lost_func rt_data_lost,
+                        usb_rt_update_data_func rt_update_data,
+                        usb_rt_free_data_func rt_free_data,
+                        usb_rt_push_data_func rt_push_data);
 
 bool add_usb_hcd(usb_hcd_t* usb_hcd);
 

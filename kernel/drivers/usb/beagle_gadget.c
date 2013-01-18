@@ -157,7 +157,7 @@ static int gadget_read(USB_DEVICE_INFO* device, int dev_num, char* buf, int data
     switch(usb_pipetype(gadget_dev->pipe)) {
     case PIPE_INTERRUPT:
       {
-        int new_bytes = usb_rt_int_update_data(urb, BYTES_TO_READ);
+        int new_bytes = usb_rt_update_data(urb, BYTES_TO_READ);
         
         if(new_bytes < 0) {
           DLOG("new bytes < 0");
@@ -191,7 +191,7 @@ static int gadget_read(USB_DEVICE_INFO* device, int dev_num, char* buf, int data
           if(gadget_dev->next_to_read > gadget_dev->buffer_size) {
             gadget_dev->next_to_read -= gadget_dev->buffer_size;
           }
-          bytes_freed = usb_rt_int_free_data(urb, bytes_to_copy);
+          bytes_freed = usb_rt_free_data(urb, bytes_to_copy);
           if(bytes_freed > 0) {
             gadget_dev->data_available -= bytes_freed;
           }
@@ -259,7 +259,7 @@ static int gadget_read(USB_DEVICE_INFO* device, int dev_num, char* buf, int data
 
     case PIPE_BULK:
       {
-        int new_bytes = usb_rt_bulk_update_data(urb, BYTES_TO_READ);
+        int new_bytes = usb_rt_update_data(urb, BYTES_TO_READ);
         
         if(new_bytes < 0) {
           DLOG("new bytes < 0");
@@ -293,7 +293,7 @@ static int gadget_read(USB_DEVICE_INFO* device, int dev_num, char* buf, int data
           if(gadget_dev->next_to_read > gadget_dev->buffer_size) {
             gadget_dev->next_to_read -= gadget_dev->buffer_size;
           }
-          bytes_freed = usb_rt_int_free_data(urb, bytes_to_copy);
+          bytes_freed = usb_rt_free_data(urb, bytes_to_copy);
           if(bytes_freed > 0) {
             gadget_dev->data_available -= bytes_freed;
           }
@@ -356,12 +356,12 @@ static int gadget_write(USB_DEVICE_INFO* device, int dev_num, char* buf,
       {
 #if 1
 #ifdef PUSH_LOTS_DATA
-        result = usb_rt_int_push_data(urb, buf, data_len);
+        result = usb_rt_push_data(urb, buf, data_len, 0);
 #else
-        result = usb_rt_int_push_data(urb, buf, gadget_dev->transaction_size);
+        result = usb_rt_push_data(urb, buf, gadget_dev->transaction_size, 0);
 #endif
 #else
-        result = usb_rt_int_push_data(urb, "1", 1);
+        result = usb_rt_push_data(urb, "1", 1, 0);
 
         
 #endif
@@ -384,12 +384,12 @@ static int gadget_write(USB_DEVICE_INFO* device, int dev_num, char* buf,
       {
 #if 1
 #ifdef PUSH_LOTS_DATA
-        result = usb_rt_iso_push_data(urb, buf, data_len);
+        result = usb_rt_push_data(urb, buf, data_len, 0);
 #else
-        result = usb_rt_iso_push_data(urb, buf, gadget_dev->transaction_size);
+        result = usb_rt_push_data(urb, buf, gadget_dev->transaction_size, 0);
 #endif
 #else
-        result = usb_rt_iso_push_data(urb, "3", 1);
+        result = usb_rt_push_data(urb, "3", 1, 0);
         
 #endif
         
@@ -399,13 +399,13 @@ static int gadget_write(USB_DEVICE_INFO* device, int dev_num, char* buf,
       {
 #if 1
 #ifdef PUSH_LOTS_DATA
-        result = usb_rt_bulk_push_data(urb, buf, data_len);
+        result = usb_rt_push_data(urb, buf, data_len, 0);
         
 #else
-        result = usb_rt_bulk_push_data(urb, buf, gadget_dev->transaction_size);
+        result = usb_rt_push_data(urb, buf, gadget_dev->transaction_size, 0);
 #endif
 #else
-        result = usb_rt_bulk_push_data(urb, "3", 1);
+        result = usb_rt_push_data(urb, "3", 1, 0);
         
 #endif
         

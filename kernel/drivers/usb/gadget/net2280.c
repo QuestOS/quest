@@ -43,8 +43,8 @@
 #include <sched/sched.h>
 
 
-#define DEBUG_NET2280
-#define DEBUG_NET2280_VERBOSE
+//#define DEBUG_NET2280
+//#define DEBUG_NET2280_VERBOSE
 
 #ifdef DEBUG_NET2280
 #define DLOG(fmt,...) DLOG_PREFIX("Net2280",fmt,##__VA_ARGS__)
@@ -379,20 +379,28 @@ static struct usb_interface_descriptor loopback_intf = {
 
 /* full speed support: */
 
+#define NET2280_INTERFACE_TYPE USB_ENDPOINT_XFER_ISOC
+#define PACKET_SIZE 512
+#define INTERVAL 2
+
 static struct usb_endpoint_descriptor fs_loop_source_desc = {
   .bLength =              USB_DT_ENDPOINT_SIZE,
   .bDescriptorType =      USB_DT_ENDPOINT,
-        
+  .wMaxPacketSize =       cpu_to_le16(PACKET_SIZE),
+  
   .bEndpointAddress =     USB_DIR_IN | 1,
-  .bmAttributes =         USB_ENDPOINT_XFER_BULK,
+  .bmAttributes =         NET2280_INTERFACE_TYPE,
+  .bInterval = INTERVAL,
 };
 
 static struct usb_endpoint_descriptor fs_loop_sink_desc = {
   .bLength =              USB_DT_ENDPOINT_SIZE,
   .bDescriptorType =      USB_DT_ENDPOINT,
+  .wMaxPacketSize =       cpu_to_le16(PACKET_SIZE),
 
   .bEndpointAddress =     USB_DIR_OUT | 1,
-  .bmAttributes =         USB_ENDPOINT_XFER_BULK,
+  .bmAttributes =         NET2280_INTERFACE_TYPE,
+  .bInterval = INTERVAL,
 };
 
 static struct usb_descriptor_header *net2280_fs_function[] = {
@@ -409,8 +417,9 @@ static struct usb_endpoint_descriptor hs_out_ept_desc = {
   .bDescriptorType =      USB_DT_ENDPOINT,
 
   .bEndpointAddress =     USB_DIR_OUT | 1,
-  .bmAttributes =         USB_ENDPOINT_XFER_BULK,
-  .wMaxPacketSize =       cpu_to_le16(512),
+  .bmAttributes =         NET2280_INTERFACE_TYPE,
+  .wMaxPacketSize =       cpu_to_le16(PACKET_SIZE),
+  .bInterval = INTERVAL,
 };
 
 static struct usb_endpoint_descriptor hs_in_ept_desc = {
@@ -418,8 +427,9 @@ static struct usb_endpoint_descriptor hs_in_ept_desc = {
   .bDescriptorType =      USB_DT_ENDPOINT,
 
   .bEndpointAddress =     USB_DIR_IN | 1,
-  .bmAttributes =         USB_ENDPOINT_XFER_BULK,
-  .wMaxPacketSize =       cpu_to_le16(512),
+  .bmAttributes =         NET2280_INTERFACE_TYPE,
+  .wMaxPacketSize =       cpu_to_le16(PACKET_SIZE),
+  .bInterval = INTERVAL,
 };
 
 /* -- EM -- There is a bug right now in copying over the configuration

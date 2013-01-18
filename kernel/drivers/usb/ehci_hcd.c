@@ -85,7 +85,7 @@ static int create_itd_chain(ehci_hcd_t* ehci_hcd, uint8_t address,
                             int num_packets,
                             int max_packet_len, bool is_input,
                             list_head_t* itd_list, bool ioc,
-                            struct urb* urb);
+                            struct urb* urb, uint interrupt_frame_rate);
 
 
 static inline frm_lst_lnk_ptr_t**
@@ -94,9 +94,7 @@ get_next_frm_lst_lnk_ptrs_previous(ehci_hcd_t* ehci_hcd, frm_lst_lnk_ptr_t* ptr)
 static void insert_remaining_realtime_itds(ehci_hcd_t* ehci_hcd, bool in_irq_handler,
                                            bool have_kernel_lock, struct urb* urb);
 
-/*
- * This should always be a macro, inserting itds is time sensitive
- */
+/* Reminder: inserting itds is time sensitive */
 #define insert_itd_into_frame_list(hcd, list, index, itd)       \
   do {                                                          \
     frm_lst_lnk_ptr_t** __nexts_prev =                          \
@@ -166,6 +164,24 @@ used_ehci_completion_element_bitmap[(EHCI_COMPLETION_ELEMENT_POOL_SIZE +
                                     / EHCI_ELEMENTS_PER_BITMAP_ENTRY];
 
 
+static int ehci_rt_int_data_lost(struct urb* urb);
+static int ehci_rt_bulk_data_lost(struct urb* urb);
+static int ehci_rt_iso_data_lost(struct urb* urb);
+
+static int ehci_rt_data_lost(struct urb* urb)
+{
+  switch(usb_pipetype(urb->pipe)) {
+  case PIPE_BULK:
+    return ehci_rt_bulk_data_lost(urb);
+  case PIPE_ISOCHRONOUS:
+    return ehci_rt_iso_data_lost(urb);
+  case PIPE_INTERRUPT:
+    return ehci_rt_int_data_lost(urb);
+  default: // case PIPE_CONTROL:
+    return -1;
+  }
+}
+
 /*
  * -- EM -- Need to actually implement this function just a dummy
  * right now
@@ -176,8 +192,6 @@ static int ehci_rt_int_data_lost(struct urb* urb)
   panic("ehci_rt_int_data_lost is not implemented");
   return 0;
 }
-
-
 
 /*
  * -- EM -- Need to actually implement this function just a dummy
@@ -292,16 +306,21 @@ static int ehci_rt_qh_update_data(struct urb* urb, ehci_qh_urb_priv_t* qh_urb_pr
   return original_max_count - max_count;
 }
 
-static int ehci_rt_int_update_data(struct urb* urb, int max_count)
-{
-  return ehci_rt_qh_update_data(urb, &(get_int_urb_priv(urb)->qh_urb_priv),
-                                max_count);
-}
 
-static int ehci_rt_bulk_update_data(struct urb* urb, int max_count)
+static int ehci_rt_update_data(struct urb* urb, int max_count)
 {
-  return ehci_rt_qh_update_data(urb, &(get_bulk_urb_priv(urb)->qh_urb_priv),
-                                max_count);
+  switch(usb_pipetype(urb->pipe)) {
+  case PIPE_BULK:
+    return ehci_rt_qh_update_data(urb, &(get_bulk_urb_priv(urb)->qh_urb_priv),
+                                  max_count);
+  case PIPE_ISOCHRONOUS:
+    return -1;
+  case PIPE_INTERRUPT:
+    return ehci_rt_qh_update_data(urb, &(get_int_urb_priv(urb)->qh_urb_priv),
+                                  max_count);
+  default: // case PIPE_CONTROL:
+    return -1;
+  }
 }
 
 static inline bool is_itd_partially_active(itd_t* itd)
@@ -405,7 +424,7 @@ int fill_iso_push_packets(struct urb* urb, int count,
 
 #define DIV_ROUND_UP(n,d) (((n) + (d) - 1) / (d))
 
-int ehci_rt_iso_push_data(struct urb* urb, char* data, int count)
+int ehci_rt_iso_push_data(struct urb* urb, char* data, int count, uint interrupt_frame_rate)
 {
   unsigned int pipe = urb->pipe;
   uint32_t microframe_interval = urb->interval;
@@ -493,7 +512,7 @@ int ehci_rt_iso_push_data(struct urb* urb, char* data, int count)
                       usb_maxpacket(urb->dev, urb->pipe),
                       usb_pipein(pipe),
                       &itd_list, mp_enabled,
-                      urb) < 0) {
+                      urb, interrupt_frame_rate) < 0) {
     return -1;
 
   }
@@ -662,14 +681,18 @@ static int ehci_rt_qh_free_data(struct urb* urb, ehci_qh_urb_priv_t* qh_urb_priv
   return original_count - count;
 }
 
-static int ehci_rt_int_free_data(struct urb* urb, int count)
+static int ehci_rt_free_data(struct urb* urb, int count)
 {
-  return ehci_rt_qh_free_data(urb, &(get_int_urb_priv(urb)->qh_urb_priv), count);
-}
-
-static int ehci_rt_bulk_free_data(struct urb* urb, int count)
-{
-  return ehci_rt_qh_free_data(urb, &(get_bulk_urb_priv(urb)->qh_urb_priv), count);
+  switch(usb_pipetype(urb->pipe)) {
+  case PIPE_BULK:
+    return ehci_rt_qh_free_data(urb, &(get_bulk_urb_priv(urb)->qh_urb_priv), count);
+  case PIPE_INTERRUPT:
+    return ehci_rt_qh_free_data(urb, &(get_int_urb_priv(urb)->qh_urb_priv), count);
+  case PIPE_ISOCHRONOUS:
+    return -1;
+  default: // case PIPE_CONTROL:
+    return -1;
+  }
 }
 
 /*
@@ -788,18 +811,21 @@ static int ehci_rt_qh_push_data(struct urb* urb, ehci_qh_urb_priv_t* qh_urb_priv
   return bytes_sent;
 }
 
-static int ehci_rt_int_push_data(struct urb* urb, 
-                                 char* data, int count)
-{
-  return ehci_rt_qh_push_data(urb, &(get_int_urb_priv(urb)->qh_urb_priv),
-                              data, count);
-}
 
-static int ehci_rt_bulk_push_data(struct urb* urb, 
-                                  char* data, int count)
+static int ehci_rt_push_data(struct urb* urb, char* data, int count, uint interrupt_rate)
 {
-  return ehci_rt_qh_push_data(urb, &(get_bulk_urb_priv(urb)->qh_urb_priv),
+  switch(usb_pipetype(urb->pipe)) {
+  case PIPE_BULK:
+    return ehci_rt_qh_push_data(urb, &(get_bulk_urb_priv(urb)->qh_urb_priv),
                               data, count);
+  case PIPE_INTERRUPT:
+    return ehci_rt_qh_push_data(urb, &(get_int_urb_priv(urb)->qh_urb_priv),
+                              data, count);
+  case PIPE_ISOCHRONOUS:
+    return ehci_rt_iso_push_data(urb, data, count, interrupt_rate);
+  default: // case PIPE_CONTROL:
+    return -1;
+  }
 }
 
 static int ehci_rt_iso_update_packets(struct urb* urb, int max_packets)
@@ -873,30 +899,114 @@ static int ehci_rt_iso_update_packets(struct urb* urb, int max_packets)
   return i;
 }
 
+static bool handle_rt_urb_completion(ehci_hcd_t* ehci_hcd, ehci_completion_element_t* comp_element)
+{
+  return FALSE;
+}
+
+static bool handle_non_rt_urb_completion(ehci_hcd_t* ehci_hcd, ehci_completion_element_t* comp_element)
+{
+  int i;
+  struct urb* urb = comp_element->urb;
+  bool done = FALSE;
+  itd_t* itd;
+  itd_t* temp_itd;
+  int packets_traversed;
+        
+  if(comp_element->pipe_type == PIPE_ISOCHRONOUS) {
+    itd = list_entry(comp_element->itds.prev, itd_t, chain_list);
+    for(i = 0; i < 8; ++i) {
+      if(itd->transaction[i].raw & ITD_ACTIVE) {
+        break;
+      }
+    }
+    done = i == 8;
+  }
+  else {
+    ehci_qh_urb_priv_t* qh_urb_priv = ehci_get_qh_urb_priv(urb);
+    done = TRUE;
+    for(i = 0; i < qh_urb_priv->num_qtds; ++i) {
+      if(QTD_REMAINING_DATA(qh_urb_priv->qtds[i])) {
+        done = FALSE;
+        break;
+      }
+    }
+  }
+      
+  if(done) {
+    urb->active = FALSE;
+          
+    /* -- EM -- Since this function is called in the context of
+     * the interrupt handler (and in the hardware bug backup
+     * thread) the better thing to do would be wake up a
+     * thread/IOVCPU to handle the URB completion function (maybe
+     * might not be worth it since completion callbacks are
+     * usually very small, this is something we can compare for a
+     * performance/predictability trade-off) but for right now just
+     * call it here */
+          
+    if(urb->complete != NULL) {
+      urb->complete(comp_element->urb);
+    }
+        
+    /* Do URB bookkeeping and cleanup EHCI resources */
+        
+    if(comp_element->pipe_type == PIPE_ISOCHRONOUS) {
+      packets_traversed = 0;
+      list_for_each_entry(itd, &comp_element->itds, chain_list) {
+        for(i = 0; (i < 8) && (packets_traversed < urb->number_of_packets);
+            ++i, ++packets_traversed) {
+          urb->iso_frame_desc[packets_traversed].actual_length
+            = (itd->transaction[i].raw >> 16) & 0xFFF;
+              
+          urb->iso_frame_desc[packets_traversed].status
+            = itd->transaction[i].status;
+                
+          if(itd->transaction[i].raw & ITD_ACTIVE) {
+            print_itd_info(NULL, itd, "");
+                  
+            DLOG("itd should be done but is not");
+            panic("itd should be done but is not");
+          }
+        }
+      }
+            
+      list_for_each_entry(itd, &comp_element->itds, chain_list) {
+        unlink_itd_from_frame_list(ehci_hcd, itd);
+      }
+            
+      list_for_each_entry_safe(itd, temp_itd, &comp_element->itds,
+                               chain_list) {
+        free_itd(ehci_hcd, itd);
+      }
+    }
+    else {
+      ehci_qh_urb_priv_t* qh_urb_priv = ehci_get_qh_urb_priv(urb);
+      free_qtds(ehci_hcd, qh_urb_priv->qtds, qh_urb_priv->num_qtds);
+    }
+    return TRUE;
+  }
+  return FALSE;
+}
 
 static void ehci_check_for_urb_completions(ehci_hcd_t* ehci_hcd, bool in_irq_handler)
 {
   ehci_completion_element_t* comp_element;
   ehci_completion_element_t* temp_comp_element;
-  int i;
-  bool done;
-  itd_t* itd;
-  itd_t* temp_itd;
-  //qtd_t* qtd;
-  //qtd_t* temp_qtd;
-  int packets_traversed;
-  struct urb* urb;
 
-  /*
-   * Since this function is called both in a thread that runs with
+  /* Since this function is called both in a thread that runs with
    * interrupts on and in an interrupt handler if we cannot get the
    * lock when in the interrupt handler then that means something else
    * is handling completions and we should just back off.  This is
    * extremely important for the interrupt handler because if it
    * preempted the backup thread when the backup thread had the lock
    * the interrupt handler would wait indefinitely unless the backup
-   * thread was scheduled on another core
-   */
+   * thread was scheduled on another core.  */
+
+  /* -- EM -- This is not 100% as we might not get the lock because
+   * something is putting a new element into the list, we would need
+   * another variable/lock to indicate this but for now don't care,
+   * the completion function will just be called slightly later */
 
   if(in_irq_handler) {
     if(!spinlock_attempt_lock(&ehci_hcd->completion_lock)) {
@@ -907,104 +1017,16 @@ static void ehci_check_for_urb_completions(ehci_hcd_t* ehci_hcd, bool in_irq_han
     spinlock_lock(&ehci_hcd->completion_lock);
   }
 
-  // At this point we have the completion_lock lock
-  i = 0;
-
-  
+  /* At this point we have completion_lock */
+    
   list_for_each_entry_safe(comp_element, temp_comp_element,
                            &ehci_hcd->completion_list, chain_list) {
-    urb = comp_element->urb;
-    if(urb->active) {
-      if(urb->realtime) {
-        
-        switch(comp_element->pipe_type) {
-          
-        case PIPE_ISOCHRONOUS:
-        case PIPE_BULK:
-        case PIPE_CONTROL:
-        case PIPE_INTERRUPT:
-        default:
-          DLOG("Unhandled cases in %s line %d", __FUNCTION__, __LINE__);
-          panic("Unhandled case in ehci_check_for_urb_completions");
-        }
+    if(comp_element->urb->active) {
+      if(comp_element->urb->realtime) {
+        handle_rt_urb_completion(ehci_hcd, comp_element);
       }
       else {
-        done = FALSE;
-        
-        if(comp_element->pipe_type == PIPE_ISOCHRONOUS) {
-          itd = list_entry(comp_element->itds.prev, itd_t, chain_list);
-          for(i = 0; i < 8; ++i) {
-            if(itd->transaction[i].raw & ITD_ACTIVE) {
-              break;
-            }
-          }
-          done = i == 8;
-        }
-        else {
-          ehci_qh_urb_priv_t* qh_urb_priv = ehci_get_qh_urb_priv(urb);
-          done = TRUE;
-          for(i = 0; i < qh_urb_priv->num_qtds; ++i) {
-            if(QTD_REMAINING_DATA(qh_urb_priv->qtds[i])) {
-              done = FALSE;
-              break;
-            }
-          }
-        }
-      
-        if(done) {
-          urb->active = FALSE;
-          
-          /*
-           * -- EM -- Since this function is called in the context of
-           * the interrupt handler (and in the hardware bug backup
-           * thread) the better thing to do would be wake up a
-           * thread/IOVCPU to handle the URB completion function (maybe
-           * might not be worth it since completion callbacks are
-           * usually very small, this is something we can compare for a
-           * performance/predictability trade-off) but for right now just
-           * call it here
-           */
-          if(urb->complete != NULL) {
-            urb->complete(comp_element->urb);
-          }
-        
-          /*
-           * Do URB bookkeeping and cleanup EHCI resources
-           */
-        
-          if(comp_element->pipe_type == PIPE_ISOCHRONOUS) {
-            packets_traversed = 0;
-            list_for_each_entry(itd, &comp_element->itds, chain_list) {
-              for(i = 0; (i < 8) && (packets_traversed < urb->number_of_packets);
-                  ++i, ++packets_traversed) {
-                urb->iso_frame_desc[packets_traversed].actual_length
-                  = (itd->transaction[i].raw >> 16) & 0xFFF;
-              
-                urb->iso_frame_desc[packets_traversed].status
-                  = itd->transaction[i].status;
-                
-                if(itd->transaction[i].raw & ITD_ACTIVE) {
-                  print_itd_info(NULL, itd, "");
-                  
-                  DLOG("itd should be done but is not");
-                  panic("itd should be done but is not");
-                }
-              }
-            }
-            
-            list_for_each_entry(itd, &comp_element->itds, chain_list) {
-              unlink_itd_from_frame_list(ehci_hcd, itd);
-            }
-            
-            list_for_each_entry_safe(itd, temp_itd, &comp_element->itds,
-                                     chain_list) {
-              free_itd(ehci_hcd, itd);
-            }
-          }
-          else {
-            ehci_qh_urb_priv_t* qh_urb_priv = ehci_get_qh_urb_priv(urb);
-            free_qtds(ehci_hcd, qh_urb_priv->qtds, qh_urb_priv->num_qtds);
-          }
+        if(handle_non_rt_urb_completion(ehci_hcd, comp_element)) {
           list_del(&comp_element->chain_list);
           free_ehci_completion_element(ehci_hcd, comp_element);
         }
@@ -1078,6 +1100,12 @@ void reorder_transactions(ehci_hcd_t* ehci_hcd, bool in_irq_handler, bool have_k
    * the interrupt handler would wait indefinitely unless the backup
    * thread was scheduled on another core
    */
+
+  
+  /* -- EM -- This is not 100% as we might not get the lock because
+   * something is putting a new element into the list, we would need
+   * another variable/lock to indicate this but for now don't care,
+   * the re-ordering will just be delayed a little */
 
   //static int call_counter = 0;
   int i,j;
@@ -1262,6 +1290,11 @@ static void insert_remaining_realtime_itds(ehci_hcd_t* ehci_hcd, bool in_irq_han
    * the interrupt handler would wait indefinitely unless the backup
    * thread was scheduled on another core
    */
+
+  /* -- EM -- This is not 100% as we might not get the lock because
+   * something is putting a new element into the list, we would need
+   * another variable/lock to indicate this but for now don't care,
+   * the itd insertion will just be delayed a little */
 
   if(!have_kernel_lock) {
    
@@ -1823,18 +1856,12 @@ initialise_ehci_hcd(uint32_t usb_base,
                          ehci_post_enumeration,
                          ehci_submit_urb,
                          ehci_kill_urb,
-                         ehci_rt_iso_data_lost,
                          ehci_rt_iso_update_packets,
                          ehci_rt_iso_free_packets,
-                         ehci_rt_iso_push_data,
-                         ehci_rt_int_data_lost,
-                         ehci_rt_int_update_data,
-                         ehci_rt_int_free_data,
-                         ehci_rt_int_push_data,
-                         ehci_rt_bulk_data_lost,
-                         ehci_rt_bulk_update_data,
-                         ehci_rt_bulk_free_data,
-                         ehci_rt_bulk_push_data)) {
+                         ehci_rt_data_lost,
+                         ehci_rt_update_data,
+                         ehci_rt_free_data,
+                         ehci_rt_push_data)) {
     return FALSE;
   }
   
@@ -3225,7 +3252,7 @@ static int create_itd_chain(ehci_hcd_t* ehci_hcd, uint8_t address,
                             int num_packets, 
                             int max_packet_len, bool is_input,
                             list_head_t* itd_list, bool ioc,
-                            struct urb* urb)
+                            struct urb* urb, uint interrupt_frame_rate)
 {
   int i;
   itd_t* itd;
@@ -3266,28 +3293,24 @@ static int create_itd_chain(ehci_hcd_t* ehci_hcd, uint8_t address,
   
   if(urb->realtime) {
     int j = 0;
-    int interrupt_to_transaction_ratio
-      = urb->interrupt_interval / urb->interval;
-    int last_interrupt = interrupt_to_transaction_ratio;
+    int last_interrupt = interrupt_frame_rate;
+    
     list_for_each_entry(itd, itd_list, chain_list) {
       iso_urb_priv->itds[j++] = itd;
       for(i = 0; i < 8; ++i) {
         if(IS_ITD_TRANSACTION_ACTIVE(itd, i)) {
           
-          if(interrupt_to_transaction_ratio != 0) {
+          if(interrupt_frame_rate != 0) {
             last_interrupt--;
             if(last_interrupt == 0) {
               itd->transaction[i].raw |= ITD_IOC;
-              last_interrupt = interrupt_to_transaction_ratio;
+              last_interrupt = interrupt_frame_rate;
             }
           }
-          
         }
       }
       memcpy(itd->transaction_backup, itd->transaction,
              8 * sizeof(itd_transaction_t));
-      //DLOG("itd->transaction[0] after copy = 0x%X", itd->transaction[0]);
-      //DLOG("itd->transaction_backup[0] = 0x%X", itd->transaction_backup[0]);
     }
   }
   else {
@@ -3445,7 +3468,7 @@ static int submit_itd_chain(ehci_hcd_t* ehci_hcd, list_head_t* itd_list,
 
 static int first_iso_call = 0;
 
-ehci_completion_element_t iso_completion_element;
+
 
 static int
 ehci_isochronous_transfer(ehci_hcd_t* ehci_hcd, struct urb* urb)
@@ -3479,13 +3502,16 @@ ehci_isochronous_transfer(ehci_hcd_t* ehci_hcd, struct urb* urb)
   iso_urb_priv = urb->hcpriv;
   
   if(urb->realtime) {
-    if((iso_urb_priv->ehci_urb_priv.sched_assignment = ehci_is_rt_schedulable(ehci_hcd, urb)) < 0) {
+    if((iso_urb_priv->ehci_urb_priv.sched_assignment
+        = ehci_is_rt_schedulable(ehci_hcd, urb)) < 0) {
       DLOG("urb is not real time schedulable");
       return iso_urb_priv->ehci_urb_priv.sched_assignment;
     }
   }
 
   if(urb->realtime && usb_pipeout(urb->pipe)) {
+    /* Just need to reserve the bandwidth for an out pipe, data
+       arrives via pushes later one */
     return 0;
   }
   if(create_itd_chain(ehci_hcd, usb_pipedevice(pipe),
@@ -3495,7 +3521,7 @@ ehci_isochronous_transfer(ehci_hcd_t* ehci_hcd, struct urb* urb)
                       usb_maxpacket(urb->dev, urb->pipe),
                       usb_pipein(pipe),
                       &itd_list, mp_enabled,
-                      urb) < 0) {
+                      urb, urb->interrupt_frame_rate) < 0) {
     DLOG("create_itd_chain failed");
     panic("create_itd_chain failed");
     return -1;
@@ -3508,20 +3534,23 @@ ehci_isochronous_transfer(ehci_hcd_t* ehci_hcd, struct urb* urb)
   }
 
   if(mp_enabled) {
-
-    /*
-     * -- EM -- Not putting it in list just some dummy element right now
-     */
-    if(urb->realtime_complete_interval) {
-      iso_completion_element.urb = urb;
-      INIT_LIST_HEAD(&iso_completion_element.itds);
-      list_splice(&itd_list, &iso_completion_element.itds);
-      iso_completion_element.pipe_type = PIPE_ISOCHRONOUS;
+    if( ((!urb->realtime) && (!(urb->transfer_flags & URB_NO_INTERRUPT))) ||
+        (urb->realtime && usb_pipein(urb->pipe) && (urb->interrupt_frame_rate != 0)) ) {
+      ehci_completion_element_t* comp_elem = allocate_ehci_completion_element(ehci_hcd);
+      if(comp_elem == NULL) {
+        /* -- EM -- Better cleanup here later */
+        DLOG("Failed to allocate ehci_completion_element at line %d", __LINE__);
+        panic("Failed to allocate ehci_completion_element");
+      }
+      comp_elem->urb = urb;
+      INIT_LIST_HEAD(&comp_elem->itds);
+      list_splice(&itd_list, &comp_elem->itds);
+      comp_elem->pipe_type = PIPE_ISOCHRONOUS;
       spinlock_lock(&ehci_hcd->completion_lock);
-      list_add_tail(&iso_completion_element.chain_list, &ehci_hcd->completion_list);
+      list_add_tail(&comp_elem->chain_list, &ehci_hcd->completion_list);
       spinlock_unlock(&ehci_hcd->completion_lock);
     }
-
+    
     return 0;
   }
   else {

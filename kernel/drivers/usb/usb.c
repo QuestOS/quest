@@ -114,18 +114,12 @@ initialise_usb_hcd(usb_hcd_t* usb_hcd, uint32_t usb_hc_type,
                    usb_post_enumeration_func post_enumeration,
                    usb_submit_urb_func submit_urb,
                    usb_kill_urb_func kill_urb,
-                   usb_rt_iso_data_lost_func rt_iso_data_lost,
                    usb_rt_iso_update_packets_func rt_iso_update_packets,
                    usb_rt_iso_free_packets_func rt_iso_free_packets,
-                   usb_rt_iso_push_data_func rt_iso_push_data,
-                   usb_rt_int_data_lost_func rt_int_data_lost,
-                   usb_rt_int_update_data_func rt_int_update_data,
-                   usb_rt_int_free_data_func rt_int_free_data,
-                   usb_rt_int_push_data_func rt_int_push_data,
-                   usb_rt_bulk_data_lost_func rt_bulk_data_lost,
-                   usb_rt_bulk_update_data_func rt_bulk_update_data,
-                   usb_rt_bulk_free_data_func rt_bulk_free_data,
-                   usb_rt_bulk_push_data_func rt_bulk_push_data)
+                   usb_rt_data_lost_func rt_data_lost,
+                   usb_rt_update_data_func rt_update_data,
+                   usb_rt_free_data_func rt_free_data,
+                   usb_rt_push_data_func rt_push_data)
 {
   usb_hcd->usb_hc_type = usb_hc_type;
   usb_hcd->reset_root_ports      = reset_root_ports;
@@ -134,20 +128,13 @@ initialise_usb_hcd(usb_hcd_t* usb_hcd, uint32_t usb_hc_type,
   usb_hcd->submit_urb            = submit_urb;
   usb_hcd->kill_urb              = kill_urb;
   
-  usb_hcd->rt_iso_data_lost      = rt_iso_data_lost;
   usb_hcd->rt_iso_update_packets = rt_iso_update_packets;
   usb_hcd->rt_iso_free_packets   = rt_iso_free_packets;
-  usb_hcd->rt_iso_push_data      = rt_iso_push_data;
   
-  usb_hcd->rt_int_data_lost      = rt_int_data_lost;
-  usb_hcd->rt_int_update_data    = rt_int_update_data;
-  usb_hcd->rt_int_free_data      = rt_int_free_data;
-  usb_hcd->rt_int_push_data      = rt_int_push_data;
-
-  usb_hcd->rt_bulk_data_lost     = rt_bulk_data_lost;
-  usb_hcd->rt_bulk_free_data     = rt_bulk_free_data;
-  usb_hcd->rt_bulk_update_data   = rt_bulk_update_data;
-  usb_hcd->rt_bulk_push_data     = rt_bulk_push_data;
+  usb_hcd->rt_data_lost      = rt_data_lost;
+  usb_hcd->rt_update_data    = rt_update_data;
+  usb_hcd->rt_free_data      = rt_free_data;
+  usb_hcd->rt_push_data      = rt_push_data;
   
   
   usb_hcd->next_address = 1;
@@ -207,10 +194,6 @@ int usb_submit_urb (struct urb *urb, gfp_t mem_flags)
       DLOG("Can only submit realtime urbs when interrupts are on");
       return -1;
     }
-    if(urb->interrupt_interval < urb->interval && urb->interrupt_interval != 0) {
-      DLOG("interrupt_interval cannot be less than interval");
-      return -1;
-    }
   }
   urb->active = TRUE;
   return urb->dev->hcd->submit_urb(urb, mem_flags);
@@ -255,54 +238,24 @@ int usb_rt_iso_free_packets(struct urb* urb, int number_of_packets)
   return urb->dev->hcd->rt_iso_free_packets(urb, number_of_packets);
 }
 
-int usb_rt_iso_data_lost(struct urb* urb)
+int usb_rt_data_lost(struct urb* urb)
 {
-  return urb->dev->hcd->rt_iso_data_lost(urb);
+  return urb->dev->hcd->rt_data_lost(urb);
 }
 
-int usb_rt_iso_push_data(struct urb* urb, char* data, int count)
+int usb_rt_free_data(struct urb* urb, int count)
 {
-  return urb->dev->hcd->rt_iso_push_data(urb, data, count);
+  return urb->dev->hcd->rt_free_data(urb, count);
 }
 
-int usb_rt_int_data_lost(struct urb* urb)
+int usb_rt_update_data(struct urb* urb, int max_count)
 {
-  return urb->dev->hcd->rt_int_data_lost(urb);
+  return urb->dev->hcd->rt_update_data(urb, max_count);
 }
 
-int usb_rt_int_free_data(struct urb* urb, int count)
+int usb_rt_push_data(struct urb* urb, char* data, int count, uint interrupt_rate)
 {
-  return urb->dev->hcd->rt_int_free_data(urb, count);
-}
-
-int usb_rt_int_update_data(struct urb* urb, int max_count)
-{
-  return urb->dev->hcd->rt_int_update_data(urb, max_count);
-}
-
-int usb_rt_int_push_data(struct urb* urb, char* data, int count)
-{
-  return urb->dev->hcd->rt_int_push_data(urb, data, count);
-}
-
-int usb_rt_bulk_data_lost(struct urb* urb)
-{
-  return urb->dev->hcd->rt_bulk_data_lost(urb);
-}
-
-int usb_rt_bulk_free_data(struct urb* urb, int count)
-{
-  return urb->dev->hcd->rt_bulk_free_data(urb, count);
-}
-
-int usb_rt_bulk_update_data(struct urb* urb, int max_count)
-{
-  return urb->dev->hcd->rt_bulk_update_data(urb, max_count);
-}
-
-int usb_rt_bulk_push_data(struct urb* urb, char* data, int count)
-{
-  return urb->dev->hcd->rt_bulk_push_data(urb, data, count);
+  return urb->dev->hcd->rt_push_data(urb, data, count, interrupt_rate);
 }
 
 static void usb_core_blocking_completion(struct urb* urb)
@@ -974,7 +927,7 @@ usb_enumerate(usb_hcd_t* usb_hcd, uint dev_speed, uint hub_addr, uint port_num)
       usb_get_descriptor (info, USB_TYPE_CFG_DESC, c, 0, cfgd->wTotalLength, ptr);
     if (status < 0)
       goto abort_mem;
-    print_all_descriptors(ptr, 1000);
+    //print_all_descriptors(ptr, 1000);
 
     cfgd = (USB_CFG_DESC *)ptr;
     DLOG ("usb_enumerate: cfg %d has num_if=%d", c, cfgd->bNumInterfaces);
@@ -988,7 +941,7 @@ usb_enumerate(usb_hcd_t* usb_hcd, uint dev_speed, uint hub_addr, uint port_num)
 
   /* parse cfg and if descriptors */
   ptr = info->configurations;
-  print_all_descriptors(ptr, total_length);
+  //print_all_descriptors(ptr, total_length);
   for (c=0; c < devd.bNumConfigurations; c++) {
     cfgd = (USB_CFG_DESC *) ptr;
     ptr += cfgd->bLength;

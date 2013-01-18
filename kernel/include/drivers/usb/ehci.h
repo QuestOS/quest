@@ -748,14 +748,16 @@ typedef struct
   ehci_urb_priv_t ehci_urb_priv;
   list_head_t uninserted_itds_list;
   list_head_t uninserted_itd_urb_list;
-  uint32_t next_packet_to_free;
-  uint32_t next_packet_to_make_available;
+  uint next_packet_to_free;
+  uint next_packet_to_make_available;
   int next_itd_for_sending_data;
-  uint32_t num_itds;
-  uint32_t next_packet_for_sending_data;
-  uint32_t packets_in_use;
+  uint num_itds;
+  uint next_packet_for_sending_data;
+  uint packets_in_use;
+  uint last_packed_ioc_processed;
   list_head_t write_itds_to_free;
-  //uint32_t used_table_entries_bitmap[1024/32];
+  
+  //uint used_table_entries_bitmap[1024/32];
   itd_t* itds[0];
 } ehci_iso_urb_priv_t;
 
@@ -799,6 +801,7 @@ initialise_iso_urb_priv(ehci_iso_urb_priv_t* iso_urb_priv, struct urb* urb)
   iso_urb_priv->next_packet_to_make_available       = 0;
   iso_urb_priv->next_itd_for_sending_data           = -1;
   iso_urb_priv->next_packet_for_sending_data        = 0;
+  iso_urb_priv->last_packed_ioc_processed           = 0;
   iso_urb_priv->packets_in_use = (packets_per_itd * MAX_SAFE_FRAME_INDEX_LOOK_AHEAD);
   //memset(iso_urb_priv->used_table_entries_bitmap, 0, 1024/32);
   INIT_LIST_HEAD(&iso_urb_priv->write_itds_to_free);
