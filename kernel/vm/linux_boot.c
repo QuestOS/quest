@@ -85,7 +85,19 @@ load_linux_kernel (uint32 * load_addr, char * pathname)
   DLOG ("jump: 0x%X", setup_header->jump);
   DLOG ("header: 0x%X", setup_header->header);
   DLOG ("version: 0x%X", setup_header->version);
+  DLOG ("loadflags: 0x%X", setup_header->loadflags);
   DLOG (" ");
+
+  /* heap_end_ptr = heap_end - 0x200 */
+  setup_header->heap_end_ptr = 0x9600;
+  /* Set loader type to GRUB */
+  setup_header->type_of_loader = 0x7;
+  /* Set command line argument to "auto" for now */
+  setup_header->cmd_line_ptr = 0xA0000 - 0x5;
+  memcpy ((void *) (setup_header->cmd_line_ptr), "auto", 5);
+  /* Print early msg, reload seg registers for 32-bit entry point, and reuse heap */
+  setup_header->loadflags = ((setup_header->loadflags) & (~0x60)) | 0x80;
+  DLOG ("modified loadflags: 0x%X", setup_header->loadflags);
 #endif
 
   return act_len;
@@ -103,7 +115,6 @@ static struct _linux_boot_param {
   int size;
 } exit_param;
 
-
 static void
 linux_boot_thread (void)
 {
@@ -112,6 +123,10 @@ linux_boot_thread (void)
   cpu = get_pcpu_id ();
 #endif
   extern void * vm_exit_input_param;
+  uint8_t * src = NULL, * dst = NULL;
+  uint32_t pa_dst = 0;
+  int i, prot_size;
+  linux_setup_header_t * header = NULL;
 
   DLOG ("Linux boot thread started in sandbox %d", cpu);
 
@@ -135,16 +150,34 @@ linux_boot_thread (void)
   vm_exit_input_param = (void *) &exit_param;
   vm_exit (VM_EXIT_REASON_LINUX_BOOT);
 
-  /* TODO: Go into real mode with ljmp to 0x90200 */
-  /* disable protected mode */
-  uint32 * dump;
-  dump = (uint32 *) 0x8000;
-  int i = 0;
-  com1_printf ("-------------------DUMP------------------------\n");
-  for (i = 0; i < 10; i++) {
-    com1_printf ("%X ", dump[i]);
+  header = (linux_setup_header_t *) (((uint8 *) LINUX_KERNEL_LOAD_VA) + LINUX_SETUP_HEADER_OFFSET);
+  /* Linux protected mode code starts at (setup_sects + 1) * 512 into the bzImage */
+  src = (uint8_t *) LINUX_KERNEL_LOAD_VA + (header->setup_sects + 1) * 512;
+  /* Copy protected mode Linux code to Guest physical starting from 1MB */
+  pa_dst = 1 << 20;
+  /* Copy one page at a time because of limited virtual memory space */
+  prot_size = exit_param.size - (header->setup_sects + 1) * 512;
+  /* Number of 4KB pages */
+  for (i = 0; i < (prot_size >> 12); i++) {
+    dst = map_virtual_page (pa_dst | 0x3);
+    memcpy ((void *)dst, (const void *)src, 0x1000);
+    unmap_virtual_page (dst);
+    pa_dst += 0x1000;
+    src += 0x1000;
   }
-  com1_printf ("\n-------------------DUMP------------------------\n");
+  dst = map_virtual_page (pa_dst | 0x3);
+  memcpy ((void *)dst, (const void *)src, prot_size & 0xFFF);
+  unmap_virtual_page (dst);
+
+  /* Set LAPIC to lowest prio to prevent interrupt broadcasting */
+  LAPIC_set_task_priority(0xF0);
+
+//  uint8_t binary[] = {0xc6, 0x05, 0x00, 0x80, 0x0b, 0x00, 0x41};
+//  dst = map_virtual_page (0x100000 | 0x3);
+//  memcpy ((void *)dst, (const void *)binary, sizeof(binary));
+//  unmap_virtual_page (dst);
+
+  /* Jump to realmodestub in boot.S to initialise Linux booting */
   asm volatile ("jmp 0x8000");
   unlock_kernel ();
   sti ();

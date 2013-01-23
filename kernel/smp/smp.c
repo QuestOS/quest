@@ -319,8 +319,10 @@ ap_init (void)
   //}
   { extern bool migration_init (void); migration_init (); }
   { extern bool logger_init (void); logger_init (); }
-  if (phys_id == 1)
+#ifdef USE_LINUX_SANDBOX
+  if (phys_id == LINUX_SANDBOX)
   { extern bool linux_boot_thread_init (void); linux_boot_thread_init (); }
+#endif
   //if (phys_id == 1)
   //{ extern bool hog_thread_init (void); hog_thread_init (); }
   //{ extern bool msgt_bandwidth_init (void); msgt_bandwidth_init (); }

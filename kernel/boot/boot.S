@@ -278,12 +278,14 @@ entry16:
         /* Flush instruction stream to avoid mixed processor mode instructions */
         data32 ljmp $0x0, $0x8000 + real - realmodestub
 real:
-        xorw %ax, %ax
+        /* Set up segment resgisters to the start of Linux real-mode kernel code */
+        movw $0x9000, %ax
         movw %ax, %ds
         movw %ax, %es
         movw %ax, %fs
         movw %ax, %gs
         movw %ax, %ss
+        movw $0x9800, %sp
 
 #        sti
 #        leaw 0x8000 + msg - realmodestub, %si   
@@ -294,13 +296,17 @@ real:
 #        int $0x10
 #        loop 1b
 
-        movw $0xB800, %ax
-        movw %ax, %es
-        movb $66, %es:0
-        xorw %ax, %ax
-        hlt
+#        movw $0xB800, %ax
+#        movw %ax, %es
+#        movb $65, %es:0  /* Test character A */
+#        xorw %ax, %ax
+#        hlt
+
+        /* Required by Linux Boot Protocol */
+        cli
+
         /* Jump to Linux real mode start address */
-        ljmp $0x9000, $200
+        ljmp $0x9000, $0x200
 
         /* Should never reach here */
         hlt

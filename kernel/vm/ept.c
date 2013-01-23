@@ -29,6 +29,9 @@
 #include "arch/i386-mtrr.h"
 #include "sched/sched.h"
 #include "vm/spow2.h"
+#ifdef USE_LINUX_SANDBOX
+#include "vm/linux_boot.h"
+#endif
 
 #define DEBUG_EPT    0
 #if DEBUG_EPT > 0
@@ -536,7 +539,7 @@ vmx_init_ept (uint32 cpu)
           memtype = def_memtype;
 
           /*--!!-- NOTICE
-           * OK, this chunck of code to set memory type according to MTRRs is a
+           * OK, this chunk of code to set memory type according to MTRRs is a
            * real pain... It works on all the platforms we had in the lab. But
            * double check this if the boot process is extremely slow, the system
            * halts unpredictably or a ping round-trip time without kernel debug
@@ -634,6 +637,14 @@ vmx_init_ept (uint32 cpu)
               pt[k] = (k << 12) | (memtype << 3) | EPT_ALL_ACCESS;
             }
           }
+#ifdef USE_LINUX_SANDBOX
+          if (cpu == LINUX_SANDBOX) {
+            if ((index >= (1 << 20)) && (index <= SANDBOX_KERN_OFFSET)) {
+	      pt[k] = (index + SANDBOX_KERN_OFFSET * (LINUX_SANDBOX + 1))
+	              | (memtype << 3) | EPT_ALL_ACCESS;
+	    }
+          }
+#endif
         }
 
         pd[j] = pt_frame | (0 << 7) | EPT_ALL_ACCESS;
@@ -675,6 +686,15 @@ vmx_init_ept (uint32 cpu)
               pt[k] = index | (memtype << 3) | EPT_ALL_ACCESS;
             }
           }
+
+#ifdef USE_LINUX_SANDBOX
+          if (cpu == LINUX_SANDBOX) {
+            if ((index >= (1 << 20)) && (index <= SANDBOX_KERN_OFFSET)) {
+	      pt[k] = (index + SANDBOX_KERN_OFFSET * (LINUX_SANDBOX + 1))
+	              | (memtype << 3) | EPT_ALL_ACCESS;
+	    }
+          }
+#endif
         }
 
         pd[j] = pt_frame | (0 << 7) | EPT_ALL_ACCESS;

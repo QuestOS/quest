@@ -592,7 +592,7 @@ linux_vm_init (uint32 kernel_addr, int kernel_size)
   setup_header = (linux_setup_header_t *) (((uint8 *) kernel_addr) + LINUX_SETUP_HEADER_OFFSET);
   /* TODO:Setup EPT for Linux sandbox */
   /* TODO:Enable Unrestricted Guest */
-  real_mode_size = setup_header->setup_sects * 512;
+  real_mode_size = (setup_header->setup_sects + 1) * 512;
   /* Move real mode Linux code to 0x00090000 */
   memcpy ((void *) 0x90000, (const void *) kernel_addr, real_mode_size);
   logger_printf ("%d bytes copied to 0x90000\n", real_mode_size);

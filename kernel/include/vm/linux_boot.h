@@ -44,6 +44,11 @@
 
 #ifndef __ASSEMBLER__
 
+/* LINUX_SANDBOX is only valid after smp_init () */
+extern uint32 mp_num_cpus;
+#define LINUX_SANDBOX   (mp_num_cpus - 1)
+
+
 /* Setup header version 2.10 */
 typedef struct _linux_setup_header {
   uint8   setup_sects;
