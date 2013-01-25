@@ -615,6 +615,8 @@ int usb_rt_update_data(struct urb* urb, int max_count);
 
 int usb_rt_push_data(struct urb* urb, char* data, int count, uint interrupt_rate);
 
+int usb_rt_free_write_resources(struct urb* urb);
+
 /*
  * ********************************************************************
  * The following is copied from Linux but needs to be put here for
@@ -786,38 +788,50 @@ usb_fill_rt_iso_urb(struct urb* urb,
                     struct usb_device *dev,
                     unsigned int pipe,
                     void *transfer_buffer,
+                    usb_complete_t complete_fn,
+                    void* context,
                     int interval,
                     int num_packets,
-                    int packet_len)
+                    int packet_len,
+                    uint interrupt_rate)
 {
-  usb_fill_iso_urb(urb, dev, pipe, transfer_buffer, NULL, NULL,
+  usb_fill_iso_urb(urb, dev, pipe, transfer_buffer, complete_fn, context,
                    interval, num_packets, packet_len);
   urb->realtime = TRUE;
-  
+  urb->interrupt_frame_rate = interrupt_rate;
 }
 
 static inline void
 usb_fill_rt_int_urb(struct urb *urb,
-                 struct usb_device *dev,
-                 unsigned int pipe,
-                 void *transfer_buffer,
-                 int buffer_length,
-                 int interval)
+                    struct usb_device *dev,
+                    unsigned int pipe,
+                    void *transfer_buffer,
+                    int buffer_length,
+                    usb_complete_t complete_fn,
+                    void* context,
+                    int interval,
+                    uint interrupt_rate)
 {
   usb_fill_int_urb(urb, dev, pipe, transfer_buffer, buffer_length,
-                   NULL, NULL, interval);
+                   complete_fn, context, interval);
   urb->realtime = TRUE;
+  urb->interrupt_byte_rate = interrupt_rate;
 }
 
 static inline void
 usb_fill_rt_bulk_urb(struct urb *urb,
-                 struct usb_device *dev,
-                 unsigned int pipe,
-                 void *transfer_buffer,
-                 int buffer_length,
-                 int interval)
+                     struct usb_device *dev,
+                     unsigned int pipe,
+                     void *transfer_buffer,
+                     int buffer_length,
+                     usb_complete_t complete_fn,
+                     void* context,
+                     int interval,
+                     uint interrupt_rate)
 {
-  usb_fill_rt_int_urb(urb, dev, pipe, transfer_buffer, buffer_length, interval);
+  usb_fill_rt_int_urb(urb, dev, pipe, transfer_buffer, buffer_length,
+                      complete_fn, context,
+                      interval, interrupt_rate);
 }
 
 static inline uint
@@ -890,7 +904,7 @@ typedef int  (*usb_rt_data_lost_func)(struct urb* urb);
 typedef int  (*usb_rt_free_data_func)(struct urb* urb, int count);
 typedef int  (*usb_rt_update_data_func)(struct urb* urb, int max_count);
 typedef int  (*usb_rt_push_data_func)(struct urb* urb, char* data, int count, uint interrupt_rate);
-
+typedef int (*usb_rt_free_write_resources_func)(struct urb* urb);
 
 /*
  * Generic USB Host controller Device object 
@@ -910,6 +924,7 @@ struct _usb_hcd_t
   usb_rt_free_data_func     rt_free_data;
   usb_rt_update_data_func   rt_update_data;
   usb_rt_push_data_func     rt_push_data;
+  usb_rt_free_write_resources_func rt_free_write_resources;
   uint32_t next_address;
   
   
@@ -928,7 +943,8 @@ bool initialise_usb_hcd(usb_hcd_t* usb_hcd, uint32_t usb_hc_type,
                         usb_rt_data_lost_func rt_data_lost,
                         usb_rt_update_data_func rt_update_data,
                         usb_rt_free_data_func rt_free_data,
-                        usb_rt_push_data_func rt_push_data);
+                        usb_rt_push_data_func rt_push_data,
+                        usb_rt_free_write_resources_func rt_free_write_resources);
 
 bool add_usb_hcd(usb_hcd_t* usb_hcd);
 

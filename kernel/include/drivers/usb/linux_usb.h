@@ -62,6 +62,9 @@ struct _usb_hcd_t;
 #define URB_NO_INTERRUPT        0x0080  /* HINT: no non-error interrupt
                                          * needed */
 #define URB_FREE_BUFFER         0x0100  /* Free transfer buffer with the URB */
+#define URB_RT_ONE_HANDLER_CALL 0x0200  /* Only need to call the completion handler once
+					   per interrupt, not once for each frame/microframe
+					   that passed */
 
 struct urb {
 

@@ -316,9 +316,9 @@ static int uvc_open(USB_DEVICE_INFO* device, int dev_num, char* buf, int data_le
     return -1;
   }
 
-  usb_fill_rt_iso_urb(uvc_dev->urb, device, pipe, buf,
+  usb_fill_rt_iso_urb(uvc_dev->urb, device, pipe, buf, NULL, NULL,
                       ep->desc.bInterval, num_packets, 
-                      dev_to_uvc_dev(device)->transaction_size);
+                      dev_to_uvc_dev(device)->transaction_size, 0);
 
   if(usb_submit_urb(uvc_dev->urb, 0) < 0) {
     DLOG("Failed to submit rt urb");

@@ -119,7 +119,8 @@ initialise_usb_hcd(usb_hcd_t* usb_hcd, uint32_t usb_hc_type,
                    usb_rt_data_lost_func rt_data_lost,
                    usb_rt_update_data_func rt_update_data,
                    usb_rt_free_data_func rt_free_data,
-                   usb_rt_push_data_func rt_push_data)
+                   usb_rt_push_data_func rt_push_data,
+                   usb_rt_free_write_resources_func rt_free_write_resources)
 {
   usb_hcd->usb_hc_type = usb_hc_type;
   usb_hcd->reset_root_ports      = reset_root_ports;
@@ -131,10 +132,11 @@ initialise_usb_hcd(usb_hcd_t* usb_hcd, uint32_t usb_hc_type,
   usb_hcd->rt_iso_update_packets = rt_iso_update_packets;
   usb_hcd->rt_iso_free_packets   = rt_iso_free_packets;
   
-  usb_hcd->rt_data_lost      = rt_data_lost;
-  usb_hcd->rt_update_data    = rt_update_data;
-  usb_hcd->rt_free_data      = rt_free_data;
-  usb_hcd->rt_push_data      = rt_push_data;
+  usb_hcd->rt_data_lost            = rt_data_lost;
+  usb_hcd->rt_update_data          = rt_update_data;
+  usb_hcd->rt_free_data            = rt_free_data;
+  usb_hcd->rt_push_data            = rt_push_data;
+  usb_hcd->rt_free_write_resources = rt_free_write_resources;
   
   
   usb_hcd->next_address = 1;
@@ -256,6 +258,11 @@ int usb_rt_update_data(struct urb* urb, int max_count)
 int usb_rt_push_data(struct urb* urb, char* data, int count, uint interrupt_rate)
 {
   return urb->dev->hcd->rt_push_data(urb, data, count, interrupt_rate);
+}
+
+int usb_rt_free_write_resources(struct urb* urb)
+{
+  return urb->dev->hcd->rt_free_write_resources(urb);
 }
 
 static void usb_core_blocking_completion(struct urb* urb)
@@ -484,7 +491,7 @@ int usb_control_msg(struct usb_device *dev, unsigned int pipe,
   /*
    * -- EM -- It should be okay to put these on the stack because this
    * function won't complete until the callback is called,
-
+   */
    /* -- EM -- not true if it fails! */
   
   struct urb urb;

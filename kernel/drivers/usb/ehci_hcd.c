@@ -77,7 +77,8 @@ create_qtd_chain(ehci_hcd_t* ehci_hcd,
                  struct urb* urb, addr_t setup_req,
                  uint32_t setup_len, addr_t data,
                  uint32_t data_len, bool enable_ioc,
-                 list_head_t* qtd_list); /* Should be empty/uninitialized */
+                 list_head_t* qtd_list, /* Should be empty/uninitialized */
+                 uint interrupt_byte_rate);
 
 static int create_itd_chain(ehci_hcd_t* ehci_hcd, uint8_t address,
                             uint8_t endpoint, addr_t data,
@@ -167,6 +168,80 @@ used_ehci_completion_element_bitmap[(EHCI_COMPLETION_ELEMENT_POOL_SIZE +
 static int ehci_rt_int_data_lost(struct urb* urb);
 static int ehci_rt_bulk_data_lost(struct urb* urb);
 static int ehci_rt_iso_data_lost(struct urb* urb);
+static inline bool is_itd_partially_active(itd_t* itd);
+
+static int ehci_rt_free_write_resources(struct urb* urb)
+{
+  ehci_hcd_t* ehci_hcd = hcd_to_ehci_hcd(urb->dev->hcd);
+  
+  if(usb_pipetype(urb->pipe) == PIPE_ISOCHRONOUS) {
+    ehci_iso_urb_priv_t* iso_urb_priv = get_iso_urb_priv(urb);
+    itd_t* itd_to_free;
+    itd_t* temp_itd;
+    uint32_t packets_per_itd = urb->interval < 8 ? 8 / urb->interval : 1;
+    
+    
+    list_for_each_entry_safe(itd_to_free, temp_itd, &iso_urb_priv->write_itds_to_free,
+                             chain_list) {
+      if(is_itd_partially_active(itd_to_free)) {
+        break;
+      }
+      unlink_itd_from_frame_list(ehci_hcd, itd_to_free);
+      iso_urb_priv->packets_in_use -= packets_per_itd;
+      list_del(&itd_to_free->chain_list);
+      free_itd(ehci_hcd, itd_to_free);
+    }
+  }
+  else {
+    qh_t* qh;;
+    qtd_t* temp_qtd;
+    qtd_t* qtd_to_remove;
+    ehci_qh_urb_priv_t* qh_urb_priv;
+    uint32_t buffer_size;
+    
+    switch(usb_pipetype(urb->pipe)) {
+    case PIPE_BULK:
+      qh_urb_priv = &(get_bulk_urb_priv(urb)->qh_urb_priv);
+      break;
+
+    case PIPE_INTERRUPT:
+      qh_urb_priv = &(get_int_urb_priv(urb)->qh_urb_priv);
+      break;
+
+    default: // PIPE_CONTROL
+      
+      DLOG("Reached unimplemented case in %s", __FUNCTION__);
+      panic("Reached unimplemented case in ehci_rt_free_write_resources");
+    }
+    
+    buffer_size = qh_urb_priv->buffer_size;
+    qh = qh_urb_priv->qh;
+    
+    list_for_each_entry_safe(qtd_to_remove, temp_qtd, &qh->qtd_list, chain_list) {
+    
+      if(qh->current_qtd_ptr_raw == EHCI_QTD_VIRT_TO_PHYS(ehci_hcd, qtd_to_remove)) {
+        break;
+      }
+      else {
+        //DLOG("About to call list function at line %d", __LINE__);
+        //DLOG("qtd_to_remove = 0x%p", qtd_to_remove);
+        //DLOG("qtd_to_remove->chain_list.prev = 0x%p", qtd_to_remove->chain_list.prev);
+        //DLOG("qtd_to_remove->chain_list.next = 0x%p", qtd_to_remove->chain_list.next);
+        list_del(&qtd_to_remove->chain_list);
+        //DLOG("Done calling list function");
+        qh_urb_priv->next_byte_to_free_for_writing
+          += qtd_to_remove->original_total_bytes_to_transfer;
+        qh_urb_priv->bytes_in_buffer -= qtd_to_remove->original_total_bytes_to_transfer;
+        if(qh_urb_priv->next_byte_to_free_for_writing >= buffer_size) {
+          qh_urb_priv->next_byte_to_free_for_writing -= buffer_size;
+        }
+        free_qtd(ehci_hcd, qtd_to_remove);
+      }
+    }
+  }
+
+  return 0;
+}
 
 static int ehci_rt_data_lost(struct urb* urb)
 {
@@ -436,28 +511,19 @@ int ehci_rt_iso_push_data(struct urb* urb, char* data, int count, uint interrupt
   uint32_t packets_remaining;
   int num_packets;
   uint32_t start_packet_for_data = iso_urb_priv->next_packet_for_sending_data;
-  itd_t* itd_to_free;
-  itd_t* temp_itd;
-  int i = 0;
   int effective_packet_num;
+  ehci_completion_element_t* comp_elem = NULL;
 
   insert_remaining_realtime_itds(hcd_to_ehci_hcd(urb->dev->hcd), FALSE, TRUE, urb);
 
-  
-  list_for_each_entry_safe(itd_to_free, temp_itd, &iso_urb_priv->write_itds_to_free,
-                           chain_list) {
-    if(is_itd_partially_active(itd_to_free)) {
-      break;
+  if(iso_urb_priv->completion_element == NULL && interrupt_frame_rate != 0) {
+    comp_elem = allocate_ehci_completion_element(ehci_hcd);
+    if(comp_elem == NULL) {
+      DLOG("Failed to allocate completion element");
+      return -1;
     }
-    ++i;
-    unlink_itd_from_frame_list(ehci_hcd, itd_to_free);
-    iso_urb_priv->packets_in_use -= packets_per_itd;
-    list_del(&itd_to_free->chain_list);
-    free_itd(ehci_hcd, itd_to_free);
   }
-
-  //DLOG("itds removed = %d", i);
-
+  
   packets_remaining = urb->number_of_packets - iso_urb_priv->packets_in_use;
   uint32_t max_transaction_size =
     usb_payload_size(urb->dev, usb_pipein(urb->pipe) ?
@@ -468,11 +534,9 @@ int ehci_rt_iso_push_data(struct urb* urb, char* data, int count, uint interrupt
     count = packets_remaining * max_transaction_size;
   }
 
-  //DLOG("count = %d", count);
-  
   num_packets = fill_iso_push_packets(urb, count, start_packet_for_data);
   
-
+  
   if(start_packet_for_data + num_packets < urb->number_of_packets) {
     memcpy(&((char*)urb->transfer_buffer)[packets[start_packet_for_data].offset],
            data, count);
@@ -503,7 +567,6 @@ int ehci_rt_iso_push_data(struct urb* urb, char* data, int count, uint interrupt
   EHCI_ASSERT(iso_urb_priv->packets_in_use <= urb->number_of_packets);
     
   
-
   if(create_itd_chain(ehci_hcd, usb_pipedevice(pipe),
                       usb_pipeendpoint(pipe),
                       urb->transfer_buffer,
@@ -521,8 +584,26 @@ int ehci_rt_iso_push_data(struct urb* urb, char* data, int count, uint interrupt
     return -1;
   }
 
-  list_splice_tail(&itd_list, &iso_urb_priv->write_itds_to_free);
-  
+  if(comp_elem) {
+    iso_urb_priv->completion_element = comp_elem;
+    comp_elem->urb = urb;
+    INIT_LIST_HEAD(&comp_elem->itds);
+    list_splice(&itd_list, &comp_elem->itds);
+    comp_elem->pipe_type = PIPE_ISOCHRONOUS;
+    /* -- EM -- Using completion lock to also protect
+       write_itds_to_free */
+    spinlock_lock(&ehci_hcd->completion_lock);
+    list_splice_tail(&itd_list, &iso_urb_priv->write_itds_to_free);
+    list_add_tail(&comp_elem->chain_list, &ehci_hcd->completion_list);
+    spinlock_unlock(&ehci_hcd->completion_lock);
+  }
+  else {
+    /* -- EM -- Using completion lock to also protect
+       write_itds_to_free */
+    spinlock_lock(&ehci_hcd->completion_lock);
+    list_splice_tail(&itd_list, &iso_urb_priv->write_itds_to_free);
+    spinlock_unlock(&ehci_hcd->completion_lock);
+  }
 
   return count;
 }
@@ -552,6 +633,7 @@ static void qtd_restore(qtd_t* qtd)
 {
   qtd->token = qtd->token_backup;
   qtd->buffer_page[0] = qtd->buffer_page_zero_backup;
+  qtd->ioc_called = FALSE;
 }
 
 static int ehci_rt_qh_free_data(struct urb* urb, ehci_qh_urb_priv_t* qh_urb_priv,
@@ -707,38 +789,15 @@ static int ehci_rt_free_data(struct urb* urb, int count)
  */
 
 static int ehci_rt_qh_push_data(struct urb* urb, ehci_qh_urb_priv_t* qh_urb_priv,
-                                char* data, int count)
+                                char* data, int count, uint interrupt_rate)
 {
   qh_t* qh = qh_urb_priv->qh;
-  qtd_t* temp_qtd;
-  qtd_t* qtd_to_remove;
   int bytes_sent = 0;
   char* urb_buffer = urb->transfer_buffer;
   list_head_t qtd_list;
   ehci_hcd_t* ehci_hcd = hcd_to_ehci_hcd(urb->dev->hcd);
   uint32_t buffer_size = qh_urb_priv->buffer_size;
-
-  list_for_each_entry_safe(qtd_to_remove, temp_qtd, &qh->qtd_list, chain_list) {
-    
-    if(qh->current_qtd_ptr_raw == EHCI_QTD_VIRT_TO_PHYS(ehci_hcd, qtd_to_remove)) {
-      break;
-    }
-    else {
-      //DLOG("About to call list function at line %d", __LINE__);
-      //DLOG("qtd_to_remove = 0x%p", qtd_to_remove);
-      //DLOG("qtd_to_remove->chain_list.prev = 0x%p", qtd_to_remove->chain_list.prev);
-      //DLOG("qtd_to_remove->chain_list.next = 0x%p", qtd_to_remove->chain_list.next);
-      list_del(&qtd_to_remove->chain_list);
-      //DLOG("Done calling list function");
-      qh_urb_priv->next_byte_to_free_for_writing
-        += qtd_to_remove->original_total_bytes_to_transfer;
-      qh_urb_priv->bytes_in_buffer -= qtd_to_remove->original_total_bytes_to_transfer;
-      if(qh_urb_priv->next_byte_to_free_for_writing >= buffer_size) {
-        qh_urb_priv->next_byte_to_free_for_writing -= buffer_size;
-      }
-      free_qtd(ehci_hcd, qtd_to_remove);
-    }
-  }
+  ehci_completion_element_t* completion_element = NULL;
   
   while(bytes_sent < count) {
     uint32_t bytes_for_this_chain;
@@ -748,22 +807,14 @@ static int ehci_rt_qh_push_data(struct urb* urb, ehci_qh_urb_priv_t* qh_urb_priv
       break;
     }
 
-    //DLOG_INT(qh_urb_priv->bytes_in_buffer);
-    //DLOG_INT(buffer_size);
-    //DLOG_INT(bytes_sent);
-    //DLOG_INT(count);
-    //DLOG_INT(qh_urb_priv->next_byte_to_free_for_writing);
-    //DLOG_INT(qh_urb_priv->next_byte_to_use_for_writing);
-
-    if(qh_urb_priv->bytes_in_buffer >= buffer_size) {
-      DLOG_UINT(qh_urb_priv->bytes_in_buffer);
-      DLOG_UINT(buffer_size);
-      DLOG_INT(bytes_sent);
-      DLOG_INT(count);
-      DLOG_UINT(qh_urb_priv->next_byte_to_free_for_writing);
-      DLOG_UINT(qh_urb_priv->next_byte_to_use_for_writing);
+    if(interrupt_rate != 0 && qh_urb_priv->completion_element == NULL) {
+      completion_element = allocate_ehci_completion_element(ehci_hcd);
+      if(completion_element == NULL) {
+        DLOG("Failed to allocate completion element");
+        return -1;
+      }
     }
-    
+
     EHCI_ASSERT(qh_urb_priv->bytes_in_buffer < buffer_size);
     
     if(qh_urb_priv->next_byte_to_free_for_writing
@@ -793,12 +844,38 @@ static int ehci_rt_qh_push_data(struct urb* urb, ehci_qh_urb_priv_t* qh_urb_priv
     
     if(!create_qtd_chain(ehci_hcd, urb, NULL, 0,
                          (addr_t)&urb_buffer[qh_urb_priv->next_byte_to_use_for_writing],
-                         bytes_for_this_chain, mp_enabled, &qtd_list)) {
+                         bytes_for_this_chain, mp_enabled, &qtd_list, interrupt_rate)) {
       return -1;
     }
-    
-    qh_append_qtds(ehci_hcd, urb, qh, &qtd_list);
 
+    qtd_t* temp_qtd;
+    list_for_each_entry(temp_qtd, &qtd_list, chain_list) {
+      DLOG("AAAAAAAAAAA");
+      if(temp_qtd->token & QTD_IOC) {
+        DLOG("BBBBBBBBBBBBBB");
+      }
+      
+    }
+    
+    if(completion_element) {
+      qh_urb_priv->completion_element = completion_element;
+      completion_element->urb = urb;
+      completion_element->pipe_type = usb_pipetype(urb->pipe);
+      /* -- EM -- Using completion lock to also protect
+         qh qtd list */
+      spinlock_lock(&ehci_hcd->completion_lock);
+      qh_append_qtds(ehci_hcd, urb, qh, &qtd_list);
+      list_add_tail(&completion_element->chain_list, &ehci_hcd->completion_list);
+      spinlock_unlock(&ehci_hcd->completion_lock);
+      completion_element = NULL;
+    }
+    else {
+      /* -- EM -- Using completion lock to also protect
+         qh qtd list */
+      spinlock_lock(&ehci_hcd->completion_lock);
+      qh_append_qtds(ehci_hcd, urb, qh, &qtd_list);
+      spinlock_unlock(&ehci_hcd->completion_lock);
+    }
     
     bytes_sent += bytes_for_this_chain;
     qh_urb_priv->bytes_in_buffer += bytes_for_this_chain;
@@ -816,11 +893,10 @@ static int ehci_rt_push_data(struct urb* urb, char* data, int count, uint interr
 {
   switch(usb_pipetype(urb->pipe)) {
   case PIPE_BULK:
-    return ehci_rt_qh_push_data(urb, &(get_bulk_urb_priv(urb)->qh_urb_priv),
-                              data, count);
   case PIPE_INTERRUPT:
-    return ehci_rt_qh_push_data(urb, &(get_int_urb_priv(urb)->qh_urb_priv),
-                              data, count);
+    return ehci_rt_qh_push_data(urb, ehci_get_qh_urb_priv(urb),
+                                data, count, interrupt_rate);
+
   case PIPE_ISOCHRONOUS:
     return ehci_rt_iso_push_data(urb, data, count, interrupt_rate);
   default: // case PIPE_CONTROL:
@@ -863,7 +939,7 @@ static int ehci_rt_iso_update_packets(struct urb* urb, int max_packets)
     
     
     transaction_num = next_packet_to_make_available & packets_per_itd_mask;
-
+    
     for(j = 0; j < 8; ++j) {
       if(itd->transaction[j].raw > 0) {
         if(transaction_num == 0) {
@@ -899,12 +975,192 @@ static int ehci_rt_iso_update_packets(struct urb* urb, int max_packets)
   return i;
 }
 
-static bool handle_rt_urb_completion(ehci_hcd_t* ehci_hcd, ehci_completion_element_t* comp_element)
+static void handle_input_iso_rt_urb_completion(ehci_hcd_t* ehci_hcd,
+                                               ehci_completion_element_t* comp_element)
 {
-  return FALSE;
+  struct urb* urb = comp_element->urb;
+  int i;
+  uint urb_num_packets = urb->number_of_packets;
+  ehci_iso_urb_priv_t* iso_urb_priv = get_iso_urb_priv(urb);
+  uint num_transactions_with_ioc_set =
+    ehci_hcd->frame_list_size / urb->interval / urb->interrupt_frame_rate;;
+  uint interval = urb->interval;
+  uint packets_per_itd = interval < 8 ? 8 / interval : 1;;
+  uint packets_per_itd_mask = packets_per_itd - 1;
+  uint next_transaction_to_check =
+    iso_urb_priv->last_transaction_ioc_processed + urb->interrupt_frame_rate;
+  uint call_counter = 0;
+  
+  if(next_transaction_to_check >= urb_num_packets) {
+    next_transaction_to_check = 0;
+  }
+  
+  for(i = 0; i <  num_transactions_with_ioc_set; ++i) {
+    itd_t* itd = itd = iso_urb_priv->itds[next_transaction_to_check / packets_per_itd];
+    uint transaction_num = next_transaction_to_check & packets_per_itd_mask;
+    int j;
+    uint transaction_index;
+
+    for(j = 0; j < 8; ++j) {
+      if(itd->transaction[j].raw > 0) {
+        if(transaction_num == 0) {
+          transaction_index = j;
+          break;
+        }
+        else {
+          transaction_num--;
+        }
+      }
+    }
+
+    if(itd->transaction[transaction_index].raw & ITD_ACTIVE ||
+       (itd->ioc_processed_bitmap & (1 << transaction_index))) {
+      break;
+    }
+    call_counter++;
+    itd->ioc_processed_bitmap |= 1 << transaction_index;
+    iso_urb_priv->last_transaction_ioc_processed = next_transaction_to_check;
+    next_transaction_to_check += urb->interrupt_frame_rate;
+    if(next_transaction_to_check >= urb_num_packets) {
+      next_transaction_to_check = 0;
+    }
+  }
+
+  while(call_counter--) {
+    urb->complete(urb);
+    if(urb->transfer_flags & URB_RT_ONE_HANDLER_CALL) {
+      break;
+    }
+  }
 }
 
-static bool handle_non_rt_urb_completion(ehci_hcd_t* ehci_hcd, ehci_completion_element_t* comp_element)
+static void handle_output_iso_rt_urb_completion(ehci_hcd_t* ehci_hcd,
+                                                ehci_completion_element_t* comp_element)
+{
+  struct urb* urb = comp_element->urb;
+  ehci_iso_urb_priv_t* iso_urb_priv = get_iso_urb_priv(urb);
+  itd_t* current_itd;
+  bool done = FALSE;
+  uint call_count = 0;
+  
+  list_for_each_entry(current_itd, &iso_urb_priv->write_itds_to_free, chain_list) {
+    int i;
+    for(i = 0; i < 8; ++i) {
+      if(current_itd->transaction[i].raw & ITD_ACTIVE) {
+        done = TRUE;
+        break;
+      }
+      else {
+        if( (current_itd->transaction[i].raw & ITD_IOC) &&
+            (!(current_itd->ioc_processed_bitmap & (1 << i))) ) {
+          current_itd->ioc_processed_bitmap |= 1 << i;
+          call_count++;
+        }
+      }
+    }
+    if(done) break;
+  }
+  while(call_count--) {
+    urb->complete(urb);
+    if(urb->transfer_flags & URB_RT_ONE_HANDLER_CALL) {
+      break;
+    }
+  }
+}
+
+static void handle_input_qh_rt_urb_completion(ehci_hcd_t* ehci_hcd,
+                                              ehci_completion_element_t* comp_element)
+{
+  struct urb* urb = comp_element->urb;
+  uint call_counter = 0;
+  ehci_qh_urb_priv_t* qh_urb_priv = ehci_get_qh_urb_priv(urb);
+  int i;
+  int bytes_remaining_to_transfer;
+  
+  for(i = 0; i < qh_urb_priv->num_qtds; ++i) {
+    qtd_t* current_qtd;
+    current_qtd = qh_urb_priv->qtds[qh_urb_priv->next_qtd_for_ioc];
+    bytes_remaining_to_transfer = (current_qtd->token >> 16) & 0x7FFF;
+    
+    if(bytes_remaining_to_transfer == 0 && !current_qtd->ioc_called ) {
+      if(current_qtd->token & QTD_IOC) {
+        current_qtd->ioc_called = TRUE;
+        call_counter++;
+      }
+    }
+    else {
+      break;
+    }
+    qh_urb_priv->next_qtd_for_ioc++;
+    
+    if(qh_urb_priv->next_qtd_for_ioc >= qh_urb_priv->num_qtds) {
+      qh_urb_priv->next_qtd_for_ioc = 0;
+    }
+  }
+  while(call_counter--) {
+    urb->complete(urb);
+    if(urb->transfer_flags & URB_RT_ONE_HANDLER_CALL) {
+      break;
+    }
+  }
+}
+
+static void handle_output_qh_rt_urb_completion(ehci_hcd_t* ehci_hcd,
+                                              ehci_completion_element_t* comp_element)
+{
+  struct urb* urb = comp_element->urb;
+  ehci_qh_urb_priv_t* qh_urb_priv = ehci_get_qh_urb_priv(urb);
+  qh_t* qh = qh_urb_priv->qh;
+  qtd_t* current_qtd;
+  int bytes_remaining_to_transfer;
+  uint call_counter = 0;
+  
+  list_for_each_entry(current_qtd, &qh->qtd_list, chain_list) {
+    
+    bytes_remaining_to_transfer = (current_qtd->token >> 16) & 0x7FFF;
+    
+    if(bytes_remaining_to_transfer == 0 && !current_qtd->ioc_called ) {
+      if(current_qtd->token & QTD_IOC) {
+        current_qtd->ioc_called = TRUE;
+        call_counter++;
+      }
+    }
+    else {
+      break;
+    }
+  }
+  DLOG_UINT(call_counter);
+  while(call_counter--) {
+    urb->complete(urb);
+    if(urb->transfer_flags & URB_RT_ONE_HANDLER_CALL) {
+      break;
+    }
+  }
+}
+
+static void handle_rt_urb_completion(ehci_hcd_t* ehci_hcd, ehci_completion_element_t* comp_element)
+{
+  struct urb* urb = comp_element->urb;
+  if(comp_element->pipe_type == PIPE_ISOCHRONOUS) {
+    if(usb_pipein(urb->pipe)) {
+      handle_input_iso_rt_urb_completion(ehci_hcd, comp_element);
+    }
+    else {
+      handle_output_iso_rt_urb_completion(ehci_hcd, comp_element);
+    }
+  }
+  else {
+    if(usb_pipein(urb->pipe)) {
+      handle_input_qh_rt_urb_completion(ehci_hcd, comp_element);
+    }
+    else {
+      handle_output_qh_rt_urb_completion(ehci_hcd, comp_element);
+    }
+  }
+}
+
+static bool handle_non_rt_urb_completion(ehci_hcd_t* ehci_hcd,
+                                         ehci_completion_element_t* comp_element)
 {
   int i;
   struct urb* urb = comp_element->urb;
@@ -944,7 +1200,7 @@ static bool handle_non_rt_urb_completion(ehci_hcd_t* ehci_hcd, ehci_completion_e
      * usually very small, this is something we can compare for a
      * performance/predictability trade-off) but for right now just
      * call it here */
-          
+    
     if(urb->complete != NULL) {
       urb->complete(comp_element->urb);
     }
@@ -1023,7 +1279,11 @@ static void ehci_check_for_urb_completions(ehci_hcd_t* ehci_hcd, bool in_irq_han
                            &ehci_hcd->completion_list, chain_list) {
     if(comp_element->urb->active) {
       if(comp_element->urb->realtime) {
-        handle_rt_urb_completion(ehci_hcd, comp_element);
+        if(comp_element->urb->complete) {
+          /* It only makes sense to do things in this function if there is a
+             completion callback otherwise just skip it */
+          handle_rt_urb_completion(ehci_hcd, comp_element);
+        }
       }
       else {
         if(handle_non_rt_urb_completion(ehci_hcd, comp_element)) {
@@ -1389,10 +1649,6 @@ ehci_irq_handler(uint8 vec)
 
   EHCI_ACK_INTERRUPTS(&ehci_hcd, status & USBINTR_ALL);
 
-  insert_remaining_realtime_itds(&ehci_hcd, TRUE, TRUE, NULL);
-  reorder_transactions(&ehci_hcd, TRUE, TRUE);
-  ehci_check_for_urb_completions(&ehci_hcd, TRUE);
-  
   if(status & USBINTR_INT) { /* "normal" completion (short, ...) */ }
   
   if(status & USBINTR_IAA) { /* Interrupted on async advance */ }
@@ -1412,7 +1668,11 @@ ehci_irq_handler(uint8 vec)
     DLOG("USBINTR_ERR case in %s unhandled status = 0x%X", __FUNCTION__, status);
     panic("USBINTR_ERR case unhandled");
   }
-  
+
+  insert_remaining_realtime_itds(&ehci_hcd, TRUE, TRUE, NULL);
+  reorder_transactions(&ehci_hcd, TRUE, TRUE);
+  ehci_check_for_urb_completions(&ehci_hcd, TRUE);
+    
   unlock_kernel();
   
   return 0;
@@ -1772,6 +2032,8 @@ int ehci_rt_iso_free_packets(struct urb* urb, int number_of_packets)
     
     itd->transaction[transaction_index].raw =
       itd->transaction_backup[transaction_index].raw;
+    itd->ioc_processed_bitmap &= ~(1 << transaction_index); /* Reset as interrupt not processed */
+
     if(!(itd->transaction[transaction_index].raw & ITD_ACTIVE)) {
       /* This occurs when we have remapped stuff, the solution is to
          scan the backups for the correct transaction_num in backup
@@ -1791,14 +2053,17 @@ int ehci_rt_iso_free_packets(struct urb* urb, int number_of_packets)
         }
       }
       
-    
       EHCI_ASSERT(j != 8);
       EHCI_ASSERT(transaction_index >= 0);
-
       EHCI_ASSERT(!(itd->transaction[transaction_index].raw & ITD_ACTIVE));
     
       itd->transaction[transaction_index].raw =
         itd->transaction_backup[transaction_index].raw;
+
+      /* Reset as interrupt not processed, not sure if necessary here
+         because this is in the remap and the new ioc bit shouldn't
+         have been set but setting it right now anyway */
+      itd->ioc_processed_bitmap &= ~(1 << transaction_index); 
 
       if(!(itd->transaction[transaction_index].raw & ITD_ACTIVE)) {
         /* Should never get here */
@@ -1806,6 +2071,7 @@ int ehci_rt_iso_free_packets(struct urb* urb, int number_of_packets)
         panic("Failed to set transaction as active");
       }
     }
+    
 
     packet->data_available = FALSE;
     ++next_packet_to_free;
@@ -1827,7 +2093,12 @@ int ehci_rt_iso_free_packets(struct urb* urb, int number_of_packets)
 /*
  * -- EM -- Move this into ehci_hcd to get more than 1 ehci chip to work!!!!
  */
+
+#ifdef EHCI_IOC_BUG
 static u32 temp_stack[1024] ALIGNED (0x1000);
+#endif
+
+
 static bool
 initialise_ehci_hcd(uint32_t usb_base,
                     ehci_hcd_t* ehci_hcd,
@@ -1861,7 +2132,8 @@ initialise_ehci_hcd(uint32_t usb_base,
                          ehci_rt_data_lost,
                          ehci_rt_update_data,
                          ehci_rt_free_data,
-                         ehci_rt_push_data)) {
+                         ehci_rt_push_data,
+                         ehci_rt_free_write_resources)) {
     return FALSE;
   }
   
@@ -2183,7 +2455,8 @@ create_qtd_chain(ehci_hcd_t* ehci_hcd,
                  struct urb* urb, addr_t setup_req,
                  uint32_t setup_len, addr_t data,
                  uint32_t data_len, bool enable_ioc,
-                 list_head_t* qtd_list) /* Should be empty/uninitialized */
+                 list_head_t* qtd_list, /* Should be empty/uninitialized */
+                 uint interrupt_byte_rate)
 {
   uint32_t    token;
   qtd_t*      current_qtd;
@@ -2195,6 +2468,7 @@ create_qtd_chain(ehci_hcd_t* ehci_hcd,
   bool         is_input   = usb_pipein(pipe);
   uint8_t      pipe_type  = usb_pipetype(pipe);
   int          packet_len = usb_maxpacket(urb->dev, urb->pipe);
+  uint         bytes_since_last_ioc = 0;
 
   token = QTD_ACTIVE | (EHCI_TUNE_CERR << QTD_CERR);
   INIT_LIST_HEAD(qtd_list);
@@ -2232,10 +2506,8 @@ create_qtd_chain(ehci_hcd_t* ehci_hcd,
     previous_qtd->next_pointer_raw = EHCI_QTD_VIRT_TO_PHYS(ehci_hcd, current_qtd);
   }
 
-  /*
-   * If zero length data stage then data is input or if request type
-   * specifies that data is input
-   */
+  /* If zero length data stage then data is input or if request type
+     specifies that data is input */
   if(is_input) {
     token |= QTD_INPUT;
   }
@@ -2243,9 +2515,19 @@ create_qtd_chain(ehci_hcd_t* ehci_hcd,
   data_phys_addr = (phys_addr_t)get_phys_addr(data);
   
   while(1) {
+    uint max_bytes_for_this_qtd = data_len;
+    if(interrupt_byte_rate != 0 && interrupt_byte_rate < max_bytes_for_this_qtd) {
+      max_bytes_for_this_qtd = interrupt_byte_rate;
+    }
     int this_qtd_length
-      = qtd_fill(current_qtd, data_phys_addr, data_len, packet_len, token);
+      = qtd_fill(current_qtd, data_phys_addr, max_bytes_for_this_qtd,
+                 packet_len, token);
     data_phys_addr += this_qtd_length;
+    bytes_since_last_ioc += this_qtd_length;
+    if(bytes_since_last_ioc >= interrupt_byte_rate) {
+      bytes_since_last_ioc = 0;
+      QTD_ENABLE_IOC(current_qtd);
+    }
 
     if(is_input) {
       current_qtd->alt_pointer_raw = ehci_hcd->async_head->alt_qtd_ptr_raw;
@@ -2323,7 +2605,7 @@ create_qtd_chain(ehci_hcd_t* ehci_hcd,
     }
   }
 
-  if(enable_ioc) {
+  if(enable_ioc && !urb->realtime) {
     /* Interrupt on complete */
     QTD_ENABLE_IOC(current_qtd);
   }
@@ -2914,6 +3196,7 @@ ehci_interrupt_transfer(ehci_hcd_t* ehci_hcd, struct urb* urb)
   int packet_len = usb_maxpacket(urb->dev, urb->pipe);
   ehci_int_urb_priv_t* int_urb_priv;
   int interval_offset;
+  ehci_completion_element_t* completion_element = NULL;
 
   INIT_LIST_HEAD(&qtd_list);
 
@@ -2927,9 +3210,18 @@ ehci_interrupt_transfer(ehci_hcd_t* ehci_hcd, struct urb* urb)
   
 
   if(is_input) {
+
+    completion_element = allocate_ehci_completion_element(ehci_hcd);
+    if(completion_element == NULL) {
+      /* -- EM -- Better cleanup here later */
+      DLOG("Failed to allocate ehci_completion_element at line %d", __LINE__);
+      return -1;
+    }
+    
+    
     if(!create_qtd_chain(ehci_hcd, urb, urb->setup_packet, sizeof(USB_DEV_REQ),
                          urb->transfer_buffer, urb->transfer_buffer_length,
-                         mp_enabled, &qtd_list)) {
+                         mp_enabled, &qtd_list, urb->interrupt_byte_rate)) {
       return -1;
     }
   }
@@ -2983,6 +3275,13 @@ ehci_interrupt_transfer(ehci_hcd_t* ehci_hcd, struct urb* urb)
   }
 
   if(urb->realtime) {
+    if(completion_element) {
+      completion_element->urb = urb;
+      completion_element->pipe_type = pipe_type;
+      spinlock_lock(&ehci_hcd->completion_lock);
+      list_add_tail(&completion_element->chain_list, &ehci_hcd->completion_list);
+      spinlock_unlock(&ehci_hcd->completion_lock);
+    }
     return 0;
   }
   else {
@@ -3001,7 +3300,9 @@ ehci_interrupt_transfer(ehci_hcd_t* ehci_hcd, struct urb* urb)
     return 0;
   }
 }
-
+/* -- EM -- This function needs to be cleaned up very hard to follow
+   with how it works for real-time and non-real-time async
+   transfers */
 static int
 ehci_async_transfer(ehci_hcd_t* ehci_hcd, struct urb* urb)
 {
@@ -3013,7 +3314,7 @@ ehci_async_transfer(ehci_hcd_t* ehci_hcd, struct urb* urb)
   list_head_t qtd_list;
   uint8_t pipe_type = usb_pipetype(pipe);
   int packet_len = usb_maxpacket(urb->dev, urb->pipe);
-  ehci_completion_element_t* completion_element;
+  ehci_completion_element_t* completion_element = NULL;
   
   
   qh = EHCI_GET_DEVICE_QH(ehci_hcd, address, is_input, endpoint);
@@ -3070,9 +3371,18 @@ ehci_async_transfer(ehci_hcd_t* ehci_hcd, struct urb* urb)
    */
   if(usb_pipetype(pipe) == PIPE_BULK && urb->realtime) {
     if(is_input) {
+
+      completion_element = allocate_ehci_completion_element(ehci_hcd);
+      if(completion_element == NULL) {
+        /* -- EM -- Better cleanup here later */
+        DLOG("Failed to allocate ehci_completion_element at line %d", __LINE__);
+        return -1;
+      }
+      
       if(!create_qtd_chain(ehci_hcd, urb, urb->setup_packet, sizeof(USB_DEV_REQ),
                            urb->transfer_buffer, urb->transfer_buffer_length,
-                           mp_enabled, &qtd_list)) {
+                           mp_enabled, &qtd_list, urb->interrupt_byte_rate)) {
+        DLOG("Failed to create qtd chain");
         return -1;
       }
     }
@@ -3124,8 +3434,18 @@ ehci_async_transfer(ehci_hcd_t* ehci_hcd, struct urb* urb)
                               urb->dev->speed, pipe_type, packet_len,
                               is_input, mp_enabled,
                               &qtd_list) < 0) {
+      /* -- EM -- need to do proper clean up of resources */
       return -1;
     }
+
+    if(is_input && completion_element) {
+      completion_element->urb = urb;
+      completion_element->pipe_type = pipe_type;
+      spinlock_lock(&ehci_hcd->completion_lock);
+      list_add_tail(&completion_element->chain_list, &ehci_hcd->completion_list);
+      spinlock_unlock(&ehci_hcd->completion_lock);
+    }
+    
     
     return 0;
   }
@@ -3140,7 +3460,7 @@ ehci_async_transfer(ehci_hcd_t* ehci_hcd, struct urb* urb)
   
   if(!create_qtd_chain(ehci_hcd, urb, urb->setup_packet, sizeof(USB_DEV_REQ),
                        urb->transfer_buffer, urb->transfer_buffer_length,
-                       mp_enabled, &qtd_list)) {
+                       mp_enabled, &qtd_list, 0)) {
     return -1;
   }
 
@@ -3348,7 +3668,10 @@ static int submit_itd_chain(ehci_hcd_t* ehci_hcd, list_head_t* itd_list,
    * fixed, of course an ugly hack would be to turn interrupts off for
    * just this portion but a more elegant solution might exists.
    */
-  
+
+  list_for_each_entry(itd, itd_list, chain_list) {
+    itd->ioc_processed_bitmap = 0;
+  }
   
     
   if(frame_interval == 0) {
@@ -3542,6 +3865,7 @@ ehci_isochronous_transfer(ehci_hcd_t* ehci_hcd, struct urb* urb)
         DLOG("Failed to allocate ehci_completion_element at line %d", __LINE__);
         panic("Failed to allocate ehci_completion_element");
       }
+      DLOG("Creating and inserting ehci_completion_element");
       comp_elem->urb = urb;
       INIT_LIST_HEAD(&comp_elem->itds);
       list_splice(&itd_list, &comp_elem->itds);

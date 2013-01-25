@@ -23,15 +23,22 @@
 #include <arpa/inet.h>
 #include <netinet/in.h>
 
-//#define HOST_DEVICE_NUM 1
-#define HOST_DEVICE_NUM 2
+#define HOST_DEVICE_NUM 1
+//#define HOST_DEVICE_NUM 2
+
+//#define OPEN_BUF_SIZE 544868
+//#define OPEN_BUF_SIZE 1024
+#define OPEN_BUF_SIZE 25600
+
+#define SECONDARY_BUFFER_SIZE 2048
+
+char open_buf[OPEN_BUF_SIZE];
+char rw_buf1[SECONDARY_BUFFER_SIZE];
+char rw_buf2[SECONDARY_BUFFER_SIZE];
 
 int main()
 {
   int res;
-  char buf[1024];
-  char rw_buf1[1024];
-  char rw_buf2[1024];
   printf("usb_gadget_test started\n");
   
   if(usb_open(0, NULL, 0) < 0) {
@@ -41,7 +48,7 @@ int main()
 
   printf("Gadget opened\n");
 
-  if(usb_open(HOST_DEVICE_NUM, buf, 1024) < 0) {
+  if(usb_open(HOST_DEVICE_NUM, open_buf, OPEN_BUF_SIZE) < 0) {
     printf("Failed to open device %d\n", HOST_DEVICE_NUM);
     while(1);
   }
@@ -51,7 +58,7 @@ int main()
   memcpy(rw_buf1, "Hello from " __FILE__, 40);
 
   if(HOST_DEVICE_NUM == 1) {
-    res = usb_write(HOST_DEVICE_NUM, rw_buf1, 1024);
+    res = usb_write(HOST_DEVICE_NUM, rw_buf1, SECONDARY_BUFFER_SIZE);
     if(res < 0) {
       printf("Failed to write to device %d\n", HOST_DEVICE_NUM);
       while(1);
@@ -61,10 +68,10 @@ int main()
 
     usleep(1000000);
 
-    res = usb_read(0, rw_buf2, 512);
+    res = usb_read(0, rw_buf2, SECONDARY_BUFFER_SIZE);
   }
   else {
-    res = usb_write(0, rw_buf1, 1024);
+    res = usb_write(0, rw_buf1, SECONDARY_BUFFER_SIZE);
     if(res < 0) {
       printf("Failed to write to device 0\n");
       while(1);
@@ -74,7 +81,7 @@ int main()
     
     usleep(1000000);
     
-   res = usb_read (HOST_DEVICE_NUM, rw_buf2, 512);
+   res = usb_read (HOST_DEVICE_NUM, rw_buf2, SECONDARY_BUFFER_SIZE);
   }
 
   printf("usb read returned %d\n", res);

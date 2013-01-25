@@ -97,22 +97,23 @@ static int gadget2_open(USB_DEVICE_INFO* device, int dev_num, char* buf, int dat
   switch(usb_pipetype(gadget2_dev->pipe)) {
   case PIPE_ISOCHRONOUS:
     usb_fill_rt_iso_urb(gadget2_dev->urb, device, gadget2_dev->pipe, buf,
+                        NULL, NULL,
                         ep->desc.bInterval, num_packets,
-                        gadget2_dev->transaction_size);
+                        gadget2_dev->transaction_size, 0);
     break;
   case PIPE_INTERRUPT:
     if(gadget2_dev->buffer_size > (1024*400)) {
       gadget2_dev->buffer_size = 1024*400;
     }
     usb_fill_rt_int_urb(gadget2_dev->urb, device, gadget2_dev->pipe, buf,
-                        gadget2_dev->buffer_size, ep->desc.bInterval);
+                        gadget2_dev->buffer_size, NULL, NULL, ep->desc.bInterval, 0);
     break;
   case PIPE_BULK:
     if(gadget2_dev->buffer_size > (1024*400)) {
       gadget2_dev->buffer_size = 1024*400;
     }
     usb_fill_rt_bulk_urb(gadget2_dev->urb, device, gadget2_dev->pipe, buf,
-                        gadget2_dev->buffer_size, 1);
+                         gadget2_dev->buffer_size, NULL, NULL, 1, 0);
     break;
   default: // PIPE_CONTROL:
     DLOG("Gadget2 EP should never be control");
@@ -224,6 +225,9 @@ static int gadget2_write(USB_DEVICE_INFO* device, int dev_num, char* buf,
   gadget2_sub_device_info_t* gadget2_dev = get_gadget2_sub_dev_info(device, dev_num);
   struct urb* urb = gadget2_dev->urb;
   int result;
+
+  
+  usb_rt_free_write_resources(gadget2_dev->urb);
 
   if(urb) {
     switch(usb_pipetype(gadget2_dev->pipe)) {

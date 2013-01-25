@@ -73,7 +73,7 @@
  * declaration below
  */
 
-#define EHCI_IOC_BUG
+//#define EHCI_IOC_BUG
 
 
 /*
@@ -373,7 +373,7 @@ typedef struct _qtd_t
   uint32_t original_total_bytes_to_transfer;
   uint32_t token_backup;
   qtd_buffer_page_pointer_t buffer_page_zero_backup;
-
+  bool ioc_called;
   uint32_t padding[7];
 } PACKED ALIGNED(32) qtd_t;
 
@@ -586,34 +586,36 @@ typedef struct _itd_t {
   
   uint32_t ex_buf_ptr_pgs[7];
 
-  /*
-   * Everything after this is used by software only and is not
-   * specified by EHCI
-   */
+  /* Everything after this is used by software only and is not
+     specified by EHCI */
   itd_transaction_t transaction_backup[8];
+
   list_head_t chain_list;
-  uint32_t total_bytes_to_transfer;
-  uint32_t frame_index;
+  uint total_bytes_to_transfer;
+  uint frame_index;
   list_head_t uninserted_list;
   //usb_iso_packet_descriptor_t *iso_packet_descs[8];
   
-  /*
-   * previous is used when the itd is removed
-   */
+  /* previous is used when the itd is removed */
   frm_lst_lnk_ptr_t* previous;
 
-  uint32_t padding[19];
+   /* Could be just 8 bits but using unit to keep everything aligned,
+      used for rt-urbs to keep track of which transactions have had
+      their interrupt handler processed, should be cleared when itd is
+      being inserted into periodic list or restarted to receive more
+      data */
+  uint ioc_processed_bitmap;
+  
+  uint32_t padding[18];
 } PACKED ALIGNED(32) itd_t;
 
 CASSERT( (sizeof(itd_t) % 32) == 0, ehci_itd_size)
 
 CASSERT( (sizeof(itd_t) & (sizeof(itd_t) - 1)) == 0, itd_alignedment)
 
-/*
- * -- EM -- There are better ways to store queue heads for endpoints
+/*-- EM -- There are better ways to store queue heads for endpoints
  * but for now this is good enough, right now 128 instances of this
- * struct takes 4 pages, running even lower on kernel memory
- */ 
+ * struct takes 4 pages, running even lower on kernel memory */ 
 typedef struct
 {
   /* First Index: Out = 0, In = 1, Second Index: Endpoint # */
@@ -754,18 +756,17 @@ typedef struct
   uint num_itds;
   uint next_packet_for_sending_data;
   uint packets_in_use;
-  uint last_packed_ioc_processed;
+  uint last_transaction_ioc_processed;
   list_head_t write_itds_to_free;
+  ehci_completion_element_t* completion_element;
   
-  //uint used_table_entries_bitmap[1024/32];
+  /* itds Must be last */
   itd_t* itds[0];
 } ehci_iso_urb_priv_t;
 
 
-/*
- * This should always be a macro, inserting qhs into the frame list is
- * time sensitive
- */
+/* This should always be a macro, inserting qhs into the frame list is
+   time sensitive */
 
 /*
  * -- EM -- insert_qh_into_frame_list is also broken because it does
@@ -801,7 +802,8 @@ initialise_iso_urb_priv(ehci_iso_urb_priv_t* iso_urb_priv, struct urb* urb)
   iso_urb_priv->next_packet_to_make_available       = 0;
   iso_urb_priv->next_itd_for_sending_data           = -1;
   iso_urb_priv->next_packet_for_sending_data        = 0;
-  iso_urb_priv->last_packed_ioc_processed           = 0;
+  iso_urb_priv->last_transaction_ioc_processed      = 0;
+  iso_urb_priv->completion_element                  = NULL;
   iso_urb_priv->packets_in_use = (packets_per_itd * MAX_SAFE_FRAME_INDEX_LOOK_AHEAD);
   //memset(iso_urb_priv->used_table_entries_bitmap, 0, 1024/32);
   INIT_LIST_HEAD(&iso_urb_priv->write_itds_to_free);
@@ -860,6 +862,8 @@ typedef struct
   uint32_t bytes_in_buffer;
   uint32_t buffer_size;
   unsigned int num_qtds;
+  uint next_qtd_for_ioc;
+  ehci_completion_element_t* completion_element;
   qtd_t* qtds[0];
 } ehci_qh_urb_priv_t;
 

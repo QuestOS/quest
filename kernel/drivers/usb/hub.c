@@ -124,7 +124,8 @@ void setup_hub_device_status_urb(hub_info_t* hub_info)
     }
     memset(hub_info->status_change_buffer, 0, STATUS_CHANGE_BUFFER_SIZE);
     usb_fill_rt_int_urb(hub_info->urb, dev, pipe, &hub_info->status_change_buffer,
-                        STATUS_CHANGE_BUFFER_SIZE, hub_info->status_change_endpoint.bInterval);
+                        STATUS_CHANGE_BUFFER_SIZE, NULL, NULL,
+                        hub_info->status_change_endpoint.bInterval, 0);
     while(1) {
       res = usb_submit_urb(hub_info->urb, 0);
       DLOG("res = %d", res);
