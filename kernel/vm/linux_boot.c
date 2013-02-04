@@ -134,7 +134,7 @@ linux_boot_thread (void)
   sti ();
 
   /* TODO: Wait for network initialization here. Other drivers should already be ready. */
-  tsc_delay_usec (3000000);
+  tsc_delay_usec (6000000);
   DLOG ("Loading Linux kernel bzImage...");
   cli ();
   lock_kernel ();

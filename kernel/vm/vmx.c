@@ -574,6 +574,8 @@ vmx_create_pmode_VM (virtual_machine *vm, u32 rip0, u32 rsp0)
   vmwrite (0, VMXENC_PAGE_FAULT_ERRCODE_MATCH);
   vmwrite (0, VMXENC_CR0_GUEST_HOST_MASK); /* all bits "owned" by guest */
   vmwrite (0, VMXENC_CR0_READ_SHADOW);
+  vmwrite (0, VMXENC_CR4_GUEST_HOST_MASK); /* all bits "owned" by guest */
+  vmwrite (0, VMXENC_CR4_READ_SHADOW);
 
   return 0;
 
@@ -1083,6 +1085,12 @@ vmx_start_VM (virtual_machine *vm)
       logger_printf ("EPT misconfiguration:\n  VMXENC_EPT_PTR=0x%p\n",
                      vmread (VMXENC_EPT_PTR));
 #endif
+    } else if (reason == 0x37) {
+      /* Trying to execute XSETBV instruction */
+      logger_printf ("Guest trying to execute XSETBV instruction\n");
+      /* TODO: Try to change XCR0 somewhere in VMCS Guest State if this breaks anything */
+      vmwrite (vmread (VMXENC_GUEST_RIP) + inslen, VMXENC_GUEST_RIP); /* skip instruction */
+      goto enter;               /* resume guest */
     } else {
       /* Not a vm86 related VM-EXIT */
 #if DEBUG_VMX > 1
