@@ -379,7 +379,7 @@ static struct usb_interface_descriptor loopback_intf = {
 
 /* full speed support: */
 
-#define NET2280_INTERFACE_TYPE USB_ENDPOINT_XFER_INT
+#define NET2280_INTERFACE_TYPE USB_ENDPOINT_XFER_BULK
 #define PACKET_SIZE 512
 #define INTERVAL 4
 

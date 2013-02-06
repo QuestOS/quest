@@ -66,9 +66,21 @@ int main()
 
     printf("usb write on %d returned %d\n", HOST_DEVICE_NUM, res);
 
-    usleep(1000000);
+    res = usb_write(HOST_DEVICE_NUM, rw_buf1, SECONDARY_BUFFER_SIZE);
+    if(res < 0) {
+      printf("Failed to write to device %d\n", HOST_DEVICE_NUM);
+      while(1);
+    }
 
-    res = usb_read(0, rw_buf2, SECONDARY_BUFFER_SIZE);
+    printf("usb write on %d returned %d\n", HOST_DEVICE_NUM, res);
+
+    usleep(1000000);
+    while(1) {
+      res = usb_read(0, rw_buf2, SECONDARY_BUFFER_SIZE);
+      if(res != 0) {
+        printf("usb read returned %d\n", res);
+      }
+    }
   }
   else {
     res = usb_write(0, rw_buf1, SECONDARY_BUFFER_SIZE);
@@ -80,8 +92,7 @@ int main()
     printf("usb write on 0 returned %d\n", res);
     
     usleep(1000000);
-    
-   res = usb_read (HOST_DEVICE_NUM, rw_buf2, SECONDARY_BUFFER_SIZE);
+    res = usb_read (HOST_DEVICE_NUM, rw_buf2, SECONDARY_BUFFER_SIZE);
   }
 
   printf("usb read returned %d\n", res);

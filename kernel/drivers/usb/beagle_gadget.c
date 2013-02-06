@@ -172,8 +172,6 @@ static int gadget_read(USB_DEVICE_INFO* device, int dev_num, char* buf, int data
     DLOG("Called read on an output endpoint/dev");
     return -1;
   }
-
-  
   
   if(urb) {
     switch(usb_pipetype(gadget_dev->pipe)) {
@@ -306,7 +304,6 @@ static int gadget_read(USB_DEVICE_INFO* device, int dev_num, char* buf, int data
             gadget_dev->data_available -= bytes_freed;
           }
         }
-
         return bytes_to_copy;
       }
     default: // case PIPE_CONTROL:
@@ -322,89 +319,36 @@ static int gadget_read(USB_DEVICE_INFO* device, int dev_num, char* buf, int data
   }
 }
 
-#define PUSH_LOTS_DATA
-//#define SET_DATA
 
 static int gadget_write(USB_DEVICE_INFO* device, int dev_num, char* buf,
                         int data_len)
 {
-  
-  static int write_call_counter = 0;
   uint64_t time;
   gadget_sub_device_info_t* gadget_dev = get_gadget_sub_dev_info(device, dev_num);
   struct urb* urb = gadget_dev->urb;
   int result;
-#ifdef SET_DATA
-  int memset_counter = 0;
-#endif
 
   if(usb_pipein(gadget_dev->pipe)) {
     DLOG("Called write on an output endpoint/dev");
     return -1;
   }
   usb_rt_free_write_resources(gadget_dev->urb);
-  write_call_counter++;
-
-#ifdef SET_DATA
-  while(memset_counter < data_len) {
-    int data_this_time = (data_len - memset_counter) > 512 ?
-      512 : (data_len - memset_counter);
-    
-    memset(&buf[memset_counter], 'a' + rotating_counter, data_this_time);
-    memset_counter += data_this_time;
-    if(++rotating_counter == 10) {
-      rotating_counter = 0;
-    }
-  }
   
-#endif
   if(urb) {
     switch(usb_pipetype(gadget_dev->pipe)) {
     case PIPE_INTERRUPT:
-      {
-        result = usb_rt_push_data(urb, buf, data_len, 512);
-        return result;
-      }
-
-    case PIPE_ISOCHRONOUS:
-      {
-#if 1
-#ifdef PUSH_LOTS_DATA
-        result = usb_rt_push_data(urb, buf, data_len, 2);
-#else
-        result = usb_rt_push_data(urb, buf, gadget_dev->transaction_size, 2);
-#endif
-#else
-        result = usb_rt_push_data(urb, "3", 1, 2);
-        
-#endif
-        
-        return result;
-      }
     case PIPE_BULK:
-      {
-#if 1
-#ifdef PUSH_LOTS_DATA
-        result = usb_rt_push_data(urb, buf, data_len, 512);
+      return usb_rt_push_data(urb, buf, data_len, 512);
+            
+    case PIPE_ISOCHRONOUS:
+      return usb_rt_push_data(urb, buf, data_len, 2);
         
-#else
-        result = usb_rt_push_data(urb, buf, gadget_dev->transaction_size, 512);
-#endif
-#else
-        result = usb_rt_push_data(urb, "3", 1, 512);
-        
-#endif
-        
-        return result;
-      }
     default: // case PIPE_CONTROL:
-      {
         DLOG("Unsupported pipe type");
         return -1;
-      }
     }
   }
-    else {
+  else {
     DLOG("Urb is not set call open first");
     return -1;
   }

@@ -40,6 +40,7 @@
 #include <kernel.h>
 #include <sched/sched.h>
 #include <util/sort.h>
+#include <sched/vcpu.h>
 
 #define EHCI_IS_INDEX_IN_CIRC_BUF_REGION(test_index, start_index, end_index) \
   (start_index < end_index ?                                            \
@@ -92,8 +93,7 @@ static int create_itd_chain(ehci_hcd_t* ehci_hcd, uint8_t address,
 static inline frm_lst_lnk_ptr_t**
 get_next_frm_lst_lnk_ptrs_previous(ehci_hcd_t* ehci_hcd, frm_lst_lnk_ptr_t* ptr);
 
-static void insert_remaining_realtime_itds(ehci_hcd_t* ehci_hcd, bool in_irq_handler,
-                                           bool have_kernel_lock, struct urb* urb);
+static void insert_remaining_realtime_itds(ehci_hcd_t* ehci_hcd, struct urb* urb);
 
 /* Reminder: inserting itds is time sensitive */
 #define insert_itd_into_frame_list(hcd, list, index, itd)       \
@@ -514,7 +514,7 @@ int ehci_rt_iso_push_data(struct urb* urb, char* data, int count, uint interrupt
   int effective_packet_num;
   ehci_completion_element_t* comp_elem = NULL;
 
-  insert_remaining_realtime_itds(hcd_to_ehci_hcd(urb->dev->hcd), FALSE, TRUE, urb);
+  insert_remaining_realtime_itds(hcd_to_ehci_hcd(urb->dev->hcd), urb);
 
   if(iso_urb_priv->completion_element == NULL && interrupt_frame_rate != 0) {
     comp_elem = allocate_ehci_completion_element(ehci_hcd);
@@ -841,21 +841,14 @@ static int ehci_rt_qh_push_data(struct urb* urb, ehci_qh_urb_priv_t* qh_urb_priv
     memcpy(&urb_buffer[qh_urb_priv->next_byte_to_use_for_writing],
            &data[bytes_sent],
            bytes_for_this_chain);
-    
+    DLOG_INT(bytes_for_this_chain);
     if(!create_qtd_chain(ehci_hcd, urb, NULL, 0,
                          (addr_t)&urb_buffer[qh_urb_priv->next_byte_to_use_for_writing],
                          bytes_for_this_chain, mp_enabled, &qtd_list, interrupt_rate)) {
       return -1;
     }
 
-    qtd_t* temp_qtd;
-    list_for_each_entry(temp_qtd, &qtd_list, chain_list) {
-      DLOG("AAAAAAAAAAA");
-      if(temp_qtd->token & QTD_IOC) {
-        DLOG("BBBBBBBBBBBBBB");
-      }
-      
-    }
+    
     
     if(completion_element) {
       qh_urb_priv->completion_element = completion_element;
@@ -919,7 +912,7 @@ static int ehci_rt_iso_update_packets(struct urb* urb, int max_packets)
   //int next_packet_for_this_itd;
 
 
-  insert_remaining_realtime_itds(hcd_to_ehci_hcd(urb->dev->hcd), FALSE, TRUE, urb);
+  insert_remaining_realtime_itds(hcd_to_ehci_hcd(urb->dev->hcd), urb);
   //DLOG("%s called", __FUNCTION__);
     
   for(i = 0; i < max_packets; ++i) {
@@ -1129,7 +1122,7 @@ static void handle_output_qh_rt_urb_completion(ehci_hcd_t* ehci_hcd,
       break;
     }
   }
-  DLOG_UINT(call_counter);
+
   while(call_counter--) {
     urb->complete(urb);
     if(urb->transfer_flags & URB_RT_ONE_HANDLER_CALL) {
@@ -1245,34 +1238,13 @@ static bool handle_non_rt_urb_completion(ehci_hcd_t* ehci_hcd,
   return FALSE;
 }
 
-static void ehci_check_for_urb_completions(ehci_hcd_t* ehci_hcd, bool in_irq_handler)
+static void ehci_check_for_urb_completions(ehci_hcd_t* ehci_hcd)
 {
   ehci_completion_element_t* comp_element;
   ehci_completion_element_t* temp_comp_element;
 
-  /* Since this function is called both in a thread that runs with
-   * interrupts on and in an interrupt handler if we cannot get the
-   * lock when in the interrupt handler then that means something else
-   * is handling completions and we should just back off.  This is
-   * extremely important for the interrupt handler because if it
-   * preempted the backup thread when the backup thread had the lock
-   * the interrupt handler would wait indefinitely unless the backup
-   * thread was scheduled on another core.  */
-
-  /* -- EM -- This is not 100% as we might not get the lock because
-   * something is putting a new element into the list, we would need
-   * another variable/lock to indicate this but for now don't care,
-   * the completion function will just be called slightly later */
-
-  if(in_irq_handler) {
-    if(!spinlock_attempt_lock(&ehci_hcd->completion_lock)) {
-      return;
-    }
-  }
-  else {
-    spinlock_lock(&ehci_hcd->completion_lock);
-  }
-
+  spinlock_lock(&ehci_hcd->completion_lock);
+  
   /* At this point we have completion_lock */
     
   list_for_each_entry_safe(comp_element, temp_comp_element,
@@ -1348,25 +1320,8 @@ void remap_iso_itd(struct urb* urb, uint32 frame_index, int new_assignment)
   }
 }
 
-void reorder_transactions(ehci_hcd_t* ehci_hcd, bool in_irq_handler, bool have_kernel_lock)
+void reorder_transactions(ehci_hcd_t* ehci_hcd)
 {
-  /*
-   * Since this function is called both in a thread that runs with
-   * interrupts on and in an interrupt handler if we cannot get the
-   * lock when in the interrupt handler then that means something else
-   * is handling completions and we should just back off.  This is
-   * extremely important for the interrupt handler because if it
-   * preempted the backup thread when the backup thread had the lock
-   * the interrupt handler would wait indefinitely unless the backup
-   * thread was scheduled on another core
-   */
-
-  
-  /* -- EM -- This is not 100% as we might not get the lock because
-   * something is putting a new element into the list, we would need
-   * another variable/lock to indicate this but for now don't care,
-   * the re-ordering will just be delayed a little */
-
   //static int call_counter = 0;
   int i,j;
   int num_rt_urbs = ehci_hcd->num_rt_urbs;
@@ -1389,27 +1344,8 @@ void reorder_transactions(ehci_hcd_t* ehci_hcd, bool in_irq_handler, bool have_k
   
 
 
-  if(!have_kernel_lock) {
-   
-    cli();  /* Messing with frame list, cannot be interrupted */
-    
-    lock_kernel(); /* -- EM -- Need to the kernel lock because that is
-                      protecting the frame list, should fix it so it
-                      isn't later */
-  }
+  spinlock_lock(&ehci_hcd->uninserted_itd_lock);
 
-  if(in_irq_handler) {
-    if(!spinlock_attempt_lock(&ehci_hcd->uninserted_itd_lock)) {
-      if(!have_kernel_lock) {
-        unlock_kernel();
-        sti();
-      }
-      return;
-    }
-  }
-  else {
-    spinlock_lock(&ehci_hcd->uninserted_itd_lock);
-  }
   
   
   current_frame_index = EHCI_CURRENT_FRAME_INDEX(ehci_hcd);
@@ -1449,11 +1385,7 @@ void reorder_transactions(ehci_hcd_t* ehci_hcd, bool in_irq_handler, bool have_k
   }
   
   spinlock_unlock(&ehci_hcd->uninserted_itd_lock);
-  if(!have_kernel_lock) {
-    unlock_kernel();
-    sti();
-  }
-  
+    
 }
 
 void insert_remaining_realtime_itds_for_urb(ehci_hcd_t* ehci_hcd, ehci_iso_urb_priv_t* iso_urb_priv)
@@ -1523,8 +1455,7 @@ void insert_remaining_realtime_itds_for_urb(ehci_hcd_t* ehci_hcd, ehci_iso_urb_p
   }
 }
 
-static void insert_remaining_realtime_itds(ehci_hcd_t* ehci_hcd, bool in_irq_handler,
-                                    bool have_kernel_lock, struct urb* urb)
+static void insert_remaining_realtime_itds(ehci_hcd_t* ehci_hcd, struct urb* urb)
 {
   ehci_iso_urb_priv_t* iso_urb_priv;
   ehci_iso_urb_priv_t* temp_iso_urb_priv;
@@ -1540,43 +1471,9 @@ static void insert_remaining_realtime_itds(ehci_hcd_t* ehci_hcd, bool in_irq_han
     }
   }
 
-  /*
-   * Since this function is called both in a thread that runs with
-   * interrupts on and in an interrupt handler if we cannot get the
-   * lock when in the interrupt handler then that means something else
-   * is handling completions and we should just back off.  This is
-   * extremely important for the interrupt handler because if it
-   * preempted the backup thread when the backup thread had the lock
-   * the interrupt handler would wait indefinitely unless the backup
-   * thread was scheduled on another core
-   */
-
-  /* -- EM -- This is not 100% as we might not get the lock because
-   * something is putting a new element into the list, we would need
-   * another variable/lock to indicate this but for now don't care,
-   * the itd insertion will just be delayed a little */
-
-  if(!have_kernel_lock) {
-   
-    cli();  /* Messing with frame list, cannot be interrupted */
-    
-    lock_kernel(); /* -- EM -- Need to the kernel lock because that is
-                      protecting the frame list, should fix it so it
-                      isn't later */
-  }
   
-  if(in_irq_handler) {
-    if(!spinlock_attempt_lock(&ehci_hcd->uninserted_itd_lock)) {
-      if(!have_kernel_lock) {
-        unlock_kernel();
-        sti();
-      }
-      return;
-    }
-  }
-  else {
-    spinlock_lock(&ehci_hcd->uninserted_itd_lock);
-  }
+  spinlock_lock(&ehci_hcd->uninserted_itd_lock);
+
   
   /* At this point we have the uninserted_itd_lock lock */
 
@@ -1595,11 +1492,40 @@ static void insert_remaining_realtime_itds(ehci_hcd_t* ehci_hcd, bool in_irq_han
 
   
   spinlock_unlock(&ehci_hcd->uninserted_itd_lock);
-  if(!have_kernel_lock) {
-    unlock_kernel();
-    sti();
+  
+}
+
+
+
+
+static void ehci_irq_bottom_half(ehci_hcd_t* ehci_hcd)
+{
+  insert_remaining_realtime_itds(ehci_hcd, NULL);
+  reorder_transactions(ehci_hcd);
+  ehci_check_for_urb_completions(ehci_hcd);
+}
+
+
+#ifdef EHCI_USE_IOVCPU
+
+static void ehci_bh_thread(ehci_hcd_t* ehci_hcd)
+{
+  while(1) {
+    DLOG("F:");
+    ehci_irq_bottom_half(ehci_hcd);
+    
+    iovcpu_job_completion();
   }
 }
+
+
+static void ehci_iovcpu_job_wakeup(ehci_hcd_t* ehci_hcd)
+{
+  /* -- EM -- hack: use VCPU2's period */
+  iovcpu_job_wakeup (ehci_hcd->master_iovcpu, vcpu_lookup (2)->T);
+}
+
+#endif
 
 
 #ifdef EHCI_IOC_BUG
@@ -1607,8 +1533,6 @@ static void insert_remaining_realtime_itds(ehci_hcd_t* ehci_hcd, bool in_irq_han
 
 static void ioc_backup_thread(ehci_hcd_t* ehci_hcd)
 {
-  unlock_kernel();
-  sti();
   
   while(1) {
     
@@ -1616,24 +1540,18 @@ static void ioc_backup_thread(ehci_hcd_t* ehci_hcd)
      * Need to get the kernel lock since sched_usleep will call
      * schedule
      */
-    cli();
-    lock_kernel();
     /* 18750 - just a random number that works */
     sched_usleep(18750 * DEFAULT_INT_THRESHOLD );
-    unlock_kernel();
-    sti();
-    
-    insert_remaining_realtime_itds(ehci_hcd, FALSE, FALSE, NULL);
-    ehci_check_for_urb_completions(ehci_hcd, FALSE);
-    reorder_transactions(ehci_hcd, FALSE, FALSE);
+
+#ifdef EHCI_USE_IOVCPU
+    ehci_iovcpu_job_wakeup(ehci_hcd);
+#else
+    ehci_irq_bottom_half(ehci_hcd);
+#endif
   }
 }
 
 #endif // EHCI_IOC_BUG
-
-
-
-
 
 static uint32_t
 ehci_irq_handler(uint8 vec)
@@ -1669,9 +1587,11 @@ ehci_irq_handler(uint8 vec)
     panic("USBINTR_ERR case unhandled");
   }
 
-  insert_remaining_realtime_itds(&ehci_hcd, TRUE, TRUE, NULL);
-  reorder_transactions(&ehci_hcd, TRUE, TRUE);
-  ehci_check_for_urb_completions(&ehci_hcd, TRUE);
+#ifdef EHCI_USE_IOVCPU
+  ehci_iovcpu_job_wakeup(&ehci_hcd);
+#else
+  ehci_irq_bottom_half(&ehci_hcd);
+#endif
     
   unlock_kernel();
   
@@ -1927,7 +1847,7 @@ static int ehci_submit_urb(struct urb* urb,
   uint32_t pipe_type;
   
   if(ehci_hcd->reorder_urbs_stage != EHCI_RUS_NONE) {
-    reorder_transactions(ehci_hcd, FALSE, TRUE);
+    reorder_transactions(ehci_hcd);
     if(ehci_hcd->reorder_urbs_stage != EHCI_RUS_NONE) {
       DLOGV("reordering transactions cannot submit urb, returning -2");
       return -2;
@@ -1977,7 +1897,7 @@ void ehci_kill_urb(struct urb* urb)
  */
 int ehci_rt_iso_data_lost(struct urb* urb)
 {
-  insert_remaining_realtime_itds(hcd_to_ehci_hcd(urb->dev->hcd), FALSE, TRUE, urb);
+  insert_remaining_realtime_itds(hcd_to_ehci_hcd(urb->dev->hcd), urb);
   DLOG("ehci_rt_iso_data_lost is not implemented");
   panic("ehci_rt_iso_data_lost is not implemented");
   return 0;
@@ -1996,7 +1916,7 @@ int ehci_rt_iso_free_packets(struct urb* urb, int number_of_packets)
   uint32_t packets_per_itd = interval < 8 ? 8 / interval : 1;
   uint32_t packets_per_itd_mask = packets_per_itd - 1;
 
-  insert_remaining_realtime_itds(hcd_to_ehci_hcd(urb->dev->hcd), FALSE, TRUE, urb);
+  insert_remaining_realtime_itds(hcd_to_ehci_hcd(urb->dev->hcd), urb);
 
   for(i = 0; i < number_of_packets; ++i) {
     itd_t* itd;
@@ -2230,6 +2150,15 @@ initialise_ehci_hcd(uint32_t usb_base,
  
   // Set all ports to route to EHCI chip
   EHCI_SET_CONFIG_FLAG(ehci_hcd, 1);
+
+
+#ifdef EHCI_USE_IOVCPU
+  ehci_hcd->master_iovcpu =
+    create_kernel_thread_args ((u32) ehci_bh_thread,
+                               (u32) &ehci_hcd->bh_stack[EHCI_IOC_BH_THREAD_STACK_SIZE-1],
+                               "EHCI Bottom Half", FALSE, 1, ehci_hcd);
+  set_iovcpu (ehci_hcd->master_iovcpu, IOVCPU_CLASS_USB);
+#endif
 
 #ifdef EHCI_IOC_BUG
   
@@ -4292,7 +4221,7 @@ static int ehci_is_rt_schedulable(ehci_hcd_t* ehci_hcd, struct urb* urb)
       /* Need to reorder everything then we can insert the new URB */
       clear_reordered_map(ehci_hcd);
       ehci_hcd->reorder_urbs_stage = EHCI_RUS_REORDER_OLD;
-      reorder_transactions(ehci_hcd, FALSE, TRUE);
+      reorder_transactions(ehci_hcd);
 
       for(i = 0; i < ehci_hcd->frame_list_size * 8; ++i) {
         ehci_hcd->micro_frame_remaining_time_periodic[i] = USEC_PER_MICRO_FRAME_FOR_PERIODIC;

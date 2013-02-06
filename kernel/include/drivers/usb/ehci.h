@@ -75,6 +75,9 @@
 
 //#define EHCI_IOC_BUG
 
+//#define EHCI_USE_IOVCPU
+
+
 
 /*
  * These constants affect system performance, would be worth playing
@@ -701,6 +704,14 @@ typedef struct
   int new_assignments[MAX_RT_URBS];
 
   bool reordered_map[1024];
+
+#ifdef EHCI_USE_IOVCPU
+#define EHCI_IOC_BH_THREAD_STACK_SIZE 1024
+  
+  uint32_t bh_stack[EHCI_IOC_BH_THREAD_STACK_SIZE];
+
+  task_id master_iovcpu;
+#endif
 
 
 #define EHCI_RUS_NONE 0

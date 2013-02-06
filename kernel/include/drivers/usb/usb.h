@@ -22,6 +22,29 @@
 #include <drivers/usb/linux_usb.h>
 #include <stddef.h>
 
+#define USB_DRIVER_INIT(device_name, driver_name, probe_func,           \
+                        open_func, close_func, read_func, write_func)   \
+                                                                        \
+  static USB_DRIVER device_##device_name = {                            \
+    .probe = probe_func,                                                \
+    .open  = open_func,                                                 \
+    .close = close_func,                                                \
+    .read  = read_func,                                                 \
+    .write = write_func                                                 \
+  };                                                                    \
+                                                                        \
+                                                                        \
+  static bool usb_##device_name##_driver_init(void)                     \
+  {                                                                     \
+    return usb_register_driver(&device_##device_name);                  \
+  }                                                                     \
+                                                                        \
+  static const struct module_ops mod_ops = {                            \
+    .init = usb_##device_name##_driver_init                             \
+  };                                                                    \
+                                                                        \
+  DEF_MODULE (usb___##device_name, driver_name, &mod_ops, {"usb"}); 
+  
 
 #define pci_config_rd8(bus, slot, func, reg) \
   pci_read_byte (pci_addr (bus, slot, func, reg))
