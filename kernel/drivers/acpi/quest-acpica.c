@@ -145,6 +145,22 @@
 #include"smp/apic.h"
 #include "sched/sched.h"
 
+
+#define ACPI_DEBUG
+#define ACPI_DEBUG_COM1
+
+#ifdef ACPICA_DEBUG_COM1
+#define DLOG_COM1(fmt, ...) com1_printf(fmt,##__VA_ARGS__)
+#else
+#define DLOG_COM1(fmt,...) ;
+#endif
+
+#ifdef ACPICA_DEBUG
+#define DLOG(fmt, ...) logger_printf(fmt,##__VA_ARGS__)
+#else
+#define DLOG(fmt,...) ;
+#endif
+
 /*
  * OSL Initialization and shutdown primitives
  */
@@ -413,7 +429,7 @@ ACPI_STATUS
 AcpiOsInstallInterruptHandler (UINT32 InterruptNumber,
                                ACPI_OSD_HANDLER ServiceRoutine, void *Context)
 {
-  logger_printf ("AcpiOsInstallInterruptHandler (0x%X, 0x%p, 0x%p)\n",
+  DLOG ("AcpiOsInstallInterruptHandler (0x%X, 0x%p, 0x%p)\n",
                  InterruptNumber, ServiceRoutine, Context);
 
   acpi_service_routine = ServiceRoutine;
@@ -497,7 +513,7 @@ AcpiOsReadPort (ACPI_IO_ADDRESS Address, UINT32 * Value, UINT32 Width)
     *Value = inl (Address);
     break;
   }
-  //logger_printf ("AcpiOsReadPort (0x%.04X, %d) = 0x%X\n", Address, Width, (*Value) & ((1 << Width) - 1));
+  //DLOG ("AcpiOsReadPort (0x%.04X, %d) = 0x%X\n", Address, Width, (*Value) & ((1 << Width) - 1));
   return AE_OK;
 }
 
@@ -505,7 +521,7 @@ AcpiOsReadPort (ACPI_IO_ADDRESS Address, UINT32 * Value, UINT32 Width)
 ACPI_STATUS
 AcpiOsWritePort (ACPI_IO_ADDRESS Address, UINT32 Value, UINT32 Width)
 {
-  //logger_printf ("AcpiOsWritePort (0x%.04X, 0x%X, %d)\n", Address, (Value) & ((1 << Width) - 1), Width);
+  //DLOG ("AcpiOsWritePort (0x%.04X, 0x%X, %d)\n", Address, (Value) & ((1 << Width) - 1), Width);
   switch (Width) {
   case 8:
     outb ((UINT8) Value, Address);
@@ -528,7 +544,7 @@ AcpiOsWritePort (ACPI_IO_ADDRESS Address, UINT32 Value, UINT32 Width)
 ACPI_STATUS
 AcpiOsReadMemory (ACPI_PHYSICAL_ADDRESS Address, UINT32 * Value, UINT32 Width)
 {
-  logger_printf ("AcpiOsReadMemory (0x%p, %d)\n", Address, Width);
+  DLOG ("AcpiOsReadMemory (0x%p, %d)\n", Address, Width);
   if (Width != 8 && Width != 16 && Width != 32)
     return AE_BAD_PARAMETER;
   u32 frame = Address & ~(0xFFF);
@@ -554,7 +570,7 @@ AcpiOsReadMemory (ACPI_PHYSICAL_ADDRESS Address, UINT32 * Value, UINT32 Width)
 ACPI_STATUS
 AcpiOsWriteMemory (ACPI_PHYSICAL_ADDRESS Address, UINT32 Value, UINT32 Width)
 {
-  logger_printf ("AcpiOsWriteMemory (0x%p, 0x%p, %d)\n", Address, Value, Width);
+  DLOG ("AcpiOsWriteMemory (0x%p, 0x%p, %d)\n", Address, Value, Width);
   if (Width != 8 && Width != 16 && Width != 32)
     return AE_BAD_PARAMETER;
   u32 frame = Address & ~(0xFFF);
@@ -591,7 +607,7 @@ AcpiOsReadPciConfiguration (ACPI_PCI_ID * PciId,
   uint8 v8;
   uint16 v16;
   uint32 v32;
-  com1_printf
+  DLOG_COM1
     ("AcpiOsReadPciConfiguration(%.4X:%.4X:%.4X:%.4X, %.8X, ..., %d)",
      PciId->Segment, PciId->Bus, PciId->Device, PciId->Function, Reg, Width);
   pci_config_addr_init (&a, PciId->Bus, PciId->Device, PciId->Function, Reg);
@@ -609,10 +625,10 @@ AcpiOsReadPciConfiguration (ACPI_PCI_ID * PciId,
     *((ACPI_INTEGER *) Value) = (ACPI_INTEGER) v32;
     break;
   default:
-    com1_printf (" = error\n");
+    DLOG_COM1 (" = error\n");
     return AE_BAD_PARAMETER;
   }
-  com1_printf (" = 0x%x\n", *((ACPI_INTEGER *) Value));
+  DLOG_COM1 (" = 0x%x\n", *((ACPI_INTEGER *) Value));
   return AE_OK;
 }
 
@@ -622,7 +638,7 @@ AcpiOsWritePciConfiguration (ACPI_PCI_ID * PciId,
                              UINT32 Reg, ACPI_INTEGER Value, UINT32 Width)
 {
   pci_config_addr a;
-  com1_printf ("AcpiOsWritePciConfiguration\n");
+  DLOG_COM1 ("AcpiOsWritePciConfiguration\n");
   pci_config_addr_init (&a, PciId->Bus, PciId->Device, PciId->Function, Reg);
   switch (Width) {
   case 8:
@@ -649,7 +665,7 @@ void
 AcpiOsDerivePciId (ACPI_HANDLE Rhandle,
                    ACPI_HANDLE Chandle, ACPI_PCI_ID ** PciId)
 {
-  com1_printf ("AcpiOsDerivePciId\n");
+  DLOG_COM1 ("AcpiOsDerivePciId\n");
   return;
 }
 
@@ -661,7 +677,7 @@ AcpiOsDerivePciId (ACPI_HANDLE Rhandle,
 ACPI_STATUS
 AcpiOsValidateInterface (char *Interface)
 {
-  logger_printf ("AcpiOsValidateInterface (%s)\n", Interface);
+  DLOG ("AcpiOsValidateInterface (%s)\n", Interface);
   return AE_SUPPORT;
 }
 
