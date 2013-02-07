@@ -49,6 +49,8 @@
 #define DLOG(fmt,...) ;
 #endif
 
+#ifdef USE_LINUX_SANDBOX
+
 /*
  * Load Linux kernel bzImage from pathname in filesystem to virtual
  * address load_addr in memory.
@@ -56,7 +58,6 @@
 int
 load_linux_kernel (uint32 * load_addr, char * pathname)
 {
-#ifdef USE_LINUX_SANDBOX
   int act_len = 0;
   linux_setup_header_t * setup_header;
   int eztftp_bulk_read (char *, uint32 *);
@@ -98,7 +99,6 @@ load_linux_kernel (uint32 * load_addr, char * pathname)
   /* Print early msg, reload seg registers for 32-bit entry point, and reuse heap */
   setup_header->loadflags = ((setup_header->loadflags) & (~0x60)) | 0x80;
   DLOG ("modified loadflags: 0x%X", setup_header->loadflags);
-#endif
 
   return act_len;
 }
@@ -196,6 +196,8 @@ linux_boot_thread_init (void)
                        (uint32) &boot_thread_stack, "Linux boot thread");
   return TRUE;
 }
+
+#endif
 
 /* 
  * Local Variables:

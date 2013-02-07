@@ -47,7 +47,7 @@ void
 vmx_init_mem (uint32 cpu)
 {
   extern uint32 _physicalbootstrapstart;
-  extern uint32 _code16start, _code16_pages, _code16physicalstart;
+  //extern uint32 _code16start, _code16_pages, _code16physicalstart;
 
   /* Original Quest Paging Data Structures */
   uint32 phys_cr3 = (uint32) get_pdbr ();

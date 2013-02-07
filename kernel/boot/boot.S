@@ -27,6 +27,7 @@
 
 #include "kernel.h"
 #include "vm/linux_boot.h"
+#include "vm/spow2.h"
 
         .globl initial_gdt
 
@@ -145,14 +146,16 @@ real_start:
         loop 1b
         #endif
 
-        /* --YL-- Use header value instead of hard code it */
         /* Shared Memory Pool for power-of-two allocator (Quest-V)*/
-        movl $0x9F000083, %eax
-        movl %eax, pgd+0x9F0
-        movl $0x9F400083, %eax
-        movl %eax, pgd+0x9F4
-        movl $0x9F800083, %eax
-        movl %eax, pgd+0x9F8
+        movl $SHARED_MEM_POOL_SIZE >> 22, %ecx
+        movl $PHY_SHARED_MEM_POOL_START+0x83, %eax
+        movl %eax, %ebx
+        shrl $20, %ebx
+        addl $pgd, %ebx
+1:      movl %eax, (%ebx)
+        addl $0x00400000, %eax
+        addl $0x4, %ebx
+        loop 1b
         #endif
 
         /* Set 1024th (top) entry in PGD to reference kern_pg_table

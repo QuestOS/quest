@@ -236,7 +236,7 @@ vmx_global_init (void)
 {
   DLOG ("global_init");
   /* Map real-mode code at virtual address 0x8000 for VM86 task */
-  extern uint32 _code16start, _code16_pages, _code16physicalstart;
+  //extern uint32 _code16start, _code16_pages, _code16physicalstart;
   uint32 phys_pgt = (uint32) get_phys_addr (vmx_vm86_pgt);
   uint32 phys_pgd = (uint32) get_pdbr ();
   uint32 *virt_pgd = map_virtual_page (phys_pgd | 3);

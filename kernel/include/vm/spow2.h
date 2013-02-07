@@ -39,9 +39,6 @@
 
 /* Starting physical address of this pool. Let's put it together with shared memory. */
 /* See shm.h for detail about the location. */
-
-/* --YL-- This value is now hard coded in boot.S. So, if you change it here, also fix
- * boot.S. We'll fix this later. (0x9F000000) */
 #define PHY_SHARED_MEM_POOL_START   \
     (PHYS_SHARED_MEM_HIGH - SHARED_MEM_SIZE - SHARED_MEM_POOL_SIZE)
 
