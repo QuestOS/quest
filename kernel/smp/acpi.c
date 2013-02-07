@@ -557,7 +557,8 @@ DisplayOneDevice (ACPI_HANDLE ObjHandle, UINT32 Level, void *Context,
       u8 hdrtype = READ (0, addr, fun, 0x0E, byte);
       if ((hdrtype & 0x7F) == 1) {
         /* PCI-to-PCI bridge headerType == 1 */
-        busnum = READ (0, addr, fun, 0x1A, byte);
+        busnum = READ (0, addr, fun, 0x19, byte);
+        //busnum = READ (0, addr, fun, 0x1A, byte);
         DLOG_COM1 ("  bus=0x%.02X\n", busnum);
         pcibus = TRUE;
       }
