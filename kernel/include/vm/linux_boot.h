@@ -27,6 +27,10 @@
 /* Number of 4MB pages of the value above */
 #define LINUX_KERNEL_LOAD_PAGE        (LINUX_KERNEL_LOAD_SIZE >> 22)
 
+/* Physical load address of Linux initial ramdisk */
+/* We need to pick an address that does not overlap with Linux kernel */
+#define INITRD_LOAD_PADDR             0x00800000
+
 /* Start virtual address of the kernel load memory region */
 #define LINUX_KERNEL_LOAD_VA    \
     (PHY_SHARED_MEM_POOL_START - LINUX_KERNEL_LOAD_SIZE)
@@ -90,7 +94,7 @@ typedef struct _linux_setup_header {
   uint32  init_size;
 } PACKED linux_setup_header_t;
 
-extern int load_linux_kernel (uint32 *, char *);
+extern int load_linux_kernel (uint32 *, char *, char *);
 extern bool linux_boot_thread_init (void);
 
 #endif /* __ASSEMBLER__ */
