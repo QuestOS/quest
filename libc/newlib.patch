@@ -20,11 +20,14 @@
  fi
 --- ../../newlib-1.18.0/newlib/configure.host	2009-12-10 12:12:11.000000000 -0500
 +++ newlib/configure.host	2010-04-03 15:57:57.000000000 -0400
-@@ -519,6 +519,9 @@ case "${host}" in
+@@ -519,6 +519,12 @@ case "${host}" in
    w65-*-*)
  	sys_dir=w65
  	;;
 +  i[34567]86-*-quest*)
++	sys_dir=quest
++	;;
++  arm-*-quest*)
 +	sys_dir=quest
 +	;;
    xscale-*-*)

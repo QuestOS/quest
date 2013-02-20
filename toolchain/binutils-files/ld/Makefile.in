@@ -2686,6 +2686,9 @@ eelf_i386.c: $(srcdir)/emulparams/elf_i386.sh \
 equest_i386.c: $(srcdir)/emulparams/quest_i386.sh \
   $(ELF_DEPS) $(srcdir)/scripttempl/elf.sc ${GEN_DEPENDS}
 	${GENSCRIPTS} quest_i386 "$(tdir_quest_i386)"
+equest_arm.c: $(srcdir)/emulparams/quest_arm.sh \
+  $(ELF_DEPS) $(srcdir)/scripttempl/elf.sc ${GEN_DEPENDS}
+	${GENSCRIPTS} quest_arm "$(tdir_quest_arm)"
 eelf_i386_be.c: $(srcdir)/emulparams/elf_i386_be.sh \
   $(ELF_DEPS) $(srcdir)/scripttempl/elf.sc ${GEN_DEPENDS}
 	${GENSCRIPTS} elf_i386_be "$(tdir_elf_i386_be)"

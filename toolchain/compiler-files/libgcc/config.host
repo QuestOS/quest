@@ -1140,6 +1140,8 @@ mep*-*-*)
 	;;
 i[3-7]86-*-quest*)
 	;;
+arm-*-quest*)
+	;;
 *)
 	echo "*** Configuration ${host} not supported" 1>&2
 	exit 1
