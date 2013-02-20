@@ -1,6 +1,4 @@
-#TARGET=i586-pc-quest
-TARGET=arm-pc-quest
-TOOLCHAIN_INSTALL_DIR=$(HOME)/bin/cross
+include ../target-config.mk
 
 
 COMPILER = gcc-4.7.2

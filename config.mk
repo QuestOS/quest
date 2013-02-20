@@ -1,6 +1,6 @@
+include $(dir $(lastword $(MAKEFILE_LIST)))target-config.mk
+
 INSTALL_CMD = cp
-TARGET = i586-pc-quest
-TOOLCHAIN_INSTALL_DIR = $(HOME)/bin/cross
 CC = $(TARGET)-gcc
 LD = $(TARGET)-ld
 AR = $(TARGET)-ar
