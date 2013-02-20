@@ -44,8 +44,8 @@ compiler: $(COMPILER_BUILD_DIR)/Makefile
 	mkdir -p $(TOOLCHAIN_INSTALL_DIR)
 	cd $(COMPILER_BUILD_DIR); $(MAKE) all-gcc; $(MAKE) install-gcc; 
 	-cd ${HOME}/bin/cross/bin; ln -s $(TARGET)-gcc $(TARGET)-cc
-	#$(MAKE) -C ../libc/ all;
-	#cd $(COMPILER_BUILD_DIR); $(MAKE) all; $(MAKE) install
+	$(MAKE) -C ../libc/ all;
+	cd $(COMPILER_BUILD_DIR); $(MAKE) all; $(MAKE) install
 
 gmp: $(GMP_BUILD_DIR)/Makefile
 	$(MAKE) -C $(GMP_BUILD_DIR)
