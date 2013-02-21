@@ -5,7 +5,7 @@ LIBC_BUILD_DIR = build-$(LIBC)
 LIBC_WEB_LOCATION = ftp://sources.redhat.com/pub/newlib/$(LIBC).tar.gz
 ARCH_INDEPENDENT_QUEST_FILES = quest-files
 ARCH_INDEPENDENT_QUEST_LIBC_FILES = $(shell find $(ARCH_INDEPENDENT_QUEST_FILES) -type f)
-ARCH_DEPENDENT_QUEST_FILES = arch-specific-quest-files/$(TARGET)
+ARCH_DEPENDENT_QUEST_FILES = arch/$(TARGET)
 ARCH_DEPENDENT_QUEST_LIBC_FILES = $(shell find $(ARCH_DEPENDENT_QUEST_FILES) -type f)
 
 
