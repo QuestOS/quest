@@ -21,8 +21,9 @@
 #include "vm/spow2.h"
 
 /* Size of virtual memory pool reserved for initial kernel load */
-/* Size should be multiple of 4MB, default is 4MB */
-#define LINUX_KERNEL_LOAD_SIZE        0x00400000
+/* Size should be multiple of 4MB, default is 8MB */
+/* This also includes the space reserved for ramdisk */
+#define LINUX_KERNEL_LOAD_SIZE        0x00800000
 
 /* Number of 4MB pages of the value above */
 #define LINUX_KERNEL_LOAD_PAGE        (LINUX_KERNEL_LOAD_SIZE >> 22)
@@ -34,6 +35,10 @@
 /* Start virtual address of the kernel load memory region */
 #define LINUX_KERNEL_LOAD_VA    \
     (PHY_SHARED_MEM_POOL_START - LINUX_KERNEL_LOAD_SIZE)
+
+/* Start virtual address of the ramdisk load memory region */
+/* By default, this is 4MB after kernel load address */
+#define INITRD_LOAD_VADDR            (LINUX_KERNEL_LOAD_VA + 0x00400000)
 
 #define LINUX_SETUP_HEADER_OFFSET    0x01F1
 
@@ -94,7 +99,8 @@ typedef struct _linux_setup_header {
   uint32  init_size;
 } PACKED linux_setup_header_t;
 
-extern int load_linux_kernel (uint32 *, char *, char *);
+extern int load_linux_initrd (uint32 *, char *);
+extern int load_linux_kernel (uint32 *, char *, uint32 *, int);
 extern bool linux_boot_thread_init (void);
 
 #endif /* __ASSEMBLER__ */

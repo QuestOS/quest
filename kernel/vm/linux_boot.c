@@ -52,13 +52,36 @@
 #ifdef USE_LINUX_SANDBOX
 
 /*
- * Load Linux kernel bzImage from pathname in filesystem to virtual
+ * Load Linux initial ramdisk from pathname in filesystem to virtual
  * address load_addr in memory.
  */
 int
-load_linux_kernel (uint32 * load_addr, char * pathname, char * initrd_path)
+load_linux_initrd (uint32 * load_addr, char * pathname)
 {
-  int act_len = 0, initrd_sz = 0;
+  int act_len = 0;
+  int eztftp_bulk_read (char *, uint32 *);
+
+  act_len = eztftp_bulk_read (pathname, load_addr);
+
+  if (act_len < 0) {
+    DLOG ("Linux initrd load failed!");
+    return -1;
+  }
+
+  DLOG ("Linux initrd size: 0x%X", act_len);
+
+  return act_len;
+}
+
+/*
+ * Load Linux kernel bzImage from pathname in filesystem to virtual
+ * address load_addr in memory. If there is a ramdisk loaded, also
+ * specify the physical address of the ramdisk in memory and its size.
+ */
+int
+load_linux_kernel (uint32 * load_addr, char * pathname, uint32 * initrd_paddr, int initrd_sz)
+{
+  int act_len = 0;
   linux_setup_header_t * setup_header;
   int eztftp_bulk_read (char *, uint32 *);
   char * command_line = "root=/dev/sda1 pmedia=atahd loglevel=7";
@@ -70,17 +93,6 @@ load_linux_kernel (uint32 * load_addr, char * pathname, char * initrd_path)
     return -1;
   }
   DLOG ("Linux kernel size: 0x%X", act_len);
-
-  if (initrd_path) {
-    /* If we have a ramdisk, load it to INITRD_LOAD_PADDR */
-    initrd_sz = eztftp_bulk_read (initrd_path, (uint32 *) INITRD_LOAD_PADDR);
-
-    if (initrd_sz < 0) {
-      DLOG ("Initial ramdisk load failed!");
-      return -1;
-    }
-    DLOG ("Initial ramdisk size: 0x%X", initrd_sz);
-  }
 
   setup_header = (linux_setup_header_t *) (((uint8 *) load_addr) + LINUX_SETUP_HEADER_OFFSET);
 
@@ -112,11 +124,13 @@ load_linux_kernel (uint32 * load_addr, char * pathname, char * initrd_path)
   setup_header->loadflags = ((setup_header->loadflags) & (~0x60)) | 0x80;
   DLOG ("modified loadflags: 0x%X", setup_header->loadflags);
 
-  /* Set initial ramdisk parameters */
-  setup_header->ramdisk_image = INITRD_LOAD_PADDR;
-  setup_header->ramdisk_size = initrd_sz;
-  /* We assume initial ramdisk will not exceed 4MB */
-  setup_header->initrd_addr_max = INITRD_LOAD_PADDR + 0x00400000;
+  if (initrd_paddr) {
+    /* Set initial ramdisk parameters if it exists */
+    setup_header->ramdisk_image = (uint32) initrd_paddr;
+    setup_header->ramdisk_size = initrd_sz;
+    /* We assume initial ramdisk will not exceed 4MB */
+    setup_header->initrd_addr_max = INITRD_LOAD_PADDR + 0x00400000;
+  }
 
   return act_len;
 }
@@ -143,7 +157,7 @@ linux_boot_thread (void)
   extern void * vm_exit_input_param;
   uint8_t * src = NULL, * dst = NULL;
   uint32_t pa_dst = 0;
-  int i, prot_size;
+  int i, prot_size, initrd_sz;
   linux_setup_header_t * header = NULL;
 
   DLOG ("Linux boot thread started in sandbox %d", cpu);
@@ -156,11 +170,41 @@ linux_boot_thread (void)
   DLOG ("Loading Linux kernel bzImage...");
   cli ();
   lock_kernel ();
+
+  //uint32 phys_cr3 = (uint32) get_pdbr ();
+  //uint32 *virt_pgd = map_virtual_page (phys_cr3 | 3);
+  //for (i = 0; i < 0x400; i++) {
+  //  com1_printf ("PGD Entry %d: %x\n", i, virt_pgd[i]);
+  //}
+  //for (;;);
+
+  initrd_sz = load_linux_initrd ((uint32 *) INITRD_LOAD_VADDR, "/boot/initrd.gz");
+
+  if (initrd_sz == -1) {
+    DLOG ("Loading initrd failed.");
+    goto finish;
+  }
+
+  /* Copy initrd from load address to INITRD_LOAD_PADDR */
+  src = (uint8_t *) INITRD_LOAD_VADDR;
+  pa_dst = INITRD_LOAD_PADDR;
+  /* Number of 4KB pages */
+  for (i = 0; i < (initrd_sz >> 12); i++) {
+    dst = map_virtual_page (pa_dst | 0x3);
+    memcpy ((void *)dst, (const void *)src, 0x1000);
+    unmap_virtual_page (dst);
+    pa_dst += 0x1000;
+    src += 0x1000;
+  }
+  dst = map_virtual_page (pa_dst | 0x3);
+  memcpy ((void *)dst, (const void *)src, initrd_sz & 0xFFF);
+  unmap_virtual_page (dst);
+
   exit_param.size = load_linux_kernel ((uint32 *) LINUX_KERNEL_LOAD_VA, "/boot/vmlinuz",
-                                       "/boot/initrd.gz");
+                                       (uint32 *) INITRD_LOAD_PADDR, initrd_sz);
 
   if (exit_param.size == -1) {
-    DLOG ("Loading failed.");
+    DLOG ("Loading kernel failed.");
     goto finish;
   }
 

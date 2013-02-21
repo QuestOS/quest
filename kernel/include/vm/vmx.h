@@ -67,7 +67,7 @@ typedef struct
 } virtual_machine;
 
 #define VM_REG(n) ((((uint32 *) (&vm->guest_regs)))[7 - (n)])
-static char *gp_register_names[] = {
+static const char gp_register_names[][4] = {
    "edi", "esi", "ebp", "esp", "ebx", "edx", "ecx", "eax"
 };
 #define VM_REG_NAME(n) (gp_register_names[7 - n])

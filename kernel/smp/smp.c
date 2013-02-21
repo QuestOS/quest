@@ -187,7 +187,7 @@ smp_boot_cpu (uint8 apic_id, uint8 APIC_version)
 {
   int success = 1;
   volatile int to;
-  uint32 bootaddr, accept_status;
+  uint32 bootaddr;
 
   /* Get a page for the AP's C stack */
   uint32 page_frame = (uint32) alloc_phys_frame ();
@@ -211,7 +211,7 @@ smp_boot_cpu (uint8 apic_id, uint8 APIC_version)
    * ASSERT INIT IPI, DE-ASSERT INIT IPI, STARTUP IPI, STARTUP IPI */
 
   /* clear APIC error register */
-  accept_status = LAPIC_clear_error();
+  LAPIC_clear_error();
 
   /* assert INIT interprocessor interrupt */
   LAPIC_send_ipi (apic_id,
@@ -247,7 +247,7 @@ smp_boot_cpu (uint8 apic_id, uint8 APIC_version)
   }
 
   /* cleanup */
-  accept_status = LAPIC_clear_error();
+  LAPIC_clear_error();
 
   return success;
 }
@@ -309,7 +309,7 @@ ap_init (void)
 
   while (!shm->bsp_booted)
     asm volatile ("pause");
-
+  
   { extern bool vcpu_init (void); vcpu_init (); }
   { extern void net_init (void); net_init (); }
   //if (phys_id == 1) {

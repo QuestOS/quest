@@ -169,7 +169,7 @@ load_module (multiboot_module * pmm, int mod_num)
   }
 
   /* map stack */
-  get_pg_dir_and_table_indices(USER_STACK_START - 1, &pg_dir_index, &pg_tbl_index);
+  get_pg_dir_and_table_indices ((void *) (USER_STACK_START - 1), &pg_dir_index, &pg_tbl_index);
   if(pg_dir_index != 0) {
     /* The stack resides in a different page table than the rest
        of the program */
