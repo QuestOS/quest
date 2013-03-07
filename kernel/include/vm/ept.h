@@ -33,9 +33,13 @@
 #define EPT_EXEC_ACCESS      0x4
 #define EPT_ALL_ACCESS       0x7
 
+#ifndef __ASSEMBLER__
+
 extern void vmx_init_mem (uint32);
 extern void vmx_init_ept (uint32);
 extern uint32 get_host_phys_addr (uint32);
+
+#endif
 
 #endif
 

@@ -18,7 +18,10 @@
 #ifndef _LINUX_BOOT_H_
 #define _LINUX_BOOT_H_
 
+#ifdef USE_VMX
 #include "vm/spow2.h"
+#include "vm/ept.h"
+#endif
 
 /* Size of virtual memory pool reserved for initial kernel load */
 /* Size should be multiple of 4MB, default is 4MB */
@@ -26,10 +29,6 @@
 
 /* Number of 4MB pages of the value above */
 #define LINUX_KERNEL_LOAD_PAGE        (LINUX_KERNEL_LOAD_SIZE >> 22)
-
-/* Physical load address of Linux initial ramdisk */
-/* We need to pick an address that does not overlap with Linux kernel */
-#define INITRD_LOAD_PADDR             0x00800000
 
 /* Start virtual address of the kernel load memory region */
 #define LINUX_KERNEL_LOAD_VA    \
@@ -51,7 +50,11 @@
 /* LINUX_SANDBOX is only valid after smp_init () */
 extern uint32 mp_num_cpus;
 #define LINUX_SANDBOX   (mp_num_cpus - 1)
+#define LINUX_PHYS_START  0x100000 //(SANDBOX_KERN_OFFSET * (LINUX_SANDBOX + 1)) 
 
+/* Physical load address of Linux initial ramdisk */
+/* We need to pick an address that does not overlap with Linux kernel */
+#define INITRD_LOAD_PADDR             (0x00800000 + LINUX_PHYS_START)
 
 /* Setup header version 2.10 */
 typedef struct _linux_setup_header {
