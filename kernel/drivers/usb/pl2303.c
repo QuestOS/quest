@@ -33,8 +33,15 @@
 static USB_DEVICE_INFO pl2303_dev;
 static uint8_t in_ept = 0, out_ept = 0;
 bool pl2303_initialized = FALSE;
+static bool write_urb_initialized = FALSE;
+static struct urb* pl2303_urb = NULL;
 
-int usb_pl2303_write (unsigned char *, uint32_t);
+#define COM_BUFFER_SIZE 200
+static char com_buffer[COM_BUFFER_SIZE];
+static char com_buffer2[COM_BUFFER_SIZE];
+static int com_buffer_end = 0;
+
+int usb_pl2303_write (char *, uint32_t);
 void usb_pl2303_putc (char);
 int usb_pl2303_read (unsigned char *, uint32_t);
 char usb_pl2303_getc (void);
@@ -51,11 +58,11 @@ pl2303_set_control (USB_DEVICE_INFO * dev, uint8_t on)
   else
     control &= ~(USB_PL2303_CONTROL_DTR | USB_PL2303_CONTROL_RTS);
 
-  req.bmRequestType = 0x21;
-  req.bRequest = USB_PL2303_SET_CONTROL;
-  req.wValue = control;
-  req.wIndex = 0;
-  req.wLength = 0;
+  /* req.bmRequestType = 0x21; */
+  /* req.bRequest = USB_PL2303_SET_CONTROL; */
+  /* req.wValue = control; */
+  /* req.wIndex = 0; */
+  /* req.wLength = 0; */
 
   return usb_control_msg(dev, usb_sndctrlpipe(dev, 0), USB_PL2303_SET_CONTROL, 0x21,
                          control, 0, & req, 0, USB_DEFAULT_CONTROL_MSG_TIMEOUT);
@@ -66,15 +73,8 @@ pl2303_set_control (USB_DEVICE_INFO * dev, uint8_t on)
 static PL2303_CONFIG
 pl2303_get_line (USB_DEVICE_INFO * dev)
 {
-  USB_DEV_REQ req;
   PL2303_CONFIG data;
   memset (&data, 0, sizeof (PL2303_CONFIG));
-
-  req.bmRequestType = 0xA1;
-  req.bRequest = USB_PL2303_GET_LINE;
-  req.wValue = 0;
-  req.wIndex = 0;
-  req.wLength = 7;
 
   if(usb_control_msg(dev, usb_rcvctrlpipe(dev, 0), USB_PL2303_GET_LINE, 0xA1, 0, 0, &data,
                      7, USB_DEFAULT_CONTROL_MSG_TIMEOUT) < 0) {
@@ -95,7 +95,6 @@ pl2303_set_line (
     uint8_t parity, /* 0 = None, 1 = Odd, 2 = Even, 3 = Mark, 4 = Space */
     uint8_t stb) /* Stop Bits 0 = 1, 1 = 1.5, 2 = 2 */
 {
-  USB_DEV_REQ req;
   PL2303_CONFIG data;
   memset (&data, 0, sizeof (PL2303_CONFIG));
 
@@ -114,14 +113,16 @@ pl2303_set_line (
   data.parity = parity;
   data.data_bits = bits;
 
-  req.bmRequestType = 0x21;
-  req.bRequest = USB_PL2303_SET_LINE;
-  req.wValue = 0;
-  req.wIndex = 0;
-  req.wLength = 7;
+  /* req.bmRequestType = 0x21; */
+  /* req.bRequest = USB_PL2303_SET_LINE; */
+  /* req.wValue = 0; */
+  /* req.wIndex = 0; */
+  /* req.wLength = 7; */
 
-  return usb_control_transfer (dev, (addr_t) & req,
-      sizeof (USB_DEV_REQ), (addr_t) & data, req.wLength);
+  //return usb_control_transfer (dev, (addr_t) & req,
+  //    sizeof (USB_DEV_REQ), (addr_t) & data, req.wLength);
+  return usb_control_msg(dev, usb_sndctrlpipe(dev, 0), USB_PL2303_SET_LINE, 0x21, 0, 0, &data, 7,
+                         USB_DEFAULT_CONTROL_MSG_TIMEOUT);
 }
 
 static bool
@@ -132,7 +133,7 @@ pl2303_init (USB_DEVICE_INFO *dev, USB_CFG_DESC *cfg, USB_IF_DESC *ifd)
   USB_EPT_DESC *pl2303ept;
   PL2303_CONFIG conf;
   memset (&conf, 0, sizeof (PL2303_CONFIG));
-
+  
   memcpy(&pl2303_dev, dev, sizeof(USB_DEVICE_INFO));
   memset (tmp, 0, 70);
 
@@ -148,11 +149,15 @@ pl2303_init (USB_DEVICE_INFO *dev, USB_CFG_DESC *cfg, USB_IF_DESC *ifd)
       switch (pl2303ept->bEndpointAddress & 0x80) {
         case 0x80 :
           in_ept = pl2303ept->bEndpointAddress & 0xF;
+          pl2303_dev.ep_in[in_ept].desc = *pl2303ept;
+          print_ept_desc_info(pl2303ept);
           DLOG ("IN Endpoint. Address is: 0x%X", in_ept);
           break;
 
         case 0x00 :
           out_ept = pl2303ept->bEndpointAddress & 0xF;
+          pl2303_dev.ep_out[out_ept].desc = *pl2303ept;
+          print_ept_desc_info(pl2303ept);
           DLOG ("OUT Endpoint. Address is: 0x%X", out_ept);
           break;
 
@@ -187,9 +192,12 @@ pl2303_init (USB_DEVICE_INFO *dev, USB_CFG_DESC *cfg, USB_IF_DESC *ifd)
   }
 #endif
 
+  
+
   return TRUE;
 }
 
+SQUELCH_UNUSED
 static void
 test ()
 {
@@ -215,6 +223,7 @@ test ()
 static bool
 pl2303_probe (USB_DEVICE_INFO *dev, USB_CFG_DESC *cfg, USB_IF_DESC *ifd)
 {
+  uint pipe;
   if (dev->devd.idVendor == 0x067B) {
     DLOG ("Prolific Technology, Inc. device is detected");
 
@@ -227,6 +236,10 @@ pl2303_probe (USB_DEVICE_INFO *dev, USB_CFG_DESC *cfg, USB_IF_DESC *ifd)
     return FALSE;
   }
 
+  if(pl2303_initialized) {
+    return TRUE;
+  }
+
   if (!pl2303_init(dev, cfg, ifd)) {
     DLOG("Initialization failed!");
     return FALSE;
@@ -234,8 +247,15 @@ pl2303_probe (USB_DEVICE_INFO *dev, USB_CFG_DESC *cfg, USB_IF_DESC *ifd)
 
   DLOG ("PL2303 Serial Converter configured");
 
-  test();
+  pl2303_urb = usb_alloc_urb(0, 0);
+  
+  pipe = usb_create_pipe(&pl2303_dev, &pl2303_dev.ep_out[out_ept].desc);
+  usb_fill_rt_bulk_urb(pl2303_urb, &pl2303_dev, pipe, com_buffer2, COM_BUFFER_SIZE,
+                       NULL, NULL, 4, 0);
 
+
+
+  //test();
   pl2303_initialized = TRUE;
 
   return TRUE;
@@ -244,31 +264,101 @@ pl2303_probe (USB_DEVICE_INFO *dev, USB_CFG_DESC *cfg, USB_IF_DESC *ifd)
 void
 usb_pl2303_putc (char c)
 {
-  unsigned char buf[1];
-  int count = 0;
-
-  buf[0] = c;
-
-  if ((count = usb_pl2303_write (buf, 1)) != 1) {
-    _print ("PL2302 write failed\n");
+  if (usb_pl2303_write (&c, 1) != 1) {
+    DLOG ("PL2302 write failed\n");
   }
 }
 
-int
-usb_pl2303_write (unsigned char * buf, uint32_t len)
-{
-  uint32_t act_len = 0;
-  int status = 0;
 
-  if((status = usb_bulk_msg(&pl2303_dev, usb_sndbulkpipe(&pl2303_dev, out_ept), buf, len,
-                            &act_len, USB_DEFAULT_BULK_MSG_TIMEOUT))) {
+/* Can't report an errors in this function as it will then be
+   recursively calling itself */
+int
+usb_pl2303_write (char * buf, uint32_t len)
+{
+  int act_len = 0;
+  uint32_t original_len = len;
+  int status;
+  static volatile bool in_pl2303_write = FALSE;
+
+  if(!pl2303_initialized) return -1;
+
+  if(in_pl2303_write) return len;
+
+  in_pl2303_write = TRUE;
   
-  //if((status = usb_bulk_transfer (&pl2303_dev, out_ept, (addr_t) buf,
-  //                              len, 64, USB_DIR_OUT, &act_len))) {
-    DLOG ("Bulk write failed. Error Code: 0x%X", status);
+  
+  if(mp_enabled) {
+    
+    if(!write_urb_initialized) {
+      int res;
+    resubmit:
+      res = usb_submit_urb(pl2303_urb, 0);
+      if(res == -2) {
+        goto resubmit;
+      }
+      else if(res == -1) {
+        DLOG ("Failed to submit pl2303 urb\n");
+        panic("Failed to submit pl2303 urb");
+      }
+      write_urb_initialized = TRUE;
+    }
+    
+    usb_rt_free_write_resources(pl2303_urb);
+
+    if(com_buffer_end) {
+      /* Push remaining bytes */
+      status = usb_rt_push_data(pl2303_urb, com_buffer, com_buffer_end, 0, 0, 0);
+      if(status < 0) {
+        DLOG("Failed to push data");
+        panic("Failed to push data");
+      }
+      else if(status != com_buffer_end) {
+        DLOG("Failed to push all data, status = %d, line = %d", status, __LINE__);
+        panic("Failed to push data");
+      }
+      com_buffer_end = 0;
+    }
+    
+    status = usb_rt_push_data(pl2303_urb, buf, len, 0, 0, 0);
+    if(status < 0) {
+      DLOG("Failed to push data");
+      panic("Failed to push data");
+    }
+    else if(status != len) {
+      DLOG("Failed to push all data, status = %d, line = %d", status, __LINE__);
+      panic("Failed to push data");
+    }
   }
-  
-  return act_len;
+  else {
+    //in_pl2303_write = FALSE;
+    //return len;
+    while(len) {
+      if(len + com_buffer_end >= COM_BUFFER_SIZE) {
+        memcpy(&com_buffer[com_buffer_end], buf, COM_BUFFER_SIZE - com_buffer_end);
+        status = usb_bulk_msg(&pl2303_dev, usb_sndbulkpipe(&pl2303_dev, out_ept), com_buffer,
+                              COM_BUFFER_SIZE, &act_len, USB_DEFAULT_BULK_MSG_TIMEOUT);
+
+        if(status < 0) {
+          DLOG("Failed to send data");
+          panic("Failed to send data");
+        }
+        if(act_len != COM_BUFFER_SIZE) {
+          DLOG("Failed to send all data");
+          panic("Failed to send all data");
+        }
+
+        len = len - (COM_BUFFER_SIZE - com_buffer_end);
+        com_buffer_end = 0;
+      }
+      else {
+        memcpy(&com_buffer[com_buffer_end], buf, len);
+        com_buffer_end += len;
+        len = 0;
+      }
+    }
+  }
+  in_pl2303_write = FALSE;
+  return original_len;
 }
 
 char
@@ -276,9 +366,9 @@ usb_pl2303_getc (void)
 {
   unsigned char buf[3];
   int act_len = 0;
-
+  
   if ((act_len = usb_pl2303_read (buf, 1)) != 1) {
-    _print ("PL2302 read failed\n");
+    DLOG ("PL2302 read failed\n");
     return '\0';
   }
 
@@ -288,12 +378,15 @@ usb_pl2303_getc (void)
 int
 usb_pl2303_read (unsigned char * buf, uint32_t len)
 {
-  uint32_t act_len = 0;
+  int act_len = 0;
   int status = 0;
 
-  if ((status = usb_bulk_transfer (&pl2303_dev, in_ept, (addr_t) buf,
-        len, 64, USB_DIR_IN, &act_len)))
-    DLOG ("Bulk read failed. Error Code: 0x%X", status);
+  if(!pl2303_initialized) return -1;
+  
+  status = usb_bulk_msg(&pl2303_dev, usb_rcvbulkpipe(&pl2303_dev, in_ept), buf,
+                        len, &act_len, USB_DEFAULT_BULK_MSG_TIMEOUT);
+
+  if (status  < 0) DLOG ("Bulk read failed. Error Code: 0x%X", status);
 
   return act_len;
 }

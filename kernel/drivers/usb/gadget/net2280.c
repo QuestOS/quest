@@ -39,12 +39,16 @@
 #include <drivers/pci/pci.h>
 #include <drivers/usb/gadget/net2280.h>
 #include <drivers/usb/gadget/gadget.h>
+#include <mem/physical.h>
 #include <mem/virtual.h>
 #include <sched/sched.h>
+#include <sched/vcpu.h>
 
 
-//#define DEBUG_NET2280
+#define DEBUG_NET2280
 //#define DEBUG_NET2280_VERBOSE
+
+
 
 #ifdef DEBUG_NET2280
 #define DLOG(fmt,...) DLOG_PREFIX("Net2280",fmt,##__VA_ARGS__)
@@ -60,8 +64,8 @@
 
 
 
-#define DEBUG(dev, fmt, ...) DLOG(fmt, ##__VA_ARGS__)
-#define DBG(dev, fmt, ...) DLOG(fmt, ##__VA_ARGS__)
+#define DEBUG(dev, fmt, ...) DLOGV(fmt, ##__VA_ARGS__)
+#define DBG(dev, fmt, ...) DLOGV(fmt, ##__VA_ARGS__)
 #define WARNING(dev, fmt, ...) DLOG(fmt, ##__VA_ARGS__)
 #define VDEBUG(dev, fmt, ...) DLOGV(fmt, ##__VA_ARGS__)
 #define VDBG(dev, fmt, ...) DLOGV(fmt, ##__VA_ARGS__)
@@ -71,7 +75,7 @@
 #ifdef DEBUG_NET2280
 
 #  define dump_msg(net2280, /* const char * */ label,                   \
-                   /* const u8 * */ buf, /* unsigned */ length) do {    \
+                 /* const u8 * */ buf, /* unsigned */ length) do {      \
     if (length < 512) {                                                 \
       DBG(net2280, "%s, length %u:\n", label, length);                  \
     }                                                                   \
@@ -103,6 +107,8 @@
 
 static bool use_dma = 0;
 static bool use_dma_chaining = 0;
+
+static int net2280_dev_num = -1;
 
 #define cpu_to_le32s(x) do { (void)(x); } while (0)
 
@@ -198,6 +204,11 @@ static uint32_t used_net2280_dma_bitmap[(NET2280_DMA_POOL_SIZE + NET2280_ELEMENT
 #define INIT_THREAD_STACK_SIZE 1024
 uint32_t init_thread_stack[INIT_THREAD_STACK_SIZE];
 
+#ifdef NET2280_MIGRATION_MODE
+#define MIGRATION_THREAD_STACK_SIZE 1024
+uint32_t migration_thread_stack[INIT_THREAD_STACK_SIZE];
+#endif
+
 enum {
   NET2280_STRING_MANUFACTURER = 1,
   NET2280_STRING_PRODUCT,
@@ -207,8 +218,13 @@ enum {
 };
 
 #define DRIVER_VENDOR_NUM       0xabc4          /* NetChip */
-#define DRIVER_PRODUCT_NUM      0xabc7          /* Linux-USB "Gadget Zero" */
 
+
+#ifdef NET2280_MIGRATION_MODE
+#define DRIVER_PRODUCT_NUM      0xabca          /* Linux-USB "Gadget Zero" */
+#else
+#define DRIVER_PRODUCT_NUM      0xabc7          /* Linux-USB "Gadget Zero" */
+#endif
 #define CONFIG_VALUE            1
 
 #define udelay sched_usleep
@@ -318,8 +334,6 @@ typedef void (*net2280_routine_t)(struct net2280 *);
 
 struct net2280 net2280_dev;
 
-
-
 static const char net2280_string_interface[] = "Temp USB Device";
 
 /* Static strings, in UTF-8 (for simplicity we use only ASCII characters) */
@@ -379,9 +393,7 @@ static struct usb_interface_descriptor loopback_intf = {
 
 /* full speed support: */
 
-#define NET2280_INTERFACE_TYPE USB_ENDPOINT_XFER_BULK
-#define PACKET_SIZE 512
-#define INTERVAL 4
+
 
 static struct usb_endpoint_descriptor fs_loop_source_desc = {
   .bLength =              USB_DT_ENDPOINT_SIZE,
@@ -447,6 +459,10 @@ static struct usb_descriptor_header *net2280_hs_function[] = {
 
 static int net2280_write(USB_DEVICE_INFO* device, int dev_num, char* buf, int data_len)
 {
+#ifdef NET2280_MIGRATION_MODE
+  DLOG("Called write in migration mode");
+  return -1;
+#else
   struct usb_request* req = usb_ep_alloc_request(net2280_dev.in_ep, 0);
   if(req == NULL) {
     /* -- EM -- Not doing all the necessary cleanup */
@@ -472,13 +488,25 @@ static int net2280_write(USB_DEVICE_INFO* device, int dev_num, char* buf, int da
   }
 
   return data_len;
+#endif
 }
 
-void net2280_request_complete_callback(struct usb_ep *ep,
+static inline uint popcount(uint32 v)
+{
+  v = v - ((v >> 1) & 0x55555555);                    // reuse input as temporary
+  v = (v & 0x33333333) + ((v >> 2) & 0x33333333);     // temp
+  return (((v + (v >> 4)) & 0xF0F0F0F) * 0x1010101) >> 24; // count
+}
+
+
+void net2280_request_complete_callback2(struct usb_ep *ep,
                                        struct usb_request *req)
 {
+  static int counter = 0;
   int status = req->status;
-  
+
+
+
   if(status < 0) {
     DLOG("status < 0 in %s", __FUNCTION__);
     panic("status < 0 in  net2280_request_complete_callback");
@@ -486,7 +514,223 @@ void net2280_request_complete_callback(struct usb_ep *ep,
   }
 
   if(ep == net2280_dev.out_ep) {
-    DLOG("In %s for out ep");
+    DLOG("F");
+    counter++;
+    DLOG("Counter = %d", counter);
+    if(usb_ep_queue(net2280_dev.out_ep, req, 0) < 0) {
+      DLOG("Failed to queue request for page");
+      panic("Failed to queue request for page");
+    }
+  }
+  else {
+    DLOG("In %s for in ep");
+    panic("In %s for in ep");
+  }
+}
+
+void net2280_request_complete_callback(struct usb_ep *ep,
+                                       struct usb_request *req)
+{
+  
+#ifdef NET2280_MIGRATION_MODE
+  static int pages_received = 0;
+  int status = req->status;
+  int i, j;
+
+  DLOG("In %s", __FUNCTION__);
+  if(status < 0) {
+    DLOG("Status is -1 in net2280 migration callback");
+    panic("Status is -1 in net2280 migration callback");
+    
+    return;
+  }
+
+  if(req != net2280_dev.bitmap_request) {
+    if(req->actual != PAGE_SIZE) {
+      DLOG("Got a short page");
+      panic("Got a short page");
+    }
+    pages_received++;
+    DLOG("Pages received = %d", pages_received);
+    DLOG("BUF = %c", ((char*)req->buf)[0]);
+  }
+  
+  if(req == net2280_dev.bitmap_request) {
+    /* We got a bitmap request */
+
+    DLOG("req->actual = %u", req->actual);
+    net2280_dev.num_bitmaps_received = req->actual / (TABLE_BITMAP_SIZE * 4);
+    uint partial_bitmap = req->actual % (TABLE_BITMAP_SIZE * 4);
+
+    
+    if(partial_bitmap) {
+      DLOG("Received a partial bitmap");
+      panic("Received a partial bitmap");
+    }
+
+    if(net2280_dev.num_bitmaps_received == 0) {
+      DLOG("Did not receive any bitmaps");
+      panic("Did not receive any bitmaps");
+    }
+    
+    
+    if(net2280_dev.migration_in_processes) {
+      net2280_dev.current_pt_counter = 0;
+    }
+    else {
+      phys_addr_t phys_addr;
+      memset(net2280_dev.frames_per_table, 0, MAX_NUM_BITMAPS);
+      net2280_dev.migration_in_processes = TRUE;
+      net2280_dev.current_pt_counter = 1;
+      /* Copy over the page directory bitmap as we will need it for later */
+      memcpy(net2280_dev.pd_bitmap, req->buf, (TABLE_BITMAP_SIZE * 4));
+      phys_addr = alloc_phys_frame();
+      if(phys_addr == 0xFFFFFFFF) {
+        DLOG("Failed to allocate physical frame for page directory");
+        panic("Failed to allocate physical frame for page directory");
+      }
+      net2280_dev.mig_task_pd_table = map_virtual_page(phys_addr | 3);
+      if(net2280_dev.mig_task_pd_table == NULL) {
+        DLOG("Failed to map page directory table");
+        panic("Failed to map page directory table");
+      }
+      net2280_dev.next_pd_entry = 0;
+      net2280_dev.next_pt_entry = 0;
+      net2280_dev.next_usb_request = 0;
+      net2280_dev.page_requests_in_queue = 0;
+      net2280_dev.current_page_table = NULL;
+    }
+    
+    memcpy(net2280_dev.current_pt_bitmaps, req->buf, PACKET_SIZE);
+
+    for(i = net2280_dev.current_pt_counter; i < net2280_dev.num_bitmaps_received; ++i) {
+      for(j = 0; j < TABLE_BITMAP_SIZE; ++j) {
+        net2280_dev.frames_per_table[i] += popcount(net2280_dev.current_pt_bitmaps[i][j]);
+      }
+      DLOG("Frames for table %d = %u", i, net2280_dev.frames_per_table[i]);
+    }
+  }
+
+  DLOG("net2280_dev.page_requests_in_queue = %d", net2280_dev.page_requests_in_queue);
+  while(net2280_dev.page_requests_in_queue < NET2280_MAX_PAGE_REQUESTS) {
+    struct usb_request* req;
+    phys_addr_t page_phys;
+
+    DLOG("net2280_dev.page_requests_in_queue = %d", net2280_dev.page_requests_in_queue);
+
+    if(net2280_dev.next_pd_entry == 1024) {
+      DLOG("Received all pages");
+      panic("Received all pages");
+    }
+    
+    if(net2280_dev.next_pt_entry == 0 && net2280_dev.next_pd_entry != 1024) {
+      /* We need to map a page table onto the page directory */
+      
+      if(net2280_dev.current_pt_counter == net2280_dev.num_bitmaps_received) {
+        /* We are done with the current page table and need to wait
+           for more bitmaps */
+        DLOG("net2280_dev.current_pt_counter = %u", net2280_dev.current_pt_counter);
+        DLOG("net2280_dev.num_bitmaps_received = %u", net2280_dev.num_bitmaps_received);
+        DLOG("Breaking at %d", __LINE__);
+        break;
+      }
+      
+      if(net2280_dev.current_page_table) {
+        unmap_virtual_page(net2280_dev.current_page_table);
+        DLOG("unmapping current page table");
+        net2280_dev.current_page_table = NULL;
+      }
+
+      while((!BITMAP_TST(net2280_dev.pd_bitmap, net2280_dev.next_pd_entry)) &&
+            (net2280_dev.next_pd_entry < 1024)) {
+        net2280_dev.next_pd_entry++;
+      }
+      
+      if(net2280_dev.next_pd_entry != 1024) {
+        phys_addr_t table_phys = alloc_phys_frame();
+        if(table_phys == 0xFFFFFFFF) {
+          DLOG("Failed to allocate page table for migration");
+          panic("Failed to allocate page table for migration");
+        }
+        
+        net2280_dev.current_page_table = map_virtual_page(table_phys | 3);
+        if(net2280_dev.current_page_table == NULL) {
+          DLOG("Failed to map page table");
+          panic("Failed to map page table");
+        }
+
+        net2280_dev.kernel_only_area = net2280_dev.next_pd_entry == PGDIR_KERNEL_STACK;
+
+        net2280_dev.mig_task_pd_table[net2280_dev.next_pd_entry].raw =
+          (0xFFFFF000 & table_phys) | (net2280_dev.kernel_only_area ? 3 : 7);
+        
+        net2280_dev.next_pd_entry++;
+      }
+    }
+    
+    while((!BITMAP_TST(net2280_dev.current_pt_bitmaps[net2280_dev.current_pt_counter],
+                       net2280_dev.next_pt_entry)) &&
+          (net2280_dev.next_pd_entry < 1024)) {
+      net2280_dev.next_pt_entry++;
+    }
+    
+    if(net2280_dev.next_pt_entry == 1024) {
+      /* Reached the end of the current table, loop back to set new
+         table up */
+      net2280_dev.current_pt_counter++;
+      continue;
+    }
+
+    int req_index = net2280_dev.next_usb_request;
+    req = net2280_dev.page_requests[net2280_dev.next_usb_request++];
+    if(net2280_dev.next_usb_request == NET2280_MAX_PAGE_REQUESTS) {
+      net2280_dev.next_usb_request = 0;
+    }
+    page_phys = alloc_phys_frame();
+    if(page_phys == 0xFFFFFFFF) {
+      DLOG("Failed to allocate frame for migration");
+      panic("Failed to allocate frame for migration");
+    }
+
+    if(req->buf) {
+      unmap_virtual_page(req->buf);
+      DLOG("Unmapping req buf for req (%d) 0x%p", req_index, req);
+      req->buf = 0;
+    }
+    
+    net2280_dev.current_page_table[net2280_dev.next_pt_entry].raw =
+          (0xFFFFF000 & page_phys) | (net2280_dev.kernel_only_area ? 3 : 7);
+    
+    req->buf = map_virtual_page(page_phys | 3);
+    DLOG("buf for req %d = 0x%p", req_index, req->buf);
+    if(req->buf == NULL) {
+      DLOG("Failed to map virtual page");
+      panic("Failed to map virtual page");
+    }
+
+    if(usb_ep_queue(net2280_dev.out_ep, req, 0) < 0) {
+      DLOG("Failed to queue request for page");
+      panic("Failed to queue request for page");
+    }
+    DLOG("Request queued");
+    net2280_dev.page_requests_in_queue++;
+    net2280_dev.next_pt_entry++;
+  }
+  DLOG("Leaving net2280 callback");
+
+  return;
+    
+#else
+  int status = req->status;
+
+  if(status < 0) {
+    DLOG("status < 0 in %s", __FUNCTION__);
+    panic("status < 0 in  net2280_request_complete_callback");
+    return;
+  }
+
+  if(ep == net2280_dev.out_ep) {
+    DLOG("In %s for out ep", __FUNCTION__);
     net2280_dev.out_requests_with_data[net2280_dev.next_out_request_insert_index++] = req;
     if(net2280_dev.next_out_request_insert_index == NET2280_NUM_OUT_REQS) {
       net2280_dev.next_out_request_insert_index = 0;
@@ -497,11 +741,81 @@ void net2280_request_complete_callback(struct usb_ep *ep,
     kfree(req->buf);
     usb_ep_free_request(ep, req);
   }
-  
+#endif
 }
 
 static int net2280_open(USB_DEVICE_INFO* device, int dev_num, char* buf, int data_len)
 {
+#ifdef NET2280_MIGRATION_MODE
+  
+  int i;
+  list_head_t* current_ep_list = &net2280_dev.gadget.ep_list;
+  struct usb_request* req;
+  net2280_dev.migration_in_processes = FALSE;
+  net2280_dev.out_ep = list_entry(current_ep_list->next, struct usb_ep, ep_list);
+  current_ep_list = current_ep_list->next;
+  net2280_dev.in_ep = list_entry(current_ep_list->next, struct usb_ep, ep_list);
+  net2280_dev.in_ep->driver_data = &net2280_dev;
+  net2280_dev.in_ep->desc = &hs_in_ept_desc;
+
+  if(usb_ep_enable(net2280_dev.in_ep) < 0) {
+    DLOG("Failed to enable in endpoint");
+    return -1;
+  }
+  
+  net2280_dev.out_ep->driver_data = &net2280_dev;
+  net2280_dev.out_ep->desc = &hs_out_ept_desc;
+  if(usb_ep_enable(net2280_dev.out_ep) < 0) {
+    DLOG("Failed to enable out endpoint");
+    return -1;
+  }
+
+  for(i = 0; i < NET2280_MAX_PAGE_REQUESTS; ++i) {
+    req = net2280_dev.page_requests[i]
+      = usb_ep_alloc_request(net2280_dev.out_ep, 0);
+    if(req == NULL) {
+      /* -- EM -- Not doing all the necessary cleanup */
+      DLOG("Failed to allocate request");
+      return -1; 
+    }
+    req->length = PAGE_SIZE;
+    
+    req->buf = NULL;
+    req->dma = (dma_addr_t)NULL;
+    
+    req->complete = net2280_request_complete_callback;
+  }
+
+  
+  req = net2280_dev.bitmap_request = usb_ep_alloc_request(net2280_dev.out_ep, 0);
+  if(req == NULL) {
+    /* -- EM -- Not doing all the necessary cleanup */
+    DLOG("Failed to allocate request");
+    return -1; 
+  }
+  
+  req->buf = kmalloc(req->length = hs_out_ept_desc.wMaxPacketSize);
+  
+  if(req->buf == NULL) {
+    /* -- EM -- Not doing all the necessary cleanup */
+    DLOG("Failed to allocate buffer");
+    panic("Failed to allocate buffer");
+    return -1;
+  }
+  req->dma = (dma_addr_t)NULL;
+  
+  req->complete = net2280_request_complete_callback;
+  
+  if(usb_ep_queue(net2280_dev.out_ep, req, 0) < 0) {
+    DLOG("Failed to queue request");
+    panic("Failed to queue request");
+    
+    return -1;
+  }
+    
+  return 0;
+  
+#else
   int i;
   list_head_t* current_ep_list = &net2280_dev.gadget.ep_list;
   net2280_dev.out_ep = list_entry(current_ep_list->next, struct usb_ep, ep_list);
@@ -534,7 +848,7 @@ static int net2280_open(USB_DEVICE_INFO* device, int dev_num, char* buf, int dat
       DLOG("Failed to allocate request");
       return -1; 
     }
-    req->buf = kmalloc(req->length = hs_out_ept_desc.wMaxPacketSize);
+    req->buf = kmalloc(req->length = (hs_out_ept_desc.wMaxPacketSize*2));
     
     if(req->buf == NULL) {
       /* -- EM -- Not doing all the necessary cleanup */
@@ -553,18 +867,25 @@ static int net2280_open(USB_DEVICE_INFO* device, int dev_num, char* buf, int dat
   }
 
   return 0;
+#endif
 }
 
 static int net2280_read(USB_DEVICE_INFO* device, int dev_num, char* buf, int data_len)
 {
+#ifdef NET2280_MIGRATION_MODE
+  DLOG("Called read in migration mode");
+  return -1;
+#else
   int data_returned = 0;
-
   while(data_returned < data_len) {
     struct usb_request* req = net2280_dev.out_requests_with_data[net2280_dev.next_out_request_to_read];
+    
     if(req != NULL) {
       if(req->actual > (data_len - data_returned)) {
         break;
       }
+      DLOG("Memcpying %d bytes of data from request at index %d",
+           req->actual, net2280_dev.next_out_request_to_read);
       memcpy(&buf[data_returned], req->buf, req->actual);
       data_returned += req->actual;
       if(usb_ep_queue(net2280_dev.out_ep, req, 0) < 0) {
@@ -572,15 +893,21 @@ static int net2280_read(USB_DEVICE_INFO* device, int dev_num, char* buf, int dat
         panic("Failed to queue request");
         return -1;
       }
+      DLOG("Returned from ep queue");
       net2280_dev.out_requests_with_data[net2280_dev.next_out_request_to_read] = NULL;
       net2280_dev.next_out_request_to_read++;
+      if(net2280_dev.next_out_request_to_read == NET2280_NUM_OUT_REQS) {
+        net2280_dev.next_out_request_to_read = 0;
+      }
+      DLOG("net2280_dev.next_out_request_to_read = %d", net2280_dev.next_out_request_to_read);
     }
     else {
       break;
     }
   }
-
+  
   return data_returned;
+#endif
 }
 
 static USB_DRIVER net2280_driver = {
@@ -730,7 +1057,7 @@ static int populate_config_buf(struct usb_gadget *gadget,
   int                                     len;
   const struct usb_descriptor_header      **function;
 
-  DLOG("index = %u", index);
+  DLOGV("index = %u", index);
   //if (index > 0) 
   //  return -1;
 
@@ -771,7 +1098,7 @@ read_fifo (struct net2280_ep *ep, struct net2280_request *req)
   u8                      *buf = req->req.buf + req->req.actual;
   unsigned                count, tmp, is_short;
   unsigned                cleanup = 0, prevent = 0;
-
+  
   /* erratum 0106 ... packets coming in during fifo reads might
    * be incompletely rejected.  not all cases have workarounds.
    */
@@ -1131,7 +1458,7 @@ static int standard_setup_req(struct net2280 *net2280,
                                   req->buf,
                                   w_value >> 8,
                                   w_value & 0xff);
-      DLOG("value = %d at %d", value, __LINE__);
+      DLOGV("value = %d at %d", value, __LINE__);
       break;
 
     case USB_DT_STRING:
@@ -1254,7 +1581,7 @@ int default_net2280_usb_gadget_setup(struct usb_gadget* gadget,
   }
   else {
     rc = standard_setup_req(net2280, ctrl);
-    DLOG("rc = %d at line %d", rc, __LINE__);
+    DLOGV("rc = %d at line %d", rc, __LINE__);
   }
   
   /* Respond with data/status or defer until later? */
@@ -1265,7 +1592,7 @@ int default_net2280_usb_gadget_setup(struct usb_gadget* gadget,
     net2280->ep0req_name = (ctrl->bmRequestType & USB_DIR_IN ?
                             "ep0-in" : "ep0-out");
     rc = ep0_queue(net2280);
-    DLOG("rc = %d at line %d", rc, __LINE__);
+    DLOGV("rc = %d at line %d", rc, __LINE__);
   }
 
   /* Device either stalls (rc < 0) or reports success */
@@ -1386,8 +1713,11 @@ static void
 done (struct net2280_ep *ep, struct net2280_request *req, int status)
 {
   struct net2280          *dev;
+#ifdef NET2280_IO_VCPU
+  u32 flags;
+#endif
   unsigned                stopped = ep->stopped;
-
+  
   list_del_init (&req->queue);
 
   if (req->req.status == -1)
@@ -1403,13 +1733,28 @@ done (struct net2280_ep *ep, struct net2280_request *req, int status)
     VDEBUG (dev, "complete %s req %p stat %d len %u/%u\n",
             ep->ep.name, &req->req, status,
             req->req.actual, req->req.length);
-
-  /* don't modify queue heads during completion callback */
-  ep->stopped = 1;
-  spinlock_unlock (&dev->lock);
-  req->req.complete (&ep->ep, &req->req);
-  spinlock_lock (&dev->lock);
-  ep->stopped = stopped;
+  
+#ifdef NET2280_IO_VCPU
+  DLOG("A");
+  if(&req->req != dev->ep0req) {
+    spinlock_lock_irq_save(&dev->completion_list_lock, flags);
+    list_add_tail(&req->completion_chain, &dev->completion_list);
+    spinlock_unlock_irq_restore(&dev->completion_list_lock, flags);
+    /* -- EM -- hack: use VCPU2's period */
+    wakeup(dev->iovcpu);
+    //iovcpu_job_wakeup (dev->iovcpu, vcpu_lookup (2)->T);
+  }
+  else {
+#endif
+    /* don't modify queue heads during completion callback */
+    ep->stopped = 1;
+    spinlock_unlock (&dev->lock);
+    req->req.complete (&ep->ep, &req->req);
+    spinlock_lock (&dev->lock);
+    ep->stopped = stopped;
+#ifdef NET2280_IO_VCPU
+  }
+#endif
 }
 
 static void handle_stat0_irqs (struct net2280 *dev, u32 stat)
@@ -1589,7 +1934,7 @@ static void handle_stat0_irqs (struct net2280 *dev, u32 stat)
       ep->responded = 0;
       spinlock_unlock (&dev->lock);
       tmp = dev->driver->setup (&dev->gadget, &u.r);
-      DLOG("tmp = %d at line %d", tmp, __LINE__);
+      DLOGV("tmp = %d at line %d", tmp, __LINE__);
       spinlock_lock (&dev->lock);
     }
 
@@ -1817,9 +2162,12 @@ static void handle_stat1_irqs (struct net2280 *dev, u32 stat)
 static uint32_t
 net2280_irq_handler(uint8 vec)
 {
+  lock_kernel();
   /* shared interrupt, not ours */
-  if (!(readl(&net2280_dev.regs->irqstat0) & (1 << INTA_ASSERTED)))
+  if (!(readl(&net2280_dev.regs->irqstat0) & (1 << INTA_ASSERTED))) {
+    unlock_kernel();
     return 0;
+  }
   
   spinlock_lock (&net2280_dev.lock);
   
@@ -1830,6 +2178,7 @@ net2280_irq_handler(uint8 vec)
   handle_stat0_irqs(&net2280_dev, readl (&net2280_dev.regs->irqstat0));
   
   spinlock_unlock (&net2280_dev.lock);
+  unlock_kernel();
   return 1;
 }
 
@@ -1855,20 +2204,32 @@ static int net2280_enable (struct usb_ep *_ep,
  
   ep = container_of (_ep, struct net2280_ep, ep);
   if (!_ep || !desc || ep->desc || _ep->name == ep0name
-      || desc->bDescriptorType != USB_TYPE_EPT_DESC)
+      || desc->bDescriptorType != USB_TYPE_EPT_DESC) {
+    DLOGV("net2280_enable failed at line %d", __LINE__);
     return -1;
+  }
   dev = ep->dev;
-  if (!dev->driver || dev->gadget.speed == USB_SPEED_UNKNOWN)
+  if (!dev->driver || dev->gadget.speed == USB_SPEED_UNKNOWN) {
+    DLOG("net2280_enable failed at line %d", __LINE__);
+    DLOGV("dev->driver = 0x%p", dev->driver);
+    if(dev->driver) {
+      DLOGV("dev->gadget.speed = 0x%X", dev->gadget.speed);
+    }
     return -1;
+  }
  
   /* erratum 0119 workaround ties up an endpoint number */
-  if ((desc->bEndpointAddress & 0x0f) == EP_DONTUSE)
+  if ((desc->bEndpointAddress & 0x0f) == EP_DONTUSE) {
+    DLOG("net2280_enable failed at line %d", __LINE__);
     return -1;
+  }
  
   /* sanity check ep-e/ep-f since their fifos are small */
   max = desc->wMaxPacketSize & 0x1fff;
-  if (ep->num > 4 && max > 64)
+  if (ep->num > 4 && max > 64) {
+    DLOG("net2280_enable failed at line %d", __LINE__);
     return -1;
+  }
  
   spinlock_lock(&dev->lock);
   _ep->maxpacket = max & 0x7ff;
@@ -1907,7 +2268,8 @@ static int net2280_enable (struct usb_ep *_ep,
          && max != 512)
         || (dev->gadget.speed == USB_SPEED_FULL
             && max > 64)) {
-      spinlock_unlock (&dev->lock);
+      spinlock_unlock (&dev->lock); 
+      DLOG("net2280_enable failed at line %d", __LINE__);
       return -1;
     }
   }
@@ -2276,7 +2638,7 @@ net2280_alloc_request (struct usb_ep *_ep, gfp_t gfp_flags)
 
   req->req.dma = DMA_ADDR_INVALID;
   INIT_LIST_HEAD (&req->queue);
-
+  INIT_LIST_HEAD (&req->completion_chain);
   /* this dma descriptor may be swapped with the previous dummy */
   if (ep->dma) {
     struct net2280_dma      *td;
@@ -2299,6 +2661,7 @@ net2280_alloc_request (struct usb_ep *_ep, gfp_t gfp_flags)
     td->dmadesc = td->dmaaddr;
     req->td = td;
   }
+  req->ep = ep;
   return &req->req;
 }
 
@@ -2348,7 +2711,7 @@ net2280_queue (struct usb_ep *_ep, struct usb_request *_req, gfp_t gfp_flags)
   struct net2280_request  *req;
   struct net2280_ep       *ep;
   struct net2280          *dev;
-  //unsigned long           flags;
+  u32                     flags;
 
   /* we always require a cpu-view buffer, so that we can
    * always use pio (as fallback or whatever).
@@ -2356,23 +2719,23 @@ net2280_queue (struct usb_ep *_ep, struct usb_request *_req, gfp_t gfp_flags)
   req = container_of (_req, struct net2280_request, req);
   if (!_req || !_req->complete || !_req->buf
       || !list_empty (&req->queue)) {
-    DLOGV("Returning -1 at line %d", __LINE__);
+    DLOG("Returning -1 at line %d", __LINE__);
     return -1;
   }
   if (_req->length > (~0 & DMA_BYTE_COUNT_MASK)) {
-    DLOGV("Returning -1 at line %d", __LINE__);
+    DLOG("Returning -1 at line %d", __LINE__);
     return -1;
   }
   ep = container_of (_ep, struct net2280_ep, ep);
   if (!_ep || (!ep->desc && ep->num != 0)) {
-    DLOG("ep->desc = 0x%p", ep->desc);
-    DLOG("ep->num = %d", ep->num);
-    DLOGV("Returning -1 at line %d", __LINE__);
+    DLOGV("ep->desc = 0x%p", ep->desc);
+    DLOGV("ep->num = %d", ep->num);
+    DLOG("Returning -1 at line %d", __LINE__);
     return -1;
   }
   dev = ep->dev;
   if (!dev->driver || dev->gadget.speed == USB_SPEED_UNKNOWN) {
-    DLOGV("Returning -1 at line %d", __LINE__);
+    DLOG("Returning -1 at line %d", __LINE__);
     return -1;
   }
 
@@ -2398,8 +2761,8 @@ net2280_queue (struct usb_ep *_ep, struct usb_request *_req, gfp_t gfp_flags)
           _ep->name, _req, _req->length, _req->buf);
 #endif
 
-  //spin_lock_irqsave (&dev->lock, flags);
-  spinlock_lock(&dev->lock);
+  spinlock_lock_irq_save (&dev->lock, flags);
+  
   _req->status = -1;
   _req->actual = 0;
 
@@ -2426,11 +2789,9 @@ net2280_queue (struct usb_ep *_ep, struct usb_request *_req, gfp_t gfp_flags)
         /* OUT FIFO might have packet(s) buffered */
         s = readl (&ep->regs->ep_stat);
         if ((s & (1 << FIFO_EMPTY)) == 0) {
-          /* note:  _req->short_not_ok is
-           * ignored here since PIO _always_
-           * stops queue advance here, and
-           * _req->status doesn't change for
-           * short reads (only _req->actual)
+          /* note: _req->short_not_ok is ignored here since PIO
+           * _always_ stops queue advance here, and _req->status
+           * doesn't change for short reads (only _req->actual)
            */
           if (read_fifo (ep, req)) {
             done (ep, req, 0);
@@ -2471,8 +2832,8 @@ net2280_queue (struct usb_ep *_ep, struct usb_request *_req, gfp_t gfp_flags)
   if (req)
     list_add_tail (&req->queue, &ep->queue);
  done:
-  //spin_unlock_irqrestore (&dev->lock, flags);
-  spinlock_unlock(&dev->lock);
+  spinlock_unlock_irq_restore (&dev->lock, flags);
+  
   /* pci writes may still be posted */
   return 0;
 }
@@ -2965,6 +3326,12 @@ static bool initialise_net2280(struct net2280* dev, uint32_t base_addr, bool is_
   int i;
   addr_t base_virt_addr = map_virtual_page(base_addr | 0x3);
 
+#ifdef NET2280_IO_VCPU
+  INIT_LIST_HEAD(&dev->completion_list);
+  spinlock_init(&dev->completion_list_lock);
+#endif
+  spinlock_init(&dev->lock);
+
   dev->gadget.ops = &net2280_ops;
   dev->gadget.max_speed = USB_SPEED_HIGH;
   dev->regs   = (struct net2280_regs     *) (base_virt_addr);
@@ -2980,7 +3347,7 @@ static bool initialise_net2280(struct net2280* dev, uint32_t base_addr, bool is_
   usb_reset(dev);
   usb_reinit(dev);
 
-  dev->got_irq = 1;             /* Always have IRQ in Quest implementation */
+  dev->got_irq = 1;
 
 #define INIT_NET2280_POOL(type)                                         \
   do {                                                                  \
@@ -3047,10 +3414,92 @@ static bool initialise_net2280(struct net2280* dev, uint32_t base_addr, bool is_
   return TRUE;
 }
 
+#ifdef NET2280_MIGRATION_MODE
+
+static void net2280_migration_thread()
+{
+  
+  USB_DEVICE_INFO* device_info = usb_get_device(net2280_dev_num);
+  if(device_info == NULL) {
+    DLOG("device info for migration device could not be found");
+    panic("device info for migration device could not be found");
+  }
+
+  /* -- EM -- Spin until device has been enumerated by host*/
+  while(net2280_dev.gadget.speed == USB_SPEED_UNKNOWN) {
+    sched_usleep(1000000 * 1);
+  }
+  
+  if(net2280_open(device_info, net2280_dev_num, NULL, 0) < 0) {
+    DLOG("net2280 open failed");
+    panic("net2280 open failed");
+  }
+
+  return;
+  DLOG("Spinning in migration thread");
+  while(1) sched_usleep(10000000 * 30);
+}
+
+#endif
+
+
+#ifdef NET2280_IO_VCPU
+static void net2280_bh_thread(struct net2280* dev)
+{
+  //unlock_kernel();
+  //sti();
+  u32 flags;
+  
+  while(1) {
+    while(1) {
+      struct net2280_request *req;
+      spinlock_lock_irq_save(&dev->completion_list_lock, flags);
+      
+      if(!list_empty(&dev->completion_list)) {
+        req = list_entry(dev->completion_list.next, struct net2280_request, completion_chain);
+        list_del(dev->completion_list.next);
+      }
+      else {
+        req = NULL;
+      }
+      
+      spinlock_unlock_irq_restore(&dev->completion_list_lock, flags);
+      
+      if(req) {
+        unsigned stopped = req->ep->stopped;
+        req->ep->stopped = 1;
+
+        /* -- EM -- Ugly hack right now because of lot of the stuff
+           the completion functions call assume that the kernel lock
+           is acquired, at least for now we will be preempted in
+           between calls to complete */
+        
+        //cli();
+        //lock_kernel();
+        req->req.complete(&req->ep->ep, &req->req);
+        //unlock_kernel();
+        //sti();
+        req->ep->stopped = stopped;
+      }
+      else {
+        break;
+      }
+    }
+    
+    //cli();
+    //lock_kernel();
+    iovcpu_job_completion();
+    //unlock_kernel();
+    //sti();
+        
+    
+  }
+}
+#endif
+
 static void net2280_init_thread(struct net2280* net2280_dev)
 {
   USB_DEVICE_INFO* temp;
-  int dev_num;
   
   if(net2280_start(&net2280_dev->gadget, &default_net2280_usb_gadget_driver) < 0) { 
     DLOG("net2280_start failed"); 
@@ -3064,9 +3513,26 @@ static void net2280_init_thread(struct net2280* net2280_dev)
     return;
   }
 
-  dev_num = usb_register_device(temp, &net2280_driver);
+#ifdef NET2280_IO_VCPU
+  net2280_dev->iovcpu =
+    create_kernel_thread_args ((u32) net2280_bh_thread,
+                               (u32) &net2280_dev->bh_stack[NET2280_IOC_BH_THREAD_STACK_SIZE-1],
+                               "Net2280 Bottom Half", FALSE, 1, net2280_dev);
+  DLOG("net2280_dev->iovcpu = 0x%X", net2280_dev->iovcpu);
+  //set_iovcpu (net2280_dev->iovcpu, IOVCPU_CLASS_USB);
+#endif
 
-  DLOG("net2280_start done, device number = %d", dev_num);
+  net2280_dev_num = usb_register_device(temp, &net2280_driver);
+
+  DLOG("net2280_start done, device number = %d", net2280_dev_num);
+
+#ifdef NET2280_MIGRATION_MODE
+  
+  create_kernel_thread_args((u32)net2280_migration_thread,
+                            (u32) &migration_thread_stack[MIGRATION_THREAD_STACK_SIZE - 1],
+                            "Net2280 Migration Thread",
+                            TRUE, 0);  
+#endif
 }
 
 
@@ -3084,7 +3550,7 @@ static bool net2280_init(void)
     DLOGV("Exiting %s with FALSE", __FUNCTION__);
     return FALSE;
   }
-   
+
   /* Find the Net2280 device on the PCI bus */
   device_index = ~0;
   i = 0;

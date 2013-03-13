@@ -42,6 +42,8 @@
 #include <util/sort.h>
 #include <sched/vcpu.h>
 
+
+
 #define EHCI_IS_INDEX_IN_CIRC_BUF_REGION(test_index, start_index, end_index) \
   (start_index < end_index ?                                            \
    start_index <= test_index && test_index <= end_index                 \
@@ -79,7 +81,9 @@ create_qtd_chain(ehci_hcd_t* ehci_hcd,
                  uint32_t setup_len, addr_t data,
                  uint32_t data_len, bool enable_ioc,
                  list_head_t* qtd_list, /* Should be empty/uninitialized */
-                 uint interrupt_byte_rate);
+                 uint interrupt_byte_rate,
+                 bool phys_data_addr,
+                 void* completion_context);
 
 static int create_itd_chain(ehci_hcd_t* ehci_hcd, uint8_t address,
                             uint8_t endpoint, addr_t data,
@@ -87,7 +91,8 @@ static int create_itd_chain(ehci_hcd_t* ehci_hcd, uint8_t address,
                             int num_packets,
                             int max_packet_len, bool is_input,
                             list_head_t* itd_list, bool ioc,
-                            struct urb* urb, uint interrupt_frame_rate);
+                            struct urb* urb, uint interrupt_frame_rate,
+                            void* completion_context);
 
 
 static inline frm_lst_lnk_ptr_t**
@@ -187,13 +192,15 @@ static int ehci_rt_free_write_resources(struct urb* urb)
         break;
       }
       unlink_itd_from_frame_list(ehci_hcd, itd_to_free);
-      iso_urb_priv->packets_in_use -= packets_per_itd;
-      list_del(&itd_to_free->chain_list);
+      if(!(urb->transfer_flags & URB_RT_ZERO_COPY_WRITE)) {
+        iso_urb_priv->packets_in_use -= packets_per_itd;
+      }
+      
       free_itd(ehci_hcd, itd_to_free);
     }
   }
   else {
-    qh_t* qh;;
+    qh_t* qh;
     qtd_t* temp_qtd;
     qtd_t* qtd_to_remove;
     ehci_qh_urb_priv_t* qh_urb_priv;
@@ -218,22 +225,25 @@ static int ehci_rt_free_write_resources(struct urb* urb)
     qh = qh_urb_priv->qh;
     
     list_for_each_entry_safe(qtd_to_remove, temp_qtd, &qh->qtd_list, chain_list) {
-    
-      if(qh->current_qtd_ptr_raw == EHCI_QTD_VIRT_TO_PHYS(ehci_hcd, qtd_to_remove)) {
+
+      
+      if(qh->current_qtd_ptr_raw == EHCI_QTD_VIRT_TO_PHYS(ehci_hcd, qtd_to_remove) ||
+         qh->dummy_qtd == qtd_to_remove) {
         break;
       }
       else {
-        //DLOG("About to call list function at line %d", __LINE__);
-        //DLOG("qtd_to_remove = 0x%p", qtd_to_remove);
-        //DLOG("qtd_to_remove->chain_list.prev = 0x%p", qtd_to_remove->chain_list.prev);
-        //DLOG("qtd_to_remove->chain_list.next = 0x%p", qtd_to_remove->chain_list.next);
-        list_del(&qtd_to_remove->chain_list);
-        //DLOG("Done calling list function");
-        qh_urb_priv->next_byte_to_free_for_writing
-          += qtd_to_remove->original_total_bytes_to_transfer;
-        qh_urb_priv->bytes_in_buffer -= qtd_to_remove->original_total_bytes_to_transfer;
-        if(qh_urb_priv->next_byte_to_free_for_writing >= buffer_size) {
-          qh_urb_priv->next_byte_to_free_for_writing -= buffer_size;
+        if(!(urb->transfer_flags & URB_RT_ZERO_COPY_WRITE)) {
+          if(qh_urb_priv->extra_nonrt_qtd) {
+            qh_urb_priv->extra_nonrt_qtd = FALSE;
+          }
+          else {
+            qh_urb_priv->next_byte_to_free_for_writing
+              += qtd_to_remove->original_total_bytes_to_transfer;
+            qh_urb_priv->bytes_in_buffer -= qtd_to_remove->original_total_bytes_to_transfer;
+            if(qh_urb_priv->next_byte_to_free_for_writing >= buffer_size) {
+              qh_urb_priv->next_byte_to_free_for_writing -= buffer_size;
+            }
+          }
         }
         free_qtd(ehci_hcd, qtd_to_remove);
       }
@@ -375,7 +385,7 @@ static int ehci_rt_qh_update_data(struct urb* urb, ehci_qh_urb_priv_t* qh_urb_pr
       }
     }
   }
-
+  
   EHCI_ASSERT(max_count >= 0);
   
   return original_max_count - max_count;
@@ -499,7 +509,8 @@ int fill_iso_push_packets(struct urb* urb, int count,
 
 #define DIV_ROUND_UP(n,d) (((n) + (d) - 1) / (d))
 
-int ehci_rt_iso_push_data(struct urb* urb, char* data, int count, uint interrupt_frame_rate)
+int ehci_rt_iso_push_data(struct urb* urb, char* data, int count,
+                          uint interrupt_frame_rate, uint flags, void* completion_context)
 {
   unsigned int pipe = urb->pipe;
   uint32_t microframe_interval = urb->interval;
@@ -516,6 +527,13 @@ int ehci_rt_iso_push_data(struct urb* urb, char* data, int count, uint interrupt
 
   insert_remaining_realtime_itds(hcd_to_ehci_hcd(urb->dev->hcd), urb);
 
+
+  if(urb->transfer_flags & URB_RT_ZERO_COPY_WRITE) {
+    /* -- EM -- Implement this later */
+    DLOG("ZERO COPY WRITE Not support for isochronous endpoints yet");
+    panic("ZERO COPY WRITE Not support for isochronous endpoints yet");
+  }
+  
   if(iso_urb_priv->completion_element == NULL && interrupt_frame_rate != 0) {
     comp_elem = allocate_ehci_completion_element(ehci_hcd);
     if(comp_elem == NULL) {
@@ -545,10 +563,7 @@ int ehci_rt_iso_push_data(struct urb* urb, char* data, int count, uint interrupt
     int packets_in_first_memcpy = urb->number_of_packets - start_packet_for_data;
     int bytes_in_first_memcpy = packets_in_first_memcpy * max_transaction_size;
     int bytes_in_second_memcpy = count - bytes_in_first_memcpy;
-    int packets_in_second_memcpy = DIV_ROUND_UP(bytes_in_second_memcpy,
-                                                max_transaction_size);
     
-    EHCI_ASSERT((packets_in_first_memcpy + packets_in_second_memcpy) == num_packets);
     
     memcpy(&((char*)urb->transfer_buffer)[packets[start_packet_for_data].offset],
            data, bytes_in_first_memcpy);
@@ -575,7 +590,8 @@ int ehci_rt_iso_push_data(struct urb* urb, char* data, int count, uint interrupt
                       usb_maxpacket(urb->dev, urb->pipe),
                       usb_pipein(pipe),
                       &itd_list, mp_enabled,
-                      urb, interrupt_frame_rate) < 0) {
+                      urb, interrupt_frame_rate,
+                      completion_context) < 0) {
     return -1;
 
   }
@@ -634,6 +650,7 @@ static void qtd_restore(qtd_t* qtd)
   qtd->token = qtd->token_backup;
   qtd->buffer_page[0] = qtd->buffer_page_zero_backup;
   qtd->ioc_called = FALSE;
+  DLOG("qtd_restore->completion_context = 0x%p", qtd->completion_context);
 }
 
 static int ehci_rt_qh_free_data(struct urb* urb, ehci_qh_urb_priv_t* qh_urb_priv,
@@ -647,6 +664,7 @@ static int ehci_rt_qh_free_data(struct urb* urb, ehci_qh_urb_priv_t* qh_urb_priv
   int original_count = count;
   qh_t* qh = qh_urb_priv->qh;
   ehci_hcd_t* ehci_hcd = hcd_to_ehci_hcd(urb->dev->hcd);
+
   
   while(count) {
     int next_qtd_to_free = qh_urb_priv->next_qtd_to_free;
@@ -670,6 +688,16 @@ static int ehci_rt_qh_free_data(struct urb* urb, ehci_qh_urb_priv_t* qh_urb_priv
           current_qtd->original_total_bytes_to_transfer
           - qh_urb_priv->next_byte_to_free_in_qtd;
         
+        if(qh->current_qtd_ptr_raw ==
+           EHCI_QTD_VIRT_TO_PHYS(ehci_hcd, current_qtd)) {
+          /*
+           * The current qtd in the qh is the one we are trying to
+           * free, can't free it yet, need to wait for hardware to
+           * advance, so just break out, 
+           */
+          break;
+        }
+        
         count -= bytes_to_free;
         qh_urb_priv->bytes_in_buffer -= bytes_to_free;
         qh_urb_priv->next_byte_to_free_in_qtd = 0;
@@ -677,6 +705,7 @@ static int ehci_rt_qh_free_data(struct urb* urb, ehci_qh_urb_priv_t* qh_urb_priv
         if(qh_urb_priv->next_qtd_to_free == num_qtds) {
           qh_urb_priv->next_qtd_to_free = 0;
         }
+        
         qtd_restore(current_qtd);
         current_qtd->next_pointer_raw = EHCI_LIST_END;
         qh_append_qtd(ehci_hcd, urb, qh_urb_priv->qh, current_qtd);
@@ -747,6 +776,7 @@ static int ehci_rt_qh_free_data(struct urb* urb, ehci_qh_urb_priv_t* qh_urb_priv
             if(qh_urb_priv->next_qtd_to_free == num_qtds) {
               qh_urb_priv->next_qtd_to_free = 0;
             }
+            
             qtd_restore(current_qtd);
             current_qtd->next_pointer_raw = EHCI_LIST_END;
             qh_append_qtd(ehci_hcd, urb, qh_urb_priv->qh, current_qtd);
@@ -789,7 +819,8 @@ static int ehci_rt_free_data(struct urb* urb, int count)
  */
 
 static int ehci_rt_qh_push_data(struct urb* urb, ehci_qh_urb_priv_t* qh_urb_priv,
-                                char* data, int count, uint interrupt_rate)
+                                char* data, int count, uint interrupt_rate, uint flags,
+                                void* completion_context)
 {
   qh_t* qh = qh_urb_priv->qh;
   int bytes_sent = 0;
@@ -803,7 +834,9 @@ static int ehci_rt_qh_push_data(struct urb* urb, ehci_qh_urb_priv_t* qh_urb_priv
     uint32_t bytes_for_this_chain;
     uint32_t max_possible_for_this_chain;
 
-    if(qh_urb_priv->bytes_in_buffer == buffer_size) {
+    if(!(urb->transfer_flags & URB_RT_ZERO_COPY_WRITE) &&
+       qh_urb_priv->bytes_in_buffer == buffer_size) {
+  
       break;
     }
 
@@ -814,41 +847,62 @@ static int ehci_rt_qh_push_data(struct urb* urb, ehci_qh_urb_priv_t* qh_urb_priv
         return -1;
       }
     }
-
-    EHCI_ASSERT(qh_urb_priv->bytes_in_buffer < buffer_size);
     
-    if(qh_urb_priv->next_byte_to_free_for_writing
-       <= qh_urb_priv->next_byte_to_use_for_writing) {
-      /* We might run into the end of the buffer */
-      max_possible_for_this_chain
-        = buffer_size - qh_urb_priv->next_byte_to_use_for_writing;
-    }
-    else {
-      /* We might run into data */
-      max_possible_for_this_chain = qh_urb_priv->next_byte_to_free_for_writing
-        - qh_urb_priv->next_byte_to_use_for_writing;
-    }
-    
-    EHCI_ASSERT(max_possible_for_this_chain > 0);
-
-    if(count < max_possible_for_this_chain) {
+    if(urb->transfer_flags & URB_RT_ZERO_COPY_WRITE) {
       bytes_for_this_chain = count;
+      if(!create_qtd_chain(ehci_hcd, urb, NULL, 0, data, bytes_for_this_chain,
+                           mp_enabled, &qtd_list, interrupt_rate, !!(flags & URB_RT_PHYS_ADDR),
+                           completion_context)) {
+        return -1;
+      }
     }
     else {
-      bytes_for_this_chain = max_possible_for_this_chain;
-    }
+      if(!(qh_urb_priv->bytes_in_buffer < buffer_size)) {
+        DLOG_UINT(qh_urb_priv->bytes_in_buffer);
+        DLOG_UINT(buffer_size);
+      }
 
-    memcpy(&urb_buffer[qh_urb_priv->next_byte_to_use_for_writing],
-           &data[bytes_sent],
-           bytes_for_this_chain);
-    DLOG_INT(bytes_for_this_chain);
-    if(!create_qtd_chain(ehci_hcd, urb, NULL, 0,
-                         (addr_t)&urb_buffer[qh_urb_priv->next_byte_to_use_for_writing],
-                         bytes_for_this_chain, mp_enabled, &qtd_list, interrupt_rate)) {
-      return -1;
-    }
-
+      EHCI_ASSERT(qh_urb_priv->bytes_in_buffer < buffer_size);
     
+      if(qh_urb_priv->next_byte_to_free_for_writing
+         <= qh_urb_priv->next_byte_to_use_for_writing) {
+        /* We might run into the end of the buffer */
+        max_possible_for_this_chain
+          = buffer_size - qh_urb_priv->next_byte_to_use_for_writing;
+      }
+      else {
+        /* We might run into data */
+        max_possible_for_this_chain = qh_urb_priv->next_byte_to_free_for_writing
+          - qh_urb_priv->next_byte_to_use_for_writing;
+      }
+    
+      EHCI_ASSERT(max_possible_for_this_chain > 0);
+
+      if(count < max_possible_for_this_chain) {
+        bytes_for_this_chain = count;
+      }
+      else {
+        bytes_for_this_chain = max_possible_for_this_chain;
+      }
+
+      memcpy(&urb_buffer[qh_urb_priv->next_byte_to_use_for_writing],
+             &data[bytes_sent],
+             bytes_for_this_chain);
+    
+      if(!create_qtd_chain(ehci_hcd, urb, NULL, 0,
+                           (addr_t)&urb_buffer[qh_urb_priv->next_byte_to_use_for_writing],
+                           bytes_for_this_chain, mp_enabled, &qtd_list, interrupt_rate,
+                           !!(flags & URB_RT_PHYS_ADDR), completion_context)) {
+        return -1;
+      }
+      
+      qh_urb_priv->bytes_in_buffer += bytes_for_this_chain;
+      qh_urb_priv->next_byte_to_use_for_writing += bytes_for_this_chain;
+      if(qh_urb_priv->next_byte_to_use_for_writing == buffer_size) {
+        qh_urb_priv->next_byte_to_use_for_writing = 0;
+      }
+    }
+    bytes_sent += bytes_for_this_chain;
     
     if(completion_element) {
       qh_urb_priv->completion_element = completion_element;
@@ -865,33 +919,31 @@ static int ehci_rt_qh_push_data(struct urb* urb, ehci_qh_urb_priv_t* qh_urb_priv
     else {
       /* -- EM -- Using completion lock to also protect
          qh qtd list */
-      spinlock_lock(&ehci_hcd->completion_lock);
+      //spinlock_lock(&ehci_hcd->completion_lock);
       qh_append_qtds(ehci_hcd, urb, qh, &qtd_list);
-      spinlock_unlock(&ehci_hcd->completion_lock);
-    }
-    
-    bytes_sent += bytes_for_this_chain;
-    qh_urb_priv->bytes_in_buffer += bytes_for_this_chain;
-    qh_urb_priv->next_byte_to_use_for_writing += bytes_for_this_chain;
-    if(qh_urb_priv->next_byte_to_use_for_writing == buffer_size) {
-      qh_urb_priv->next_byte_to_use_for_writing = 0;
+      //spinlock_unlock(&ehci_hcd->completion_lock);
     }
   }
-  //DLOG("Bytes sent at end %d\n\n\n\n", bytes_sent);
   return bytes_sent;
 }
 
 
-static int ehci_rt_push_data(struct urb* urb, char* data, int count, uint interrupt_rate)
+static int ehci_rt_push_data(struct urb* urb, char* data, int count, uint interrupt_rate,
+                             uint flags, void* completion_context)
 {
+  if(flags & URB_RT_PHYS_ADDR && (usb_pipetype(urb->pipe) == PIPE_ISOCHRONOUS)) {
+    DLOG("Isochronous does not support the URB_RT_PHYS_ADDR flag");
+    panic("Isochronous does not support the URB_RT_PHYS_ADDR flag");
+  }
+  
   switch(usb_pipetype(urb->pipe)) {
   case PIPE_BULK:
   case PIPE_INTERRUPT:
     return ehci_rt_qh_push_data(urb, ehci_get_qh_urb_priv(urb),
-                                data, count, interrupt_rate);
+                                data, count, interrupt_rate, flags, completion_context);
 
   case PIPE_ISOCHRONOUS:
-    return ehci_rt_iso_push_data(urb, data, count, interrupt_rate);
+    return ehci_rt_iso_push_data(urb, data, count, interrupt_rate, flags, completion_context);
   default: // case PIPE_CONTROL:
     return -1;
   }
@@ -1033,10 +1085,12 @@ static void handle_output_iso_rt_urb_completion(ehci_hcd_t* ehci_hcd,
   struct urb* urb = comp_element->urb;
   ehci_iso_urb_priv_t* iso_urb_priv = get_iso_urb_priv(urb);
   itd_t* current_itd;
+  itd_t* temp_itd;
   bool done = FALSE;
-  uint call_count = 0;
+  void* last_context = NULL;
+  bool need_to_call = FALSE;
   
-  list_for_each_entry(current_itd, &iso_urb_priv->write_itds_to_free, chain_list) {
+  list_for_each_entry_safe(current_itd, temp_itd, &iso_urb_priv->write_itds_to_free, chain_list) {
     int i;
     for(i = 0; i < 8; ++i) {
       if(current_itd->transaction[i].raw & ITD_ACTIVE) {
@@ -1047,17 +1101,22 @@ static void handle_output_iso_rt_urb_completion(ehci_hcd_t* ehci_hcd,
         if( (current_itd->transaction[i].raw & ITD_IOC) &&
             (!(current_itd->ioc_processed_bitmap & (1 << i))) ) {
           current_itd->ioc_processed_bitmap |= 1 << i;
-          call_count++;
+          if(urb->transfer_flags & URB_RT_ONE_HANDLER_CALL) {
+            need_to_call = TRUE;
+            last_context = current_itd->completion_context;
+          }
+          else {
+            urb->context = current_itd->completion_context;
+            urb->complete(urb);
+          }
         }
       }
     }
     if(done) break;
   }
-  while(call_count--) {
+  if(need_to_call) {
+    urb->context = last_context;
     urb->complete(urb);
-    if(urb->transfer_flags & URB_RT_ONE_HANDLER_CALL) {
-      break;
-    }
   }
 }
 
@@ -1076,6 +1135,7 @@ static void handle_input_qh_rt_urb_completion(ehci_hcd_t* ehci_hcd,
     bytes_remaining_to_transfer = (current_qtd->token >> 16) & 0x7FFF;
     
     if(bytes_remaining_to_transfer == 0 && !current_qtd->ioc_called ) {
+    
       if(current_qtd->token & QTD_IOC) {
         current_qtd->ioc_called = TRUE;
         call_counter++;
@@ -1090,6 +1150,7 @@ static void handle_input_qh_rt_urb_completion(ehci_hcd_t* ehci_hcd,
       qh_urb_priv->next_qtd_for_ioc = 0;
     }
   }
+  //DLOG_UINT(call_counter);
   while(call_counter--) {
     urb->complete(urb);
     if(urb->transfer_flags & URB_RT_ONE_HANDLER_CALL) {
@@ -1105,29 +1166,44 @@ static void handle_output_qh_rt_urb_completion(ehci_hcd_t* ehci_hcd,
   ehci_qh_urb_priv_t* qh_urb_priv = ehci_get_qh_urb_priv(urb);
   qh_t* qh = qh_urb_priv->qh;
   qtd_t* current_qtd;
+  qtd_t* temp_qtd;
   int bytes_remaining_to_transfer;
-  uint call_counter = 0;
-  
-  list_for_each_entry(current_qtd, &qh->qtd_list, chain_list) {
-    
+  void* last_context = NULL;
+  bool need_to_call = FALSE;
+
+#if 0
+  list_for_each_entry_safe(current_qtd, temp_qtd, &qh->qtd_list, chain_list) {
+    if(current_qtd->token & QTD_ACTIVE) {
+      //DLOG("Active rt output qtd");
+    }
+  }
+#endif
+
+  list_for_each_entry_safe(current_qtd, temp_qtd, &qh->qtd_list, chain_list) {
     bytes_remaining_to_transfer = (current_qtd->token >> 16) & 0x7FFF;
-    
-    if(bytes_remaining_to_transfer == 0 && !current_qtd->ioc_called ) {
-      if(current_qtd->token & QTD_IOC) {
+
+
+    if(bytes_remaining_to_transfer == 0) {
+      if(!current_qtd->ioc_called && current_qtd->token & QTD_IOC ) {
         current_qtd->ioc_called = TRUE;
-        call_counter++;
+        if(urb->transfer_flags & URB_RT_ONE_HANDLER_CALL) {
+          need_to_call = TRUE;
+          last_context = current_qtd->completion_context;
+        }
+        else {
+          urb->context = current_qtd->completion_context;
+          urb->complete(urb);
+        }
       }
     }
     else {
       break;
     }
   }
-
-  while(call_counter--) {
+  
+  if(need_to_call) {
+    urb->context = last_context;
     urb->complete(urb);
-    if(urb->transfer_flags & URB_RT_ONE_HANDLER_CALL) {
-      break;
-    }
   }
 }
 
@@ -1184,16 +1260,6 @@ static bool handle_non_rt_urb_completion(ehci_hcd_t* ehci_hcd,
       
   if(done) {
     urb->active = FALSE;
-          
-    /* -- EM -- Since this function is called in the context of
-     * the interrupt handler (and in the hardware bug backup
-     * thread) the better thing to do would be wake up a
-     * thread/IOVCPU to handle the URB completion function (maybe
-     * might not be worth it since completion callbacks are
-     * usually very small, this is something we can compare for a
-     * performance/predictability trade-off) but for right now just
-     * call it here */
-    
     if(urb->complete != NULL) {
       urb->complete(comp_element->urb);
     }
@@ -1245,8 +1311,6 @@ static void ehci_check_for_urb_completions(ehci_hcd_t* ehci_hcd)
 
   spinlock_lock(&ehci_hcd->completion_lock);
   
-  /* At this point we have completion_lock */
-    
   list_for_each_entry_safe(comp_element, temp_comp_element,
                            &ehci_hcd->completion_list, chain_list) {
     if(comp_element->urb->active) {
@@ -1259,7 +1323,6 @@ static void ehci_check_for_urb_completions(ehci_hcd_t* ehci_hcd)
       }
       else {
         if(handle_non_rt_urb_completion(ehci_hcd, comp_element)) {
-          list_del(&comp_element->chain_list);
           free_ehci_completion_element(ehci_hcd, comp_element);
         }
       }
@@ -1511,9 +1574,7 @@ static void ehci_irq_bottom_half(ehci_hcd_t* ehci_hcd)
 static void ehci_bh_thread(ehci_hcd_t* ehci_hcd)
 {
   while(1) {
-    DLOG("F:");
     ehci_irq_bottom_half(ehci_hcd);
-    
     iovcpu_job_completion();
   }
 }
@@ -1809,7 +1870,6 @@ bool ehci_post_enumeration(usb_hcd_t* usb_hcd)
 {  
   ehci_hcd_t* ehci_hcd = hcd_to_ehci_hcd(usb_hcd);
   enable_interrupts(ehci_hcd);
-  print_caps_and_regs_info(hcd_to_ehci_hcd(usb_hcd), "In ehci_post_enumeration");
   unlink_all_qhs_from_async(ehci_hcd);
   return TRUE;
 }
@@ -1845,7 +1905,7 @@ static int ehci_submit_urb(struct urb* urb,
   ehci_hcd_t* ehci_hcd = hcd_to_ehci_hcd(urb->dev->hcd);
   uint16_t packet_len = usb_maxpacket(urb->dev, urb->pipe);
   uint32_t pipe_type;
-  
+
   if(ehci_hcd->reorder_urbs_stage != EHCI_RUS_NONE) {
     reorder_transactions(ehci_hcd);
     if(ehci_hcd->reorder_urbs_stage != EHCI_RUS_NONE) {
@@ -1861,13 +1921,15 @@ static int ehci_submit_urb(struct urb* urb,
   
   pipe_type = usb_pipetype(pipe);
 
-  if(urb->transfer_buffer) {
-    urb->transfer_dma = (phys_addr_t)get_phys_addr(urb->transfer_buffer);
-  }
-  else {
-    if(usb_pipetype(urb->pipe) != PIPE_CONTROL) {
-      /* -- EM -- Right now must use transfer_buffer can't use transfer dma */
-      return -1;
+  if(!(urb->transfer_flags & URB_RT_ZERO_COPY_WRITE)) {
+    if(urb->transfer_buffer) {
+      urb->transfer_dma = (phys_addr_t)get_phys_addr(urb->transfer_buffer);
+    }
+    else {
+      if(usb_pipetype(urb->pipe) != PIPE_CONTROL) {
+        /* -- EM -- Right now must use transfer_buffer can't use transfer dma */
+        return -1;
+      }
     }
   }
   
@@ -1876,7 +1938,6 @@ static int ehci_submit_urb(struct urb* urb,
     return ehci_isochronous_transfer(ehci_hcd, urb);
   case PIPE_INTERRUPT:
     return ehci_interrupt_transfer(ehci_hcd, urb);
-    
   case PIPE_CONTROL:
   case PIPE_BULK:
     return ehci_async_transfer(ehci_hcd, urb);
@@ -2090,7 +2151,8 @@ initialise_ehci_hcd(uint32_t usb_base,
     micro_frame_remaining_time_async[i] = USEC_PER_MICRO_FRAME_FOR_ASYNC;
   }
 #endif
-  
+
+  DLOG("ehci_hcd->completion_lock = 0x%p", &ehci_hcd->completion_lock);
   spinlock_init(&ehci_hcd->completion_lock);
   spinlock_init(&ehci_hcd->uninserted_itd_lock);
 
@@ -2385,7 +2447,8 @@ create_qtd_chain(ehci_hcd_t* ehci_hcd,
                  uint32_t setup_len, addr_t data,
                  uint32_t data_len, bool enable_ioc,
                  list_head_t* qtd_list, /* Should be empty/uninitialized */
-                 uint interrupt_byte_rate)
+                 uint interrupt_byte_rate,
+                 bool phys_data_addr, void* completion_context)
 {
   uint32_t    token;
   qtd_t*      current_qtd;
@@ -2441,7 +2504,7 @@ create_qtd_chain(ehci_hcd_t* ehci_hcd,
     token |= QTD_INPUT;
   }
 
-  data_phys_addr = (phys_addr_t)get_phys_addr(data);
+  data_phys_addr = (phys_addr_t)(phys_data_addr ? data : get_phys_addr(data));
   
   while(1) {
     uint max_bytes_for_this_qtd = data_len;
@@ -2453,9 +2516,10 @@ create_qtd_chain(ehci_hcd_t* ehci_hcd,
                  packet_len, token);
     data_phys_addr += this_qtd_length;
     bytes_since_last_ioc += this_qtd_length;
-    if(bytes_since_last_ioc >= interrupt_byte_rate) {
+    if(bytes_since_last_ioc >= interrupt_byte_rate && interrupt_byte_rate != 0) {
       bytes_since_last_ioc = 0;
       QTD_ENABLE_IOC(current_qtd);
+      current_qtd->completion_context = completion_context;
     }
 
     if(is_input) {
@@ -2536,7 +2600,9 @@ create_qtd_chain(ehci_hcd_t* ehci_hcd,
 
   if(enable_ioc && !urb->realtime) {
     /* Interrupt on complete */
+    
     QTD_ENABLE_IOC(current_qtd);
+    current_qtd->completion_context = completion_context;
   }
   
   return TRUE;
@@ -2606,7 +2672,6 @@ static void qh_prep(ehci_hcd_t* ehci_hcd, struct urb* urb, qh_t* qh, uint32_t en
 {
   uint32_t info1 = 0;
   uint32_t info2 = 0;
-  
 
   if(device_addr != 0) {
     usb_hcd_t* usb_hcd = ehci_hcd_to_hcd(ehci_hcd);
@@ -2640,9 +2705,6 @@ static void qh_prep(ehci_hcd_t* ehci_hcd, struct urb* urb, qh_t* qh, uint32_t en
     /* Some Freescale processors have start the numbering from 0
        instead of 1, if we every test a processor with this bug we
        should use port_num - 1 instead of port_num. */
-
-    DLOG_UINT(urb->dev->port_num);
-    DLOG_UINT(urb->dev->hub_addr);
     
     info2 |= urb->dev->port_num << 23;
     
@@ -2651,6 +2713,10 @@ static void qh_prep(ehci_hcd_t* ehci_hcd, struct urb* urb, qh_t* qh, uint32_t en
      */
     if(urb->dev->hub_addr) {
       info2 |= urb->dev->hub_addr << 16;
+    }
+
+    if(pipe_type == PIPE_INTERRUPT) {
+      info2 |= 0x0401;
     }
     
     break;
@@ -2694,7 +2760,7 @@ static void qh_prep(ehci_hcd_t* ehci_hcd, struct urb* urb, qh_t* qh, uint32_t en
 
   qh->hw_info1 = info1;
   qh->hw_info2 = info2;
-
+  
   qh_refresh(ehci_hcd, qh);
 }
 
@@ -2715,6 +2781,8 @@ static void qh_append_qtds(ehci_hcd_t* ehci_hcd, struct urb* urb,
   int urb_swap_index;
   qtd_t** urb_qtd_list = NULL;
   int i, num_qtds;
+
+  urb_qh_compatiblity_check(urb, qh);
   
   if(list_empty(qtd_list)) return;
 
@@ -2863,7 +2931,9 @@ static sint32 spin_for_transfer_completion(ehci_hcd_t* ehci_hcd,
 
   /* Step 1 */
   if( (pipe_type != PIPE_INTERRUPT) && EHCI_INTR_ENABLED(ehci_hcd, USBINTR_IAA) ) {
-    return -1;
+    if(EHCI_INTR_ENABLED(ehci_hcd, USBINTR_IAA)) { DLOG("EHCI_INTR_ENABLED(ehci_hcd, USBINTR_IAA) is true"); }
+    DLOG("AT %d", __LINE__);
+    //return -1;
   }
 
   /*
@@ -2879,6 +2949,7 @@ static sint32 spin_for_transfer_completion(ehci_hcd_t* ehci_hcd,
   }
 
   if(last_qtd->token & QTD_ACTIVE) {
+    DLOG("At %d", __LINE__);
     return -1;
   }
   
@@ -2916,7 +2987,6 @@ static sint32 spin_for_transfer_completion(ehci_hcd_t* ehci_hcd,
       break;
     }
     else {
-      list_del(&qtd_to_remove->chain_list);
       free_qtd(ehci_hcd, qtd_to_remove);
     }
   }
@@ -2964,6 +3034,9 @@ static int submit_async_qtd_chain(ehci_hcd_t* ehci_hcd, struct urb* urb, qh_t** 
     qh_prep(ehci_hcd, urb, *qh, endpoint, device_addr,
             max_packet_len, dev_speed, pipe_type, is_input);
   }
+
+
+  
   
   EHCI_SET_DEVICE_QH(ehci_hcd, device_addr, is_input, endpoint, *qh);
   
@@ -2987,7 +3060,7 @@ static int submit_async_qtd_chain(ehci_hcd_t* ehci_hcd, struct urb* urb, qh_t** 
       return result;
     }
   }
-  
+  if(urb->complete) urb->complete(urb);
   return 0;
 }
 
@@ -3007,7 +3080,7 @@ void link_qh_to_periodic_list(ehci_hcd_t* ehci_hcd, qh_t* qh, struct urb* urb)
   if(frame_interval == 0) {
     frame_interval = 1;
   }
-  
+
   if(urb->realtime) {
     for(i = frame_interval_offset; i < frame_list_size; i += frame_interval) {
       bool not_inserted = TRUE;
@@ -3127,6 +3200,10 @@ ehci_interrupt_transfer(ehci_hcd_t* ehci_hcd, struct urb* urb)
   int interval_offset;
   ehci_completion_element_t* completion_element = NULL;
 
+  if(qh != NULL) {
+    urb_qh_compatiblity_check(urb, qh);
+  }
+
   INIT_LIST_HEAD(&qtd_list);
 
   //DLOG("urb_pipe = %d", urb->pipe);
@@ -3150,7 +3227,8 @@ ehci_interrupt_transfer(ehci_hcd_t* ehci_hcd, struct urb* urb)
     
     if(!create_qtd_chain(ehci_hcd, urb, urb->setup_packet, sizeof(USB_DEV_REQ),
                          urb->transfer_buffer, urb->transfer_buffer_length,
-                         mp_enabled, &qtd_list, urb->interrupt_byte_rate)) {
+                         mp_enabled, &qtd_list, urb->interrupt_byte_rate, FALSE,
+                         urb->context)) {
       return -1;
     }
   }
@@ -3171,7 +3249,6 @@ ehci_interrupt_transfer(ehci_hcd_t* ehci_hcd, struct urb* urb)
       qtd_t* safe_qtd;
       DLOG("Failed to allocate ehci_iso_urb_priv");
       list_for_each_entry_safe(temp_qtd, safe_qtd, &qtd_list, chain_list) {
-        list_del(&temp_qtd->chain_list);
         free_qtd(ehci_hcd, temp_qtd);
       }
       return -1;
@@ -3225,6 +3302,10 @@ ehci_interrupt_transfer(ehci_hcd_t* ehci_hcd, struct urb* urb)
         DLOG("spin_for_transfer_completion returned %d", result);
         return result;
       }
+      
+      if(urb->complete) {
+        urb->complete(urb);
+      }
     }
     return 0;
   }
@@ -3247,7 +3328,10 @@ ehci_async_transfer(ehci_hcd_t* ehci_hcd, struct urb* urb)
   
   
   qh = EHCI_GET_DEVICE_QH(ehci_hcd, address, is_input, endpoint);
-  
+  if(qh != NULL) {
+    urb_qh_compatiblity_check(urb, qh);
+  }
+  //DLOG("qh returned by get device qh = 0x%p", qh);
   if(address == 0 && qh) {
     bool change_qh;
     /* Check to see if we need to change the QH for address zero */
@@ -3299,8 +3383,31 @@ ehci_async_transfer(ehci_hcd_t* ehci_hcd, struct urb* urb)
    * -- EM -- high jack function if it is bulk and realtime urb
    */
   if(usb_pipetype(pipe) == PIPE_BULK && urb->realtime) {
+    bool extra_nonrt_qtd = FALSE;
+    /* If there is a qh associated with this device and endpoint then
+       non real-time transactions were performed on this device
+       before, need to make sure all the qtds associated with this qh
+       are done and removed before continuing */
+    if(qh) {
+      qtd_t* qtd_to_remove;
+      qtd_t* qtd_tmp;
+      list_for_each_entry_safe(qtd_to_remove, qtd_tmp, &qh->qtd_list, chain_list) {
+        if(EHCI_QTD_VIRT_TO_PHYS(ehci_hcd, qtd_to_remove) == qh->current_qtd_ptr_raw) {
+          /* If we are not at the last qtd or are at the last qtd but
+             there is still data remaining */
+          if(qtd_to_remove->chain_list.next != &qh->qtd_list ||
+             ((qtd_to_remove->token >> 16) & 0x7FFF) > 0 ) {
+            return -2;
+          }
+          extra_nonrt_qtd = TRUE;
+          break;
+        }
+        else {
+          free_qtd(ehci_hcd, qtd_to_remove);
+        }
+      }
+    }
     if(is_input) {
-
       completion_element = allocate_ehci_completion_element(ehci_hcd);
       if(completion_element == NULL) {
         /* -- EM -- Better cleanup here later */
@@ -3310,7 +3417,8 @@ ehci_async_transfer(ehci_hcd_t* ehci_hcd, struct urb* urb)
       
       if(!create_qtd_chain(ehci_hcd, urb, urb->setup_packet, sizeof(USB_DEV_REQ),
                            urb->transfer_buffer, urb->transfer_buffer_length,
-                           mp_enabled, &qtd_list, urb->interrupt_byte_rate)) {
+                           mp_enabled, &qtd_list, urb->interrupt_byte_rate, FALSE,
+                           urb->context)) {
         DLOG("Failed to create qtd chain");
         return -1;
       }
@@ -3329,26 +3437,27 @@ ehci_async_transfer(ehci_hcd_t* ehci_hcd, struct urb* urb)
       }
       urb->hcpriv = ehci_alloc_bulk_urb_priv(num_qtds);
 
-      if(ehci_is_rt_schedulable(ehci_hcd, urb) < 0) {
+      if(urb->hcpriv == NULL) {
         qtd_t* safe_qtd;
         DLOG("Failed to allocate ehci_iso_urb_priv");
         list_for_each_entry_safe(temp_qtd, safe_qtd, &qtd_list, chain_list) {
-          list_del(&temp_qtd->chain_list);
+          free_qtd(ehci_hcd, temp_qtd);
+        }
+        return -1;
+      }
+
+      if(ehci_is_rt_schedulable(ehci_hcd, urb) < 0) {
+        qtd_t* safe_qtd;
+        DLOG("URB not schedulable");
+        list_for_each_entry_safe(temp_qtd, safe_qtd, &qtd_list, chain_list) {
           free_qtd(ehci_hcd, temp_qtd);
         }
         return -1;
       }
             
-      if(urb->hcpriv == NULL) {
-        qtd_t* safe_qtd;
-        DLOG("Failed to allocate ehci_iso_urb_priv");
-        list_for_each_entry_safe(temp_qtd, safe_qtd, &qtd_list, chain_list) {
-          list_del(&temp_qtd->chain_list);
-          free_qtd(ehci_hcd, temp_qtd);
-        }
-        return -1;
-      }
+      
       bulk_urb_priv = urb->hcpriv;
+      bulk_urb_priv->qh_urb_priv.extra_nonrt_qtd = extra_nonrt_qtd;
       bulk_urb_priv->qh_urb_priv.buffer_size = urb->transfer_buffer_length;
       
       if(is_input) {
@@ -3389,7 +3498,7 @@ ehci_async_transfer(ehci_hcd_t* ehci_hcd, struct urb* urb)
   
   if(!create_qtd_chain(ehci_hcd, urb, urb->setup_packet, sizeof(USB_DEV_REQ),
                        urb->transfer_buffer, urb->transfer_buffer_length,
-                       mp_enabled, &qtd_list, 0)) {
+                       mp_enabled, &qtd_list, 0, FALSE, urb->context)) {
     return -1;
   }
 
@@ -3401,7 +3510,7 @@ ehci_async_transfer(ehci_hcd_t* ehci_hcd, struct urb* urb)
     ehci_ctrl_urb_priv_t* ctrl_urb_priv;
     list_for_each_entry(temp_qtd, &qtd_list, chain_list) {
       ++num_qtds;
-    } 
+    }
     
     ctrl_urb_priv = ehci_alloc_ctrl_urb_priv(num_qtds);
     
@@ -3501,7 +3610,8 @@ static int create_itd_chain(ehci_hcd_t* ehci_hcd, uint8_t address,
                             int num_packets, 
                             int max_packet_len, bool is_input,
                             list_head_t* itd_list, bool ioc,
-                            struct urb* urb, uint interrupt_frame_rate)
+                            struct urb* urb, uint interrupt_frame_rate,
+                            void* completion_context)
 {
   int i;
   itd_t* itd;
@@ -3553,6 +3663,7 @@ static int create_itd_chain(ehci_hcd_t* ehci_hcd, uint8_t address,
             last_interrupt--;
             if(last_interrupt == 0) {
               itd->transaction[i].raw |= ITD_IOC;
+              itd->completion_context = completion_context;
               last_interrupt = interrupt_frame_rate;
             }
           }
@@ -3718,9 +3829,6 @@ static int submit_itd_chain(ehci_hcd_t* ehci_hcd, list_head_t* itd_list,
   return 0;
 }
 
-static int first_iso_call = 0;
-
-
 
 static int
 ehci_isochronous_transfer(ehci_hcd_t* ehci_hcd, struct urb* urb)
@@ -3737,12 +3845,6 @@ ehci_isochronous_transfer(ehci_hcd_t* ehci_hcd, struct urb* urb)
   uint32_t timeout_in_usec;
   ehci_iso_urb_priv_t* iso_urb_priv;
 
-  if(first_iso_call) {
-    first_iso_call = 0;
-    ehci_hcd->itd_pool_phys_addr = (phys_addr_t)get_phys_addr(ehci_hcd->itd_pool); 
-    //memset(itd_pool, 0, ehci_hcd->itd_pool_size * sizeof(itd_t));       
-  }
-  
   if(urb->hcpriv == NULL) {
     urb->hcpriv = ehci_alloc_iso_urb_priv(urb);
     if(urb->hcpriv == NULL) {
@@ -3773,7 +3875,7 @@ ehci_isochronous_transfer(ehci_hcd_t* ehci_hcd, struct urb* urb)
                       usb_maxpacket(urb->dev, urb->pipe),
                       usb_pipein(pipe),
                       &itd_list, mp_enabled,
-                      urb, urb->interrupt_frame_rate) < 0) {
+                      urb, urb->interrupt_frame_rate, urb->context) < 0) {
     DLOG("create_itd_chain failed");
     panic("create_itd_chain failed");
     return -1;
@@ -3866,7 +3968,7 @@ ehci_isochronous_transfer(ehci_hcd_t* ehci_hcd, struct urb* urb)
     list_for_each_entry_safe(itd, temp_itd, &itd_list, chain_list) {
       free_itd(ehci_hcd, itd);
     }
-
+    
     if(urb->complete != NULL) {
       urb->complete(urb);
     }

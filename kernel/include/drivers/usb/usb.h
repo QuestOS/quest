@@ -68,7 +68,7 @@
 bool
 handshake(uint32_t *ptr, uint32_t mask, uint32_t done, uint32_t usec);
 
-/* Async takes  */
+
 
 #ifdef USB_REALTIME_ASYNC
 #define USEC_PER_MICRO_FRAME_FOR_ASYNC 121
@@ -636,7 +636,8 @@ int usb_rt_free_data(struct urb* urb, int count);
 
 int usb_rt_update_data(struct urb* urb, int max_count);
 
-int usb_rt_push_data(struct urb* urb, char* data, int count, uint interrupt_rate);
+int usb_rt_push_data(struct urb* urb, char* data, int count, uint interrupt_rate,
+                     uint flags, void* context);
 
 int usb_rt_free_write_resources(struct urb* urb);
 
@@ -749,7 +750,9 @@ usb_fill_int_urb(struct urb *urb,
     urb->interval = 1 << (interval - 1);
   }
   else {
-    urb->interval = interval;
+    /* -- EM -- Fix this later should just set to interval but ehci doesn't
+       know about full-/low-speed device intervals */
+    urb->interval = interval * 8;
   }
   urb->start_frame = -1;
 }
@@ -926,7 +929,8 @@ typedef int  (*usb_rt_iso_update_packets_func)(struct urb* urb, int max_packets)
 typedef int  (*usb_rt_data_lost_func)(struct urb* urb);
 typedef int  (*usb_rt_free_data_func)(struct urb* urb, int count);
 typedef int  (*usb_rt_update_data_func)(struct urb* urb, int max_count);
-typedef int  (*usb_rt_push_data_func)(struct urb* urb, char* data, int count, uint interrupt_rate);
+typedef int  (*usb_rt_push_data_func)(struct urb* urb, char* data, int count,
+                                      uint interrupt_rate, uint flags, void* context);
 typedef int (*usb_rt_free_write_resources_func)(struct urb* urb);
 
 /*

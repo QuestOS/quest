@@ -30,7 +30,7 @@
 //#define OPEN_BUF_SIZE 1024
 #define OPEN_BUF_SIZE 25600
 
-#define SECONDARY_BUFFER_SIZE 2048
+#define SECONDARY_BUFFER_SIZE 4096
 
 char open_buf[OPEN_BUF_SIZE];
 char rw_buf1[SECONDARY_BUFFER_SIZE];
@@ -47,10 +47,11 @@ int main()
   }
 
   printf("Gadget opened\n");
-
+ retry_open:
   if(usb_open(HOST_DEVICE_NUM, open_buf, OPEN_BUF_SIZE) < 0) {
     printf("Failed to open device %d\n", HOST_DEVICE_NUM);
-    while(1);
+    usleep(1000000);
+    goto retry_open;
   }
 
   printf("Device %d opened\n", HOST_DEVICE_NUM);
@@ -58,6 +59,22 @@ int main()
   memcpy(rw_buf1, "Hello from " __FILE__, 40);
 
   if(HOST_DEVICE_NUM == 1) {
+    int i;
+#define INCREMENTS 1
+    for(i = 0; i < INCREMENTS; ++i) {
+      res = usb_write(HOST_DEVICE_NUM, rw_buf1, SECONDARY_BUFFER_SIZE / INCREMENTS);
+      usleep(1000000);
+      if(res < 0) {
+        printf("Failed to write to device %d\n", HOST_DEVICE_NUM);
+        while(1);
+      }
+
+      printf("usb write on %d returned %d\n", HOST_DEVICE_NUM, res);
+    }
+    
+    
+
+#if 0
     res = usb_write(HOST_DEVICE_NUM, rw_buf1, SECONDARY_BUFFER_SIZE);
     if(res < 0) {
       printf("Failed to write to device %d\n", HOST_DEVICE_NUM);
@@ -65,15 +82,7 @@ int main()
     }
 
     printf("usb write on %d returned %d\n", HOST_DEVICE_NUM, res);
-
-    res = usb_write(HOST_DEVICE_NUM, rw_buf1, SECONDARY_BUFFER_SIZE);
-    if(res < 0) {
-      printf("Failed to write to device %d\n", HOST_DEVICE_NUM);
-      while(1);
-    }
-
-    printf("usb write on %d returned %d\n", HOST_DEVICE_NUM, res);
-
+#endif 
     usleep(1000000);
     while(1) {
       res = usb_read(0, rw_buf2, SECONDARY_BUFFER_SIZE);

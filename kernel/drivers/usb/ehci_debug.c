@@ -18,6 +18,21 @@
 #include <drivers/usb/ehci_debug.h>
 #include <drivers/usb/ehci_mem.h>
 
+
+void urb_qh_compatiblity_check(struct urb* urb, qh_t* qh)
+{
+  if(qh->device_address != usb_pipedevice(urb->pipe)) {
+    DLOG("Device addresses do not match, urb = %d, qh = %d",
+	 usb_pipedevice(urb->pipe), qh->device_address);
+    panic("Device addresses do not match");
+  }
+  if(qh->endpoint_num != usb_pipeendpoint(urb->pipe)) {
+    DLOG("Endpoint numbers do not match, urb = %d, qh = %d",
+	 usb_pipeendpoint(urb->pipe), qh->endpoint_num);
+    panic("Endpoint numbers  do not match");
+  }
+}
+
 /*
  * Used for debug purposes, prints state of EHCI registers through
  * DLOGV

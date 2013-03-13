@@ -137,7 +137,7 @@ static int gadget_open(USB_DEVICE_INFO* device, int dev_num, char* buf, int data
     }
     usb_fill_rt_bulk_urb(gadget_dev->urb, device, gadget_dev->pipe, buf, gadget_dev->buffer_size,
                          beagle_complete_callback, NULL,
-                         1, 512);
+                         1, gadget_dev->buffer_size);
     break;
   default: // PIPE_CONTROL:
     DLOG("Gadget EP should never be control");
@@ -338,10 +338,10 @@ static int gadget_write(USB_DEVICE_INFO* device, int dev_num, char* buf,
     switch(usb_pipetype(gadget_dev->pipe)) {
     case PIPE_INTERRUPT:
     case PIPE_BULK:
-      return usb_rt_push_data(urb, buf, data_len, 512);
+      return usb_rt_push_data(urb, buf, data_len, 512, 0, NULL);
             
     case PIPE_ISOCHRONOUS:
-      return usb_rt_push_data(urb, buf, data_len, 2);
+      return usb_rt_push_data(urb, buf, data_len, 2, 0, NULL);
         
     default: // case PIPE_CONTROL:
         DLOG("Unsupported pipe type");
@@ -378,7 +378,7 @@ static bool gadget_probe (USB_DEVICE_INFO *device, USB_CFG_DESC *cfg,
      device->devd.idProduct != 0xabc7) {
     return FALSE;
   }
-
+  
   usb_set_configuration(device, cfg->bConfigurationValue);
 
   if(device->device_priv == NULL) {

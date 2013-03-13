@@ -36,7 +36,15 @@
 #include <drivers/usb/usb.h>
 #include <drivers/usb/linux_usb.h>
 #include <drivers/usb/gadget/gadget.h>
+#include <mem/virtual.h>
+#include <smp/spinlock.h>
 
+#define NET2280_MIGRATION_MODE
+//#define NET2280_IO_VCPU
+
+#define NET2280_INTERFACE_TYPE USB_ENDPOINT_XFER_INT
+#define PACKET_SIZE 512
+#define INTERVAL 4
 
 enum net2280_state {
         /* This one isn't used anywhere */
@@ -89,6 +97,8 @@ struct net2280_request {
   struct net2280_dma              *td;
   dma_addr_t                      td_dma;
   struct list_head                queue;
+  struct list_head                completion_chain;
+  struct net2280_ep               *ep;
   unsigned                        mapped : 1,
     valid : 1;
 };
@@ -109,7 +119,7 @@ struct net2280 {
 
   /* pci state used to access those endpoints */
   //struct pci_dev                  *pdev;
-  bool                             is_2280;            
+  bool                             is_2280;
   struct net2280_regs              *regs;
   struct net2280_usb_regs          *usb;
   struct net2280_pci_regs          *pci;
@@ -117,10 +127,16 @@ struct net2280 {
   struct net2280_dep_regs          *dep;
   struct net2280_ep_regs           *epregs;
 
+#ifdef NET2280_IO_VCPU
+  spinlock completion_list_lock;
+  list_head_t completion_list;
+  task_id iovcpu;
+#define NET2280_IOC_BH_THREAD_STACK_SIZE 1024
+  uint32_t bh_stack[NET2280_IOC_BH_THREAD_STACK_SIZE];
+#endif
+  
   //struct pci_pool                 *requests;
   // statistics...
-
-  /* Start of Quest specific stuff */
 
 #define NET2280_DECLARE_POOL(type)              \
   type##_t*   type##_pool;                      \
@@ -131,6 +147,8 @@ struct net2280 {
   
   
   NET2280_DECLARE_POOL(net2280_dma)
+  
+#undef NET2280_DECLARE_POOL
 
   struct usb_ep           *ep0;           // Handy copy of gadget->ep0
   struct usb_request      *ep0req;        // For control responses
@@ -139,20 +157,48 @@ struct net2280 {
 
   u8                      config, new_config;
 
-  #define NET2280_NUM_OUT_REQS 10
+  
+  struct usb_ep* out_ep;
+  struct usb_ep* in_ep;
 
+  //#ifdef NET2280_MIGRATION_MODE
+  
+#define TABLE_BITMAP_SIZE 32    /* Specified in 4-bytes */
+
+  struct usb_request* bitmap_request;
+
+#define NET2280_MAX_PAGE_REQUESTS 10
+#define MAX_NUM_BITMAPS (PACKET_SIZE / (TABLE_BITMAP_SIZE * 4))
+
+  bool migration_in_processes;
+  struct usb_request* page_requests[NET2280_MAX_PAGE_REQUESTS];
+  uint next_usb_request;
+  uint page_requests_in_queue;
+  
+  uint num_bitmaps_received;
+  uint32 pd_bitmap[TABLE_BITMAP_SIZE];
+  uint current_pt_counter;
+  uint32 current_pt_bitmaps[MAX_NUM_BITMAPS][TABLE_BITMAP_SIZE];
+  uint frames_per_table[MAX_NUM_BITMAPS];
+  pgdir_entry_t* mig_task_pd_table;
+  pgtbl_entry_t* current_page_table;
+  bool kernel_only_area;
+  uint next_pd_entry;
+  uint next_pt_entry;
+
+  //#else
+  
+#define NET2280_NUM_OUT_REQS 40
+  
   struct usb_request* out_requests[NET2280_NUM_OUT_REQS];
   /* -- EM -- Replace the following with a circular buffer struct
-    later (or not since it will be moved/deleted/heavily modified
-    later) */
+     later (or not since it will be moved/deleted/heavily modified
+     later) */
   struct usb_request* out_requests_with_data[NET2280_NUM_OUT_REQS];
   int next_out_request_to_read; /* Head */
   int next_out_request_insert_index; /* Tail */
   
-  struct usb_ep* out_ep;
-  struct usb_ep* in_ep;
-  
-#undef NET2280_DECLARE_POOL
+  //#endif // NET2280_MIGRATION_MODE
 } ;
 
 

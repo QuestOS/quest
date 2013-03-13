@@ -103,6 +103,12 @@ typedef struct _quest_tss
   task_id tid;
   char * name[32];              /* A simple description or the path of the process */
   uint sandbox_affinity;        /* Sandbox binding. Change this to migrate. */
+
+  /* -- EM -- Machine affinity right now since we do not have a global
+     namespace across machines a 0 here indicate stay on current
+     machine and a non-zero means migrate to the one other machine */
+  uint machine_affinity;
+  
   fd_table_entry_t fd_table[MAX_FD];
   /* Array used to back up (main) VCPU replenishment queue if necessary during migration */
   replenishment vcpu_backup[MAX_REPL];

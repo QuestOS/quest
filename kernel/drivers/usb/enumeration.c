@@ -41,8 +41,6 @@ usbenumeration_init (void)
   uint32_t index = 0;
   usb_hcd_t* hcd = NULL;
 
-  DLOG("IN USB ENUM");
-
   while( (hcd = get_usb_hcd(index)) != NULL) {
     index++;
     if(!hcd->reset_root_ports(hcd)) {

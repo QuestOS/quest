@@ -67,7 +67,7 @@
  * better to do what Linux does and use a watchdog timer that is set
  * to go off a little bit after the transaction should finish so it
  * never goes off if the chip does not have the bug and will go off
- * shorter after the irq would go off if it does.  We don't have
+ * shortly after the irq would go off if necessary.  We don't have
  * watchdog timers yet so a periodic tick will have to do.  To disable
  * all the extra software for the hardware bug comment out the macro
  * declaration below
@@ -75,7 +75,7 @@
 
 //#define EHCI_IOC_BUG
 
-//#define EHCI_USE_IOVCPU
+#define EHCI_USE_IOVCPU
 
 
 
@@ -355,7 +355,7 @@ typedef struct _qtd_t
 
 #define QTD_IOC (1 << 15)
 
-#define QTD_ENABLE_IOC(qtd) (qtd->token |= QTD_IOC);
+#define QTD_ENABLE_IOC(qtd) do { (qtd->token |= QTD_IOC); (qtd->token_backup |= QTD_IOC); } while(0)
       
       uint32_t total_bytes_to_transfer:15;
       uint32_t data_toggle:1;
@@ -377,7 +377,8 @@ typedef struct _qtd_t
   uint32_t token_backup;
   qtd_buffer_page_pointer_t buffer_page_zero_backup;
   bool ioc_called;
-  uint32_t padding[7];
+  void* completion_context;
+  uint32_t padding[6];
 } PACKED ALIGNED(32) qtd_t;
 
 
@@ -608,8 +609,8 @@ typedef struct _itd_t {
       being inserted into periodic list or restarted to receive more
       data */
   uint ioc_processed_bitmap;
-  
-  uint32_t padding[18];
+  void* completion_context;
+  uint32_t padding[17];
 } PACKED ALIGNED(32) itd_t;
 
 CASSERT( (sizeof(itd_t) % 32) == 0, ehci_itd_size)
@@ -719,7 +720,7 @@ typedef struct
   
   int reorder_urbs_stage;
   
-#ifdef EHCI_IOC_BUG
+#ifdef EHCI_IOC_BUGEHCI_IOC_BUG
 
 #define IOC_BACKUP_THREAD_STACK_SIZE 1024
   
@@ -875,6 +876,7 @@ typedef struct
   unsigned int num_qtds;
   uint next_qtd_for_ioc;
   ehci_completion_element_t* completion_element;
+  bool extra_nonrt_qtd;
   qtd_t* qtds[0];
 } ehci_qh_urb_priv_t;
 

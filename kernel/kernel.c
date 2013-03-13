@@ -340,7 +340,6 @@ exit_kernel_thread (void)
   panic ("exit_kernel_thread: unreachable");
 }
 
-#ifdef USE_VMX
 /* 
  * check_copied_threads checks threads created in BSP sandbox and copied
  * to other sandboxes during vm_mem_init. These threads will be created
@@ -401,7 +400,6 @@ check_copied_threads (void)
 
   return;
 }
-#endif
 
 void
 disable_all_cache (void)

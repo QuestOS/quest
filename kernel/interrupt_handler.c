@@ -1461,6 +1461,8 @@ _sched_setparam (task_id pid, const struct sched_param *p)
     if (p->affinity != -1)
       ptss->sandbox_affinity = p->affinity;
 
+    if(p->machine_affinity != -1) ptss->machine_affinity = p->machine_affinity;
+
     wakeup (str ());
 
     schedule ();

@@ -15,6 +15,7 @@
  *  along with this program.  If not, see <http://www.gnu.org/licenses/>.
  */
 
+#include <drivers/usb/ehci.h>
 #include <drivers/usb/usb.h>
 #include <arch/i386.h>
 #include <util/printf.h>
@@ -22,7 +23,7 @@
 #include "sched/sched.h"
 #include <mem/pow2.h>
 
-//#define DEBUG_USB
+#define DEBUG_USB
 
 #ifdef DEBUG_USB
 #define DLOG(fmt,...) DLOG_PREFIX("USB", fmt, ##__VA_ARGS__)
@@ -68,8 +69,6 @@ int usb_syscall_handler(uint32_t device_id, uint32_t operation,
   int result;
   USB_DEVICE_INFO* device;
 
-  DLOG("In %s", __FUNCTION__);
-
   device = usb_get_device(device_id);
 
   
@@ -82,7 +81,6 @@ int usb_syscall_handler(uint32_t device_id, uint32_t operation,
   
   switch(operation) {
   case USB_USER_READ:
-
     result = device->driver->read(device, device_id, buf, data_len);
     break;
     
@@ -196,6 +194,10 @@ int usb_submit_urb (struct urb *urb, gfp_t mem_flags)
       DLOG("Can only submit realtime urbs when interrupts are on");
       return -1;
     }
+    if((!usb_pipein(urb->pipe) && urb->context)) {
+      DLOG("Cannot have context for real-time output pipes, context is specified at push");
+      return -1;
+    }
   }
   urb->active = TRUE;
   return urb->dev->hcd->submit_urb(urb, mem_flags);
@@ -255,9 +257,10 @@ int usb_rt_update_data(struct urb* urb, int max_count)
   return urb->dev->hcd->rt_update_data(urb, max_count);
 }
 
-int usb_rt_push_data(struct urb* urb, char* data, int count, uint interrupt_rate)
+int usb_rt_push_data(struct urb* urb, char* data, int count, uint interrupt_rate,
+                     uint flags, void* context)
 {
-  return urb->dev->hcd->rt_push_data(urb, data, count, interrupt_rate);
+  return urb->dev->hcd->rt_push_data(urb, data, count, interrupt_rate, flags, context);
 }
 
 int usb_rt_free_write_resources(struct urb* urb)
@@ -492,7 +495,7 @@ int usb_control_msg(struct usb_device *dev, unsigned int pipe,
    * -- EM -- It should be okay to put these on the stack because this
    * function won't complete until the callback is called,
    */
-   /* -- EM -- not true if it fails! */
+  /* -- EM -- not true if it fails! */
   
   struct urb urb;
   bool done = FALSE;
@@ -500,6 +503,9 @@ int usb_control_msg(struct usb_device *dev, unsigned int pipe,
   USB_DEV_REQ cmd;
   int ret;
   usb_complete_t complete_callback;
+  //DLOG("Address of done = 0x%p", &done);
+
+  
 
   usb_init_urb(&urb);
   cmd.bmRequestType = requesttype;
@@ -519,7 +525,6 @@ int usb_control_msg(struct usb_device *dev, unsigned int pipe,
   usb_fill_control_urb(&urb, dev, pipe, (unsigned char *)&cmd, data,
                        size, complete_callback, &done);
 
-  
   ret = usb_submit_urb(&urb, 0);
 
   if(ret < 0) goto usb_control_msg_out;
@@ -547,6 +552,8 @@ int usb_control_msg(struct usb_device *dev, unsigned int pipe,
     }
     if(!done) {
       DLOG("Failed to complete callback for control msg");
+      int* temp = 0;
+      *temp = 1;
       panic("Failed to complete callback for control msg");
     }
     ret = done ? 0 : -1;
@@ -734,7 +741,7 @@ find_device_driver (USB_DEVICE_INFO *info, USB_CFG_DESC *cfgd, USB_IF_DESC *ifd)
        info->devd.bDeviceClass, info->devd.bDeviceSubClass,
        info->devd.idVendor, info->devd.idProduct,
        __FILE__, __LINE__);
-  panic("Unknown Device");
+  //panic("Unknown Device");
 }
 
 void print_all_descriptors(void* descriptor_start, uint total_length)
@@ -767,14 +774,14 @@ void print_all_descriptors(void* descriptor_start, uint total_length)
     if(temp->bLength == 0) return;
     
     total_traversed += temp->bLength;
-    temp = ((char*)temp) + temp->bLength;
+    temp = (struct usb_descriptor_header*)(((char*)temp) + temp->bLength);
   }
 }
 
 void* get_next_desc(uint desc_type, void* descriptor_start, uint remaining_length)
 {
   
-struct usb_descriptor_header* temp = descriptor_start;
+  struct usb_descriptor_header* temp = descriptor_start;
   
   uint total_traversed = 0;
 
@@ -784,8 +791,9 @@ struct usb_descriptor_header* temp = descriptor_start;
     }
 
     total_traversed += temp->bLength;
-    temp = ((char*)temp) + temp->bLength;
+    temp = (struct usb_descriptor_header*)(((char*)temp) + temp->bLength);
   }
+  return NULL;
 }
 
 void print_ept_desc_info(USB_EPT_DESC* ept_desc)

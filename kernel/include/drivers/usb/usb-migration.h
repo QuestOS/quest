@@ -15,35 +15,14 @@
  *  along with this program.  If not, see <http://www.gnu.org/licenses/>.
  */
 
-#include <stdio.h>
-#include <stdlib.h>
-#include <unistd.h>
-#include <vcpu.h>
 
-int
-main ()
-{
-  int i = 0;
-  struct sched_param param;
-  for (;;) {
-    if (i == 1) {
-      printf ("Set sandbox machine to 1!\n");
-      param.machine_affinity = 1;
-      sched_setparam (-1, &param);
-    }
-    printf ("Migration Test Process, counter = %d\n", i);
-    usleep (1000000);
-    i++;
-  }
-}
+#ifndef _USB_MIGRATION_H_
+#define _USB_MIGRATION_H_
 
-/*
- * Local Variables:
- * indent-tabs-mode: nil
- * mode: C
- * c-file-style: "gnu"
- * c-basic-offset: 2
- * End:
- */
 
-/* vi: set et sw=2 sts=2: */
+bool usb_migration_queue_full(void);
+
+bool usb_add_task_to_migration_queue(quest_tss * tss);
+
+
+#endif // _USB_MIGRATION_H_

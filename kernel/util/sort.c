@@ -30,7 +30,7 @@
 #include <kernel.h>
 #include <mem/pow2.h>
 
-#define DEBUG_SORT
+//#define DEBUG_SORT
 
 #ifdef DEBUG_SORT
 #define DLOG(fmt,...) DLOG_PREFIX("sort",fmt,##__VA_ARGS__)

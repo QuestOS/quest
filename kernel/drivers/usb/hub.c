@@ -26,11 +26,19 @@
 #define USB_HUB_CLASS 0x9
 
 //#define DEBUG_USB_HUB
+//#define DEBUG_USB_HUB_VERBOSE
+
 
 #ifdef DEBUG_USB_HUB
 #define DLOG(fmt,...) DLOG_PREFIX("usb-hub",fmt,##__VA_ARGS__)
 #else
 #define DLOG(fmt,...) ;
+#endif
+
+#ifdef DEBUG_USB_HUB_VERBOSE
+#define DLOGV(fmt,...) DLOG_PREFIX("usb-hub",fmt,##__VA_ARGS__)
+#else
+#define DLOGV(fmt,...) ;
 #endif
 
 #define HUB_PORT_STAT_POWER 0x0100
@@ -70,7 +78,6 @@ static bool
 hub_set_port_feature (USB_DEVICE_INFO* info, uint port, uint feature)
 {
   sint status;
-  /* We assume this is a full speed device, use the maximum, 64 bytes */
   status = usb_control_msg(info, usb_sndctrlpipe(info, 0), USB_SET_FEATURE,
                            0x23, feature, port, NULL, 0, USB_DEFAULT_CONTROL_MSG_TIMEOUT);
   DLOG ("SET_PORT_FEATURE: status=%d", status);
@@ -83,10 +90,9 @@ hub_clr_port_feature (USB_DEVICE_INFO* info, uint port, uint feature)
 {
   sint status;
 
-  /* We assume this is a full speed device, use the maximum, 64 bytes */
   status = usb_control_msg(info, usb_sndctrlpipe(info, 0), USB_CLEAR_FEATURE,
                            0x23, feature, port, NULL, 0, USB_DEFAULT_CONTROL_MSG_TIMEOUT);
-  DLOG ("CLEAR_PORT_FEATURE: status=%d", status);
+  DLOGV("CLEAR_PORT_FEATURE: status=%d", status);
 
   return status == 0;
 }
@@ -158,9 +164,12 @@ void setup_hub_device_status_urb(hub_info_t* hub_info)
 
 static void poll_for_port_change(hub_info_t* hub_info)
 {
+  static bool done = FALSE;
   struct urb* urb = hub_info->urb;
   int new_bytes = usb_rt_update_data(urb, STATUS_CHANGE_BUFFER_SIZE);
   DLOG("new_bytes = %d", new_bytes);
+  
+  //if(done) return;
   
   if(new_bytes > 0) {
     hub_info->bytes_available += new_bytes;
@@ -169,16 +178,19 @@ static void poll_for_port_change(hub_info_t* hub_info)
       int bytes_freed;
       int i;
       uint32_t port_map = *((uint32_t*)hub_info->status_change_buffer);
-      DLOG("port_map = 0x%X", port_map);
+      DLOGV("port_map = 0x%X", port_map);
       for(i = 1; i <= hub_info->hub_descriptor.bNbrPorts; ++i) {
         if(port_map & (1 << i)) {
           /* Change on this port */
           /* Right now we only support connecting a device not removing it */
-          DLOG("Device on port %d", i);
+          DLOGV("Device on port %d", i);
           if((hub_info->device_bitmap & (1 << i)) == 0) {
             /* If we have not seen the device already */
             DLOG("calling enumerate for port %d", i);
+            
             enumerate_port(hub_info, i);
+            done = TRUE;
+            //return;
           }
           /* Clear device status bit */
           hub_clr_port_feature (hub_info->dev, i, HUB_PORT_C_CONNECTION);
@@ -207,7 +219,7 @@ static void hub_hot_plugable_thread()
   }
   
   while(1) {
-    sched_usleep(5 * 1000 * 1000 );
+    sched_usleep(10 * 1000 * 1000 );
     for(i = 0; i < num_hub_infos; ++i) {
       poll_for_port_change(&hub_infos[i]);
     }
@@ -249,6 +261,7 @@ static void enumerate_port(hub_info_t* hub_info, int port)
   DLOG("status = %X, masked status = %X, attached_dev_speed = %d",
        port_status, (port_status >> 9) & 0x3, attached_dev_speed);
   usb_enumerate(info->hcd, attached_dev_speed, info->address, port);
+  
 }
 
 static bool
@@ -276,11 +289,12 @@ probe_hub (USB_DEVICE_INFO* info, USB_CFG_DESC *cfgd, USB_IF_DESC *ifd)
   //print_all_descriptors(conf, cfgd->wTotalLength);
   
   endpoint = get_next_desc(USB_TYPE_EPT_DESC, conf, cfgd->wTotalLength);
-  print_ept_desc_info(endpoint);
+  
   if(endpoint == NULL) {
     kfree(hub_info);
     return FALSE;
   }
+  print_ept_desc_info(endpoint);
   
   memcpy(&hub_info->status_change_endpoint, endpoint, sizeof(USB_EPT_DESC));
 
@@ -332,9 +346,10 @@ extern bool
 usb_hub_driver_init (void)
 {
 #if 1
-  start_kernel_thread((u32)hub_hot_plugable_thread,
+  task_id t= start_kernel_thread((u32)hub_hot_plugable_thread,
                        (u32) &usb_hotplug_stack[HUB_HOTPLUG_STACK_SIZE - 1],
                        "USB Hotplug");
+  DLOG("hub task id = 0x%X", t);
 #endif
   return usb_register_driver (&hub_driver);
 }

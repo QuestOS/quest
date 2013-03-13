@@ -65,6 +65,10 @@ struct _usb_hcd_t;
 #define URB_RT_ONE_HANDLER_CALL 0x0200  /* Only need to call the completion handler once
 					   per interrupt, not once for each frame/microframe
 					   that passed */
+#define URB_RT_ZERO_COPY_WRITE  0x0400  /* Only valid for output URBs, there is no buffer
+					   associated with the urb, the buffers passed to
+					   the push data call are used as the dma buffers*/
+#define URB_RT_PHYS_ADDR        0x0800  /* The physical address is specified in the call to push */
 
 struct urb {
 
