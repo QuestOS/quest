@@ -26,7 +26,7 @@
 #include <mem/virtual.h>
 
 #define DEBUG_USB_MIGRATION
-#define DEBUG_USB_MIGRATION_VERBOSE
+//#define DEBUG_USB_MIGRATION_VERBOSE
 
 #ifdef DEBUG_USB_MIGRATION
 #define DLOG(fmt,...) DLOG_PREFIX("usb-migration",fmt,##__VA_ARGS__)
@@ -205,22 +205,11 @@ void create_pt_bitmap(quest_tss* task, uint pt_index, uint32* bitmap)
 
 static inline void send_page(int page_index)
 {
-  static int counter2 = 0;
-  static char counter = 'a';
   phys_addr_t frame_addr = page_table_currently_migrated[page_index].raw & 0xFFFFF000;
 
-  counter2++;
-  DLOG("pages sent = %d", counter2);
+
   DLOGV("Sending page at page index %d", page_index);
-  char* temp = map_virtual_page(frame_addr | 3);
-  temp[0] = counter;
-  counter++;
-  DLOG("counter = %c", counter);
-  if(counter == 'z'+1) {
-    DLOG("Resetting counter");
-    counter = 'a';
-  }
-  unmap_virtual_page(temp);
+
   if(usb_rt_push_data(migration_urb, (char*)frame_addr,
                       0x1000, 0x1000, URB_RT_PHYS_ADDR, NULL) != 0x1000) {
     DLOG("Failed to send entire page table");

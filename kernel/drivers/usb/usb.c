@@ -416,7 +416,10 @@ int usb_interrupt_msg(struct usb_device *usb_dev, unsigned int pipe,
  usb_interrupt_msg_out:
 
   *actual_length = urb.actual_length;
-
+  /* Must free hcpriv since we are not allocating the urb via
+     usb_alloc_urb */
+  if(urb.hcpriv) kfree(urb.hcpriv); 
+  
   return ret;
 
 }
@@ -481,7 +484,10 @@ int usb_bulk_msg(struct usb_device *usb_dev, unsigned int pipe,
  usb_bulk_msg_out:
 
   *actual_length = urb.actual_length;
-
+  /* Must free hcpriv since we are not allocating the urb via
+     usb_alloc_urb */
+  if(urb.hcpriv) kfree(urb.hcpriv); 
+  
   return ret;
 }
 
@@ -560,6 +566,9 @@ int usb_control_msg(struct usb_device *dev, unsigned int pipe,
   }
   
  usb_control_msg_out:
+  /* Must free hcpriv since we are not allocating the urb via
+     usb_alloc_urb */
+  if(urb.hcpriv) kfree(urb.hcpriv); 
   return ret;  
 }
 

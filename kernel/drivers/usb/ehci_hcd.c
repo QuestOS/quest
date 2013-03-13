@@ -1174,7 +1174,7 @@ static void handle_output_qh_rt_urb_completion(ehci_hcd_t* ehci_hcd,
 #if 0
   list_for_each_entry_safe(current_qtd, temp_qtd, &qh->qtd_list, chain_list) {
     if(current_qtd->token & QTD_ACTIVE) {
-      //DLOG("Active rt output qtd");
+      DLOG("Active rt output qtd");
     }
   }
 #endif
@@ -3511,7 +3511,7 @@ ehci_async_transfer(ehci_hcd_t* ehci_hcd, struct urb* urb)
     list_for_each_entry(temp_qtd, &qtd_list, chain_list) {
       ++num_qtds;
     }
-    
+
     ctrl_urb_priv = ehci_alloc_ctrl_urb_priv(num_qtds);
     
     urb->hcpriv = ctrl_urb_priv;

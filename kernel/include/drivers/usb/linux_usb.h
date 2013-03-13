@@ -198,7 +198,10 @@ struct urb *usb_alloc_urb(int iso_packets, gfp_t mem_flags);
 
 static inline void usb_free_urb(struct urb *urb)
 {
-  if(urb) pow2_free((uint8_t*)urb);
+  if(urb) {
+    if(urb->hcpriv) kfree(urb->hcpriv);
+    kfree(urb);
+  }
 }
 
 static inline void usb_init_urb(struct urb *urb) {

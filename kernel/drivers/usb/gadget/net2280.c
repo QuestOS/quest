@@ -544,16 +544,6 @@ void net2280_request_complete_callback(struct usb_ep *ep,
     
     return;
   }
-
-  if(req != net2280_dev.bitmap_request) {
-    if(req->actual != PAGE_SIZE) {
-      DLOG("Got a short page");
-      panic("Got a short page");
-    }
-    pages_received++;
-    DLOG("Pages received = %d", pages_received);
-    DLOG("BUF = %c", ((char*)req->buf)[0]);
-  }
   
   if(req == net2280_dev.bitmap_request) {
     /* We got a bitmap request */
@@ -610,6 +600,15 @@ void net2280_request_complete_callback(struct usb_ep *ep,
       DLOG("Frames for table %d = %u", i, net2280_dev.frames_per_table[i]);
     }
   }
+  else {
+    if(req->actual != PAGE_SIZE) {
+      DLOG("Got a short page");
+      panic("Got a short page");
+    }
+    pages_received++;
+    net2280_dev.page_requests_in_queue--;
+    DLOG("Pages received = %d", pages_received);
+  }
 
   DLOG("net2280_dev.page_requests_in_queue = %d", net2280_dev.page_requests_in_queue);
   while(net2280_dev.page_requests_in_queue < NET2280_MAX_PAGE_REQUESTS) {
@@ -625,7 +624,7 @@ void net2280_request_complete_callback(struct usb_ep *ep,
     
     if(net2280_dev.next_pt_entry == 0 && net2280_dev.next_pd_entry != 1024) {
       /* We need to map a page table onto the page directory */
-      
+            
       if(net2280_dev.current_pt_counter == net2280_dev.num_bitmaps_received) {
         /* We are done with the current page table and need to wait
            for more bitmaps */
@@ -670,13 +669,14 @@ void net2280_request_complete_callback(struct usb_ep *ep,
     
     while((!BITMAP_TST(net2280_dev.current_pt_bitmaps[net2280_dev.current_pt_counter],
                        net2280_dev.next_pt_entry)) &&
-          (net2280_dev.next_pd_entry < 1024)) {
+          (net2280_dev.next_pt_entry < 1024)) {
       net2280_dev.next_pt_entry++;
     }
     
     if(net2280_dev.next_pt_entry == 1024) {
       /* Reached the end of the current table, loop back to set new
          table up */
+      net2280_dev.next_pt_entry = 0;
       net2280_dev.current_pt_counter++;
       continue;
     }
@@ -697,9 +697,15 @@ void net2280_request_complete_callback(struct usb_ep *ep,
       DLOG("Unmapping req buf for req (%d) 0x%p", req_index, req);
       req->buf = 0;
     }
-    
+
+    if(net2280_dev.next_pt_entry >= 1024) {
+      DLOG("net2280_dev.next_pt_entry = %d out of range", net2280_dev.next_pt_entry);
+      panic("net2280_dev.next_pt_entry out of range");
+    }
+
+    DLOG("net2280_dev.next_pt_entry = %u", net2280_dev.next_pt_entry);
     net2280_dev.current_page_table[net2280_dev.next_pt_entry].raw =
-          (0xFFFFF000 & page_phys) | (net2280_dev.kernel_only_area ? 3 : 7);
+      (0xFFFFF000 & page_phys) | (net2280_dev.kernel_only_area ? 3 : 7);
     
     req->buf = map_virtual_page(page_phys | 3);
     DLOG("buf for req %d = 0x%p", req_index, req->buf);
