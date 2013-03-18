@@ -132,6 +132,9 @@ load_linux_kernel (uint32 * load_addr, char * pathname, uint32 * initrd_paddr, i
     setup_header->initrd_addr_max = INITRD_LOAD_PADDR + 0x00400000;
   }
 
+  /* Set kernel start address to LINUX_PHYS_START */
+  setup_header->code32_start = LINUX_PHYS_START;
+
   return act_len;
 }
 
@@ -216,8 +219,8 @@ linux_boot_thread (void)
   header = (linux_setup_header_t *) (((uint8 *) LINUX_KERNEL_LOAD_VA) + LINUX_SETUP_HEADER_OFFSET);
   /* Linux protected mode code starts at (setup_sects + 1) * 512 into the bzImage */
   src = (uint8_t *) LINUX_KERNEL_LOAD_VA + (header->setup_sects + 1) * 512;
-  /* Copy protected mode Linux code to Guest physical starting from 1MB */
-  pa_dst = 1 << 20;
+  /* Copy protected mode Linux code to Guest physical starting from 1MB + sandbox offset */
+  pa_dst = LINUX_PHYS_START;
   /* Copy one page at a time because of limited virtual memory space */
   prot_size = exit_param.size - (header->setup_sects + 1) * 512;
   /* Number of 4KB pages */
