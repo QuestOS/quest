@@ -25,7 +25,7 @@
 #include <kernel.h>
 #include <mem/virtual.h>
 
-#define DEBUG_USB_MIGRATION
+//#define DEBUG_USB_MIGRATION
 //#define DEBUG_USB_MIGRATION_VERBOSE
 
 #ifdef DEBUG_USB_MIGRATION
@@ -50,7 +50,7 @@
    a lock */
 static task_id migration_thread_sleep_queue = 0;
 
-typedef enum {NO_TASKS, BITMAP, PAGE_LIMIT} sleep_reason_t;
+typedef enum {NO_TASKS, BITMAP, PAGE_LIMIT, TSS_IN_FLIGHT} sleep_reason_t;
 
 static sleep_reason_t migration_thread_sleep_reason;
 
@@ -117,11 +117,10 @@ static void usb_migration_thread()
       
       usb_migrate_task(migration_queue[migration_queue_head]);
       DLOG("Done migrating task!!");
-      while(1) sched_usleep(1000000000);
-      //panic("Done migrating task!!");
-      
-      /* -- EM -- What do I do when I'm done with the tss free it?
-         return it too a pool?*/
+
+      /* -- EM -- Need to free pages and other resources associated
+         with process, basically have the process exit */
+      //free_quest_tss(migration_queue[migration_queue_head]);
       migration_queue[migration_queue_head] = NULL;
       
       if(++migration_queue_head == MIGRATION_QUEUE_SIZE) {
@@ -336,22 +335,32 @@ void usb_migrate_task(quest_tss* task)
     }
   }
 
+  usb_rt_push_data(migration_urb, task, sizeof(*task), sizeof(*task), 0, (void*)2);
+
+  
+  DLOG("About to sleep: line %d", __LINE__);
+  migration_thread_sleep_reason = TSS_IN_FLIGHT;
+  queue_append(&migration_thread_sleep_queue, str());
+  schedule();
+
   unmap_virtual_page(task_pd_table);
   task_pd_table = NULL;
 }
 
 static void migration_complete_callback(struct urb* urb)
 {
-  if(urb->context) {
+  switch((uint)urb->context) {
+  case 1:
     bitmaps_in_flight = FALSE;
     if(migration_thread_sleep_queue && migration_thread_sleep_reason == BITMAP) {
       wakeup_queue(&migration_thread_sleep_queue);
       DLOG("woken up from bitmap sleeping");
     }
-    DLOG("bitmap completely sent");
-  }
-  else {
-    DLOG("page completely sent");
+    DLOGV("bitmap completely sent");
+    break;
+
+  case 0:
+    DLOGV("page completely sent");
     
     pages_in_flight--;
     if(page_table_currently_migrated && last_page_migrated < 1024) {
@@ -365,9 +374,22 @@ static void migration_complete_callback(struct urb* urb)
     /* At this point if the migration thread is waiting on the queue we
        can wake it up and let it move forward */
     if(migration_thread_sleep_queue && migration_thread_sleep_reason == PAGE_LIMIT) {
-      DLOG("Waking up thread due to page limit");
+      DLOG("Waking up thread do to page limit");
       wakeup_queue(&migration_thread_sleep_queue);
     }
+    break;
+
+  case 2:
+    if(!migration_thread_sleep_queue || migration_thread_sleep_reason != TSS_IN_FLIGHT) {
+      DLOG("should be sleeping for tss to be sent");
+      panic("should be sleeping for tss to be sent");
+    }
+    DLOG("Waking up thread do to tss having been sent");
+    wakeup_queue(&migration_thread_sleep_queue);
+    break;
+  default:
+    DLOG("Unknown context passed to usb migration callback function");
+    panic("Unknown context passed to usb migration callback function");
   }
 }
 

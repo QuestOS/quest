@@ -35,6 +35,7 @@
 #define UNITS_PER_SEC 1000
 
 //#define DEBUG_VCPU
+//#define DEBUG_VCPU_VERBOSE
 //#define DUMP_STATS_VERBOSE
 //#define DUMP_STATS_VERBOSE_2
 //#define CHECK_INVARIANTS
@@ -46,6 +47,13 @@
 #define DLOG(fmt,...) DLOG_PREFIX("vcpu",fmt,##__VA_ARGS__)
 #else
 #define DLOG(fmt,...) ;
+#endif
+
+
+#ifdef DEBUG_VCPU_VERBOSE
+#define DLOGV(fmt,...) DLOG_PREFIX("vcpu",fmt,##__VA_ARGS__)
+#else
+#define DLOGV(fmt,...) ;
 #endif
 
 u32 tsc_freq_msec, tsc_unit_freq;
@@ -642,7 +650,7 @@ vcpu_schedule (void)
 
   tdelta = tcur - tprev;
 
-  DLOG ("tcur=0x%llX tprev=0x%llX tdelta=0x%llX", tcur, tprev, tdelta);
+  DLOGV ("tcur=0x%llX tprev=0x%llX tdelta=0x%llX", tcur, tprev, tdelta);
 
   if (cur) {
     Tprev = cur->T;
@@ -687,7 +695,7 @@ vcpu_schedule (void)
 
       percpu_write (vcpu_current, vcpu);
       percpu_write (vcpu_queue, queue);
-      DLOG ("scheduling vcpu=%p with budget=0x%llX", vcpu, vcpu->b);
+      DLOGV ("scheduling vcpu=%p with budget=0x%llX", vcpu, vcpu->b);
     } else {
       if (cur) {
         perfmon_vcpu_acnt_end (cur);

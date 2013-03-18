@@ -522,7 +522,7 @@ receive_migration_request (uint8 vector)
       DLOG ("  name: %s, task_id: 0x%X, affinity: %d, CR3: 0x%X",
             new_tss->name, new_tss->tid, new_tss->sandbox_affinity, new_tss->CR3);
       /* Add new (migrated) process to local sandbox scheduler */
-      if (!attach_task (new_tss)) {
+      if (!attach_task (new_tss, shm->remote_tsc_diff[cpu], shm->remote_tsc[cpu])) {
         DLOG ("Attaching task failed!");
         /* Destroy task */
         destroy_task (new_tss->tid);

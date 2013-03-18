@@ -161,11 +161,12 @@ struct net2280 {
   struct usb_ep* out_ep;
   struct usb_ep* in_ep;
 
-  //#ifdef NET2280_MIGRATION_MODE
+#ifdef NET2280_MIGRATION_MODE
   
 #define TABLE_BITMAP_SIZE 32    /* Specified in 4-bytes */
 
   struct usb_request* bitmap_request;
+  struct usb_request* tss_request;
 
 #define NET2280_MAX_PAGE_REQUESTS 10
 #define MAX_NUM_BITMAPS (PACKET_SIZE / (TABLE_BITMAP_SIZE * 4))
@@ -180,13 +181,16 @@ struct net2280 {
   uint current_pt_counter;
   uint32 current_pt_bitmaps[MAX_NUM_BITMAPS][TABLE_BITMAP_SIZE];
   uint frames_per_table[MAX_NUM_BITMAPS];
+  uint new_cr3;
   pgdir_entry_t* mig_task_pd_table;
   pgtbl_entry_t* current_page_table;
   bool kernel_only_area;
+  bool all_page_requests_in_queue;
   uint next_pd_entry;
   uint next_pt_entry;
+  phys_addr_t kernel_specific_pages[1024];
 
-  //#else
+#else
   
 #define NET2280_NUM_OUT_REQS 40
   
@@ -198,7 +202,7 @@ struct net2280 {
   int next_out_request_to_read; /* Head */
   int next_out_request_insert_index; /* Tail */
   
-  //#endif // NET2280_MIGRATION_MODE
+#endif // NET2280_MIGRATION_MODE
 } ;
 
 

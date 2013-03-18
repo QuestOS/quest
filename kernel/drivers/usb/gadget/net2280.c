@@ -43,9 +43,10 @@
 #include <mem/virtual.h>
 #include <sched/sched.h>
 #include <sched/vcpu.h>
+#include <vm/migration.h>
 
 
-#define DEBUG_NET2280
+//#define DEBUG_NET2280
 //#define DEBUG_NET2280_VERBOSE
 
 
@@ -498,36 +499,6 @@ static inline uint popcount(uint32 v)
   return (((v + (v >> 4)) & 0xF0F0F0F) * 0x1010101) >> 24; // count
 }
 
-
-void net2280_request_complete_callback2(struct usb_ep *ep,
-                                       struct usb_request *req)
-{
-  static int counter = 0;
-  int status = req->status;
-
-
-
-  if(status < 0) {
-    DLOG("status < 0 in %s", __FUNCTION__);
-    panic("status < 0 in  net2280_request_complete_callback");
-    return;
-  }
-
-  if(ep == net2280_dev.out_ep) {
-    DLOG("F");
-    counter++;
-    DLOG("Counter = %d", counter);
-    if(usb_ep_queue(net2280_dev.out_ep, req, 0) < 0) {
-      DLOG("Failed to queue request for page");
-      panic("Failed to queue request for page");
-    }
-  }
-  else {
-    DLOG("In %s for in ep");
-    panic("In %s for in ep");
-  }
-}
-
 void net2280_request_complete_callback(struct usb_ep *ep,
                                        struct usb_request *req)
 {
@@ -537,7 +508,7 @@ void net2280_request_complete_callback(struct usb_ep *ep,
   int status = req->status;
   int i, j;
 
-  DLOG("In %s", __FUNCTION__);
+  DLOGV("In %s", __FUNCTION__);
   if(status < 0) {
     DLOG("Status is -1 in net2280 migration callback");
     panic("Status is -1 in net2280 migration callback");
@@ -545,10 +516,35 @@ void net2280_request_complete_callback(struct usb_ep *ep,
     return;
   }
   
+  if(req == net2280_dev.tss_request) {
+    if(req->actual != req->length) {
+      DLOG("Didn't get entire tss");
+      panic("Didn't get entire tss");
+    }
+    quest_tss *pTSS = req->buf;
+    int i;
+
+    pTSS->next_tss = pTSS->prev_tss = NULL;
+    pTSS->tid += 200;           /* Hack right now to make sure the tid
+                                   is different than the tid of the
+                                   original task */
+    pTSS->machine_affinity = 0;
+    pTSS->CR3 = (u32)net2280_dev.new_cr3;
+    
+    for(i = 0; i < 1024; ++i) {
+      if(net2280_dev.kernel_specific_pages[i]) {
+        net2280_dev.mig_task_pd_table[i].raw = net2280_dev.kernel_specific_pages[i];
+      }
+    }
+    attach_task(pTSS, TRUE, 0);
+    DLOG("Task migrated");
+    return;
+  }
+  
   if(req == net2280_dev.bitmap_request) {
     /* We got a bitmap request */
 
-    DLOG("req->actual = %u", req->actual);
+    DLOGV("req->actual = %u", req->actual);
     net2280_dev.num_bitmaps_received = req->actual / (TABLE_BITMAP_SIZE * 4);
     uint partial_bitmap = req->actual % (TABLE_BITMAP_SIZE * 4);
 
@@ -579,16 +575,19 @@ void net2280_request_complete_callback(struct usb_ep *ep,
         DLOG("Failed to allocate physical frame for page directory");
         panic("Failed to allocate physical frame for page directory");
       }
+      net2280_dev.new_cr3 = phys_addr;
       net2280_dev.mig_task_pd_table = map_virtual_page(phys_addr | 3);
       if(net2280_dev.mig_task_pd_table == NULL) {
         DLOG("Failed to map page directory table");
         panic("Failed to map page directory table");
       }
+      memset(net2280_dev.mig_task_pd_table, 0, 4096);
       net2280_dev.next_pd_entry = 0;
       net2280_dev.next_pt_entry = 0;
       net2280_dev.next_usb_request = 0;
       net2280_dev.page_requests_in_queue = 0;
       net2280_dev.current_page_table = NULL;
+      net2280_dev.all_page_requests_in_queue = FALSE;
     }
     
     memcpy(net2280_dev.current_pt_bitmaps, req->buf, PACKET_SIZE);
@@ -597,7 +596,7 @@ void net2280_request_complete_callback(struct usb_ep *ep,
       for(j = 0; j < TABLE_BITMAP_SIZE; ++j) {
         net2280_dev.frames_per_table[i] += popcount(net2280_dev.current_pt_bitmaps[i][j]);
       }
-      DLOG("Frames for table %d = %u", i, net2280_dev.frames_per_table[i]);
+      DLOGV("Frames for table %d = %u", i, net2280_dev.frames_per_table[i]);
     }
   }
   else {
@@ -607,36 +606,24 @@ void net2280_request_complete_callback(struct usb_ep *ep,
     }
     pages_received++;
     net2280_dev.page_requests_in_queue--;
-    DLOG("Pages received = %d", pages_received);
+    DLOGV("Pages received = %d", pages_received);
   }
 
-  DLOG("net2280_dev.page_requests_in_queue = %d", net2280_dev.page_requests_in_queue);
-  while(net2280_dev.page_requests_in_queue < NET2280_MAX_PAGE_REQUESTS) {
+
+  DLOGV("net2280_dev.page_requests_in_queue = %d", net2280_dev.page_requests_in_queue);
+  while( (net2280_dev.page_requests_in_queue < NET2280_MAX_PAGE_REQUESTS) &&
+         (!net2280_dev.all_page_requests_in_queue) ) {
     struct usb_request* req;
     phys_addr_t page_phys;
 
-    DLOG("net2280_dev.page_requests_in_queue = %d", net2280_dev.page_requests_in_queue);
-
-    if(net2280_dev.next_pd_entry == 1024) {
-      DLOG("Received all pages");
-      panic("Received all pages");
-    }
+    DLOGV("net2280_dev.page_requests_in_queue = %d", net2280_dev.page_requests_in_queue);
     
     if(net2280_dev.next_pt_entry == 0 && net2280_dev.next_pd_entry != 1024) {
       /* We need to map a page table onto the page directory */
-            
-      if(net2280_dev.current_pt_counter == net2280_dev.num_bitmaps_received) {
-        /* We are done with the current page table and need to wait
-           for more bitmaps */
-        DLOG("net2280_dev.current_pt_counter = %u", net2280_dev.current_pt_counter);
-        DLOG("net2280_dev.num_bitmaps_received = %u", net2280_dev.num_bitmaps_received);
-        DLOG("Breaking at %d", __LINE__);
-        break;
-      }
       
       if(net2280_dev.current_page_table) {
         unmap_virtual_page(net2280_dev.current_page_table);
-        DLOG("unmapping current page table");
+        DLOGV("unmapping current page table");
         net2280_dev.current_page_table = NULL;
       }
 
@@ -644,8 +631,24 @@ void net2280_request_complete_callback(struct usb_ep *ep,
             (net2280_dev.next_pd_entry < 1024)) {
         net2280_dev.next_pd_entry++;
       }
-      
-      if(net2280_dev.next_pd_entry != 1024) {
+
+      if(net2280_dev.next_pd_entry == 1024) {
+        net2280_dev.all_page_requests_in_queue = TRUE;
+        if(usb_ep_queue(net2280_dev.out_ep, net2280_dev.tss_request, 0) < 0) {
+          DLOG("Failed to queue tss request");
+          panic("Failed to queue tss request");
+        }
+        break;
+      }
+      else {
+        
+        if(net2280_dev.current_pt_counter == net2280_dev.num_bitmaps_received) {
+          if(usb_ep_queue(net2280_dev.out_ep, net2280_dev.bitmap_request, 0) < 0) {
+            DLOG("Failed to queue bitmap request");
+            panic("Failed to queue bitmap request");
+          }
+        }
+        
         phys_addr_t table_phys = alloc_phys_frame();
         if(table_phys == 0xFFFFFFFF) {
           DLOG("Failed to allocate page table for migration");
@@ -664,6 +667,8 @@ void net2280_request_complete_callback(struct usb_ep *ep,
           (0xFFFFF000 & table_phys) | (net2280_dev.kernel_only_area ? 3 : 7);
         
         net2280_dev.next_pd_entry++;
+
+        
       }
     }
     
@@ -694,7 +699,7 @@ void net2280_request_complete_callback(struct usb_ep *ep,
 
     if(req->buf) {
       unmap_virtual_page(req->buf);
-      DLOG("Unmapping req buf for req (%d) 0x%p", req_index, req);
+      DLOGV("Unmapping req buf for req (%d) 0x%p", req_index, req);
       req->buf = 0;
     }
 
@@ -703,12 +708,12 @@ void net2280_request_complete_callback(struct usb_ep *ep,
       panic("net2280_dev.next_pt_entry out of range");
     }
 
-    DLOG("net2280_dev.next_pt_entry = %u", net2280_dev.next_pt_entry);
+    DLOGV("net2280_dev.next_pt_entry = %u", net2280_dev.next_pt_entry);
     net2280_dev.current_page_table[net2280_dev.next_pt_entry].raw =
       (0xFFFFF000 & page_phys) | (net2280_dev.kernel_only_area ? 3 : 7);
     
     req->buf = map_virtual_page(page_phys | 3);
-    DLOG("buf for req %d = 0x%p", req_index, req->buf);
+    DLOGV("buf for req %d = 0x%p", req_index, req->buf);
     if(req->buf == NULL) {
       DLOG("Failed to map virtual page");
       panic("Failed to map virtual page");
@@ -718,11 +723,11 @@ void net2280_request_complete_callback(struct usb_ep *ep,
       DLOG("Failed to queue request for page");
       panic("Failed to queue request for page");
     }
-    DLOG("Request queued");
+    
     net2280_dev.page_requests_in_queue++;
     net2280_dev.next_pt_entry++;
   }
-  DLOG("Leaving net2280 callback");
+  
 
   return;
     
@@ -818,6 +823,26 @@ static int net2280_open(USB_DEVICE_INFO* device, int dev_num, char* buf, int dat
     
     return -1;
   }
+
+  req = net2280_dev.tss_request = usb_ep_alloc_request(net2280_dev.out_ep, 0);
+  if(req == NULL) {
+    /* -- EM -- Not doing all the necessary cleanup */
+    DLOG("Failed to allocate request");
+    return -1; 
+  }
+  
+  req->buf = kmalloc(req->length = sizeof(quest_tss));
+  
+  if(req->buf == NULL) {
+    /* -- EM -- Not doing all the necessary cleanup */
+    DLOG("Failed to allocate buffer");
+    panic("Failed to allocate buffer");
+    return -1;
+  }
+  req->dma = (dma_addr_t)NULL;
+  
+  req->complete = net2280_request_complete_callback;
+  
     
   return 0;
   
@@ -3424,7 +3449,10 @@ static bool initialise_net2280(struct net2280* dev, uint32_t base_addr, bool is_
 
 static void net2280_migration_thread()
 {
-  
+  phys_addr_t cr3;
+  pgdir_entry_t* pd_table;
+  pgdir_entry_t* pd_table_original;
+  int i;
   USB_DEVICE_INFO* device_info = usb_get_device(net2280_dev_num);
   if(device_info == NULL) {
     DLOG("device info for migration device could not be found");
@@ -3435,6 +3463,23 @@ static void net2280_migration_thread()
   while(net2280_dev.gadget.speed == USB_SPEED_UNKNOWN) {
     sched_usleep(1000000 * 1);
   }
+
+  memset(net2280_dev.kernel_specific_pages, 0, sizeof(net2280_dev.kernel_specific_pages));
+  
+  cr3 = (phys_addr_t)get_pdbr();
+  pd_table_original = pd_table = map_virtual_page(cr3 | 3);
+  if(pd_table_original == NULL) {
+    DLOG("Failed to map pd table");
+    panic("Failed to map pd table");
+  }
+
+  for(i = 0; i < 1024; ++i, ++pd_table) {
+    if(pd_table->flags.present && !pd_table->flags.supervisor && i != PGDIR_KERNEL_STACK) {
+      net2280_dev.kernel_specific_pages[i] = pd_table->raw;
+    }
+  }
+
+  unmap_virtual_page(pd_table_original);
   
   if(net2280_open(device_info, net2280_dev_num, NULL, 0) < 0) {
     DLOG("net2280 open failed");
