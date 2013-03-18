@@ -23,21 +23,48 @@
 #include "vm/ept.h"
 #endif
 
-/* Size of virtual memory pool reserved for initial kernel load */
-/* Size should be multiple of 4MB, default is 8MB */
-/* This also includes the space reserved for ramdisk */
-#define LINUX_KERNEL_LOAD_SIZE        0x00800000
+//#define HAS_INITRD
+
+#ifdef HAS_INITRD
+#define LINUX_INITRD_PATH     "/boot/initrd.gz"
+#endif
+
+#define LINUX_BZIMAGE_PATH    "/boot/vmlinuz"
+
+/* 
+ * Size of virtual memory pool reserved for initial kernel load.
+ * Size should be multiple of 4MB. This also includes the space reserved
+ * for ramdisk if there is one. If a kernel image with a built in initrd
+ * needs to be loaded, this size should match the size of the image and
+ * probably be big.
+ *
+ * e.g. If kernel bzImage + initrd = 5.8 MB, LINUX_KERNEL_LOAD_SIZE should
+ * be set to 0x00800000 (8MB). If kernel bzImage = 125 MB with built in
+ * initrd, LINUX_KERNEL_LOAD_SIZE should be set to at least 0x08000000 (128MB).
+ */
+#define LINUX_KERNEL_LOAD_SIZE       0x10000000
 
 /* Number of 4MB pages of the value above */
-#define LINUX_KERNEL_LOAD_PAGE        (LINUX_KERNEL_LOAD_SIZE >> 22)
+#define LINUX_KERNEL_LOAD_PAGE       (LINUX_KERNEL_LOAD_SIZE >> 22)
 
 /* Start virtual address of the kernel load memory region */
 #define LINUX_KERNEL_LOAD_VA    \
     (PHY_SHARED_MEM_POOL_START - LINUX_KERNEL_LOAD_SIZE)
 
+#ifdef HAS_INITRD
+/* 
+ * This is the offset into LINUX_KERNEL_LOAD_VA where ramdisk should
+ * be loaded initially. It depends on the size of kernel bzImage.
+ *
+ * e.g. If bzImage is less than 4MB, INITRD_LOAD_OFFSET could be 0x00400000
+ * If bzImage is around 120MB with built in initrd, 0x08000000 should do.
+ */
+#define INITRD_LOAD_OFFSET           0x08000000
+
 /* Start virtual address of the ramdisk load memory region */
 /* By default, this is 4MB after kernel load address */
-#define INITRD_LOAD_VADDR            (LINUX_KERNEL_LOAD_VA + 0x00400000)
+#define INITRD_LOAD_VADDR            (LINUX_KERNEL_LOAD_VA + INITRD_LOAD_OFFSET)
+#endif
 
 #define LINUX_SETUP_HEADER_OFFSET    0x01F1
 
@@ -57,9 +84,11 @@ extern uint32 mp_num_cpus;
 #define LINUX_SANDBOX   (mp_num_cpus - 1)
 #define LINUX_PHYS_START  0x100000 //(SANDBOX_KERN_OFFSET * (LINUX_SANDBOX + 1)) 
 
+#ifdef HAS_INITRD
 /* Physical load address of Linux initial ramdisk */
 /* We need to pick an address that does not overlap with Linux kernel */
-#define INITRD_LOAD_PADDR             (0x00800000 + LINUX_PHYS_START)
+#define INITRD_LOAD_PADDR             (LINUX_PHYS_START + INITRD_LOAD_OFFSET)
+#endif
 
 /* Setup header version 2.10 */
 typedef struct _linux_setup_header {

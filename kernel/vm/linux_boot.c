@@ -124,6 +124,7 @@ load_linux_kernel (uint32 * load_addr, char * pathname, uint32 * initrd_paddr, i
   setup_header->loadflags = ((setup_header->loadflags) & (~0x60)) | 0x80;
   DLOG ("modified loadflags: 0x%X", setup_header->loadflags);
 
+#ifdef HAS_INITRD
   if (initrd_paddr) {
     /* Set initial ramdisk parameters if it exists */
     setup_header->ramdisk_image = (uint32) initrd_paddr;
@@ -131,6 +132,7 @@ load_linux_kernel (uint32 * load_addr, char * pathname, uint32 * initrd_paddr, i
     /* We assume initial ramdisk will not exceed 4MB */
     setup_header->initrd_addr_max = INITRD_LOAD_PADDR + 0x00400000;
   }
+#endif
 
   /* Set kernel start address to LINUX_PHYS_START */
   setup_header->code32_start = LINUX_PHYS_START;
@@ -160,7 +162,7 @@ linux_boot_thread (void)
   extern void * vm_exit_input_param;
   uint8_t * src = NULL, * dst = NULL;
   uint32_t pa_dst = 0;
-  int i, prot_size, initrd_sz;
+  int i, prot_size, initrd_sz = 0;
   linux_setup_header_t * header = NULL;
 
   DLOG ("Linux boot thread started in sandbox %d", cpu);
@@ -181,7 +183,9 @@ linux_boot_thread (void)
   //}
   //for (;;);
 
-  initrd_sz = load_linux_initrd ((uint32 *) INITRD_LOAD_VADDR, "/boot/initrd.gz");
+#ifdef HAS_INITRD
+  /* Loading initrd for Linux */
+  initrd_sz = load_linux_initrd ((uint32 *) INITRD_LOAD_VADDR, LINUX_INITRD_PATH);
 
   if (initrd_sz == -1) {
     DLOG ("Loading initrd failed.");
@@ -203,14 +207,18 @@ linux_boot_thread (void)
   memcpy ((void *)dst, (const void *)src, initrd_sz & 0xFFF);
   unmap_virtual_page (dst);
 
-  exit_param.size = load_linux_kernel ((uint32 *) LINUX_KERNEL_LOAD_VA, "/boot/vmlinuz",
+  exit_param.size = load_linux_kernel ((uint32 *) LINUX_KERNEL_LOAD_VA, LINUX_BZIMAGE_PATH,
                                        (uint32 *) INITRD_LOAD_PADDR, initrd_sz);
+#else
+  exit_param.size = load_linux_kernel ((uint32 *) LINUX_KERNEL_LOAD_VA, LINUX_BZIMAGE_PATH,
+                                       NULL, initrd_sz);
+#endif
 
   if (exit_param.size == -1) {
     DLOG ("Loading kernel failed.");
     goto finish;
   }
-
+  
   /* Now, trap into monitor and setup Linux VMCS */
   exit_param.kernel_addr = LINUX_KERNEL_LOAD_VA;
   vm_exit_input_param = (void *) &exit_param;
