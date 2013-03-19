@@ -40,11 +40,16 @@
 #include <smp/spinlock.h>
 
 #define NET2280_MIGRATION_MODE
-//#define NET2280_IO_VCPU
+#define NET2280_IO_VCPU
+//#define NET2280_MAIN_VCPU
+
+#if defined(NET2280_IO_VCPU) && defined(NET2280_MAIN_VCPU)
+CASSERT(FALSE, net2280_bottom_half_vcpu_type)
+#endif
 
 #define NET2280_INTERFACE_TYPE USB_ENDPOINT_XFER_INT
 #define PACKET_SIZE 512
-#define INTERVAL 4
+#define INTERVAL 3
 
 enum net2280_state {
         /* This one isn't used anywhere */
@@ -127,7 +132,7 @@ struct net2280 {
   struct net2280_dep_regs          *dep;
   struct net2280_ep_regs           *epregs;
 
-#ifdef NET2280_IO_VCPU
+#if defined(NET2280_IO_VCPU) || defined(NET2280_MAIN_VCPU)
   spinlock completion_list_lock;
   list_head_t completion_list;
   task_id iovcpu;
@@ -186,6 +191,7 @@ struct net2280 {
   pgtbl_entry_t* current_page_table;
   bool kernel_only_area;
   bool all_page_requests_in_queue;
+  bool bitmap_request_in_flight;
   uint next_pd_entry;
   uint next_pt_entry;
   phys_addr_t kernel_specific_pages[1024];

@@ -44,10 +44,6 @@
 /* This sleep queue is used only by the migration thread.  Used when
    the migration thread has nothing to do or when it is in the middle
    of transmitting data and needs to wait */
-/* -- EM -- If the usb host controller calls the callback function in
-   the context of an interrupt we need to protect
-   migration_thread_sleep_queue and migration_thread_sleep_reason with
-   a lock */
 static task_id migration_thread_sleep_queue = 0;
 
 typedef enum {NO_TASKS, BITMAP, PAGE_LIMIT, TSS_IN_FLIGHT} sleep_reason_t;
@@ -67,7 +63,7 @@ pgtbl_entry_t* page_table_currently_migrated = NULL;
 
 uint32* bitmap_currently_migrated_page_table = NULL;
 
-#define TRANSMISSION_SIZE 128   /* Specified in 4-bytes */
+#define TRANSMISSION_SIZE (512/4)   /* Specified in 4-bytes */
 
 #define TRANSMISSION_BUFFER_SIZE (TRANSMISSION_SIZE)
 static uint32 transmission_buffer[TRANSMISSION_BUFFER_SIZE];
@@ -79,6 +75,8 @@ uint migration_queue_tail = 0;
 
 
 #define TABLE_BITMAP_SIZE 32    /* Specified in 4-bytes */
+
+CASSERT(TRANSMISSION_SIZE >= TABLE_BITMAP_SIZE, usb_migration_minimum_packet_size)
 
 #define BITMAPS_PER_TRANSMISSION (TRANSMISSION_BUFFER_SIZE / TABLE_BITMAP_SIZE)
 
@@ -114,7 +112,12 @@ static void usb_migration_thread()
 
   while(TRUE) {
     while(migration_queue[migration_queue_head]) {
-      
+
+#ifdef DEBUG_USB_MIGRATION
+      u64 tsc;
+      RDTSC(tsc);
+      DLOG("Migration start time = 0x%016llX", tsc);
+#endif
       usb_migrate_task(migration_queue[migration_queue_head]);
       DLOG("Done migrating task!!");
 
@@ -136,7 +139,7 @@ static void usb_migration_thread()
 
 }
 
-void print_table_bitmap(uint32* bitmap)
+static void print_table_bitmap(uint32* bitmap)
 {
 #ifdef DEBUG_USB_MIGRATION_VERBOSE
   int i;
@@ -163,6 +166,7 @@ void create_pdt_bitmap(quest_tss* task, uint32* bitmap)
   int i;
   pgdir_entry_t* page = task_pd_table;
   wait_for_bitmaps();
+  memset(bitmap, 0, TABLE_BITMAP_SIZE*4);
     
   for(i = 0; i < 1024; ++i, ++page) {
     if(page->flags.present && page->flags.supervisor) {
@@ -178,12 +182,15 @@ void create_pt_bitmap(quest_tss* task, uint pt_index, uint32* bitmap)
   phys_addr_t pt_phys;
   pgtbl_entry_t* page_table;
   pgtbl_entry_t* page_table_backup;
-
   wait_for_bitmaps();
   if(!task_pd_table[pt_index].flags.present) {
-    DLOG("Page table is not present");
+    
+    DLOG("Page table is not present, pt_index = %u", pt_index);
     panic("Page table is not present");
   }
+
+  
+  memset(bitmap, 0, TABLE_BITMAP_SIZE*4);
 
   pt_phys = task_pd_table[pt_index].raw & 0xFFFFF000;
   page_table_backup = page_table = map_virtual_page(pt_phys | 3);
@@ -223,7 +230,7 @@ void migrate_page_table(quest_tss* task, uint pt_index, uint32* bitmap)
   phys_addr_t pt_phys;
   
   if(!task_pd_table[pt_index].flags.present) {
-    DLOG("Page table is not present");
+    DLOG("Page table is not present, pt_index = %u", pt_index);
     panic("Page table is not present");
   }
   
@@ -296,10 +303,26 @@ void usb_migrate_task(quest_tss* task)
   create_pdt_bitmap(task, transmission_buffer);
   memcpy(pdt_bitmap, transmission_buffer, sizeof(pdt_bitmap));
   print_table_bitmap(pdt_bitmap);
+  if(next_bitmap_to_fill == BITMAPS_PER_TRANSMISSION) {
+    int j;
+    next_bitmap_to_fill = 0;
+    
+    DLOG("About to send %d bitmap(s) at %d", BITMAPS_PER_TRANSMISSION, __LINE__);
+    send_bitmaps(BITMAPS_PER_TRANSMISSION);
+    
+    for(j = 0; j < BITMAPS_PER_TRANSMISSION; ++j) {
+      if(page_tables_to_send[j] >= 0) {
+        migrate_page_table(task, page_tables_to_send[j],
+                           &transmission_buffer[TABLE_BITMAP_SIZE * j]);
+        //usb_rt_free_write_resources(migration_urb);
+      }
+    }
+  }
   for(i = 0; i < 1024; ++i) {
     if(BITMAP_TST(pdt_bitmap, i)) {
       create_pt_bitmap(task, i, &transmission_buffer[TABLE_BITMAP_SIZE * next_bitmap_to_fill]);
       page_tables_to_send[next_bitmap_to_fill++] = i;
+      DLOG("Adding page table %d to bitmap list", i);
       
       if(next_bitmap_to_fill == BITMAPS_PER_TRANSMISSION) {
         int j;
@@ -326,7 +349,7 @@ void usb_migrate_task(quest_tss* task)
     DLOG("About to send %d bitmap(s) at %d", next_bitmap_to_fill, __LINE__); 
     send_bitmaps(next_bitmap_to_fill);
     
-    for(i = 0; i < BITMAPS_PER_TRANSMISSION; ++i) {
+    for(i = 0; i < next_bitmap_to_fill; ++i) {
       if(page_tables_to_send[i] >= 0) {
         migrate_page_table(task, page_tables_to_send[i],
                            &transmission_buffer[TABLE_BITMAP_SIZE * i]);

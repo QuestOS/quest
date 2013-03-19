@@ -48,6 +48,7 @@
 
 //#define DEBUG_NET2280
 //#define DEBUG_NET2280_VERBOSE
+//#define DEBUG_NET2280_VERY_VERBOSE
 
 
 
@@ -63,14 +64,20 @@
 #define DLOGV(fmt,...) ;
 #endif
 
+#ifdef DEBUG_NET2280_VERY_VERBOSE
+#define DLOGVV(fmt,...) DLOG_PREFIX("Net2280",fmt,##__VA_ARGS__)
+#else
+#define DLOGVV(fmt,...) ;
+#endif
 
 
-#define DEBUG(dev, fmt, ...) DLOGV(fmt, ##__VA_ARGS__)
-#define DBG(dev, fmt, ...) DLOGV(fmt, ##__VA_ARGS__)
-#define WARNING(dev, fmt, ...) DLOG(fmt, ##__VA_ARGS__)
-#define VDEBUG(dev, fmt, ...) DLOGV(fmt, ##__VA_ARGS__)
-#define VDBG(dev, fmt, ...) DLOGV(fmt, ##__VA_ARGS__)
-#define ERROR(dev, fmt, ...) do {DLOGV(fmt, ##__VA_ARGS__); panic(fmt); } while(0)
+
+#define DEBUG(dev, fmt, ...) DLOGVV(fmt, ##__VA_ARGS__)
+#define DBG(dev, fmt, ...) DLOGVV(fmt, ##__VA_ARGS__)
+#define WARNING(dev, fmt, ...) DLOGVV(fmt, ##__VA_ARGS__)
+#define VDEBUG(dev, fmt, ...) DLOGVV(fmt, ##__VA_ARGS__)
+#define VDBG(dev, fmt, ...) DLOGVV(fmt, ##__VA_ARGS__)
+#define ERROR(dev, fmt, ...) do {DLOG(fmt, ##__VA_ARGS__); panic(fmt); } while(0)
 
 
 #ifdef DEBUG_NET2280
@@ -499,6 +506,18 @@ static inline uint popcount(uint32 v)
   return (((v + (v >> 4)) & 0xF0F0F0F) * 0x1010101) >> 24; // count
 }
 
+static void print_table_bitmap(uint32* bitmap)
+{
+#ifdef DEBUG_NET2280_VERBOSE
+  int i;
+  DLOGV("\n\n\n");
+  for(i = 0; i < 32; i +=4) {
+    DLOGV("0x%08X 0x%08X 0x%08X 0x%08X", bitmap[i+3], bitmap[i+2], bitmap[i+1], bitmap[i]);
+  }
+  DLOGV("\n\n\n");
+#endif //DEBUG_NET2280_VERBOSE
+}
+
 void net2280_request_complete_callback(struct usb_ep *ep,
                                        struct usb_request *req)
 {
@@ -523,11 +542,13 @@ void net2280_request_complete_callback(struct usb_ep *ep,
     }
     quest_tss *pTSS = req->buf;
     int i;
-
+#ifdef DEBUG_NET2280
+    u64 tsc;
+#endif
     pTSS->next_tss = pTSS->prev_tss = NULL;
-    pTSS->tid += 200;           /* Hack right now to make sure the tid
-                                   is different than the tid of the
-                                   original task */
+    pTSS->tid += 200;           /* -- EM -- Hack right now to make
+                                   sure the tid is different than the
+                                   tid of the original task */
     pTSS->machine_affinity = 0;
     pTSS->CR3 = (u32)net2280_dev.new_cr3;
     
@@ -536,6 +557,10 @@ void net2280_request_complete_callback(struct usb_ep *ep,
         net2280_dev.mig_task_pd_table[i].raw = net2280_dev.kernel_specific_pages[i];
       }
     }
+#ifdef DEBUG_NET2280
+    RDTSC(tsc);
+    DLOG("Migration end time = 0x%016llX", tsc);
+#endif
     attach_task(pTSS, TRUE, 0);
     DLOG("Task migrated");
     return;
@@ -543,10 +568,12 @@ void net2280_request_complete_callback(struct usb_ep *ep,
   
   if(req == net2280_dev.bitmap_request) {
     /* We got a bitmap request */
-
-    DLOGV("req->actual = %u", req->actual);
-    net2280_dev.num_bitmaps_received = req->actual / (TABLE_BITMAP_SIZE * 4);
+    
     uint partial_bitmap = req->actual % (TABLE_BITMAP_SIZE * 4);
+    
+    DLOGV("Got bitmap request\n\n\n\n\n\n\n\n\n");
+    net2280_dev.bitmap_request_in_flight = FALSE;
+    net2280_dev.num_bitmaps_received = req->actual / (TABLE_BITMAP_SIZE * 4);
 
     
     if(partial_bitmap) {
@@ -590,9 +617,12 @@ void net2280_request_complete_callback(struct usb_ep *ep,
       net2280_dev.all_page_requests_in_queue = FALSE;
     }
     
-    memcpy(net2280_dev.current_pt_bitmaps, req->buf, PACKET_SIZE);
-
+    memcpy(net2280_dev.current_pt_bitmaps, req->buf,
+           TABLE_BITMAP_SIZE * 4 * net2280_dev.num_bitmaps_received);
+    
     for(i = net2280_dev.current_pt_counter; i < net2280_dev.num_bitmaps_received; ++i) {
+      print_table_bitmap(net2280_dev.current_pt_bitmaps[i]);
+      net2280_dev.frames_per_table[i] = 0;
       for(j = 0; j < TABLE_BITMAP_SIZE; ++j) {
         net2280_dev.frames_per_table[i] += popcount(net2280_dev.current_pt_bitmaps[i][j]);
       }
@@ -601,7 +631,7 @@ void net2280_request_complete_callback(struct usb_ep *ep,
   }
   else {
     if(req->actual != PAGE_SIZE) {
-      DLOG("Got a short page");
+      DLOG("Got a short page, req->actual = %u", req->actual);
       panic("Got a short page");
     }
     pages_received++;
@@ -631,7 +661,7 @@ void net2280_request_complete_callback(struct usb_ep *ep,
             (net2280_dev.next_pd_entry < 1024)) {
         net2280_dev.next_pd_entry++;
       }
-
+      DLOG("At %d net2280_dev.next_pd_entry = %u", __LINE__, net2280_dev.next_pd_entry);
       if(net2280_dev.next_pd_entry == 1024) {
         net2280_dev.all_page_requests_in_queue = TRUE;
         if(usb_ep_queue(net2280_dev.out_ep, net2280_dev.tss_request, 0) < 0) {
@@ -643,10 +673,14 @@ void net2280_request_complete_callback(struct usb_ep *ep,
       else {
         
         if(net2280_dev.current_pt_counter == net2280_dev.num_bitmaps_received) {
-          if(usb_ep_queue(net2280_dev.out_ep, net2280_dev.bitmap_request, 0) < 0) {
-            DLOG("Failed to queue bitmap request");
-            panic("Failed to queue bitmap request");
+          if(!net2280_dev.bitmap_request_in_flight) {
+            if(usb_ep_queue(net2280_dev.out_ep, net2280_dev.bitmap_request, 0) < 0) {
+              DLOG("Failed to queue bitmap request");
+              panic("Failed to queue bitmap request");
+            }
+            net2280_dev.bitmap_request_in_flight = TRUE;
           }
+          break;
         }
         
         phys_addr_t table_phys = alloc_phys_frame();
@@ -660,6 +694,7 @@ void net2280_request_complete_callback(struct usb_ep *ep,
           DLOG("Failed to map page table");
           panic("Failed to map page table");
         }
+        memset(net2280_dev.current_page_table, 0, 4096);
 
         net2280_dev.kernel_only_area = net2280_dev.next_pd_entry == PGDIR_KERNEL_STACK;
 
@@ -667,8 +702,6 @@ void net2280_request_complete_callback(struct usb_ep *ep,
           (0xFFFFF000 & table_phys) | (net2280_dev.kernel_only_area ? 3 : 7);
         
         net2280_dev.next_pd_entry++;
-
-        
       }
     }
     
@@ -686,7 +719,6 @@ void net2280_request_complete_callback(struct usb_ep *ep,
       continue;
     }
 
-    int req_index = net2280_dev.next_usb_request;
     req = net2280_dev.page_requests[net2280_dev.next_usb_request++];
     if(net2280_dev.next_usb_request == NET2280_MAX_PAGE_REQUESTS) {
       net2280_dev.next_usb_request = 0;
@@ -699,7 +731,6 @@ void net2280_request_complete_callback(struct usb_ep *ep,
 
     if(req->buf) {
       unmap_virtual_page(req->buf);
-      DLOGV("Unmapping req buf for req (%d) 0x%p", req_index, req);
       req->buf = 0;
     }
 
@@ -713,7 +744,6 @@ void net2280_request_complete_callback(struct usb_ep *ep,
       (0xFFFFF000 & page_phys) | (net2280_dev.kernel_only_area ? 3 : 7);
     
     req->buf = map_virtual_page(page_phys | 3);
-    DLOGV("buf for req %d = 0x%p", req_index, req->buf);
     if(req->buf == NULL) {
       DLOG("Failed to map virtual page");
       panic("Failed to map virtual page");
@@ -1744,7 +1774,7 @@ static void
 done (struct net2280_ep *ep, struct net2280_request *req, int status)
 {
   struct net2280          *dev;
-#ifdef NET2280_IO_VCPU
+#if defined(NET2280_IO_VCPU) || defined(NET2280_MAIN_VCPU)
   u32 flags;
 #endif
   unsigned                stopped = ep->stopped;
@@ -1765,15 +1795,20 @@ done (struct net2280_ep *ep, struct net2280_request *req, int status)
             ep->ep.name, &req->req, status,
             req->req.actual, req->req.length);
   
-#ifdef NET2280_IO_VCPU
-  DLOG("A");
+#if defined(NET2280_IO_VCPU) || defined(NET2280_MAIN_VCPU)
+  
   if(&req->req != dev->ep0req) {
     spinlock_lock_irq_save(&dev->completion_list_lock, flags);
     list_add_tail(&req->completion_chain, &dev->completion_list);
     spinlock_unlock_irq_restore(&dev->completion_list_lock, flags);
     /* -- EM -- hack: use VCPU2's period */
+
+#ifdef NET2280_IO_VCPU
+    iovcpu_job_wakeup (dev->iovcpu, vcpu_lookup (2)->T);
+#else
     wakeup(dev->iovcpu);
-    //iovcpu_job_wakeup (dev->iovcpu, vcpu_lookup (2)->T);
+#endif
+    
   }
   else {
 #endif
@@ -1783,7 +1818,7 @@ done (struct net2280_ep *ep, struct net2280_request *req, int status)
     req->req.complete (&ep->ep, &req->req);
     spinlock_lock (&dev->lock);
     ep->stopped = stopped;
-#ifdef NET2280_IO_VCPU
+#if defined(NET2280_IO_VCPU) || defined(NET2280_MAIN_VCPU)
   }
 #endif
 }
@@ -3357,7 +3392,7 @@ static bool initialise_net2280(struct net2280* dev, uint32_t base_addr, bool is_
   int i;
   addr_t base_virt_addr = map_virtual_page(base_addr | 0x3);
 
-#ifdef NET2280_IO_VCPU
+#if defined(NET2280_IO_VCPU) || defined(NET2280_MAIN_VCPU)
   INIT_LIST_HEAD(&dev->completion_list);
   spinlock_init(&dev->completion_list_lock);
 #endif
@@ -3494,7 +3529,7 @@ static void net2280_migration_thread()
 #endif
 
 
-#ifdef NET2280_IO_VCPU
+#if defined(NET2280_IO_VCPU) || defined(NET2280_MAIN_VCPU)
 static void net2280_bh_thread(struct net2280* dev)
 {
   //unlock_kernel();
@@ -3539,7 +3574,11 @@ static void net2280_bh_thread(struct net2280* dev)
     
     //cli();
     //lock_kernel();
+#ifdef NET2280_IO_VCPU
     iovcpu_job_completion();
+#else
+    schedule();
+#endif
     //unlock_kernel();
     //sti();
         
@@ -3564,13 +3603,15 @@ static void net2280_init_thread(struct net2280* net2280_dev)
     return;
   }
 
-#ifdef NET2280_IO_VCPU
+#if defined(NET2280_IO_VCPU) || defined(NET2280_MAIN_VCPU)
   net2280_dev->iovcpu =
     create_kernel_thread_args ((u32) net2280_bh_thread,
                                (u32) &net2280_dev->bh_stack[NET2280_IOC_BH_THREAD_STACK_SIZE-1],
                                "Net2280 Bottom Half", FALSE, 1, net2280_dev);
   DLOG("net2280_dev->iovcpu = 0x%X", net2280_dev->iovcpu);
-  //set_iovcpu (net2280_dev->iovcpu, IOVCPU_CLASS_USB);
+#  ifdef NET2280_IO_VCPU
+  set_iovcpu (net2280_dev->iovcpu, IOVCPU_CLASS_USB);
+#  endif
 #endif
 
   net2280_dev_num = usb_register_device(temp, &net2280_driver);
