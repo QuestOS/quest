@@ -24,12 +24,14 @@
 #endif
 
 //#define HAS_INITRD
+#define GRUB_LOAD_BZIMAGE     /* Use GRUB to load bzImage as a module */
 
 #ifdef HAS_INITRD
 #define LINUX_INITRD_PATH     "/boot/initrd.gz"
 #endif
 
 #define LINUX_BZIMAGE_PATH    "/boot/vmlinuz"
+#define LINUX_BOOT_PARAM      "root=/dev/sda1 pmedia=atahd loglevel=7"
 
 /* 
  * Size of virtual memory pool reserved for initial kernel load.
@@ -48,8 +50,8 @@
 #define LINUX_KERNEL_LOAD_PAGE       (LINUX_KERNEL_LOAD_SIZE >> 22)
 
 /* Start virtual address of the kernel load memory region */
-#define LINUX_KERNEL_LOAD_VA    \
-    (PHY_SHARED_MEM_POOL_START - LINUX_KERNEL_LOAD_SIZE)
+//(PHY_SHARED_MEM_POOL_START - LINUX_KERNEL_LOAD_SIZE)
+#define LINUX_KERNEL_LOAD_VA         0x80000000
 
 #ifdef HAS_INITRD
 /* 
@@ -83,6 +85,11 @@
 extern uint32 mp_num_cpus;
 #define LINUX_SANDBOX   (mp_num_cpus - 1)
 #define LINUX_PHYS_START  0x100000 //(SANDBOX_KERN_OFFSET * (LINUX_SANDBOX + 1)) 
+
+#ifdef GRUB_LOAD_BZIMAGE
+#include "boot/multiboot.h"
+#endif
+#include "types.h"
 
 #ifdef HAS_INITRD
 /* Physical load address of Linux initial ramdisk */
@@ -134,6 +141,9 @@ typedef struct _linux_setup_header {
 extern int load_linux_initrd (uint32 *, char *);
 extern int load_linux_kernel (uint32 *, char *, uint32 *, int);
 extern bool linux_boot_thread_init (void);
+#ifdef GRUB_LOAD_BZIMAGE
+extern bool grub_load_linux_bzImage (multiboot_module *, uint32 *);
+#endif
 
 #endif /* __ASSEMBLER__ */
 

@@ -51,6 +51,52 @@
 
 #ifdef USE_LINUX_SANDBOX
 
+#ifdef GRUB_LOAD_BZIMAGE
+static int grub_load_size = 0;
+
+bool
+grub_load_linux_bzImage (multiboot_module * pmm, uint32 * load_addr)
+{
+  int i = 0;
+  uint8 * src = NULL, * dst = NULL;
+  uint32 pa_src = 0;
+  uint8 * bz_start = (uint8 *) (pmm->pe);
+  uint8 * bz_end = (uint8 *) (pmm->mod_end);
+
+  DLOG ("bzImage GRUB load start: 0x%X", (uint32) bz_start);
+  DLOG ("bzImage GRUB load end: 0x%X", (uint32) bz_end);
+  DLOG ("Specified kernel load VA: 0x%X", LINUX_KERNEL_LOAD_VA);
+
+  grub_load_size = (int) bz_end - (int) bz_start;
+  DLOG ("Size of bzImage 0x%X", grub_load_size);
+
+  /* Does GRUB module load address overlap with LINUX_KERNEL_LOAD_VA? */
+  if ((((uint32) bz_start) <= LINUX_KERNEL_LOAD_VA) &&
+      (((uint32) bz_end) >= LINUX_KERNEL_LOAD_VA)) {
+    /* TODO: Use a bounce buffer to relocate the bzImage */
+    /* For now, let's just panic. */
+    panic ("GRUB module load address overlaps with LINUX_KERNEL_LOAD_VA!\n");
+  }
+
+  dst = (uint8 *) LINUX_KERNEL_LOAD_VA;
+  pa_src = (uint32) bz_start;
+
+  /* Number of 4KB pages */
+  for (i = 0; i < (grub_load_size >> 12); i++) {
+    src = map_virtual_page (pa_src | 0x3);
+    memcpy ((void *)dst, (const void *)src, 0x1000);
+    unmap_virtual_page (src);
+    pa_src += 0x1000;
+    dst += 0x1000;
+  }
+  src = map_virtual_page (pa_src | 0x3);
+  memcpy ((void *)dst, (const void *)src, grub_load_size & 0xFFF);
+  unmap_virtual_page (src);
+
+  return TRUE;
+}
+#endif
+
 /*
  * Load Linux initial ramdisk from pathname in filesystem to virtual
  * address load_addr in memory.
@@ -84,9 +130,15 @@ load_linux_kernel (uint32 * load_addr, char * pathname, uint32 * initrd_paddr, i
   int act_len = 0;
   linux_setup_header_t * setup_header;
   int eztftp_bulk_read (char *, uint32 *);
-  char * command_line = "root=/dev/sda1 pmedia=atahd loglevel=7";
+  char * command_line = LINUX_BOOT_PARAM;
 
+#ifdef GRUB_LOAD_BZIMAGE
+  /* bzImage is already loaded by GRUB */
+  act_len = grub_load_size;
+  DLOG ("bzImage already loaded by GRUB. Size=0x%X", act_len);
+#else
   act_len = eztftp_bulk_read (pathname, load_addr);
+#endif
 
   if (act_len < 0) {
     DLOG ("Linux kernel load failed!");

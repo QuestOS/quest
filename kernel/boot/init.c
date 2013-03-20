@@ -38,6 +38,9 @@
 #include "drivers/net/ethernet.h"
 #include "vm/spow2.h"
 #endif
+#ifdef USE_LINUX_SANDBOX
+#include "vm/linux_boot.h"
+#endif
 
 extern descriptor idt[];
 
@@ -431,7 +434,11 @@ init (multiboot * pmb)
    */
 
   /* Here, clear mm_table entries for any loadable modules. */
+#ifdef GRUB_LOAD_BZIMAGE
+  for (i = 0; i < pmb->mods_count - 1; i++) {
+#else
   for (i = 0; i < pmb->mods_count; i++) {
+#endif
 
     pe = map_virtual_page ((uint32)pmb->mods_addr[i].pe | 3);
 
@@ -507,8 +514,24 @@ init (multiboot * pmb)
   if (!pmb->mods_count)
     panic ("No modules available");
   for (i = 0; i < pmb->mods_count; i++) {
+#ifdef GRUB_LOAD_BZIMAGE
+    /*
+     * If GRUB is used to load Linux kernel bzImage, it *MUST* be placed
+     * at the *BOTTOM* of the module list in GRUB configuration file.
+     */
+    if (i == (pmb->mods_count - 1)) {
+      /* Relocate Linux kernel bzImage loaded by GRUB */
+      /* LINUX_KERNEL_LOAD_VA was mapped 1 to 1 in boot.S */
+      com1_printf ("Relocating Linux bzImage...\n");
+      grub_load_linux_bzImage (pmb->mods_addr + i, (uint32 *) LINUX_KERNEL_LOAD_VA);
+    } else {
+      tss[i] = load_module (pmb->mods_addr + i, i);
+      lookup_TSS (tss[i])->priority = MIN_PRIO;
+    }
+#else
     tss[i] = load_module (pmb->mods_addr + i, i);
     lookup_TSS (tss[i])->priority = MIN_PRIO;
+#endif
   }
 
   /* --??-- Assume the first is shell here */
