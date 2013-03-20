@@ -513,6 +513,11 @@ init (multiboot * pmb)
   /* Load modules from GRUB */
   if (!pmb->mods_count)
     panic ("No modules available");
+#ifdef GRUB_LOAD_BZIMAGE
+  /* If there is only one module, it has to be shell */
+  if (pmb->mods_count < 2)
+    panic ("GRUB_LOAD_BZIMAGE configured but no bzImage provided!");
+#endif
   for (i = 0; i < pmb->mods_count; i++) {
 #ifdef GRUB_LOAD_BZIMAGE
     /*
