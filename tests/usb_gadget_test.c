@@ -41,14 +41,14 @@ int main()
   int res;
   printf("usb_gadget_test started\n");
   
-  if(usb_open(0, NULL, 0) < 0) {
+  if(usb_open("net2280_communication0") < 0) {
     printf("Failed to open gadget\n");
     while(1);
   }
 
   printf("Gadget opened\n");
  retry_open:
-  if(usb_open(HOST_DEVICE_NUM, open_buf, OPEN_BUF_SIZE) < 0) {
+  if(usb_open("net2280_communication0") < 0) {
     printf("Failed to open device %d\n", HOST_DEVICE_NUM);
     usleep(1000000);
     goto retry_open;

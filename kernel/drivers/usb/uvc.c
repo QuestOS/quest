@@ -284,7 +284,7 @@ static int uvc_read(USB_DEVICE_INFO* device, int dev_num, char* buf, int data_le
   }
 }
 
-static int uvc_open(USB_DEVICE_INFO* device, int dev_num, char* buf, int data_len)
+static int uvc_open(USB_DEVICE_INFO* device, int dev_num)
 {
   int num_packets = 1024 * 8;
   uvc_device_info_t* uvc_dev = get_uvc_dev_info(device);
@@ -292,17 +292,10 @@ static int uvc_open(USB_DEVICE_INFO* device, int dev_num, char* buf, int data_le
   uint pipe = usb_rcvisocpipe(device, 1);
   uvc_dev->next_packet_to_read = 0;
   uvc_dev->packets_available   = 0;
+  char* buf;
 
-  DLOG("%s called with arguments (0x%p, 0x%p, %d)", __FUNCTION__,
-       device, buf, data_len);
   
   ep = usb_pipe_endpoint(device, pipe);
-  
-  if(data_len < num_packets * dev_to_uvc_dev(device)->transaction_size) {
-    DLOG("Not enough memory passed to uvc_open, need %d",
-         num_packets * dev_to_uvc_dev(device)->transaction_size);
-    return -1;
-  }
 
   /*
    * -- EM -- pow2 seems to be broken so doing this hack right now to
@@ -315,7 +308,10 @@ static int uvc_open(USB_DEVICE_INFO* device, int dev_num, char* buf, int data_le
     DLOG("Failed to allocate urb for %s", __FUNCTION__);
     return -1;
   }
-
+  buf = kmalloc(num_packets * dev_to_uvc_dev(device)->transaction_size);
+  if(buf == NULL) {
+    return -1;
+  }
   usb_fill_rt_iso_urb(uvc_dev->urb, device, pipe, buf, NULL, NULL,
                       ep->desc.bInterval, num_packets, 
                       dev_to_uvc_dev(device)->transaction_size, 0);
@@ -348,6 +344,7 @@ static int uvc_write(USB_DEVICE_INFO* device, int dev_num, char* buf, int data_l
 }
 
 static USB_DRIVER uvc_driver = {
+  .dev_root_name = "camera",
   .probe = uvc_probe,
   .open = uvc_open,
   .close = uvc_close,

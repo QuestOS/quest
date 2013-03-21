@@ -38,6 +38,7 @@ CASSERT (sizeof (task_id) == sizeof (uint32), task_id);
 #define FD_TYPE_FILE    0
 #define FD_TYPE_UDP     1
 #define FD_TYPE_TCP     2
+#define FD_TYPE_USB_DEV 3
 
 typedef struct _fd_table_entry {
   uint8 type;

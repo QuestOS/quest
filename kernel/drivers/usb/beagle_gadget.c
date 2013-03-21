@@ -73,47 +73,47 @@ static void beagle_complete_callback(struct urb* urb)
   old_tsc = current_tsc;
 }
 
-static int gadget_open(USB_DEVICE_INFO* device, int dev_num, char* buf, int data_len)
+static int gadget_open(USB_DEVICE_INFO* device, int dev_num)
 {
   gadget_sub_device_info_t* gadget_dev = get_gadget_sub_dev_info(device, dev_num);
   struct usb_host_endpoint *ep = usb_pipe_endpoint(device, gadget_dev->pipe);
   int num_packets = (1024 * 8) >> (ep->desc.bInterval - 1);
   int result;
   uint64_t current_tsc;
-  
-  memset(buf, '-', data_len);
+  char* buf;
   
   gadget_dev->next_to_read = gadget_dev->data_available = 0;
-  gadget_dev->buffer_size = data_len;
+  
   if(usb_pipetype(gadget_dev->pipe) == PIPE_ISOCHRONOUS) {
-    if(data_len <
-       ((num_packets * gadget_dev->transaction_size) +
-        sizeof(struct urb) + (sizeof(usb_iso_packet_descriptor_t) * num_packets)) ) {
-      DLOG("Not enough memory passed to gadget_open, need %d",
-           ((num_packets * gadget_dev->transaction_size) +
-            sizeof(struct urb) + (sizeof(usb_iso_packet_descriptor_t) * num_packets)));
+    buf = kmalloc(sizeof(usb_iso_packet_descriptor_t) * num_packets);
+    if(buf == NULL) return -1;
+    
+    gadget_dev->urb = usb_alloc_urb(num_packets, 0);
+    if(gadget_dev->urb == NULL) {
+      kfree(buf);
       return -1;
     }
-    gadget_dev->urb = (struct urb*)buf;
-    buf += (sizeof(struct urb) + (sizeof(usb_iso_packet_descriptor_t) * num_packets));
-    usb_init_urb(gadget_dev->urb);
+    
     gadget_dev->num_packets = num_packets;
+    gadget_dev->buffer_size = sizeof(usb_iso_packet_descriptor_t) * num_packets;
   }
   else {
+    buf = kmalloc(1024*200);
+    if(buf == NULL) {
+      return -1;
+    }
+    gadget_dev->buffer_size = 1024*200;
     gadget_dev->urb = usb_alloc_urb(0, 0);
     if(gadget_dev->urb == NULL) {
       DLOG("Failed to alloc URB");
+      kfree(buf);
       return -1;
     }
+    
   }
 
   //DLOG("dev_num = %d urb = 0x%p", dev_num, gadget_dev->urb);
 
-  if(gadget_dev->urb == NULL) {
-    DLOG("Failed to allocate urb");
-    return -1;
-  }
-  
   switch(usb_pipetype(gadget_dev->pipe)) {
   case PIPE_ISOCHRONOUS:
     usb_fill_rt_iso_urb(gadget_dev->urb, device, gadget_dev->pipe, buf,
@@ -124,17 +124,11 @@ static int gadget_open(USB_DEVICE_INFO* device, int dev_num, char* buf, int data
     DLOG("Init iso urb with interrupts");
     break;
   case PIPE_INTERRUPT:
-    if(gadget_dev->buffer_size > (1024*400)) {
-      gadget_dev->buffer_size = 1024*400*2;
-    }
     usb_fill_rt_int_urb(gadget_dev->urb, device, gadget_dev->pipe, buf, gadget_dev->buffer_size,
                         beagle_complete_callback, NULL,
                         ep->desc.bInterval, 512);
     break;
   case PIPE_BULK:
-    if(gadget_dev->buffer_size > (1024*400)) {
-      gadget_dev->buffer_size = 1024*400*2;
-    }
     usb_fill_rt_bulk_urb(gadget_dev->urb, device, gadget_dev->pipe, buf, gadget_dev->buffer_size,
                          beagle_complete_callback, NULL,
                          1, gadget_dev->buffer_size);

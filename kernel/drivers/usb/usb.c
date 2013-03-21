@@ -40,6 +40,7 @@ static USB_DRIVER drivers[USB_MAX_DEVICE_DRIVERS];
 static uint num_drivers = 0;
 
 #define USB_CORE_MAX_DEVICES 32
+#define USB_CORE_MAX_DEVICES_LOG_10 2
 static USB_DEVICE_INFO* devices[USB_CORE_MAX_DEVICES];
 static uint num_devices = 0;
 
@@ -68,7 +69,8 @@ int usb_syscall_handler(uint32_t device_id, uint32_t operation,
 {
   int result;
   USB_DEVICE_INFO* device;
-
+  
+  
   device = usb_get_device(device_id);
 
   
@@ -90,7 +92,7 @@ int usb_syscall_handler(uint32_t device_id, uint32_t operation,
     break;
 
   case USB_USER_OPEN:
-    result = device->driver->open(device, device_id, buf, data_len);
+    result = device->driver->open(device, device_id);
     break;
     
   case USB_USER_CLOSE:
@@ -151,8 +153,72 @@ add_usb_hcd(usb_hcd_t* usb_hcd)
   return FALSE;
 }
 
+bool get_usb_device_id(char* name)
+{
+  int i;
+  for(i = 0; i < num_devices; ++i) {
+    if(!strcmp(devices[i]->name, name)) return i;
+  }
+  return -1;
+}
+
+/* Part 1 of the poor mans sprintf */
+static void reverse_string(char* s)
+{
+  int i;
+  int len = strlen(s);
+  for(i = 0; i < len/2; ++i) {
+    s[i]     = s[i] ^ s[len-i];
+    s[len-i] = s[i] ^ s[len-i];
+    s[i]     = s[i] ^ s[len-i];
+  }
+}
+
+/* Part 2 of the poor mans sprintf */
+static void int_to_ascii(char* buf, uint decimal)
+{
+  int i = 0;
+  do {
+    buf[i++] = (decimal % 10) + '0';
+    decimal = decimal / 10;
+  } while(decimal);
+  buf[i++] = '\0';
+  reverse_string(buf);
+}
+
+static char* get_next_usb_device_name(USB_DRIVER* driver)
+{
+  uint i;
+  uint dev_root_name_len;
+  uint possible_name_max_len;
+  char * possible_name;
+
+  if(driver->dev_root_name == NULL) return NULL;
+  dev_root_name_len = strlen(driver->dev_root_name);
+  possible_name_max_len = dev_root_name_len + 1 + USB_CORE_MAX_DEVICES_LOG_10;
+  
+  possible_name = kmalloc(possible_name_max_len);
+  memcpy(possible_name, driver->dev_root_name, dev_root_name_len);
+  memset(&possible_name[dev_root_name_len], 0, possible_name_max_len - dev_root_name_len);
+  for(i = 0; i < USB_CORE_MAX_DEVICES; ++i) {
+    uint j;
+    int_to_ascii(&possible_name[dev_root_name_len], i);
+    DLOG("possible name = %s", possible_name);
+    for(j = 0; j < num_devices; ++j) {
+      if(strcmp(possible_name, devices[j]->name)) break;
+    }
+    if(j == num_devices) return possible_name;
+  }
+  return NULL;
+}
+
 int usb_register_device(USB_DEVICE_INFO* device, USB_DRIVER* driver)
 {
+  if((device->name = get_next_usb_device_name(driver)) == NULL) {
+    return -1;
+  }
+  DLOG("device->name = %s", device->name);
+  
   if(num_devices < USB_CORE_MAX_DEVICES) {
     device->driver = driver;
     devices[num_devices++] = device;

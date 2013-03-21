@@ -502,6 +502,7 @@ typedef struct usb_device
   uint port_num;
 
   struct _USB_DRIVER* driver;
+  char* name;
   void* device_priv; /* A place for a device to put its own private data */
   
   /*
@@ -588,12 +589,15 @@ void print_ept_desc_info(USB_EPT_DESC* ept_desc);
 
 typedef struct _USB_DRIVER
 {
+  char* dev_root_name;
   bool (*probe) (USB_DEVICE_INFO *, USB_CFG_DESC *, USB_IF_DESC *);
-  int (*open) (USB_DEVICE_INFO* device, int dev_num, char* buf, int data_len);
+  int (*open) (USB_DEVICE_INFO* device, int dev_num);
   int (*close) (USB_DEVICE_INFO* device, int dev_num);
   int (*write) (USB_DEVICE_INFO* device, int dev_num, char* buf, int data_len);
   int (*read) (USB_DEVICE_INFO* device, int dev_num, char* buf, int data_len);
 } USB_DRIVER;
+
+bool get_usb_device_id(char* name);
 
 int usb_register_device(USB_DEVICE_INFO* device, USB_DRIVER* driver);
 

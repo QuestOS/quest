@@ -785,7 +785,7 @@ void net2280_request_complete_callback(struct usb_ep *ep,
 #endif
 }
 
-static int net2280_open(USB_DEVICE_INFO* device, int dev_num, char* buf, int data_len)
+static int net2280_open(USB_DEVICE_INFO* device, int dev_num)
 {
 #ifdef NET2280_MIGRATION_MODE
   
@@ -972,6 +972,11 @@ static int net2280_read(USB_DEVICE_INFO* device, int dev_num, char* buf, int dat
 }
 
 static USB_DRIVER net2280_driver = {
+#ifdef NET2280_MIGRATION_MODE
+  .dev_root_name = "net2280_migration",
+#else
+  .dev_root_name = "net2280_communication",
+#endif
   .open = net2280_open,
   .read = net2280_read,
   .write = net2280_write
@@ -3516,7 +3521,7 @@ static void net2280_migration_thread()
 
   unmap_virtual_page(pd_table_original);
   
-  if(net2280_open(device_info, net2280_dev_num, NULL, 0) < 0) {
+  if(net2280_open(device_info, net2280_dev_num) < 0) {
     DLOG("net2280 open failed");
     panic("net2280 open failed");
   }
@@ -3615,6 +3620,10 @@ static void net2280_init_thread(struct net2280* net2280_dev)
 #endif
 
   net2280_dev_num = usb_register_device(temp, &net2280_driver);
+  if(net2280_dev_num < 0) {
+    DLOG("Failed to register net2280 device");
+    panic("Failed to register net2280 device");
+  }
 
   DLOG("net2280_start done, device number = %d", net2280_dev_num);
 

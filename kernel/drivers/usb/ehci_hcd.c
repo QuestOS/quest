@@ -650,7 +650,6 @@ static void qtd_restore(qtd_t* qtd)
   qtd->token = qtd->token_backup;
   qtd->buffer_page[0] = qtd->buffer_page_zero_backup;
   qtd->ioc_called = FALSE;
-  DLOG("qtd_restore->completion_context = 0x%p", qtd->completion_context);
 }
 
 static int ehci_rt_qh_free_data(struct urb* urb, ehci_qh_urb_priv_t* qh_urb_priv,
