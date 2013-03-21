@@ -18,9 +18,46 @@
 #ifndef _MIGRATION_H_
 #define _MIGRATION_H_
 
+
 #include <types.h>
 #include "sched/proc.h"
 #include "mem/virtual.h"
+
+
+/* The following three functions are used by multiple migration
+   infrastructures not just vm migration so are declared outside the
+   #ifdef USE_VMX macro */
+
+/* detach_task remove task tid from calling sandbox's local scheduler.
+ * The physical address of the corresponding quest_tss will be returned.
+ * This physical address will be passed to remote sandox for further
+ * migration process.
+ */
+extern void * detach_task (task_id tid, bool phys_addr);
+
+/* attach_task add a (migrated) task into the local sandbox scheduler. This
+ * includes adding quest_tss to per-sandbox quest_tss list and vcpu run queue.
+ * Returns 0 if attach failed.
+ */
+extern int attach_task (quest_tss * new_tss, bool remote_tsc_diff,
+                        uint64 remote_tsc);
+
+/* pull_quest_tss is called by the remote sandbox to create a new tss
+ * and set it up for the migrating process.
+ * The physical address of the migrating tss is specified with the address
+ * of the tss created locally returned.
+ */
+
+/* destroy_task is called by the local sandbox to free the whole address
+ * space of the migrating process and its other data structures (like
+ * quest_tss etc.).
+ * This is similar to an exit() system call.
+ */
+extern void destroy_task (task_id tid);
+
+
+#ifdef USE_VMX
+
 
 /* We will use some fixed vectors for communications using IPI */
 /* Let's start from 240 which is closer to the bottom of the vector table */
@@ -61,24 +98,6 @@
  * different sandboxes have different address spaces.
  */
 
-/* detach_task remove task tid from calling sandbox's local scheduler.
- * The physical address of the corresponding quest_tss will be returned.
- * This physical address will be passed to remote sandox for further
- * migration process.
- */
-extern void * detach_task (task_id tid);
-
-/* attach_task add a (migrated) task into the local sandbox scheduler. This
- * includes adding quest_tss to per-sandbox quest_tss list and vcpu run queue.
- * Returns 0 if attach failed.
- */
-extern int attach_task (quest_tss * new_tss);
-
-/* pull_quest_tss is called by the remote sandbox to create a new tss
- * and set it up for the migrating process.
- * The physical address of the migrating tss is specified with the address
- * of the tss created locally returned.
- */
 extern quest_tss * pull_quest_tss (void * phy_tss);
 
 /* remote_clone_page_directory clones the migrating process's address
@@ -87,20 +106,15 @@ extern quest_tss * pull_quest_tss (void * phy_tss);
  */
 extern pgdir_t remote_clone_page_directory (pgdir_t dir, u64 deadline);
 
-/* destroy_task is called by the local sandbox to free the whole address
- * space of the migrating process and its other data structures (like
- * quest_tss etc.).
- * This is similar to an exit() system call.
- */
-extern void destroy_task (task_id tid);
-
 /* Send a migration request from current sandbox to sandbox. The actual
  * request will be retrieved through shared memory.
  * Returns 0 if request sending failed.
  */
 extern int request_migration (int sandbox);
 
-#endif
+#endif // USE_VMX
+
+#endif // _MIGRATION_H_
 
 /* 
  * Local Variables:

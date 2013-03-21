@@ -35,6 +35,7 @@
 #define UNITS_PER_SEC 1000
 
 //#define DEBUG_VCPU
+//#define DEBUG_VCPU_VERBOSE
 //#define DUMP_STATS_VERBOSE
 //#define DUMP_STATS_VERBOSE_2
 //#define CHECK_INVARIANTS
@@ -46,6 +47,13 @@
 #define DLOG(fmt,...) DLOG_PREFIX("vcpu",fmt,##__VA_ARGS__)
 #else
 #define DLOG(fmt,...) ;
+#endif
+
+
+#ifdef DEBUG_VCPU_VERBOSE
+#define DLOGV(fmt,...) DLOG_PREFIX("vcpu",fmt,##__VA_ARGS__)
+#else
+#define DLOGV(fmt,...) ;
 #endif
 
 u32 tsc_freq_msec, tsc_unit_freq;
@@ -642,7 +650,7 @@ vcpu_schedule (void)
 
   tdelta = tcur - tprev;
 
-  DLOG ("tcur=0x%llX tprev=0x%llX tdelta=0x%llX", tcur, tprev, tdelta);
+  DLOGV ("tcur=0x%llX tprev=0x%llX tdelta=0x%llX", tcur, tprev, tdelta);
 
   if (cur) {
     Tprev = cur->T;
@@ -687,7 +695,7 @@ vcpu_schedule (void)
 
       percpu_write (vcpu_current, vcpu);
       percpu_write (vcpu_queue, queue);
-      DLOG ("scheduling vcpu=%p with budget=0x%llX", vcpu, vcpu->b);
+      DLOGV ("scheduling vcpu=%p with budget=0x%llX", vcpu, vcpu->b);
     } else {
       if (cur) {
         perfmon_vcpu_acnt_end (cur);
@@ -715,7 +723,7 @@ vcpu_schedule (void)
 #ifdef USE_MIGRATION_THREAD
             if (!migration_thread_ready) {
               /* migration thread is not ready */
-              goto resume_schedule;
+              goto vmx_migration_end;
             }
 #endif
             if (shm->migration_queue[tss->sandbox_affinity]) {
@@ -726,10 +734,10 @@ vcpu_schedule (void)
                */
               logger_printf ("Migration queue in sandbox %d is not empty\n",
                              tss->sandbox_affinity);
-              goto resume_schedule;
+              goto vmx_migration_end;
             } else {
               /* Detach the migrating task from local scheduler */
-              ph_tss = detach_task (tss->tid);
+              ph_tss = detach_task (tss->tid, TRUE);
               DLOG ("Process quest_tss to be migrated: 0x%X", ph_tss);
               /* Add the migrating process to migration queue of destination sandbox */
               shm->migration_queue[tss->sandbox_affinity] = ph_tss;
@@ -757,8 +765,57 @@ vcpu_schedule (void)
         }
       }
     }
-  resume_schedule:
+  vmx_migration_end:
 #endif
+
+#ifdef USB_MIGRATION
+    /* Check migration request */
+    if (str () != next) {
+      quest_tss * tss = lookup_TSS (str ());
+      uint32 * ph_tss = NULL;
+      task_id waiter;
+      if (tss) {
+        if (tss->machine_affinity) {
+          DLOG ("Migration Request to another machine: taskid=0x%X, vcpu=%d",
+                str (), tss->cpu);
+          DLOG ("Current task: 0x%X, Next task: 0x%X", str (), next);
+          mvcpu = vcpu_lookup (tss->cpu);
+          if (!mvcpu) {
+            logger_printf ("No VCPU (%d) associated with Task 0x%X\n", tss->cpu, tss->tid);
+          }
+          else {
+            
+            if (usb_migration_queue_full()) {
+              logger_printf ("Migration queue for usb is not empty empty\n");
+            }
+            else {
+              /* Detach the migrating task from local scheduler */
+              ph_tss = detach_task (tss->tid, FALSE);
+              if(!ph_tss) {
+                DLOG("Failed to detach task for usb migration");
+                panic("Failed to detach task for usb migration");
+              }
+              DLOG ("Process quest_tss to be migrated: 0x%X", ph_tss);
+              /* Add the migrating process to the usb migration queue  */
+              usb_add_task_to_migration_queue(ph_tss);
+                            
+              /* All tasks waiting for us now belong on the runqueue. */
+              /* TODO:
+               * For now, we wake up all the waiting processes. This
+               * is not really a solution for the shared resource problem.
+               * Some more specific mechanisms must be devised for this
+               * issue in the future.
+               */
+              while ((waiter = queue_remove_head (&tss->waitqueue))) {
+                wakeup (waiter);
+              }
+            }
+          }
+        }
+      }
+    }
+#endif
+    
 
     /* find time of next important event */
     if (vcpu)
@@ -833,7 +890,6 @@ vcpu_schedule (void)
 extern void
 vcpu_wakeup (task_id task)
 {
-  DLOG ("vcpu_wakeup (0x%x), cpu=%d", task, get_pcpu_id ());
   quest_tss *tssp = lookup_TSS (task);
   static int next_vcpu_binding = 1;
   extern bool sleepqueue_detach (task_id);
@@ -1273,10 +1329,10 @@ vcpu_init (void)
   return TRUE;
 }
 
-#ifdef USE_VMX
 /* Fix replenishment queue */
 bool
-vcpu_fix_replenishment (quest_tss * tss, vcpu * v, replenishment r[])
+vcpu_fix_replenishment (quest_tss * tss, vcpu * v, replenishment r[], bool remote_tsc_diff,
+                        uint64 remote_tsc)
 {
   int i = 0, cpu = 0;
   repl_queue * rq = NULL;
@@ -1315,14 +1371,14 @@ vcpu_fix_replenishment (quest_tss * tss, vcpu * v, replenishment r[])
       if (tss->vcpu_backup[i].t == 0) break;
       /* Fix timestamp values */
       cpu = get_pcpu_id ();
-      if (shm->remote_tsc_diff[cpu]) {
+      if(remote_tsc_diff) {
         /* Local TSC is faster */
         repl_queue_add (rq, tss->vcpu_backup[i].b,
-                        tss->vcpu_backup[i].t + shm->remote_tsc[cpu]);
+                        tss->vcpu_backup[i].t + remote_tsc);
       } else {
         /* Local TSC is slower */
         repl_queue_add (rq, tss->vcpu_backup[i].b,
-                        tss->vcpu_backup[i].t - shm->remote_tsc[cpu]);
+                        tss->vcpu_backup[i].t - remote_tsc);
       }
     }
     v->b = tss->b_bak;
@@ -1345,6 +1401,7 @@ vcpu_fix_replenishment (quest_tss * tss, vcpu * v, replenishment r[])
 
   return FALSE;
 }
+#ifdef USE_VMX
 
 /* For sandbox to reset scheduler after vm fork. */
 void

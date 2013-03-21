@@ -44,6 +44,32 @@ typedef void (*usb_complete_t)(struct urb *);
 
 struct _usb_hcd_t;
 
+/*
+ * URB support, for asynchronous request completions
+ */
+
+/*
+ * urb->transfer_flags:
+ *
+ * Note: URB_DIR_IN/OUT is automatically set in usb_submit_urb().
+ */
+#define URB_SHORT_NOT_OK        0x0001  /* report short reads as errors */
+#define URB_ISO_ASAP            0x0002  /* iso-only, urb->start_frame
+                                         * ignored */
+#define URB_NO_TRANSFER_DMA_MAP 0x0004  /* urb->transfer_dma valid on submit */
+#define URB_NO_FSBR             0x0020  /* UHCI-specific */
+#define URB_ZERO_PACKET         0x0040  /* Finish bulk OUT with short packet */
+#define URB_NO_INTERRUPT        0x0080  /* HINT: no non-error interrupt
+                                         * needed */
+#define URB_FREE_BUFFER         0x0100  /* Free transfer buffer with the URB */
+#define URB_RT_ONE_HANDLER_CALL 0x0200  /* Only need to call the completion handler once
+					   per interrupt, not once for each frame/microframe
+					   that passed */
+#define URB_RT_ZERO_COPY_WRITE  0x0400  /* Only valid for output URBs, there is no buffer
+					   associated with the urb, the buffers passed to
+					   the push data call are used as the dma buffers*/
+#define URB_RT_PHYS_ADDR        0x0800  /* The physical address is specified in the call to push */
+
 struct urb {
 
   /*
@@ -134,13 +160,16 @@ struct urb {
   bool realtime;
 
   /*
-   * Used for isochronous real-time urbs.  For USB 1.1 devices it is
+   * Used for input isochronous real-time urbs. USB 1.1 devices it is
    * measured in frames for USB 2.0 devices it is measured in
-   * micro-frames
+   * micro-frames.
    */
-  uint32_t realtime_complete_interval;
-  uint32_t interrupt_interval;
   
+  uint interrupt_frame_rate;
+
+  /* Used for input non-isochronous real-time urbs.  Specified how
+     many bytes should be ready before an interrupt occurs. */
+  uint interrupt_byte_rate;
 
   /*
    * iso_frame_desc has to be last because we use it is a variable
@@ -164,12 +193,15 @@ struct urb {
 #define usb_pipecontrol(pipe)   (usb_pipetype((pipe)) == PIPE_CONTROL)
 #define usb_pipebulk(pipe)      (usb_pipetype((pipe)) == PIPE_BULK)
 
-   
+
 struct urb *usb_alloc_urb(int iso_packets, gfp_t mem_flags);
 
 static inline void usb_free_urb(struct urb *urb)
 {
-  if(urb) pow2_free((uint8_t*)urb);
+  if(urb) {
+    if(urb->hcpriv) kfree(urb->hcpriv);
+    kfree(urb);
+  }
 }
 
 static inline void usb_init_urb(struct urb *urb) {

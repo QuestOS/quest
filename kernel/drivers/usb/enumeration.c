@@ -41,8 +41,6 @@ usbenumeration_init (void)
   uint32_t index = 0;
   usb_hcd_t* hcd = NULL;
 
-  DLOG("IN USB ENUM");
-
   while( (hcd = get_usb_hcd(index)) != NULL) {
     index++;
     if(!hcd->reset_root_ports(hcd)) {
@@ -50,7 +48,13 @@ usbenumeration_init (void)
       panic("Failed to reset root ports for device");
       continue;
     }
-    if(!usb_enumerate(hcd))  {
+
+    /* -- EM -- Need to call enumerate for each port */
+    
+    /* -- EM -- Setting root hub as always high speed (needs to be
+       fixed), hub address as 0 (should be this since it is the root
+       hub) and port as 1 (needs to be fixed) later */
+    if(!usb_enumerate(hcd, USB_SPEED_HIGH, 0, 1))  {
       DLOG("Failed to enumerate device %d", index-1);
       continue;
     }

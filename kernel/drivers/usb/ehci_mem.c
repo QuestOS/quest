@@ -56,6 +56,10 @@ inline bool
 initialise_qtd(ehci_hcd_t* ehci_hcd, qtd_t* qtd)
 {
   memset(qtd, 0, sizeof(*qtd));
+  if(qtd == 0xFFE36500) {
+    char *temp = NULL;
+    //*temp = 'a';
+  }
   qtd->token = QTD_HALT;
   qtd->next_pointer_raw = EHCI_LIST_END;
   qtd->alt_pointer_raw = EHCI_LIST_END;
@@ -70,6 +74,8 @@ inline bool initialise_qh(ehci_hcd_t* ehci_hcd, qh_t* qh)
   qh->state = QH_STATE_NOT_LINKED;
   INIT_LIST_HEAD(&qh->qtd_list);
   qh->dummy_qtd = allocate_qtd(ehci_hcd);
+  qh->dummy_qtd->ioc_called = TRUE; /* avoids calling ioc for dummy qtd */
+  qh->previous = &qh->horizontalPointer;
   return qh->dummy_qtd != NULL;
 }
 
@@ -93,6 +99,25 @@ inline bool initialise_ehci_completion_element(ehci_hcd_t* ehci_hcd,
   memset(element, 0, sizeof(*element));
   INIT_LIST_HEAD(&element->chain_list);
   return TRUE;
+}
+
+inline void qh_release(qh_t* qh)
+{
+}
+
+inline void qtd_release(qtd_t* qtd)
+{
+  list_del(&qtd->chain_list);
+}
+
+inline void itd_release(itd_t* itd)
+{
+  list_del(&itd->chain_list);
+}
+
+inline void ehci_completion_element_release(ehci_completion_element_t* comp_element)
+{
+  list_del(&comp_element->chain_list);
 }
 
 /* End of initialisation functions */
@@ -127,7 +152,7 @@ inline bool initialise_ehci_completion_element(ehci_hcd_t* ehci_hcd,
             free_##res(ehci_hcd, items[count]);                         \
             return count;                                               \
           }                                                             \
-          EHCI_MEM_ASSERT( !( ((uint32_t)items[count]) & 0x1F) );       \
+          /*EHCI_MEM_ASSERT( !( ((uint32_t)items[count]) & 0x1F) );*/   \
           if(++count == num) {                                          \
             return count;                                               \
           }                                                             \
@@ -151,6 +176,7 @@ inline bool initialise_ehci_completion_element(ehci_hcd_t* ehci_hcd,
     while(num--) {                                                      \
       uint32_t index = items[num] - pool;                               \
       EHCI_MEM_ASSERT(&pool[index] == items[num]);                      \
+      res##_release(items[num]);                                        \
                                                                         \
       /* Flip the one bit to zero */                                    \
       used_bitmap[index >> BITMAP_INDEX_SHIFT] &=                       \

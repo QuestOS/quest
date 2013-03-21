@@ -441,18 +441,47 @@ syscall_usleep (u32 eax, u32 ebx, u32 ecx, u32 edx, u32 esi)
 static int
 syscall_usb (u32 eax, u32 ebx, u32 ecx, u32 edx, u32 esi)
 {
-  u32 device_id = (int)ebx;
+  u32 fd = (int)ebx;
   u32 operation = (int)ecx;
   char* buf = (char*)edx;
   u32 data_len = (int)esi;
   int ret;
+  int device_id;
+  quest_tss * tss;
+  
+  task_id cur = percpu_read (current_task);
+
+  if (!cur) {
+    logger_printf ("No current task\n");
+    return -1;
+  }
+
+  tss = lookup_TSS(cur);
+  
 #if 0
   com1_printf("In %s called with arguments: (%d, %d, %d, %d, %d)\n", __FUNCTION__,
               eax, ebx, ecx, edx, esi);
 
   com1_printf("buf = 0x%X\n", buf);
 #endif
+
+  if(operation == USB_USER_OPEN) {
+    fd = find_fd(tss);
+    if(fd < 0) return fd;
+    device_id = get_usb_device_id(buf);
+    if(device_id < 0) return device_id;
+    tss->fd_table[fd].type = FD_TYPE_USB_DEV;
+    tss->fd_table[fd].entry = (void*)device_id;
+  }
+  else {
+    device_id = (int)tss->fd_table[fd].entry;
+  }
+  
   ret = usb_syscall_handler(device_id, operation, buf, data_len);
+  if( (ret < 0 && operation == USB_USER_OPEN) || (ret >= 0 && operation == USB_USER_CLOSE) ) {
+    /* Failed to open device or successfully closed device, free fd table entry */
+    tss->fd_table[fd].entry = NULL;
+  }
   return ret;
 }
 
@@ -1018,8 +1047,7 @@ _read (int fd, char *buf, int count)
     file_entry = (fd_table_file_entry_t*)fd_table_entry->entry;
     
     act_len = vfs_dir(file_entry->pathname);
-    
-    pow2_alloc(act_len, &temp_buf);
+    temp_buf = kmalloc(act_len);
     
     if(!temp_buf) {
       com1_printf("Failed to allocate temp buffer for read\n");
@@ -1033,7 +1061,7 @@ _read (int fd, char *buf, int count)
     res = vfs_read (file_entry->pathname, temp_buf, act_len);
     
     if(res < 0) {
-      pow2_free(temp_buf);
+      kfree(temp_buf);
       unlock_kernel();
       return res;
     }
@@ -1047,7 +1075,7 @@ _read (int fd, char *buf, int count)
     memcpy(buf, &temp_buf[file_entry->current_pos], res);
     file_entry->current_pos += res;
     
-    pow2_free(temp_buf);
+    kfree(temp_buf);
 
     break;
     
@@ -1461,6 +1489,8 @@ _sched_setparam (task_id pid, const struct sched_param *p)
 
     if (p->affinity != -1)
       ptss->sandbox_affinity = p->affinity;
+
+    if(p->machine_affinity != -1) ptss->machine_affinity = p->machine_affinity;
 
     wakeup (str ());
 

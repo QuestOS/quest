@@ -188,6 +188,7 @@ duplicate_TSS (uint32 ebp,
   pTSS->tid = new_task_id ();
   save_fpu_state(pTSS->fpu_state);
   pTSS->sandbox_affinity = get_pcpu_id ();
+  pTSS->machine_affinity = 0;
 
   semaphore_init (&pTSS->Msem, 1, 0);
 
@@ -221,6 +222,7 @@ alloc_idle_TSS (int cpu_num)
   pTSS->EBP = pTSS->ESP;
   pTSS->tid = new_task_id ();
   pTSS->sandbox_affinity = cpu_num;
+  pTSS->machine_affinity = 0;
   memcpy (pTSS->name, name, strlen (name));
   pTSS->name[strlen (name)] = '\0';
 
@@ -249,6 +251,7 @@ alloc_TSS (void *pPageDirectory, void *pEntry, int mod_num)
   pTSS->EBP = USER_STACK_START - 100;
   pTSS->tid = new_task_id ();
   pTSS->sandbox_affinity = get_pcpu_id ();
+  pTSS->machine_affinity = 0;
 
   semaphore_init (&pTSS->Msem, 1, 0);
 

@@ -70,6 +70,8 @@
 #define USER_STACK_START 0x40000000
 #define USER_STACK_SIZE 16
 
+/* If sched_param is changed it must also be changed in libc's vcpu.h */
+
 struct sched_param
 {
   int sched_priority;
@@ -80,6 +82,10 @@ struct sched_param
   int m;                        /* mandatory instance count in a window */
   int k;                        /* window of requests  */
   int affinity;                 /* CPU (or Quest-V sandbox affinity) */
+  int machine_affinity;         /* -- EM -- Machine affinity hack
+                                   right now is a just a bool to
+                                   indicate stay (0) or move to other
+                                   machine (1) */
 };
 
 void map_user_level_stack(uint32_t* plPageDirectory, void* start_addr, int num_frames,

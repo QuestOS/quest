@@ -15,35 +15,26 @@
  *  along with this program.  If not, see <http://www.gnu.org/licenses/>.
  */
 
-#include <stdio.h>
-#include <stdlib.h>
-#include <unistd.h>
-#include <vcpu.h>
 
-int
-main ()
+#ifndef _USB_KEYBOARD_H_
+#define _USB_KEYBOARD_H_
+
+#define USB_KEYBOARD_BUFFER_SIZE 64
+
+
+typedef struct _usb_keyboard_dev{
+  struct urb* urb;
+  USB_DEVICE_INFO *dev;
+  USB_EPT_DESC int_ep;
+  char buffer[USB_KEYBOARD_BUFFER_SIZE];
+  uint8 old[8];
+
+} usb_keyboard_dev_t;
+
+void init_usb_keyboard_dev(usb_keyboard_dev_t* dev)
 {
-  int i = 0;
-  struct sched_param param;
-  for (;;) {
-    if (i == 1) {
-      printf ("Set sandbox machine to 1!\n");
-      param.machine_affinity = 1;
-      sched_setparam (-1, &param);
-    }
-    printf ("Migration Test Process, counter = %d\n", i);
-    usleep (1000000);
-    i++;
-  }
+  memset(dev, 0, sizeof(usb_keyboard_dev_t));
 }
 
-/*
- * Local Variables:
- * indent-tabs-mode: nil
- * mode: C
- * c-file-style: "gnu"
- * c-basic-offset: 2
- * End:
- */
 
-/* vi: set et sw=2 sts=2: */
+#endif // _USB_KEYBOARD_H_

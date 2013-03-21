@@ -15,6 +15,7 @@
  *  along with this program.  If not, see <http://www.gnu.org/licenses/>.
  */
 
+#include <drivers/usb/ehci.h>
 #include <drivers/usb/usb.h>
 #include <arch/i386.h>
 #include <util/printf.h>
@@ -39,24 +40,49 @@ static USB_DRIVER drivers[USB_MAX_DEVICE_DRIVERS];
 static uint num_drivers = 0;
 
 #define USB_CORE_MAX_DEVICES 32
+#define USB_CORE_MAX_DEVICES_LOG_10 2
 static USB_DEVICE_INFO* devices[USB_CORE_MAX_DEVICES];
 static uint num_devices = 0;
+
+
+/* -- EM -- Both EHCI and net2280 use this so I am putting it here for
+      now */
+bool
+handshake(uint32_t *ptr, uint32_t mask, uint32_t done, uint32_t usec)
+{
+  uint32_t result;
+  
+  do {
+    result = *ptr;
+    if (result == ~(uint32_t)0) return FALSE; /* card removed */
+    result &= mask;
+    if (result == done) return TRUE;
+    tsc_delay_usec(1);
+    usec--;
+  } while (usec);
+  
+  return FALSE;
+}
 
 int usb_syscall_handler(uint32_t device_id, uint32_t operation,
                         char* buf, uint32_t data_len)
 {
   int result;
-  USB_DEVICE_INFO* device = usb_get_device(device_id);
+  USB_DEVICE_INFO* device;
+  
+  
+  device = usb_get_device(device_id);
 
   
   if(device == NULL) {
     DLOG("Unknown device id");
     return -1;
   }
+
+  if(device->driver == NULL) return -1;
   
   switch(operation) {
   case USB_USER_READ:
-
     result = device->driver->read(device, device_id, buf, data_len);
     break;
     
@@ -66,7 +92,7 @@ int usb_syscall_handler(uint32_t device_id, uint32_t operation,
     break;
 
   case USB_USER_OPEN:
-    result = device->driver->open(device, device_id, buf, data_len);
+    result = device->driver->open(device, device_id);
     break;
     
   case USB_USER_CLOSE:
@@ -88,18 +114,13 @@ initialise_usb_hcd(usb_hcd_t* usb_hcd, uint32_t usb_hc_type,
                    usb_post_enumeration_func post_enumeration,
                    usb_submit_urb_func submit_urb,
                    usb_kill_urb_func kill_urb,
-                   usb_rt_iso_data_lost_func rt_iso_data_lost,
                    usb_rt_iso_update_packets_func rt_iso_update_packets,
                    usb_rt_iso_free_packets_func rt_iso_free_packets,
-                   usb_rt_iso_push_data_func rt_iso_push_data,
-                   usb_rt_int_data_lost_func rt_int_data_lost,
-                   usb_rt_int_update_data_func rt_int_update_data,
-                   usb_rt_int_free_data_func rt_int_free_data,
-                   usb_rt_int_push_data_func rt_int_push_data,
-                   usb_rt_bulk_data_lost_func rt_bulk_data_lost,
-                   usb_rt_bulk_update_data_func rt_bulk_update_data,
-                   usb_rt_bulk_free_data_func rt_bulk_free_data,
-                   usb_rt_bulk_push_data_func rt_bulk_push_data)
+                   usb_rt_data_lost_func rt_data_lost,
+                   usb_rt_update_data_func rt_update_data,
+                   usb_rt_free_data_func rt_free_data,
+                   usb_rt_push_data_func rt_push_data,
+                   usb_rt_free_write_resources_func rt_free_write_resources)
 {
   usb_hcd->usb_hc_type = usb_hc_type;
   usb_hcd->reset_root_ports      = reset_root_ports;
@@ -108,20 +129,14 @@ initialise_usb_hcd(usb_hcd_t* usb_hcd, uint32_t usb_hc_type,
   usb_hcd->submit_urb            = submit_urb;
   usb_hcd->kill_urb              = kill_urb;
   
-  usb_hcd->rt_iso_data_lost      = rt_iso_data_lost;
   usb_hcd->rt_iso_update_packets = rt_iso_update_packets;
   usb_hcd->rt_iso_free_packets   = rt_iso_free_packets;
-  usb_hcd->rt_iso_push_data      = rt_iso_push_data;
   
-  usb_hcd->rt_int_data_lost      = rt_int_data_lost;
-  usb_hcd->rt_int_update_data    = rt_int_update_data;
-  usb_hcd->rt_int_free_data      = rt_int_free_data;
-  usb_hcd->rt_int_push_data      = rt_int_push_data;
-
-  usb_hcd->rt_bulk_data_lost     = rt_bulk_data_lost;
-  usb_hcd->rt_bulk_free_data     = rt_bulk_free_data;
-  usb_hcd->rt_bulk_update_data   = rt_bulk_update_data;
-  usb_hcd->rt_bulk_push_data     = rt_bulk_push_data;
+  usb_hcd->rt_data_lost            = rt_data_lost;
+  usb_hcd->rt_update_data          = rt_update_data;
+  usb_hcd->rt_free_data            = rt_free_data;
+  usb_hcd->rt_push_data            = rt_push_data;
+  usb_hcd->rt_free_write_resources = rt_free_write_resources;
   
   
   usb_hcd->next_address = 1;
@@ -138,8 +153,72 @@ add_usb_hcd(usb_hcd_t* usb_hcd)
   return FALSE;
 }
 
+bool get_usb_device_id(char* name)
+{
+  int i;
+  for(i = 0; i < num_devices; ++i) {
+    if(!strcmp(devices[i]->name, name)) return i;
+  }
+  return -1;
+}
+
+/* Part 1 of the poor mans sprintf */
+static void reverse_string(char* s)
+{
+  int i;
+  int len = strlen(s);
+  for(i = 0; i < len/2; ++i) {
+    s[i]     = s[i] ^ s[len-i];
+    s[len-i] = s[i] ^ s[len-i];
+    s[i]     = s[i] ^ s[len-i];
+  }
+}
+
+/* Part 2 of the poor mans sprintf */
+static void int_to_ascii(char* buf, uint decimal)
+{
+  int i = 0;
+  do {
+    buf[i++] = (decimal % 10) + '0';
+    decimal = decimal / 10;
+  } while(decimal);
+  buf[i++] = '\0';
+  reverse_string(buf);
+}
+
+static char* get_next_usb_device_name(USB_DRIVER* driver)
+{
+  uint i;
+  uint dev_root_name_len;
+  uint possible_name_max_len;
+  char * possible_name;
+
+  if(driver->dev_root_name == NULL) return NULL;
+  dev_root_name_len = strlen(driver->dev_root_name);
+  possible_name_max_len = dev_root_name_len + 1 + USB_CORE_MAX_DEVICES_LOG_10;
+  
+  possible_name = kmalloc(possible_name_max_len);
+  memcpy(possible_name, driver->dev_root_name, dev_root_name_len);
+  memset(&possible_name[dev_root_name_len], 0, possible_name_max_len - dev_root_name_len);
+  for(i = 0; i < USB_CORE_MAX_DEVICES; ++i) {
+    uint j;
+    int_to_ascii(&possible_name[dev_root_name_len], i);
+    DLOG("possible name = %s", possible_name);
+    for(j = 0; j < num_devices; ++j) {
+      if(strcmp(possible_name, devices[j]->name)) break;
+    }
+    if(j == num_devices) return possible_name;
+  }
+  return NULL;
+}
+
 int usb_register_device(USB_DEVICE_INFO* device, USB_DRIVER* driver)
 {
+  if((device->name = get_next_usb_device_name(driver)) == NULL) {
+    return -1;
+  }
+  DLOG("device->name = %s", device->name);
+  
   if(num_devices < USB_CORE_MAX_DEVICES) {
     device->driver = driver;
     devices[num_devices++] = device;
@@ -181,8 +260,8 @@ int usb_submit_urb (struct urb *urb, gfp_t mem_flags)
       DLOG("Can only submit realtime urbs when interrupts are on");
       return -1;
     }
-    if(urb->interrupt_interval < urb->interval && urb->interrupt_interval != 0) {
-      DLOG("interrupt_interval cannot be less than interval");
+    if((!usb_pipein(urb->pipe) && urb->context)) {
+      DLOG("Cannot have context for real-time output pipes, context is specified at push");
       return -1;
     }
   }
@@ -229,54 +308,30 @@ int usb_rt_iso_free_packets(struct urb* urb, int number_of_packets)
   return urb->dev->hcd->rt_iso_free_packets(urb, number_of_packets);
 }
 
-int usb_rt_iso_data_lost(struct urb* urb)
+int usb_rt_data_lost(struct urb* urb)
 {
-  return urb->dev->hcd->rt_iso_data_lost(urb);
+  return urb->dev->hcd->rt_data_lost(urb);
 }
 
-int usb_rt_iso_push_data(struct urb* urb, char* data, int count)
+int usb_rt_free_data(struct urb* urb, int count)
 {
-  return urb->dev->hcd->rt_iso_push_data(urb, data, count);
+  return urb->dev->hcd->rt_free_data(urb, count);
 }
 
-int usb_rt_int_data_lost(struct urb* urb)
+int usb_rt_update_data(struct urb* urb, int max_count)
 {
-  return urb->dev->hcd->rt_int_data_lost(urb);
+  return urb->dev->hcd->rt_update_data(urb, max_count);
 }
 
-int usb_rt_int_free_data(struct urb* urb, int count)
+int usb_rt_push_data(struct urb* urb, char* data, int count, uint interrupt_rate,
+                     uint flags, void* context)
 {
-  return urb->dev->hcd->rt_int_free_data(urb, count);
+  return urb->dev->hcd->rt_push_data(urb, data, count, interrupt_rate, flags, context);
 }
 
-int usb_rt_int_update_data(struct urb* urb, int max_count)
+int usb_rt_free_write_resources(struct urb* urb)
 {
-  return urb->dev->hcd->rt_int_update_data(urb, max_count);
-}
-
-int usb_rt_int_push_data(struct urb* urb, char* data, int count)
-{
-  return urb->dev->hcd->rt_int_push_data(urb, data, count);
-}
-
-int usb_rt_bulk_data_lost(struct urb* urb)
-{
-  return urb->dev->hcd->rt_bulk_data_lost(urb);
-}
-
-int usb_rt_bulk_free_data(struct urb* urb, int count)
-{
-  return urb->dev->hcd->rt_bulk_free_data(urb, count);
-}
-
-int usb_rt_bulk_update_data(struct urb* urb, int max_count)
-{
-  return urb->dev->hcd->rt_bulk_update_data(urb, max_count);
-}
-
-int usb_rt_bulk_push_data(struct urb* urb, char* data, int count)
-{
-  return urb->dev->hcd->rt_bulk_push_data(urb, data, count);
+  return urb->dev->hcd->rt_free_write_resources(urb);
 }
 
 static void usb_core_blocking_completion(struct urb* urb)
@@ -427,7 +482,10 @@ int usb_interrupt_msg(struct usb_device *usb_dev, unsigned int pipe,
  usb_interrupt_msg_out:
 
   *actual_length = urb.actual_length;
-
+  /* Must free hcpriv since we are not allocating the urb via
+     usb_alloc_urb */
+  if(urb.hcpriv) kfree(urb.hcpriv); 
+  
   return ret;
 
 }
@@ -441,7 +499,7 @@ int usb_bulk_msg(struct usb_device *usb_dev, unsigned int pipe,
    * function won't complete until the callback is called
    */
   struct urb urb;
-  bool done;
+  bool done = FALSE;
   int i;
   int ret;
   usb_complete_t complete_callback;
@@ -492,7 +550,10 @@ int usb_bulk_msg(struct usb_device *usb_dev, unsigned int pipe,
  usb_bulk_msg_out:
 
   *actual_length = urb.actual_length;
-
+  /* Must free hcpriv since we are not allocating the urb via
+     usb_alloc_urb */
+  if(urb.hcpriv) kfree(urb.hcpriv); 
+  
   return ret;
 }
 
@@ -504,15 +565,20 @@ int usb_control_msg(struct usb_device *dev, unsigned int pipe,
 {
   /*
    * -- EM -- It should be okay to put these on the stack because this
-   * function won't complete until the callback is called
+   * function won't complete until the callback is called,
    */
+  /* -- EM -- not true if it fails! */
+  
   struct urb urb;
-  bool done;
+  bool done = FALSE;
   int i;
   USB_DEV_REQ cmd;
   int ret;
   usb_complete_t complete_callback;
+  //DLOG("Address of done = 0x%p", &done);
+
   
+
   usb_init_urb(&urb);
   cmd.bmRequestType = requesttype;
   cmd.bRequest = request;
@@ -531,7 +597,6 @@ int usb_control_msg(struct usb_device *dev, unsigned int pipe,
   usb_fill_control_urb(&urb, dev, pipe, (unsigned char *)&cmd, data,
                        size, complete_callback, &done);
 
-  
   ret = usb_submit_urb(&urb, 0);
 
   if(ret < 0) goto usb_control_msg_out;
@@ -557,11 +622,19 @@ int usb_control_msg(struct usb_device *dev, unsigned int pipe,
     for(i = 0; (!done) && (i < (timeout / USB_MSG_SLEEP_INTERVAL) + 1 ); ++i) {
       sched_usleep(4000 * USB_MSG_SLEEP_INTERVAL);
     }
+    if(!done) {
+      DLOG("Failed to complete callback for control msg");
+      int* temp = 0;
+      *temp = 1;
+      panic("Failed to complete callback for control msg");
+    }
     ret = done ? 0 : -1;
   }
   
  usb_control_msg_out:
-  
+  /* Must free hcpriv since we are not allocating the urb via
+     usb_alloc_urb */
+  if(urb.hcpriv) kfree(urb.hcpriv); 
   return ret;  
 }
 
@@ -734,21 +807,81 @@ find_device_driver (USB_DEVICE_INFO *info, USB_CFG_DESC *cfgd, USB_IF_DESC *ifd)
 {
   int d;
   dlog_info(info);
+  DLOG("In %s", __FUNCTION__);
   for (d=0; d<num_drivers; d++) {
     if (drivers[d].probe (info, cfgd, ifd)) return;
   }
-  DLOG("Unknown device bDeviceClass = 0x%X\nbDeviceSubClass = 0x%X\nfile %s line %d",
-       info->devd.bDeviceClass, info->devd.bDeviceSubClass, __FILE__, __LINE__);
-  panic("Unknown Device");
+  DLOG("Unknown device bDeviceClass = 0x%X\n\tbDeviceSubClass = 0x%X"
+       "\n\tVendor = 0x%X Product = 0x%X\n\tfile %s line %d",
+       info->devd.bDeviceClass, info->devd.bDeviceSubClass,
+       info->devd.idVendor, info->devd.idProduct,
+       __FILE__, __LINE__);
+  //panic("Unknown Device");
 }
 
+void print_all_descriptors(void* descriptor_start, uint total_length)
+{
+  struct usb_descriptor_header* temp = descriptor_start;
+  
+  uint total_traversed = 0;
+  
+  while(total_traversed < total_length) {
+    DLOG("Descriptor Type = 0x%X", temp->bDescriptorType);
+#define PRINT_DESCRIPTOR_SWITCH_CASE(desc)      \
+    case desc:                                  \
+      DLOG("\t"#desc);                          \
+      break
+      
+    switch(temp->bDescriptorType) {
+      PRINT_DESCRIPTOR_SWITCH_CASE(USB_TYPE_DEV_DESC);
+      PRINT_DESCRIPTOR_SWITCH_CASE(USB_TYPE_CFG_DESC);
+      PRINT_DESCRIPTOR_SWITCH_CASE(USB_TYPE_STR_DESC);
+      PRINT_DESCRIPTOR_SWITCH_CASE(USB_TYPE_IF_DESC);
+      PRINT_DESCRIPTOR_SWITCH_CASE(USB_TYPE_EPT_DESC);
+      PRINT_DESCRIPTOR_SWITCH_CASE(USB_TYPE_QUA_DESC);
+      PRINT_DESCRIPTOR_SWITCH_CASE(USB_TYPE_SPD_CFG_DESC);
+      PRINT_DESCRIPTOR_SWITCH_CASE(USB_TYPE_IF_PWR_DESC);
 
+#undef PRINT_DESCRIPTOR_SWITCH_CASE
+    default:
+      DLOG("\tUnknown Type");
+    }
+    if(temp->bLength == 0) return;
+    
+    total_traversed += temp->bLength;
+    temp = (struct usb_descriptor_header*)(((char*)temp) + temp->bLength);
+  }
+}
 
+void* get_next_desc(uint desc_type, void* descriptor_start, uint remaining_length)
+{
+  
+  struct usb_descriptor_header* temp = descriptor_start;
+  
+  uint total_traversed = 0;
 
+  while(total_traversed < remaining_length) {
+    if(temp->bDescriptorType == desc_type) {
+      return temp;
+    }
+
+    total_traversed += temp->bLength;
+    temp = (struct usb_descriptor_header*)(((char*)temp) + temp->bLength);
+  }
+  return NULL;
+}
+
+void print_ept_desc_info(USB_EPT_DESC* ept_desc)
+{
+  DLOG("Endpoint Address = 0x%X", ept_desc->bEndpointAddress);
+  DLOG("Attributes = 0x%X", ept_desc->bmAttributes);
+  DLOG("wMaxPacketSize = 0x%X", ept_desc->wMaxPacketSize);
+  DLOG("Interval = 0x%X", ept_desc->bInterval);
+}
 
 /* figures out what device is attached as address 0 */
 bool
-usb_enumerate(usb_hcd_t* usb_hcd)
+usb_enumerate(usb_hcd_t* usb_hcd, uint dev_speed, uint hub_addr, uint port_num)
 {
   USB_DEV_DESC devd;
   USB_CFG_DESC *cfgd;
@@ -773,20 +906,29 @@ usb_enumerate(usb_hcd_t* usb_hcd)
   info->host_type = usb_hcd->usb_hc_type;
   info->hcd = usb_hcd;
   info->endpoint_toggles = 0;
-  info->speed = USB_SPEED_HIGH;
-  info->ep_in[0].desc.wMaxPacketSize = 64;
-  info->ep_out[0].desc.wMaxPacketSize = 64;
+  info->speed = dev_speed;
+  info->hub_addr = hub_addr;
+  info->port_num = port_num;
+  DLOG("dev_speed = %u", dev_speed);
+  switch(dev_speed) {
+  case USB_SPEED_LOW:
+    info->devd.bMaxPacketSize0
+      = info->ep_in [0].desc.wMaxPacketSize
+      = info->ep_out[0].desc.wMaxPacketSize = 8;
+    break;
+
+  case USB_SPEED_HIGH:
+  case USB_SPEED_FULL:
+    info->devd.bMaxPacketSize0
+      = info->ep_in [0].desc.wMaxPacketSize
+      = info->ep_out[0].desc.wMaxPacketSize = 64;
+    break;
+
+  default:
+    DLOG("Unknown device speed passed to %s", __FUNCTION__);
+    return FALSE;
+  }
   
-
-  /* --WARN-- OK, here is the deal. The spec says you should use the
-   * maximum packet size in the data phase of control transfer if the
-   * data is larger than one packet. Since we do not want to support
-   * low speed device for now, the bMaxPacketSize0 is always set to 64
-   * bytes for full speed device. So, do not be surprised if your USB
-   * mouse does not work in Quest!
-   */
-  info->devd.bMaxPacketSize0 = 64;
-
   memset (&devd, 0, sizeof (USB_DEV_DESC));
 
   /* get device descriptor */
@@ -799,6 +941,9 @@ usb_enumerate(usb_hcd_t* usb_hcd)
   
   dlog_devd(&devd);
 
+  /* -- EM -- I don't think the below is necessary anymore since we
+     pass the device speed to usb_enumerate so I am disabling it */
+#if 0
   if (devd.bMaxPacketSize0 == 8) {
     /* get device descriptor */
     info->devd.bMaxPacketSize0 = 8;
@@ -807,6 +952,7 @@ usb_enumerate(usb_hcd_t* usb_hcd)
     if (status < 0)
       goto abort;
   }
+#endif
   
   if (devd.bNumConfigurations == 255)
     devd.bNumConfigurations = 1; /* --!!-- hack */
@@ -871,17 +1017,21 @@ usb_enumerate(usb_hcd_t* usb_hcd)
       usb_get_descriptor (info, USB_TYPE_CFG_DESC, c, 0, cfgd->wTotalLength, ptr);
     if (status < 0)
       goto abort_mem;
+    //print_all_descriptors(ptr, 1000);
 
     cfgd = (USB_CFG_DESC *)ptr;
     DLOG ("usb_enumerate: cfg %d has num_if=%d", c, cfgd->bNumInterfaces);
     ptr += cfgd->wTotalLength;
   }
 
+  
+
   /* incr this here because hub drivers may recursively invoke enumerate */
   usb_hcd->next_address++;
 
   /* parse cfg and if descriptors */
   ptr = info->configurations;
+  //print_all_descriptors(ptr, total_length);
   for (c=0; c < devd.bNumConfigurations; c++) {
     cfgd = (USB_CFG_DESC *) ptr;
     ptr += cfgd->bLength;
@@ -891,6 +1041,10 @@ usb_enumerate(usb_hcd_t* usb_hcd)
            ifd->bDescriptorType != USB_TYPE_IF_DESC;
            ifd = (USB_IF_DESC *)((uint8 *)ifd + ifd->bLength)) {
         //DLOG ("ifd=%p len=%d type=0x%x", ifd, ifd->bLength, ifd->bDescriptorType);
+        if(ifd->bLength == 0) {
+          DLOG("Descriptor length is zero");
+          panic("Descriptor length is zero");
+        }
       }
       ptr = (uint8 *) ifd;
       DLOG ("usb_enumerate: examining (%d, %d) if_class=0x%X sub=0x%X proto=0x%X #endp=%d",
@@ -945,6 +1099,25 @@ int usb_payload_size(USB_DEVICE_INFO* dev,
     DLOG("Unhandled USB speed %d for %s", dev->speed, __FUNCTION__);
     return -1;
   }
+}
+
+const char *usb_speed_string(int speed)
+{
+  static const char *const names[] = {
+    [USB_SPEED_UNKNOWN] = "UNKNOWN",
+    [USB_SPEED_LOW] = "low-speed",
+    [USB_SPEED_FULL] = "full-speed",
+    [USB_SPEED_HIGH] = "high-speed",
+    [USB_SPEED_WIRELESS] = "wireless",
+    [USB_SPEED_SUPER] = "super-speed",
+  };
+  
+  if (speed < 0 || speed >= ARRAY_SIZE(names))
+    speed = USB_SPEED_UNKNOWN;
+  
+  return names[speed];
+
+  #undef ARRAY_SIZE
 }
 
 bool

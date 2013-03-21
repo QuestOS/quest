@@ -28,6 +28,7 @@
 #define FALSE 0
 #define PRIVATE static
 #define PACKED __attribute__ ((packed))
+#define WARN_UNUSED_RESULT __attribute__((warn_unused_result))
 #define SQUELCH_UNUSED __attribute__((unused))
 #define ALIGNED(x) __attribute__((aligned (x)))
 

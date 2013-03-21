@@ -85,6 +85,7 @@ void
 stacktrace (void)
 {
   uint32 esp, ebp;
+  uint32 old_ebp = 0;
   extern void com1_putc (char);
   extern void com1_puts (char *);
   extern void com1_putx (uint32);
@@ -93,7 +94,12 @@ stacktrace (void)
   com1_printf ("Stacktrace:\n");
   while (ebp >= KERN_STK && ebp <= KERN_STK + 0x1000) {
     com1_printf ("%0.8X\n", *((uint32 *) (ebp + 4)));
+    old_ebp = ebp;
     ebp = *((uint32 *) ebp);
+    if(ebp == old_ebp) {
+      com1_printf("infinite loop in ebp detected\n");
+      break;
+    }
   }
 }
 
@@ -101,13 +107,19 @@ void
 stacktrace_frame (uint esp, uint ebp)
 {
   uint min = esp & (~0xFFF), max = min + 0x1000;
+  uint32 old_ebp = 0;
   extern void com1_putc (char);
   extern void com1_puts (char *);
   extern void com1_putx (uint32);
   com1_printf ("Stacktrace:\n");
   while (ebp >= min && ebp <= max) {
     com1_printf ("%0.8X\n", *((uint32 *) (ebp + 4)));
+    old_ebp = ebp;
     ebp = *((uint32 *) ebp);
+    if(ebp == old_ebp) {
+      com1_printf("infinite loop in ebp detected\n");
+      break;
+    }
   }
 }
 

@@ -17,10 +17,11 @@
 
 #ifndef _SPINLOCK_H_
 #define _SPINLOCK_H_
-#include"smp/atomic.h"
+#include "smp/atomic.h"
+#include "include/arch/i386.h"
 
 //#define DEBUG_SPINLOCK
-#define DEBUG_MAX_SPIN 1000000
+#define DEBUG_MAX_SPIN 100000000
 
 struct _spinlock
 {
@@ -55,11 +56,40 @@ spinlock_lock (spinlock * lock)
     count++;
     if (count > DEBUG_MAX_SPIN) {
       com1_printf ("DEADLOCK (CPU %d)\n", LAPIC_get_physical_ID ());
+      com1_printf ("DEADLOCK on lock located at 0x%p", lock);
       panic ("DEADLOCK\n");
     }
 #endif
   }
 }
+
+static u32 get_flags()
+{
+  u32 flags;
+  asm volatile("pushf ; pop %0"
+               : "=rm" (flags)
+               : /* no input */
+               : "memory");
+  
+  return flags;
+}
+
+
+
+static inline u32 WARN_UNUSED_RESULT
+_spinlock_lock_irq_save(spinlock* lock)
+{
+  u32 flags = get_flags();
+  cli();
+  spinlock_lock(lock);
+  return flags;
+}
+
+#define spinlock_lock_irq_save(lock, flags)     \
+  do {                                          \
+    flags = _spinlock_lock_irq_save(lock);      \
+  } while(0)
+
 
 static inline bool spinlock_attempt_lock(spinlock * lock)
 {
@@ -88,6 +118,20 @@ spinlock_unlock (spinlock * lock)
 
   asm volatile ("lock xchgl %1,(%0)":"=r" (addr), "=ir" (x):"0" (addr),
                 "1" (x));
+}
+
+static inline void restore_flags(u32 flags)
+{
+  asm volatile("push %0 ; popf"
+               : /* no output */
+               :"g" (flags)
+               :"memory", "cc");
+}
+
+static inline void spinlock_unlock_irq_restore(spinlock* lock, u32 flags)
+{
+  spinlock_unlock(lock);
+  restore_flags(flags);
 }
 
 static inline void

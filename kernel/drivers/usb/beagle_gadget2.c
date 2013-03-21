@@ -17,7 +17,7 @@
 
 #include <arch/i386.h>
 #include <drivers/usb/usb.h>
-#include <drivers/usb/gadget2.h>
+#include <drivers/usb/beagle_gadget2.h>
 #include <util/printf.h>
 #include <kernel.h>
 #include <sched/sched.h>
@@ -54,65 +54,61 @@ static void initialise_gadget2_dev_info(gadget2_device_info_t* dev)
   memset(dev, 0, sizeof(*dev));
 }
 
-static int gadget2_open(USB_DEVICE_INFO* device, int dev_num, char* buf, int data_len)
+static int gadget2_open(USB_DEVICE_INFO* device, int dev_num)
 {
   gadget2_sub_device_info_t* gadget2_dev = get_gadget2_sub_dev_info(device, dev_num);
   struct usb_host_endpoint *ep = usb_pipe_endpoint(device, gadget2_dev->pipe);
   int num_packets = (1024 * 8) >> (ep->desc.bInterval - 1);
   int result;
   uint64_t current_tsc;
-  DLOG_INT(dev_num);
-  DLOG("buf = 0x%p", buf);
-  memset(buf, '-', data_len);
+  char* buf;
   
   gadget2_dev->next_to_read = gadget2_dev->data_available = 0;
-  gadget2_dev->buffer_size = data_len;
+  
   if(usb_pipetype(gadget2_dev->pipe) == PIPE_ISOCHRONOUS) {
-    if(data_len <
-       ((num_packets * gadget2_dev->transaction_size) +
-        sizeof(struct urb) + (sizeof(usb_iso_packet_descriptor_t) * num_packets)) ) {
-      DLOG("Not enough memory passed to gadget2_open, need %d",
-           ((num_packets * gadget2_dev->transaction_size) +
-            sizeof(struct urb) + (sizeof(usb_iso_packet_descriptor_t) * num_packets)));
+    buf = kmalloc(sizeof(usb_iso_packet_descriptor_t) * num_packets);
+    if(buf == NULL) return -1;
+    
+    gadget2_dev->urb = usb_alloc_urb(num_packets, 0);
+    if(gadget2_dev->urb == NULL) {
+      kfree(buf);
       return -1;
     }
-    gadget2_dev->urb = (struct urb*)buf;
-    buf += (sizeof(struct urb) + (sizeof(usb_iso_packet_descriptor_t) * num_packets));
-    usb_init_urb(gadget2_dev->urb);
+    
     gadget2_dev->num_packets = num_packets;
+    gadget2_dev->buffer_size = sizeof(usb_iso_packet_descriptor_t) * num_packets;
   }
   else {
+    buf = kmalloc(1024*200);
+    if(buf == NULL) {
+      return -1;
+    }
+    gadget2_dev->buffer_size = 1024*200;
     gadget2_dev->urb = usb_alloc_urb(0, 0);
     if(gadget2_dev->urb == NULL) {
       DLOG("Failed to alloc URB");
+      kfree(buf);
       return -1;
     }
+    
   }
 
-  if(gadget2_dev->urb == NULL) {
-    DLOG("Failed to allocate urb");
-    return -1;
-  }
+  //DLOG("dev_num = %d urb = 0x%p", dev_num, gadget2_dev->urb);
   
   switch(usb_pipetype(gadget2_dev->pipe)) {
   case PIPE_ISOCHRONOUS:
     usb_fill_rt_iso_urb(gadget2_dev->urb, device, gadget2_dev->pipe, buf,
+                        NULL, NULL,
                         ep->desc.bInterval, num_packets,
-                        gadget2_dev->transaction_size);
+                        gadget2_dev->transaction_size, 0);
     break;
   case PIPE_INTERRUPT:
-    if(gadget2_dev->buffer_size > (1024*400)) {
-      gadget2_dev->buffer_size = 1024*400;
-    }
     usb_fill_rt_int_urb(gadget2_dev->urb, device, gadget2_dev->pipe, buf,
-                        gadget2_dev->buffer_size, ep->desc.bInterval);
+                        gadget2_dev->buffer_size, NULL, NULL, ep->desc.bInterval, 0);
     break;
   case PIPE_BULK:
-    if(gadget2_dev->buffer_size > (1024*400)) {
-      gadget2_dev->buffer_size = 1024*400;
-    }
     usb_fill_rt_bulk_urb(gadget2_dev->urb, device, gadget2_dev->pipe, buf,
-                        gadget2_dev->buffer_size, 1);
+                         gadget2_dev->buffer_size, NULL, NULL, 1, 0);
     break;
   default: // PIPE_CONTROL:
     DLOG("Gadget2 EP should never be control");
@@ -225,6 +221,9 @@ static int gadget2_write(USB_DEVICE_INFO* device, int dev_num, char* buf,
   struct urb* urb = gadget2_dev->urb;
   int result;
 
+  
+  usb_rt_free_write_resources(gadget2_dev->urb);
+
   if(urb) {
     switch(usb_pipetype(gadget2_dev->pipe)) {
     case PIPE_INTERRUPT:
@@ -235,7 +234,7 @@ static int gadget2_write(USB_DEVICE_INFO* device, int dev_num, char* buf,
 
     case PIPE_ISOCHRONOUS:
       {
-        result = usb_rt_iso_push_data(urb, buf, data_len);
+        result = usb_rt_push_data(urb, buf, data_len, 0, 0, NULL);
         
         return result;
       }
@@ -297,6 +296,8 @@ static bool gadget2_probe (USB_DEVICE_INFO *device, USB_CFG_DESC *cfg,
   if(gadget2_dev->initialised) {
     return TRUE;
   }
+
+  gadget2_dev->initialised = TRUE;
   
   DLOG("Descriptor total length = %d", cfg->wTotalLength);
   DLOG("Struct size is %d", sizeof(USB_CFG_DESC));
@@ -386,7 +387,7 @@ static const struct module_ops mod_ops = {
   .init = usb_gadget2_driver_init
 };
 
-DEF_MODULE (usb___gadget2, "USB gadget2 driver", &mod_ops, {"usb"});
+DEF_MODULE (usb___beaglegadget2, "USB gadget2 driver", &mod_ops, {"usb"});
 
 /*
  * Local Variables:

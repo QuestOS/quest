@@ -54,8 +54,11 @@ queue_append (task_id * queue, task_id selector)
     /* add to end of queue */
     tssp->next = selector;
 
-  } else
+  }
+  else {
     *queue = selector;
+  }
+  
 
   tssp = lookup_TSS (selector);
   tssp->next = 0;

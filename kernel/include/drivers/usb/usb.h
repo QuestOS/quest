@@ -22,6 +22,29 @@
 #include <drivers/usb/linux_usb.h>
 #include <stddef.h>
 
+#define USB_DRIVER_INIT(device_name, driver_name, probe_func,           \
+                        open_func, close_func, read_func, write_func)   \
+                                                                        \
+  static USB_DRIVER device_##device_name = {                            \
+    .probe = probe_func,                                                \
+    .open  = open_func,                                                 \
+    .close = close_func,                                                \
+    .read  = read_func,                                                 \
+    .write = write_func                                                 \
+  };                                                                    \
+                                                                        \
+                                                                        \
+  static bool usb_##device_name##_driver_init(void)                     \
+  {                                                                     \
+    return usb_register_driver(&device_##device_name);                  \
+  }                                                                     \
+                                                                        \
+  static const struct module_ops mod_ops = {                            \
+    .init = usb_##device_name##_driver_init                             \
+  };                                                                    \
+                                                                        \
+  DEF_MODULE (usb___##device_name, driver_name, &mod_ops, {"usb"}); 
+  
 
 #define pci_config_rd8(bus, slot, func, reg) \
   pci_read_byte (pci_addr (bus, slot, func, reg))
@@ -40,7 +63,12 @@
 
 #define delay(x) sched_usleep (x*1000)
 
-/* Async takes  */
+/* -- EM -- Both EHCI and net2280 use this so I am putting it here for
+      now */
+bool
+handshake(uint32_t *ptr, uint32_t mask, uint32_t done, uint32_t usec);
+
+
 
 #ifdef USB_REALTIME_ASYNC
 #define USEC_PER_MICRO_FRAME_FOR_ASYNC 121
@@ -52,26 +80,51 @@
 #define USB_MAX_LEN       0x3FE
 #define USB_NULL_PACKET   0x7FF
 
-#define USB_GET_STATUS           0x00
-#define USB_CLEAR_FEATURE        0x01
-#define USB_SET_FEATURE          0x03
-#define USB_SET_ADDRESS          0x05
-#define USB_GET_DESCRIPTOR       0x06
-#define USB_SET_DESCRIPTOR       0x07
-#define USB_GET_CONFIGURATION    0x08
-#define USB_SET_CONFIGURATION    0x09
-#define USB_GET_INTERFACE        0x0A
-#define USB_SET_INTERFACE        0x0B
-#define USB_SYNCH_FRAME          0x0C
+#define USB_GET_STATUS            0x00
+#define USB_REQ_GET_STATUS        0x00
+#define USB_CLEAR_FEATURE         0x01
+#define USB_REQ_CLEAR_FEATURE     0x01
+#define USB_SET_FEATURE           0x03
+#define USB_REQ_SET_FEATURE       0x03
+#define USB_SET_ADDRESS           0x05
+#define USB_REQ_SET_ADDRESS       0x05
+#define USB_GET_DESCRIPTOR        0x06
+#define USB_REQ_GET_DESCRIPTOR    0x06
+#define USB_SET_DESCRIPTOR        0x07
+#define USB_REQ_SET_DESCRIPTOR    0x07
+#define USB_GET_CONFIGURATION     0x08
+#define USB_REQ_GET_CONFIGURATION 0x08
+#define USB_SET_CONFIGURATION     0x09
+#define USB_REQ_SET_CONFIGURATION 0x09
+#define USB_GET_INTERFACE         0x0A
+#define USB_REQ_GET_INTERFACE     0x0A
+#define USB_SET_INTERFACE         0x0B
+#define USB_REQ_SET_INTERFACE     0x0B
+#define USB_SYNCH_FRAME           0x0C
+#define USB_REQ_SYNCH_FRAME       0x0C
+#define USB_SET_SEL               0x30
+#define USB_REQ_SET_SEL           0x30
+#define USB_SET_ISOCH_DELAY       0x31
+#define USB_REQ_SET_ISOCH_DELAY   0x31
 
-#define USB_TYPE_DEV_DESC      0x01
-#define USB_TYPE_CFG_DESC      0x02
-#define USB_TYPE_STR_DESC      0x03
-#define USB_TYPE_IF_DESC       0x04
-#define USB_TYPE_EPT_DESC      0x05
-#define USB_TYPE_QUA_DESC      0x06
-#define USB_TYPE_SPD_CFG_DESC  0x07
-#define USB_TYPE_IF_PWR_DESC   0x08
+#define USB_TYPE_DEV_DESC         0x01
+#define USB_DT_DEVICE             0x01
+#define USB_TYPE_CFG_DESC         0x02
+#define USB_DT_CONFIG             0x02
+#define USB_TYPE_STR_DESC         0x03
+#define USB_DT_STRING             0x03
+#define USB_TYPE_IF_DESC          0x04
+#define USB_DT_INTERFACE          0x04
+#define USB_TYPE_EPT_DESC         0x05
+#define USB_DT_ENDPOINT           0x05
+#define USB_TYPE_QUA_DESC         0x06
+#define USB_DT_DEVICE_QUALIFIER   0x06
+#define USB_TYPE_SPD_CFG_DESC     0x07
+#define USB_DT_OTHER_SPEED_CONFIG 0x07
+#define USB_TYPE_IF_PWR_DESC      0x08
+#define USB_DT_INTERFACE_POWER    0x08
+#define USB_TYPE_BOS_DESC         0x0f
+#define USB_DT_BOS                0x0f
 
 #define USB_TYPE_HC_UHCI    0x00
 #define USB_TYPE_HC_EHCI    0x01
@@ -83,14 +136,69 @@
 #define PIPE_CONTROL      2
 #define PIPE_BULK         3
 
+#define USB_SPEED_UNKNOWN  0
 #define USB_SPEED_LOW      1
 #define USB_SPEED_FULL     2
 #define USB_SPEED_HIGH     3
 #define USB_SPEED_WIRELESS 4
 #define USB_SPEED_SUPER    5
 
+/*
+ * Device and/or Interface Class codes
+ * as found in bDeviceClass or bInterfaceClass
+ * and defined by www.usb.org documents
+ */
+#define USB_CLASS_PER_INTERFACE         0       /* for DeviceClass */
+#define USB_CLASS_AUDIO                 1
+#define USB_CLASS_COMM                  2
+#define USB_CLASS_HID                   3
+#define USB_CLASS_PHYSICAL              5
+#define USB_CLASS_STILL_IMAGE           6
+#define USB_CLASS_PRINTER               7
+#define USB_CLASS_MASS_STORAGE          8
+#define USB_CLASS_HUB                   9
+#define USB_CLASS_CDC_DATA              0x0a
+#define USB_CLASS_CSCID                 0x0b    /* chip+ smart card */
+#define USB_CLASS_CONTENT_SEC           0x0d    /* content security */
+#define USB_CLASS_VIDEO                 0x0e
+#define USB_CLASS_WIRELESS_CONTROLLER   0xe0
+#define USB_CLASS_MISC                  0xef
+#define USB_CLASS_APP_SPEC              0xfe
+#define USB_CLASS_VENDOR_SPEC           0xff
+
+#define USB_SUBCLASS_VENDOR_SPEC        0xff
+
+/*
+ * USB types, the second of three bRequestType fields
+ */
+#define USB_TYPE_MASK                   (0x03 << 5)
+#define USB_TYPE_STANDARD               (0x00 << 5)
+#define USB_TYPE_CLASS                  (0x01 << 5)
+#define USB_TYPE_VENDOR                 (0x02 << 5)
+#define USB_TYPE_RESERVED               (0x03 << 5)
+
 #define USB_DIR_IN  0x80
 #define USB_DIR_OUT 0
+
+
+#define USB_INTRF_FUNC_SUSPEND  0       /* function suspend */
+#define USB_ENDPOINT_HALT       0       /* IN/OUT will STALL */
+
+/*
+ * Endpoints
+ */
+#define USB_ENDPOINT_NUMBER_MASK        0x0f    /* in bEndpointAddress */
+#define USB_ENDPOINT_DIR_MASK           0x80
+
+
+/*
+ * USB recipients, the third of three bRequestType fields
+ */
+#define USB_RECIP_MASK                  0x1f
+#define USB_RECIP_DEVICE                0x00
+#define USB_RECIP_INTERFACE             0x01
+#define USB_RECIP_ENDPOINT              0x02
+#define USB_RECIP_OTHER                 0x03
 
 
 #define USB_USER_READ  0
@@ -106,6 +214,13 @@
 #define USB_DEFAULT_INTERRUPT_MSG_TIMEOUT   1250
 #define USB_DEFAULT_ISOCHRONOUS_MSG_TIMEOUT 2250
 
+#define USB_ENDPOINT_XFERTYPE_MASK      0x03    /* in bmAttributes */
+#define USB_ENDPOINT_XFER_CONTROL       0
+#define USB_ENDPOINT_XFER_ISOC          1
+#define USB_ENDPOINT_XFER_BULK          2
+#define USB_ENDPOINT_XFER_INT           3
+#define USB_ENDPOINT_MAX_ADJUSTABLE     0x80
+
 
 #define USB_MSG_SLEEP_INTERVAL 25 // sleep for (4 * USB_MSG_SLEEP_INTERVAL) ms
 
@@ -113,6 +228,17 @@
 
 typedef struct _usb_hcd_t usb_hcd_t;
 
+struct usb_string_descriptor {
+  u8  bLength;
+  u8  bDescriptorType;
+  
+  u16 wData[1];                /* UTF-16LE encoded */
+} PACKED;
+
+struct usb_descriptor_header {
+  u8 bLength;
+  u8 bDescriptorType;
+} PACKED;
 
 /*
  * USB_DEV_REQ : USB Device Request
@@ -129,6 +255,8 @@ struct usb_dev_req
   uint16_t wIndex;
   uint16_t wLength;
 } PACKED;
+
+#define usb_ctrlrequest usb_dev_req
 
 #define IS_INPUT_USB_DEV_REQ(dev_req_addr) ( (*((uint8_t*)dev_req_addr) ) & USB_DIR_IN )
 
@@ -159,6 +287,8 @@ struct usb_dev_desc
   uint8_t bNumConfigurations;
 } PACKED;
 
+#define usb_device_descriptor usb_dev_desc
+
 typedef struct usb_dev_desc USB_DEV_DESC;
 
 /*
@@ -177,10 +307,42 @@ struct usb_cfg_desc
   uint8_t bConfigurationValue;
   uint8_t iConfiguration;
   uint8_t bmAttributes;
-  uint8_t MaxPower;
+  uint8_t bMaxPower;
 } PACKED;
 
+
 typedef struct usb_cfg_desc USB_CFG_DESC;
+
+
+#define usb_config_descriptor usb_cfg_desc
+
+#define USB_DT_CONFIG_SIZE              9
+
+/* from config descriptor bmAttributes */
+#define USB_CONFIG_ATT_ONE              (1 << 7)        /* must be set */
+#define USB_CONFIG_ATT_SELFPOWER        (1 << 6)        /* self powered */
+#define USB_CONFIG_ATT_WAKEUP           (1 << 5)        /* can wakeup */
+#define USB_CONFIG_ATT_BATTERY          (1 << 4)        /* battery powered */
+
+
+/* USB 2.0 Extension descriptor */
+#define USB_CAP_TYPE_EXT                2
+
+struct usb_ext_cap_descriptor {         /* Link Power Management */
+  u8  bLength;
+  u8  bDescriptorType;
+  u8  bDevCapabilityType;
+  u32 bmAttributes;
+#define USB_LPM_SUPPORT                 (1 << 1)        /* supports LPM */
+#define USB_BESL_SUPPORT                (1 << 2)        /* supports BESL */
+#define USB_BESL_BASELINE_VALID         (1 << 3)        /* Baseline BESL valid*/
+#define USB_BESL_DEEP_VALID             (1 << 4)        /* Deep BESL valid */
+#define USB_GET_BESL_BASELINE(p)        (((p) & (0xf << 8)) >> 8)
+#define USB_GET_BESL_DEEP(p)            (((p) & (0xf << 12)) >> 12)
+} PACKED;
+
+#define USB_DT_USB_EXT_CAP_SIZE 7
+
 
 /*
  * USB_SPD_CFG_DESC : Other Speed Configuration Descriptor
@@ -225,6 +387,8 @@ struct usb_if_desc
 
 typedef struct usb_if_desc USB_IF_DESC;
 
+#define usb_interface_descriptor usb_if_desc
+
 /*
  * USB_EPT_DESC : Standard Endpoint Descriptor
  *
@@ -244,6 +408,11 @@ struct usb_ept_desc
 
 typedef struct usb_ept_desc USB_EPT_DESC;
 
+#define usb_endpoint_descriptor usb_ept_desc
+
+
+#define USB_DT_ENDPOINT_SIZE            7
+
 /* 
  * USB_STR_DESC: Standard String Descriptor
  *
@@ -260,6 +429,22 @@ struct usb_str_desc
 } PACKED;
 
 typedef struct usb_str_desc USB_STR_DESC;
+
+/* USB_DT_DEVICE_QUALIFIER: Device Qualifier descriptor */
+struct usb_qualifier_descriptor {
+  u8  bLength;
+  u8  bDescriptorType;
+  
+  u16 bcdUSB;
+  u8  bDeviceClass;
+  u8  bDeviceSubClass;
+  u8  bDeviceProtocol;
+  u8  bMaxPacketSize0;
+  u8  bNumConfigurations;
+  u8  bRESERVED;
+} PAKCKED;
+
+
 
 /* ************************************************** */
 
@@ -291,6 +476,7 @@ struct usb_host_endpoint {
 typedef struct usb_host_endpoint USB_HOST_ENDPOINT;
 
 
+
 /*
  * ********************************************************************
  * End of functions copied from Linux
@@ -307,12 +493,22 @@ typedef struct usb_device
   uint8 speed;
   usb_hcd_t* hcd;
   uint8 *configurations;
-  struct _USB_DRIVER* driver;
-  void* device_priv; /* A place for a device to put its own private data */
+  
+  /* The device number of the hub the device is connected to is 0 is
+     connected to the root hub */
+  uint hub_addr;
 
+  /* The port number of the hub the device is connected to */
+  uint port_num;
+
+  struct _USB_DRIVER* driver;
+  char* name;
+  void* device_priv; /* A place for a device to put its own private data */
+  
   /*
-   *  device can have 32 endpoints (16 endpoint numbers and each
-   *  number can be shared by 2 endpoints one IN and one OUT
+   *  device can have at most 31 endpoints, 16 endpoint numbers and
+   *  each number can be shared by 2 endpoints one IN and one OUT
+   *  except endpoint 0 which is a bidirectional control endpoint
    */
   uint32 endpoint_toggles;
   
@@ -368,12 +564,16 @@ usb_maxpacket(struct usb_device *udev, int pipe)
  * ********************************************************************
  */
 
+void print_all_descriptors(void* descriptor_start, uint total_length);
+void* get_next_desc(uint desc_type, void* descriptor_start, uint remaining_length);
+void print_ept_desc_info(USB_EPT_DESC* ept_desc);
 
-#define IS_ENDPOINT_TOGGLED(dev_info, endpoint, is_input)               \
+
+#define IS_USB_ENDPOINT_TOGGLED(dev_info, endpoint, is_input)           \
   (!!(((dev_info)->endpoint_toggles) & (1 << (endpoint + ( (!!(is_input)) << 4)))))
 
 
-#define SET_ENDPOINT_TOGGLE(dev_info, endpoint, is_input, val)          \
+#define SET_USB_ENDPOINT_TOGGLE(dev_info, endpoint, is_input, val)      \
   do {                                                                  \
     if(val) {                                                           \
       ((dev_info)->endpoint_toggles) |=                                 \
@@ -389,12 +589,15 @@ usb_maxpacket(struct usb_device *udev, int pipe)
 
 typedef struct _USB_DRIVER
 {
+  char* dev_root_name;
   bool (*probe) (USB_DEVICE_INFO *, USB_CFG_DESC *, USB_IF_DESC *);
-  int (*open) (USB_DEVICE_INFO* device, int dev_num, char* buf, int data_len);
+  int (*open) (USB_DEVICE_INFO* device, int dev_num);
   int (*close) (USB_DEVICE_INFO* device, int dev_num);
   int (*write) (USB_DEVICE_INFO* device, int dev_num, char* buf, int data_len);
   int (*read) (USB_DEVICE_INFO* device, int dev_num, char* buf, int data_len);
 } USB_DRIVER;
+
+bool get_usb_device_id(char* name);
 
 int usb_register_device(USB_DEVICE_INFO* device, USB_DRIVER* driver);
 
@@ -431,26 +634,16 @@ int usb_rt_iso_update_packets(struct urb* urb, int max_packets);
 
 int usb_rt_iso_free_packets(struct urb* urb, int number_of_packets);
 
-int usb_rt_iso_data_lost(struct urb* urb);
+int usb_rt_data_lost(struct urb* urb);
 
-int usb_rt_iso_push_data(struct urb* urb, char* data, int count);
+int usb_rt_free_data(struct urb* urb, int count);
 
-int usb_rt_int_data_lost(struct urb* urb);
+int usb_rt_update_data(struct urb* urb, int max_count);
 
-int usb_rt_int_free_data(struct urb* urb, int count);
+int usb_rt_push_data(struct urb* urb, char* data, int count, uint interrupt_rate,
+                     uint flags, void* context);
 
-int usb_rt_int_update_data(struct urb* urb, int max_count);
-
-int usb_rt_int_push_data(struct urb* urb, char* data, int count);
-
-int usb_rt_bulk_data_lost(struct urb* urb);
-
-int usb_rt_bulk_free_data(struct urb* urb, int count);
-
-int usb_rt_bulk_update_data(struct urb* urb, int max_count);
-
-int usb_rt_bulk_push_data(struct urb* urb, char* data, int count);
-
+int usb_rt_free_write_resources(struct urb* urb);
 
 /*
  * ********************************************************************
@@ -561,7 +754,9 @@ usb_fill_int_urb(struct urb *urb,
     urb->interval = 1 << (interval - 1);
   }
   else {
-    urb->interval = interval;
+    /* -- EM -- Fix this later should just set to interval but ehci doesn't
+       know about full-/low-speed device intervals */
+    urb->interval = interval * 8;
   }
   urb->start_frame = -1;
 }
@@ -623,38 +818,50 @@ usb_fill_rt_iso_urb(struct urb* urb,
                     struct usb_device *dev,
                     unsigned int pipe,
                     void *transfer_buffer,
+                    usb_complete_t complete_fn,
+                    void* context,
                     int interval,
                     int num_packets,
-                    int packet_len)
+                    int packet_len,
+                    uint interrupt_rate)
 {
-  usb_fill_iso_urb(urb, dev, pipe, transfer_buffer, NULL, NULL,
+  usb_fill_iso_urb(urb, dev, pipe, transfer_buffer, complete_fn, context,
                    interval, num_packets, packet_len);
   urb->realtime = TRUE;
-  
+  urb->interrupt_frame_rate = interrupt_rate;
 }
 
 static inline void
 usb_fill_rt_int_urb(struct urb *urb,
-                 struct usb_device *dev,
-                 unsigned int pipe,
-                 void *transfer_buffer,
-                 int buffer_length,
-                 int interval)
+                    struct usb_device *dev,
+                    unsigned int pipe,
+                    void *transfer_buffer,
+                    int buffer_length,
+                    usb_complete_t complete_fn,
+                    void* context,
+                    int interval,
+                    uint interrupt_rate)
 {
   usb_fill_int_urb(urb, dev, pipe, transfer_buffer, buffer_length,
-                   NULL, NULL, interval);
+                   complete_fn, context, interval);
   urb->realtime = TRUE;
+  urb->interrupt_byte_rate = interrupt_rate;
 }
 
 static inline void
 usb_fill_rt_bulk_urb(struct urb *urb,
-                 struct usb_device *dev,
-                 unsigned int pipe,
-                 void *transfer_buffer,
-                 int buffer_length,
-                 int interval)
+                     struct usb_device *dev,
+                     unsigned int pipe,
+                     void *transfer_buffer,
+                     int buffer_length,
+                     usb_complete_t complete_fn,
+                     void* context,
+                     int interval,
+                     uint interrupt_rate)
 {
-  usb_fill_rt_int_urb(urb, dev, pipe, transfer_buffer, buffer_length, interval);
+  usb_fill_rt_int_urb(urb, dev, pipe, transfer_buffer, buffer_length,
+                      complete_fn, context,
+                      interval, interrupt_rate);
 }
 
 static inline uint
@@ -715,25 +922,20 @@ static inline uint usb_create_pipe(USB_DEVICE_INFO *device, USB_EPT_DESC* ept)
   }
 }
 
-bool usb_enumerate(usb_hcd_t* usb_hcd);
+bool usb_enumerate(usb_hcd_t* usb_hcd, uint dev_speed, uint hub_addr, uint port_num);
 
 typedef bool (*usb_reset_root_ports_func) (usb_hcd_t* usb_hcd);
 typedef bool (*usb_post_enumeration_func)(usb_hcd_t* usb_hcd);
 typedef int  (*usb_submit_urb_func)(struct urb* urb, gfp_t mem_flags);
 typedef void (*usb_kill_urb_func)(struct urb* urb);
-typedef int  (*usb_rt_iso_data_lost_func)(struct urb* urb);
 typedef int  (*usb_rt_iso_free_packets_func)(struct urb* urb, int number_of_packets);
 typedef int  (*usb_rt_iso_update_packets_func)(struct urb* urb, int max_packets);
-typedef int  (*usb_rt_iso_push_data_func)(struct urb* urb, char* data, int count);
-typedef int  (*usb_rt_int_data_lost_func)(struct urb* urb);
-typedef int  (*usb_rt_int_free_data_func)(struct urb* urb, int count);
-typedef int  (*usb_rt_int_update_data_func)(struct urb* urb, int max_count);
-typedef int  (*usb_rt_int_push_data_func)(struct urb* urb, char* data, int count);
-typedef int  (*usb_rt_bulk_data_lost_func)(struct urb* urb);
-typedef int  (*usb_rt_bulk_free_data_func)(struct urb* urb, int count);
-typedef int  (*usb_rt_bulk_update_data_func)(struct urb* urb, int max_count);
-typedef int  (*usb_rt_bulk_push_data_func)(struct urb* urb, char* data, int count);
-
+typedef int  (*usb_rt_data_lost_func)(struct urb* urb);
+typedef int  (*usb_rt_free_data_func)(struct urb* urb, int count);
+typedef int  (*usb_rt_update_data_func)(struct urb* urb, int max_count);
+typedef int  (*usb_rt_push_data_func)(struct urb* urb, char* data, int count,
+                                      uint interrupt_rate, uint flags, void* context);
+typedef int (*usb_rt_free_write_resources_func)(struct urb* urb);
 
 /*
  * Generic USB Host controller Device object 
@@ -747,18 +949,13 @@ struct _usb_hcd_t
   usb_post_enumeration_func      post_enumeration;
   usb_submit_urb_func            submit_urb;
   usb_kill_urb_func              kill_urb;
-  usb_rt_iso_data_lost_func      rt_iso_data_lost;
   usb_rt_iso_update_packets_func rt_iso_update_packets;
   usb_rt_iso_free_packets_func   rt_iso_free_packets;
-  usb_rt_iso_push_data_func      rt_iso_push_data;
-  usb_rt_int_data_lost_func      rt_int_data_lost;
-  usb_rt_int_update_data_func    rt_int_update_data;
-  usb_rt_int_free_data_func      rt_int_free_data;
-  usb_rt_int_push_data_func      rt_int_push_data;
-  usb_rt_bulk_data_lost_func     rt_bulk_data_lost;
-  usb_rt_bulk_free_data_func     rt_bulk_free_data;
-  usb_rt_bulk_update_data_func   rt_bulk_update_data;
-  usb_rt_bulk_push_data_func     rt_bulk_push_data;
+  usb_rt_data_lost_func     rt_data_lost;
+  usb_rt_free_data_func     rt_free_data;
+  usb_rt_update_data_func   rt_update_data;
+  usb_rt_push_data_func     rt_push_data;
+  usb_rt_free_write_resources_func rt_free_write_resources;
   uint32_t next_address;
   
   
@@ -772,18 +969,13 @@ bool initialise_usb_hcd(usb_hcd_t* usb_hcd, uint32_t usb_hc_type,
                         usb_post_enumeration_func post_enumeration,
                         usb_submit_urb_func submit_urb,
                         usb_kill_urb_func kill_urb,
-                        usb_rt_iso_data_lost_func rt_iso_data_lost,
                         usb_rt_iso_update_packets_func rt_iso_update_packets,
                         usb_rt_iso_free_packets_func rt_iso_free_packets,
-                        usb_rt_iso_push_data_func rt_iso_push_data,
-                        usb_rt_int_data_lost_func rt_int_data_lost,
-                        usb_rt_int_update_data_func rt_int_update_data,
-                        usb_rt_int_free_data_func rt_int_free_data,
-                        usb_rt_int_push_data_func rt_int_push_data,
-                        usb_rt_bulk_data_lost_func rt_bulk_data_lost,
-                        usb_rt_bulk_free_data_func rt_bulk_free_data,
-                        usb_rt_bulk_update_data_func rt_bulk_update_data,
-                        usb_rt_bulk_push_data_func rt_bulk_push_data);
+                        usb_rt_data_lost_func rt_data_lost,
+                        usb_rt_update_data_func rt_update_data,
+                        usb_rt_free_data_func rt_free_data,
+                        usb_rt_push_data_func rt_push_data,
+                        usb_rt_free_write_resources_func rt_free_write_resources);
 
 bool add_usb_hcd(usb_hcd_t* usb_hcd);
 
@@ -791,7 +983,7 @@ usb_hcd_t* get_usb_hcd(uint32_t index);
 
 void dlog_usb_hcd(usb_hcd_t* usb_hcd);
 
-
+const char *usb_speed_string(int speed);
 
 #endif
 

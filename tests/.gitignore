@@ -11,3 +11,4 @@ test7
 usb_test
 usb_test_rtt
 float_test
+usb_gadget_test

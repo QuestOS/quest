@@ -67,13 +67,16 @@
  * better to do what Linux does and use a watchdog timer that is set
  * to go off a little bit after the transaction should finish so it
  * never goes off if the chip does not have the bug and will go off
- * shorter after the irq would go off if it does.  We don't have
+ * shortly after the irq would go off if necessary.  We don't have
  * watchdog timers yet so a periodic tick will have to do.  To disable
  * all the extra software for the hardware bug comment out the macro
  * declaration below
  */
 
-#define EHCI_IOC_BUG
+//#define EHCI_IOC_BUG
+
+#define EHCI_USE_IOVCPU
+
 
 
 /*
@@ -325,6 +328,7 @@ typedef struct _qtd_t
     } PACKED;
   };
 
+  
   // dword 3, qTD token
   union {
     uint32_t token;
@@ -351,13 +355,13 @@ typedef struct _qtd_t
 
 #define QTD_IOC (1 << 15)
 
-#define QTD_ENABLE_IOC(qtd) (qtd->token |= QTD_IOC);
+#define QTD_ENABLE_IOC(qtd) do { (qtd->token |= QTD_IOC); (qtd->token_backup |= QTD_IOC); } while(0)
       
       uint32_t total_bytes_to_transfer:15;
       uint32_t data_toggle:1;
 
 #define QTD_TOGGLE (1 << 31)
-      
+#define QTD_REMAINING_DATA(qtd)  ((qtd->token >> 16) & 0x7FFF)
     } PACKED;
   };
 
@@ -372,8 +376,9 @@ typedef struct _qtd_t
   uint32_t original_total_bytes_to_transfer;
   uint32_t token_backup;
   qtd_buffer_page_pointer_t buffer_page_zero_backup;
-
-  uint32_t padding[7];
+  bool ioc_called;
+  void* completion_context;
+  uint32_t padding[6];
 } PACKED ALIGNED(32) qtd_t;
 
 
@@ -526,7 +531,7 @@ typedef struct _qh_t{
   list_head_t qtd_list;
   list_head_t reclaim_chain;
   USB_DEVICE_INFO* dev;
-  struct urb* urb;
+  uint interval;
 
 
 #define QH_STATE_NOT_LINKED 1 /* Not in the buffer at all */
@@ -536,7 +541,7 @@ typedef struct _qh_t{
                                  buffer but the HC might still have
                                  links to it */
 
-  frm_lst_lnk_ptr_t* previous;
+  frm_lst_lnk_ptr_t* previous;  /* pointer to physical address */
 } PACKED ALIGNED(32) qh_t;
 
 CASSERT( (sizeof(qh_t) % 32) == 0, ehci_qh_size);
@@ -585,34 +590,36 @@ typedef struct _itd_t {
   
   uint32_t ex_buf_ptr_pgs[7];
 
-  /*
-   * Everything after this is used by software only and is not
-   * specified by EHCI
-   */
+  /* Everything after this is used by software only and is not
+     specified by EHCI */
   itd_transaction_t transaction_backup[8];
+
   list_head_t chain_list;
-  uint32_t total_bytes_to_transfer;
-  uint32_t frame_index;
+  uint total_bytes_to_transfer;
+  uint frame_index;
   list_head_t uninserted_list;
   //usb_iso_packet_descriptor_t *iso_packet_descs[8];
   
-  /*
-   * previous is used when the itd is removed
-   */
+  /* previous is used when the itd is removed */
   frm_lst_lnk_ptr_t* previous;
 
-  uint32_t padding[19];
+   /* Could be just 8 bits but using unit to keep everything aligned,
+      used for rt-urbs to keep track of which transactions have had
+      their interrupt handler processed, should be cleared when itd is
+      being inserted into periodic list or restarted to receive more
+      data */
+  uint ioc_processed_bitmap;
+  void* completion_context;
+  uint32_t padding[17];
 } PACKED ALIGNED(32) itd_t;
 
 CASSERT( (sizeof(itd_t) % 32) == 0, ehci_itd_size)
 
 CASSERT( (sizeof(itd_t) & (sizeof(itd_t) - 1)) == 0, itd_alignedment)
 
-/*
- * -- EM -- There are better ways to store queue heads for endpoints
+/*-- EM -- There are better ways to store queue heads for endpoints
  * but for now this is good enough, right now 128 instances of this
- * struct takes 4 pages, running even lower on kernel memory
- */ 
+ * struct takes 4 pages, running even lower on kernel memory */ 
 typedef struct
 {
   /* First Index: Out = 0, In = 1, Second Index: Endpoint # */
@@ -620,12 +627,11 @@ typedef struct
 } ehci_dev_info_t;
 
 typedef struct {
-  list_head_t tds;
+  list_head_t itds;             /* -- EM -- Remove this to use urb private data like the rest */
   struct urb* urb;
-  int pipe_type;
+  int pipe_type;                /* -- EM -- Remove this to use pipe in urb */
   list_head_t chain_list;
 } ehci_completion_element_t;
-
 
 
 typedef struct
@@ -685,6 +691,14 @@ typedef struct
                              * items */
   list_head_t completion_list;
 
+  /* These are used during enumeration because if possible we use the
+     same QH, if all we had were high speed devices we would not need
+     this as the same QH could be used.  For low and full speed
+     devices we need to specify the hub address and port number so we
+     need to change the QH */
+  int zero_qh_hub_addr;         /* Initialized to -1 */
+  int zero_qh_port_num;        /* Initialized to -1 */
+
 #define MAX_RT_URBS 30
   struct urb* rt_urbs[MAX_RT_URBS];
   int num_rt_urbs;
@@ -692,13 +706,21 @@ typedef struct
 
   bool reordered_map[1024];
 
+#ifdef EHCI_USE_IOVCPU
+#define EHCI_IOC_BH_THREAD_STACK_SIZE 1024
+  
+  uint32_t bh_stack[EHCI_IOC_BH_THREAD_STACK_SIZE];
+
+  task_id master_iovcpu;
+#endif
+
 
 #define EHCI_RUS_NONE 0
 #define EHCI_RUS_REORDER_OLD 1
   
   int reorder_urbs_stage;
   
-#ifdef EHCI_IOC_BUG
+#ifdef EHCI_IOC_BUGEHCI_IOC_BUG
 
 #define IOC_BACKUP_THREAD_STACK_SIZE 1024
   
@@ -740,22 +762,23 @@ typedef struct
   ehci_urb_priv_t ehci_urb_priv;
   list_head_t uninserted_itds_list;
   list_head_t uninserted_itd_urb_list;
-  uint32_t next_packet_to_free;
-  uint32_t next_packet_to_make_available;
+  uint next_packet_to_free;
+  uint next_packet_to_make_available;
   int next_itd_for_sending_data;
-  uint32_t num_itds;
-  uint32_t next_packet_for_sending_data;
-  uint32_t packets_in_use;
+  uint num_itds;
+  uint next_packet_for_sending_data;
+  uint packets_in_use;
+  uint last_transaction_ioc_processed;
   list_head_t write_itds_to_free;
-  //uint32_t used_table_entries_bitmap[1024/32];
+  ehci_completion_element_t* completion_element;
+  
+  /* itds Must be last */
   itd_t* itds[0];
 } ehci_iso_urb_priv_t;
 
 
-/*
- * This should always be a macro, inserting qhs into the frame list is
- * time sensitive
- */
+/* This should always be a macro, inserting qhs into the frame list is
+   time sensitive */
 
 /*
  * -- EM -- insert_qh_into_frame_list is also broken because it does
@@ -791,6 +814,8 @@ initialise_iso_urb_priv(ehci_iso_urb_priv_t* iso_urb_priv, struct urb* urb)
   iso_urb_priv->next_packet_to_make_available       = 0;
   iso_urb_priv->next_itd_for_sending_data           = -1;
   iso_urb_priv->next_packet_for_sending_data        = 0;
+  iso_urb_priv->last_transaction_ioc_processed      = 0;
+  iso_urb_priv->completion_element                  = NULL;
   iso_urb_priv->packets_in_use = (packets_per_itd * MAX_SAFE_FRAME_INDEX_LOOK_AHEAD);
   //memset(iso_urb_priv->used_table_entries_bitmap, 0, 1024/32);
   INIT_LIST_HEAD(&iso_urb_priv->write_itds_to_free);
@@ -849,8 +874,14 @@ typedef struct
   uint32_t bytes_in_buffer;
   uint32_t buffer_size;
   unsigned int num_qtds;
+  uint next_qtd_for_ioc;
+  ehci_completion_element_t* completion_element;
+  bool extra_nonrt_qtd;
   qtd_t* qtds[0];
 } ehci_qh_urb_priv_t;
+
+
+ehci_qh_urb_priv_t* ehci_get_qh_urb_priv(struct urb* urb);
 
 /***************************************************************
  * QH URB private data end
@@ -940,6 +971,52 @@ ehci_bulk_urb_priv_t* ehci_alloc_bulk_urb_priv(unsigned int num_qtds)
 
 /***************************************************************
  * Bulk URB private data end
+ ***************************************************************/
+
+
+
+
+/***************************************************************
+ * Control URB private data start
+ ***************************************************************/
+
+typedef struct
+{
+  ehci_urb_priv_t ehci_urb_priv;
+  ehci_qh_urb_priv_t qh_urb_priv;
+  /* Nothing can be after this because qh_urb_priv has a variable size
+   * array at the end */
+} ehci_ctrl_urb_priv_t;
+
+static void
+initialise_ctrl_urb_priv(ehci_ctrl_urb_priv_t* priv, unsigned int num_qtds)
+{
+  memset(priv, 0,
+         sizeof(ehci_ctrl_urb_priv_t) + num_qtds * sizeof(qtd_t*));
+  priv->qh_urb_priv.num_qtds = num_qtds;
+}
+
+static inline
+ehci_ctrl_urb_priv_t* ehci_alloc_ctrl_urb_priv(unsigned int num_qtds)
+{
+  ehci_ctrl_urb_priv_t* temp;
+  pow2_alloc(sizeof(ehci_ctrl_urb_priv_t) +
+             num_qtds * sizeof(qtd_t*),
+             (uint8_t**)&temp);
+  if(temp == NULL) {
+    return NULL;
+  }
+  initialise_ctrl_urb_priv(temp, num_qtds);
+  return temp;
+}
+
+#define ctrl_urb_priv_to_urb(ctrl_urb_priv)                       \
+  (container_of((void*)(ctrl_urb_priv), struct urb, hcpriv))
+
+#define get_ctrl_urb_priv(urb) ((ehci_ctrl_urb_priv_t*)urb->hcpriv)
+
+/***************************************************************
+ * Control URB private data end
  ***************************************************************/
 
 

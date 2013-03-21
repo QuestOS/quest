@@ -14,7 +14,6 @@
  *  You should have received a copy of the GNU General Public License
  *  along with this program.  If not, see <http://www.gnu.org/licenses/>.
  */
-#ifdef USE_VMX
 
 #include "vm/vmx.h"
 #include "vm/ept.h"
@@ -41,12 +40,124 @@
 #define DLOG(fmt,...) ;
 #endif
 
-static task_id migration_thread_id = 0;
-static u32 migration_stack[1024] ALIGNED (0x1000);
-static bool mig_working_flag = FALSE;
 
 extern bool sleepqueue_detach (task_id);
 extern void sleepqueue_append (task_id);
+
+int
+attach_task (quest_tss * new_tss, bool remote_tsc_diff, uint64 remote_tsc)
+{
+  uint64 now;
+  vcpu * v = NULL;
+
+  /* Add new quest_tss to per-sandbox quest_tss list */
+  tss_add_tail (new_tss);
+
+  /* TODO: Find a VCPU or create a new one for the process */
+
+  /* Fix the replenishment queue */
+#ifdef DEBUG_MIGRATION
+  int i = 0;
+  DLOG ("Replenishment queue to be fixed:");
+  for (i = 0; i < MAX_REPL; i++) {
+    if (new_tss->vcpu_backup[i].t == 0) break;
+    DLOG ("  (%d) b=0x%llX, t=0x%llX", i,
+          new_tss->vcpu_backup[i].b, new_tss->vcpu_backup[i].t);
+  }
+#endif
+  v = vcpu_lookup (new_tss->cpu);
+  if (!v) {
+    logger_printf ("Cannot find VCPU to be attached to!\n");
+  } else {
+    if (!vcpu_fix_replenishment (new_tss, v, new_tss->vcpu_backup, remote_tsc_diff, remote_tsc)) {
+      logger_printf ("Replenishment Queue Fix Failed\n");
+    }
+  }
+
+  /* Let's do a wakeup or sleep depending on the original state of the task */
+  RDTSC (now);
+  if (new_tss->time == 0 || now >= new_tss->time) {
+    /* Not sleeping or sleep expires already. Wake up directly. */
+    DLOG ("Waking up task in destination sandbox");
+   
+    wakeup (new_tss->tid);
+    new_tss->time = 0;
+  } else {
+    /* The migrating task is still sleeping */
+    DLOG ("Adding task in destination sandbox sleep queue");
+    sleepqueue_append (new_tss->tid);
+  }
+
+#ifdef DEBUG_MIGRATION
+  check_copied_threads ();
+#endif
+
+  return 1;
+}
+
+void
+destroy_task (task_id tid)
+{
+  quest_tss * tss = lookup_TSS (tid);
+  uint32 * virt_addr = NULL;
+  uint32 * tmp_page = NULL;
+  task_id waiter = 0;
+  int i, j;
+  if (!tss) return;
+
+  /* Reclaim resources */
+  virt_addr = map_virtual_page (tss->CR3 | 3);
+  if (!virt_addr) goto abort;
+
+  /* Free user-level virtual address space */
+  for (i = 0; i < 1023; i++) {
+    if (virt_addr[i]            /* Free page directory entry */
+        &&!(virt_addr[i] & 0x80)) {     /* and not 4MB page */
+      tmp_page = map_virtual_page (virt_addr[i] | 3);
+      for (j = 0; j < 1024; j++) {
+        if (tmp_page[j]) {      /* Free frame */
+          if ((j < 0x200) || (j > 0x20F) || i) {        /* --??-- Skip releasing
+                                                           video memory */
+            BITMAP_SET (mm_table, tmp_page[j] >> 12);
+          }
+        }
+      }
+      unmap_virtual_page (tmp_page);
+      BITMAP_SET (mm_table, virt_addr[i] >> 12);
+    }
+  }
+
+  BITMAP_SET (mm_table, (uint32) tss->CR3 >> 12);    /* Free up page for page directory */
+  unmap_virtual_page (virt_addr);
+
+  for (i = 3; i < MAX_FD; i++) {
+    if (tss->fd_table[i].entry) {
+      switch (tss->fd_table[i].type) {
+        case FD_TYPE_UDP :
+          udp_remove ((struct udp_pcb *) tss->fd_table[i].entry);
+          break;
+        case FD_TYPE_TCP :
+          if (tcp_close ((struct tcp_pcb *) tss->fd_table[i].entry) != ERR_OK) {
+            logger_printf ("TCP PCB close failed in exit\n");
+          }
+          break;
+        default :
+          break;
+      }
+    }
+  }
+
+  /* All tasks waiting for us now belong on the runqueue. */
+  while ((waiter = queue_remove_head (&tss->waitqueue)))
+    wakeup (waiter);
+
+ abort:
+  /* Remove quest_tss */
+  tss_remove (tss->tid);
+  free_quest_tss (tss);
+
+  return;
+}
 
 /* Back up the (main) VCPU replenishment queue into quest_tss. This makes it
  * easier for remote side since accessing a local VCPU there is not easy. For
@@ -83,7 +194,7 @@ backup_vcpu_replenishment (quest_tss * tss)
 }
 
 void *
-detach_task (task_id tid)
+detach_task (task_id tid, bool phys_addr)
 {
   quest_tss * tss = lookup_TSS (tid);
   if (!tss) return NULL;
@@ -128,8 +239,25 @@ success:
    */
   backup_vcpu_replenishment (tss);
   /* Return the physical address of the detached quest_tss */
-  return get_phys_addr ((void *) tss);
+  if(phys_addr) {
+    return get_phys_addr ((void *) tss);
+  }
+  else {
+    return tss;
+  }
 }
+
+
+
+
+#ifdef USE_VMX
+
+static task_id migration_thread_id = 0;
+static u32 migration_stack[1024] ALIGNED (0x1000);
+static bool mig_working_flag = FALSE;
+
+
+
 
 quest_tss *
 pull_quest_tss (void * phy_tss)
@@ -173,56 +301,6 @@ abort:
   return NULL;
 }
 
-int
-attach_task (quest_tss * new_tss)
-{
-  uint64 now;
-  vcpu * v = NULL;
-
-  /* Add new quest_tss to per-sandbox quest_tss list */
-  tss_add_tail (new_tss);
-
-  /* TODO: Find a VCPU or create a new one for the process */
-
-  /* Fix the replenishment queue */
-#ifdef DEBUG_MIGRATION
-  int i = 0;
-  DLOG ("Replenishment queue to be fixed:");
-  for (i = 0; i < MAX_REPL; i++) {
-    if (new_tss->vcpu_backup[i].t == 0) break;
-    DLOG ("  (%d) b=0x%llX, t=0x%llX", i,
-          new_tss->vcpu_backup[i].b, new_tss->vcpu_backup[i].t);
-  }
-#endif
-  v = vcpu_lookup (new_tss->cpu);
-  if (!v) {
-    logger_printf ("Cannot find VCPU to be attached to!\n");
-  } else {
-    if (!vcpu_fix_replenishment (new_tss, v, new_tss->vcpu_backup)) {
-      logger_printf ("Replenishment Queue Fix Failed\n");
-    }
-  }
-
-  /* Let's do a wakeup or sleep depending on the original state of the task */
-  RDTSC (now);
-  if (new_tss->time == 0 || now >= new_tss->time) {
-    /* Not sleeping or sleep expires already. Wake up directly. */
-    DLOG ("Waking up task in destination sandbox");
-   
-    wakeup (new_tss->tid);
-    new_tss->time = 0;
-  } else {
-    /* The migrating task is still sleeping */
-    DLOG ("Adding task in destination sandbox sleep queue");
-    sleepqueue_append (new_tss->tid);
-  }
-
-#ifdef DEBUG_MIGRATION
-  check_copied_threads ();
-#endif
-
-  return 1;
-}
 
 pgdir_t
 remote_clone_page_directory (pgdir_t dir, u64 deadline)
@@ -346,69 +424,6 @@ for_loop:
   return new_dir;
 }
 
-void
-destroy_task (task_id tid)
-{
-  quest_tss * tss = lookup_TSS (tid);
-  uint32 * virt_addr = NULL;
-  uint32 * tmp_page = NULL;
-  task_id waiter = 0;
-  int i, j;
-  if (!tss) return;
-
-  /* Reclaim resources */
-  virt_addr = map_virtual_page (tss->CR3 | 3);
-  if (!virt_addr) goto abort;
-
-  /* Free user-level virtual address space */
-  for (i = 0; i < 1023; i++) {
-    if (virt_addr[i]            /* Free page directory entry */
-        &&!(virt_addr[i] & 0x80)) {     /* and not 4MB page */
-      tmp_page = map_virtual_page (virt_addr[i] | 3);
-      for (j = 0; j < 1024; j++) {
-        if (tmp_page[j]) {      /* Free frame */
-          if ((j < 0x200) || (j > 0x20F) || i) {        /* --??-- Skip releasing
-                                                           video memory */
-            BITMAP_SET (mm_table, tmp_page[j] >> 12);
-          }
-        }
-      }
-      unmap_virtual_page (tmp_page);
-      BITMAP_SET (mm_table, virt_addr[i] >> 12);
-    }
-  }
-
-  BITMAP_SET (mm_table, (uint32) tss->CR3 >> 12);    /* Free up page for page directory */
-  unmap_virtual_page (virt_addr);
-
-  for (i = 3; i < MAX_FD; i++) {
-    if (tss->fd_table[i].entry) {
-      switch (tss->fd_table[i].type) {
-        case FD_TYPE_UDP :
-          udp_remove ((struct udp_pcb *) tss->fd_table[i].entry);
-          break;
-        case FD_TYPE_TCP :
-          if (tcp_close ((struct tcp_pcb *) tss->fd_table[i].entry) != ERR_OK) {
-            logger_printf ("TCP PCB close failed in exit\n");
-          }
-          break;
-        default :
-          break;
-      }
-    }
-  }
-
-  /* All tasks waiting for us now belong on the runqueue. */
-  while ((waiter = queue_remove_head (&tss->waitqueue)))
-    wakeup (waiter);
-
- abort:
-  /* Remove quest_tss */
-  tss_remove (tss->tid);
-  free_quest_tss (tss);
-
-  return;
-}
 
 int
 request_migration (int sandbox)
@@ -507,7 +522,7 @@ receive_migration_request (uint8 vector)
       DLOG ("  name: %s, task_id: 0x%X, affinity: %d, CR3: 0x%X",
             new_tss->name, new_tss->tid, new_tss->sandbox_affinity, new_tss->CR3);
       /* Add new (migrated) process to local sandbox scheduler */
-      if (!attach_task (new_tss)) {
+      if (!attach_task (new_tss, shm->remote_tsc_diff[cpu], shm->remote_tsc[cpu])) {
         DLOG ("Attaching task failed!");
         /* Destroy task */
         destroy_task (new_tss->tid);
@@ -701,7 +716,7 @@ resume_attach:
 
         /* --YL-- For now, attach is not preemptible */
         /* Add new (migrated) process to local sandbox scheduler */
-        if (!attach_task (new_tss)) {
+        if (!attach_task (new_tss, shm->remote_tsc_diff[cpu], shm->remote_tsc[cpu])) {
           DLOG ("Attaching task failed!");
           /* Destroy task */
           destroy_task (new_tss->tid);

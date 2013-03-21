@@ -20,8 +20,8 @@ PROGS = quest
 ##################################################
 
 
-# The following we removed because I changed the USB interface and broke them
-# drivers/usb/ftdi.o drivers/usb/pl2303.o 
+# -- EM --The following I removed because I changed the USB interface and broke them
+# drivers/usb/ftdi.o  
 # drivers/usb/rtl8187b.o 
 # drivers/usb/net.o drivers/usb/asix.o
 # drivers/usb/uhci_hcd.o
@@ -53,7 +53,11 @@ OBJS =  boot/boot.o boot/init.o kernel.o module/loader.o \
 	drivers/acpi/quest-acpica.o \
 	drivers/eeprom/93cx6.o \
 	drivers/usb/umsc.o \
-	drivers/usb/hub.o drivers/usb/uvc.o drivers/usb/gadget.o drivers/usb/gadget2.o \
+	drivers/usb/gadget/net2280.o \
+	drivers/usb/usb-keyboard.o \
+	drivers/usb/pl2303.o \
+	drivers/usb/usb-migration.o \
+	drivers/usb/hub.o drivers/usb/uvc.o drivers/usb/beagle_gadget.o drivers/usb/beagle_gadget2.o \
 	drivers/usb/ehci_hcd.o drivers/usb/ehci_mem.o drivers/usb/ehci_debug.o \
 	drivers/usb/usb.o drivers/usb/enumeration.o \
 	kdb/i386-stub.o
