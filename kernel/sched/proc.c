@@ -18,7 +18,7 @@
 #include "arch/i386.h"
 #include "kernel.h"
 #include "smp/spinlock.h"
-#include "mem/pow2.h"
+#include "mem/malloc.h"
 #include "mem/virtual.h"
 #include "mem/physical.h"
 #include "sched/proc.h"

@@ -21,7 +21,7 @@
 #include <util/printf.h>
 #include <kernel.h>
 #include "sched/sched.h"
-#include <mem/pow2.h>
+#include <mem/malloc.h>
 
 #define DEBUG_USB
 

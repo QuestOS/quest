@@ -15,25 +15,12 @@
  *  along with this program.  If not, see <http://www.gnu.org/licenses/>.
  */
 
-#ifndef _POW2_H_
-#define _POW2_H_
-#include "types.h"
 
-void kmalloc_init (void);
-void* kmalloc(uint32 size);
-void kfree(void* ptr);
+#include "mem/malloc.h"
 
 
 
-static inline void* kzalloc(uint32 size) {
-  void* temp = kmalloc(size);
-  if(temp) {
-    memset(temp, 0, size);
-  }
-  return temp;
-}
 
-#endif
 
 /* 
  * Local Variables:
@@ -43,5 +30,3 @@ static inline void* kzalloc(uint32 size) {
  * c-basic-offset: 2
  * End: 
  */
-
-/* vi: set et sw=2 sts=2: */

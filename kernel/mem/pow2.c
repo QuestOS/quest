@@ -231,11 +231,20 @@ void
 kmalloc_init (void)
 {
   int i;
+  uint32 frame;
   for (i = 0; i < POW2_TABLE_LEN; i++) {
-    pow2_table[i] = map_virtual_page (alloc_phys_frame () | 3);
+    frame = alloc_phys_frame ();
+    if(frame == 0xFFFFFFFF) {
+      panic("Failed to allocate physical frame for pow2 allocator");
+    }
+    pow2_table[i] = map_virtual_page (frame | 3);
     memset (pow2_table[i], 0, 0x1000);
   }
-  pow2_used_table = map_virtual_page (alloc_phys_frame () | 3);
+  frame = alloc_phys_frame ();
+  if(frame == 0xFFFFFFFF) {
+    panic("Failed to allocate physical frame for pow2 allocator");
+  }
+  pow2_used_table = map_virtual_page (frame | 3);
   memset (pow2_used_table, 0, 0x1000);
   pow2_used_count = 0;
   pow2_used_table_pages = 1;

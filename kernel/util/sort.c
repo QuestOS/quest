@@ -28,7 +28,7 @@
 #include <util/printf.h>
 #include <types.h>
 #include <kernel.h>
-#include <mem/pow2.h>
+#include <mem/malloc.h>
 
 //#define DEBUG_SORT
 

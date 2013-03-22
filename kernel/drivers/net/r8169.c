@@ -30,7 +30,7 @@
 #include "smp/apic.h"
 #include "mem/physical.h"
 #include "mem/virtual.h"
-#include "mem/pow2.h"
+#include "mem/malloc.h"
 #include "kernel.h"
 #include "sched/vcpu.h"
 #include "sched/sched.h"

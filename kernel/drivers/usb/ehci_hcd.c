@@ -35,7 +35,7 @@
 #include <drivers/usb/ehci_mem.h>
 #include <drivers/usb/ehci_debug.h>
 #include <mem/virtual.h>
-#include <mem/pow2.h>
+#include <mem/malloc.h>
 #include <arch/i386-div64.h>
 #include <kernel.h>
 #include <sched/sched.h>

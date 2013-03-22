@@ -24,7 +24,7 @@
 #include <drivers/net/ieee80211_standard.h>
 #include <drivers/net/ethernet.h>
 #include <util/debug.h>
-#include <mem/pow2.h>
+#include <mem/malloc.h>
 #include <sched/sched.h>
 #include <arch/i386.h>
 #include <string.h>

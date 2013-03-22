@@ -33,7 +33,7 @@ OBJS =  boot/boot.o boot/init.o kernel.o module/loader.o \
 	arch/i386/percpu.o arch/i386/measure.o \
 	vm/vmx.o vm/vm86.o vm/code16.o vm/ept.o vm/shm.o vm/shdr.o vm/migration.o \
 	sched/task.o sched/sched.o sched/sleep.o sched/vcpu.o sched/ipc.o sched/msgt.o sched/proc.o \
-	mem/physical.o mem/virtual.o mem/pow2.o \
+	mem/physical.o mem/virtual.o mem/pow2.o mem/malloc.o \
 	util/cpuid.o util/printf.o util/screen.o util/debug.o util/circular.o \
 	util/crc32.o util/bitrev.o util/logger.o util/perfmon.o util/sort.o \
 	drivers/ata/ata.o drivers/ata/diskio.o \

@@ -20,7 +20,7 @@
 #include <drivers/usb/uhci.h>
 #include <util/printf.h>
 #include <mem/virtual.h>
-#include <mem/pow2.h>
+#include <mem/malloc.h>
 #include <arch/i386-div64.h>
 #include <kernel.h>
 #include "sched/sched.h"

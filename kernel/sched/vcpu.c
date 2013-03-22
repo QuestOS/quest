@@ -28,7 +28,7 @@
 #include "smp/spinlock.h"
 #include "util/debug.h"
 #include "util/printf.h"
-#include "mem/pow2.h"
+#include "mem/malloc.h"
 #include "vm/migration.h"
 #include "vm/shm.h"
 

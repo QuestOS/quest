@@ -26,7 +26,7 @@
 #include "drivers/usb/usb.h"
 #include <arch/i386.h>
 #include "smp/spinlock.h"
-#include <mem/pow2.h>
+#include <mem/malloc.h>
 
 struct usb_iso_packet_descriptor {
   unsigned int offset;
