@@ -127,6 +127,7 @@ load_module (multiboot_module * pmm, int mod_num)
     plPageDirectory[i] = ((i << 22) + 0x83);
   }
 #endif
+  map_malloc_page_tables((pgdir_entry_t*)plPageDirectory);
 
   /* Populate ring 3 page directory with entries for its private address
      space */
@@ -478,7 +479,8 @@ init (multiboot * pmb)
   /* Initialise the programmable interval timer (PIT) */
   init_pit ();
 
-  kmalloc_init ();                 /* initialize kmalloc memory pool */
+  init_malloc_pool_page_tables(); /* initialize kmalloc page tables */
+  init_malloc ();                 /* initialize kmalloc memory pool */
 
   /* Initialise the floating-point unit (FPU) */
   initialise_fpu();

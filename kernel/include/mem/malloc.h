@@ -21,11 +21,25 @@
 
 #include "types.h"
 #include "arch/i386.h"
+#include "mem/mem.h"
 
-void kmalloc_init (void);
+
+#define MALLOC_POOL_NUM_PAGE_TABLES ((uint32)1)
+
+/* The malloc pool "grows" down, always ending at 1018 */
+
+#define MALLOC_POOL_LAST_PAGE_TABLE ((uint32)1018)
+#define MALLOC_POOL_START_PAGE_TABLE                                    \
+  ((uint32)(MALLOC_POOL_LAST_PAGE_TABLE - MALLOC_POOL_NUM_PAGE_TABLES + 1))
+
+
+
+void init_malloc (void);
 void* kmalloc(uint32 size);
 void kfree(void* ptr);
 
+bool init_malloc_pool_page_tables();
+void map_malloc_page_tables(pgdir_entry_t* pageDir);
 
 
 static inline void* kzalloc(uint32 size) {

@@ -76,7 +76,7 @@ pow2_add_free_block (uint8 * ptr, uint8 index)
         hdr = hdr->next;
       } else {
         /* End of the list -- make a new header */
-        hdr->next = map_virtual_page (alloc_phys_frame () | 3);
+        hdr->next = map_malloc_pool_virtual_page (alloc_phys_frame () | 3);
         memset (hdr->next, 0, 0x1000);
         hdr = hdr->next;
       }
@@ -120,7 +120,7 @@ pow2_get_free_block (uint8 index)
         int i;
         for (i = 0; i < POW2_MAX_POW_FRAMES; i++)
           pow2_tmp_phys_frames[i] = alloc_phys_frame () | 3;
-        return map_virtual_pages (pow2_tmp_phys_frames, POW2_MAX_POW_FRAMES);
+        return map_malloc_pool_virtual_pages (pow2_tmp_phys_frames, POW2_MAX_POW_FRAMES);
       }
     } else if (hdr->count < POW2_MAX_COUNT || hdr->next == NULL) {
       /* There are free blocks ready to go */
@@ -129,7 +129,7 @@ pow2_get_free_block (uint8 index)
         /* We followed a next pointer to get here. */
         uint32 frame = (uint32) get_phys_addr ((void *) hdr);
         prev->next = NULL;
-        unmap_virtual_page ((void *) hdr);
+        unmap_malloc_pool_virtual_page ((void *) hdr);
         free_phys_frame (frame);
       }
       return ptr;
@@ -148,10 +148,10 @@ pow2_insert_used_table (uint8 * ptr, uint8 index)
   if (pow2_used_count >= (pow2_used_table_pages * 0x400)) {
     uint32 count = pow2_used_table_pages + 1;
     uint32 frames = alloc_phys_frames (count), old_frames;
-    void *virt = map_contiguous_virtual_pages (frames | 3, count);
+    void *virt = map_contiguous_malloc_pool_virtual_pages (frames | 3, count);
     memcpy (virt, pow2_used_table, sizeof (uint32) * pow2_used_count);
     old_frames = (uint32) get_phys_addr (pow2_used_table);
-    unmap_virtual_pages ((void *) pow2_used_table, pow2_used_table_pages);
+    unmap_malloc_pool_virtual_pages ((void *) pow2_used_table, pow2_used_table_pages);
     free_phys_frames (old_frames, pow2_used_table_pages);
     pow2_used_table = (uint32 *) virt;
     pow2_used_table_pages = count;
@@ -228,7 +228,7 @@ void kfree(void* ptr)
 }
 
 void
-kmalloc_init (void)
+init_malloc(void)
 {
   int i;
   uint32 frame;
@@ -237,14 +237,14 @@ kmalloc_init (void)
     if(frame == 0xFFFFFFFF) {
       panic("Failed to allocate physical frame for pow2 allocator");
     }
-    pow2_table[i] = map_virtual_page (frame | 3);
+    pow2_table[i] = map_malloc_pool_virtual_page (frame | 3);
     memset (pow2_table[i], 0, 0x1000);
   }
   frame = alloc_phys_frame ();
   if(frame == 0xFFFFFFFF) {
     panic("Failed to allocate physical frame for pow2 allocator");
   }
-  pow2_used_table = map_virtual_page (frame | 3);
+  pow2_used_table = map_malloc_pool_virtual_page (frame | 3);
   memset (pow2_used_table, 0, 0x1000);
   pow2_used_count = 0;
   pow2_used_table_pages = 1;
