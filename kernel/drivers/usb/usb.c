@@ -285,11 +285,8 @@ void usb_kill_urb(struct urb *urb)
 
 struct urb *usb_alloc_urb(int iso_packets, gfp_t mem_flags)
 {
-  struct urb *urb;
-  
-  pow2_alloc(sizeof(struct urb) +
-             iso_packets * sizeof(struct usb_iso_packet_descriptor),
-                   (uint8_t**)&urb);
+  struct urb *urb = kmalloc(sizeof(struct urb) +
+                            iso_packets * sizeof(struct usb_iso_packet_descriptor));
   if (!urb) {
     DLOG("Failed to allocate urb");
     return NULL;
@@ -993,9 +990,9 @@ usb_enumerate(usb_hcd_t* usb_hcd, uint dev_speed, uint hub_addr, uint port_num)
   DLOG ("usb_enumerate: total_length=%d", total_length);
 
   /* allocate memory to hold everything */
-  pow2_alloc (total_length, &info->configurations);
+  info->configurations = kmalloc(total_length);
   if (!info->configurations) {
-    DLOG ("usb_enumerate: pow2_alloc (%d) failed", total_length);
+    DLOG ("usb_enumerate: kmalloc (%d) failed", total_length);
     goto abort;
   }
 
@@ -1070,7 +1067,7 @@ usb_enumerate(usb_hcd_t* usb_hcd, uint dev_speed, uint hub_addr, uint port_num)
   return TRUE;
 
  abort_mem:
-  pow2_free (info->configurations);
+  kfree(info->configurations);
  abort:
   return FALSE;
 }

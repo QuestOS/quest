@@ -124,7 +124,7 @@ static bool sort_test(void)
 {
   int *a, i, r = 1;
 
-  pow2_alloc(1000 * sizeof(int), (uint8_t**)&a);
+  a = kmalloc(1000 * sizeof(int));
         
   if(a == NULL) {
     DLOG("Could not allocate memory for sort_test");
@@ -146,7 +146,7 @@ static bool sort_test(void)
       return FALSE;
     }
 
-  pow2_free((uint8_t*)a);
+  kfree((uint8_t*)a);
   DLOG("Sort test was successful");
   return TRUE;
 }

@@ -4094,8 +4094,8 @@ bool first_fit_usb_scheduling(usb_sched_tuple_t sched_tuples[MAX_RT_URBS], int n
   int* periodic_bandwidth_remaining;
   int* async_bandwidth_remaining;
   int i, j, k;
-  pow2_alloc(sizeof(int) * max_interval, (uint8_t**)&periodic_bandwidth_remaining);
-  pow2_alloc(sizeof(int) * max_interval, (uint8_t**)&async_bandwidth_remaining);
+  periodic_bandwidth_remaining = kmalloc(sizeof(int) * max_interval);
+  async_bandwidth_remaining = kmalloc(sizeof(int) * max_interval);
   bool valid_scheduling = TRUE;
 
   for(i = 0; i < max_interval; ++i) {
@@ -4169,8 +4169,8 @@ bool first_fit_usb_scheduling(usb_sched_tuple_t sched_tuples[MAX_RT_URBS], int n
     valid_scheduling = assignments[i] >= 0;
   }
   
-  pow2_free((uint8_t*)periodic_bandwidth_remaining);
-  pow2_free((uint8_t*)async_bandwidth_remaining);
+  kfree(periodic_bandwidth_remaining);
+  kfree(async_bandwidth_remaining);
   return valid_scheduling;
 }
 

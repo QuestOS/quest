@@ -478,7 +478,7 @@ init (multiboot * pmb)
   /* Initialise the programmable interval timer (PIT) */
   init_pit ();
 
-  pow2_init ();                 /* initialize power-of-2 memory allocator */
+  kmalloc_init ();                 /* initialize kmalloc memory pool */
 
   /* Initialise the floating-point unit (FPU) */
   initialise_fpu();

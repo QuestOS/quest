@@ -329,16 +329,13 @@ AcpiOsReleaseMutex (ACPI_MUTEX Handle)
 void *
 AcpiOsAllocate (ACPI_SIZE Size)
 {
-  /* use pow2 memory allocator */
-  uint8 *ptr;
-  pow2_alloc (Size, &ptr);
-  return (void *) ptr;
+  return kmalloc(Size);
 }
 
 void
 AcpiOsFree (void *Memory)
 {
-  pow2_free ((uint8 *) Memory);
+  kfree(Memory);
 }
 
 void *

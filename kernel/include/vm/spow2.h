@@ -60,9 +60,9 @@
     ((table)[((index) - (PHY_SHARED_MEM_POOL_START >> 12))>>5] &     \
     (1 << (((index) - (PHY_SHARED_MEM_POOL_START >> 12)) & 31)))
 
-void shm_pow2_init (void);
-int shm_pow2_alloc (uint32 size, uint8 ** ptr);
-void shm_pow2_free (uint8 * ptr);
+void shm_kmalloc_init (void);
+void* shm_kmalloc(uint32_t size);
+void shm_kfree(void* ptr);
 
 #endif
 

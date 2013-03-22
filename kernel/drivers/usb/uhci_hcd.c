@@ -700,9 +700,9 @@ uhci_enumerate (void)
   DLOG ("uhci_enumerate: total_length=%d", total_length);
 
   /* allocate memory to hold everything */
-  pow2_alloc (total_length, &info->raw);
+  info->raw = kmalloc(total_length);
   if (!info->raw) {
-    DLOG ("uhci_enumerate: pow2_alloc (%d) failed", total_length);
+    DLOG ("uhci_enumerate: kmalloc (%d) failed", total_length);
     goto abort;
   }
 
@@ -765,7 +765,7 @@ uhci_enumerate (void)
   return TRUE;
 
  abort_mem:
-  pow2_free (info->raw);
+  kfree (info->raw);
  abort:
   return FALSE;
 }

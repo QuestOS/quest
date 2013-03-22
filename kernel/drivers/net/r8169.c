@@ -42,8 +42,8 @@
 #include "vm/spow2.h"
 #include "vm/vmx.h"
 
-#define pow2_alloc shm_pow2_alloc
-#define pow2_free shm_pow2_free
+#define kmalloc shm_kmalloc
+#define kfree shm_kfree
 
 #endif
 
@@ -3398,12 +3398,12 @@ static inline struct sk_buff *
 alloc_skb (u32 size)
 {
   struct sk_buff *skb;
-  pow2_alloc (sizeof (struct sk_buff), (u8 **) &skb);
+  skb = kmalloc(sizeof (struct sk_buff));
   if (!skb) return NULL;
   skb->len = size;
-  pow2_alloc (size, (u8 **) &skb->data);
+  skb->data = kmalloc(size);
   if (!skb->data) {
-    pow2_free ((u8 *) skb);
+    kfree((u8 *) skb);
     return NULL;
   }
   memset (skb->data, 0, size);
@@ -3413,8 +3413,8 @@ alloc_skb (u32 size)
 static inline void
 free_skb (struct sk_buff *skb)
 {
-  pow2_free ((u8 *)skb->data);
-  pow2_free ((u8 *)skb);
+  kfree ((u8 *)skb->data);
+  kfree ((u8 *)skb);
 }
 
 static inline void rtl8169_make_unusable_by_asic(struct RxDesc *desc)
@@ -3837,7 +3837,7 @@ r8169_init (void)
   pci_write_word (pci_addr (pdev.bus, pdev.slot, pdev.func, 0x04), 0x0006);
 
   /* Allocate private data struct */
-  pow2_alloc (sizeof (struct rtl8169_private), (u8 **) &tp);
+  tp = kmalloc(sizeof (struct rtl8169_private));
   if (!tp)
     goto abort_virt;
   DLOG ("tp=0x%p (%d bytes)", tp, sizeof (struct rtl8169_private));
@@ -3936,12 +3936,12 @@ r8169_init (void)
   uint max_frame = mtu + VLAN_ETH_HLEN + ETH_FCS_LEN;
   tp->rx_buf_sz = (max_frame > RX_BUF_SIZE) ? max_frame : RX_BUF_SIZE;
 
-  pow2_alloc (R8169_RX_RING_BYTES, (u8 **) &tp->RxDescArray);
+  tp->RxDescArray = kmalloc(R8169_RX_RING_BYTES);
   if (!tp->RxDescArray)
     goto abort_tp;
   tp->RxPhyAddr = (uint) get_phys_addr (tp->RxDescArray);
 
-  pow2_alloc (R8169_TX_RING_BYTES, (u8 **) &tp->TxDescArray);
+  tp->TxDescArray = kmalloc(R8169_TX_RING_BYTES);
   if (!tp->TxDescArray)
     goto abort_rxdesc;
   tp->TxPhyAddr = (uint) get_phys_addr (tp->TxDescArray);
@@ -3995,11 +3995,11 @@ r8169_init (void)
 
   return TRUE;
  abort_txdesc:
-  pow2_free ((u8 *) tp->TxDescArray);
+  kfree ((u8 *) tp->TxDescArray);
  abort_rxdesc:
-  pow2_free ((u8 *) tp->RxDescArray);
+  kfree ((u8 *) tp->RxDescArray);
  abort_tp:
-  pow2_free ((u8 *) tp);
+  kfree ((u8 *) tp);
  abort_virt:
   unmap_virtual_page (ioaddr);
  abort:
@@ -4067,9 +4067,9 @@ extern void
 r8169_free ()
 {
   unmap_virtual_page (tp->mmio_addr);
-  pow2_free ((u8 *) tp->TxDescArray);
-  pow2_free ((u8 *) tp->RxDescArray);
-  pow2_free ((u8 *) tp);
+  kfree ((u8 *) tp->TxDescArray);
+  kfree ((u8 *) tp->RxDescArray);
+  kfree ((u8 *) tp);
 }
 
 static const struct module_ops mod_ops = {

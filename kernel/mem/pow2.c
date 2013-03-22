@@ -205,6 +205,12 @@ pow2_alloc (uint32 size, uint8 ** ptr)
   return index;
 }
 
+void* kmalloc(uint32 size) {
+  uint8* temp;
+  pow2_alloc(size, &temp);
+  return temp;
+}
+
 void
 pow2_free (uint8 * ptr)
 {
@@ -216,8 +222,13 @@ pow2_free (uint8 * ptr)
   spinlock_unlock (&pow2_lock);
 }
 
+void kfree(void* ptr)
+{
+  pow2_free(ptr);
+}
+
 void
-pow2_init (void)
+kmalloc_init (void)
 {
   int i;
   for (i = 0; i < POW2_TABLE_LEN; i++) {

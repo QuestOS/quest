@@ -1473,10 +1473,10 @@ static inline struct sk_buff *
 alloc_skb (u32 size)
 {
   struct sk_buff *skb;
-  pow2_alloc (sizeof (struct sk_buff), (u8 **) &skb);
+  skb = kmalloc(sizeof (struct sk_buff));
   if (!skb) return NULL;
   skb->len = size;
-  pow2_alloc (size, (u8 **) &skb->data);
+  skb->data = kmalloc(size);
   if (!skb->data) return NULL;
   memset (skb->data, 0, size);
   return skb;
@@ -1674,7 +1674,7 @@ bnx2_init_rx_ring(struct bnx2 *bp, int ring_num)
         rxr->rx_prod, rxr->rx_bidx_addr, rxr->rx_prod_bseq, rx_cid_addr);
   DLOG ("  csv: %d, %d", rxr->rx_prod, rxr->rx_prod_bseq);
 
-  pow2_alloc (RXBD_RING_SIZE, (u8 **) &backup_rx_desc);
+  backup_rx_desc = kmalloc(RXBD_RING_SIZE);
   memcpy (backup_rx_desc, &rxr->rx_desc_ring[0][0], RXBD_RING_SIZE);
 
   /*******************************************************************
@@ -1955,7 +1955,7 @@ bnx2_alloc_rx_mem (struct bnx2 *bp)
   for (j = 0; j < bp->rx_max_ring; j++)
     rxr->rx_desc_ring[j]=0;
   for (j = 0; j < bp->rx_max_ring; j++) {
-    pow2_alloc (RXBD_RING_SIZE, (u8 **) &rxr->rx_desc_ring[j]);
+    rxr->rx_desc_ring[j] = kmalloc (RXBD_RING_SIZE);
     if (rxr->rx_desc_ring[j] == NULL)
       goto abort_rx_desc;
     rxr->rx_desc_mapping[j] = (u32) get_phys_addr (rxr->rx_desc_ring[j]);
@@ -1976,7 +1976,7 @@ bnx2_alloc_rx_mem (struct bnx2 *bp)
  abort_rx_desc:
   for (j = 0; j < bp->rx_max_ring; j++) {
     if (rxr->rx_desc_ring[j])
-      pow2_free ((u8 *) rxr->rx_desc_ring[j]);
+      kfree ((u8 *) rxr->rx_desc_ring[j]);
   }
   vfree_pages (rxr->rx_buf_ring, (SW_RXBD_RING_SIZE * bp->rx_max_ring) >> PAGE_SHIFT);
  abort:
@@ -3139,7 +3139,7 @@ bnx2_init_board (pci_device *pdev)
 
   bp->flags = bp->phy_flags = 0;
 
-  pow2_alloc (sizeof(struct statistics_block), (u8 **) &bp->temp_stats_blk);
+  bp->temp_stats_blk = kmalloc (sizeof(struct statistics_block));
 
   /* pci enable device */
 
@@ -3464,7 +3464,7 @@ bnx2_init_board (pci_device *pdev)
      pci_set_drvdata(pdev, NULL); */
 
  err_out_free_stats:
-  pow2_free ((u8 *) bp->temp_stats_blk);
+  kfree ((u8 *) bp->temp_stats_blk);
 
   return FALSE;
 }
@@ -4653,7 +4653,7 @@ bnx2_init (void)
     goto abort;
   }
 
-  pow2_alloc (sizeof (struct bnx2), (u8 **) &bp);
+  bp = kmalloc(sizeof (struct bnx2));
   memset (bp, 0, sizeof (struct bnx2));
 
   u32 status_size = sizeof (struct status_block);
@@ -4738,7 +4738,7 @@ bnx2_init (void)
  abort_status_phys:
   free_phys_frames (status_stats_phys, status_stats_pages);
  abort_bp:
-  pow2_free ((u8 *) bp);
+  kfree ((u8 *) bp);
  abort:
   return FALSE;
 }

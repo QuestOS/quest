@@ -831,9 +831,8 @@ ehci_iso_urb_priv_t* ehci_alloc_iso_urb_priv(struct urb* urb)
   if(frame_interval == 0) frame_interval = 1;
   int num_itds = 1024 / frame_interval;
   ehci_iso_urb_priv_t* temp;
-  pow2_alloc(sizeof(ehci_iso_urb_priv_t) +
-             num_itds * sizeof(itd_t*),
-             (uint8_t**)&temp);
+  temp = kmalloc(sizeof(ehci_iso_urb_priv_t) +
+             num_itds * sizeof(itd_t*));
   if(temp == NULL) {
     return NULL;
   }
@@ -911,9 +910,8 @@ static inline
 ehci_int_urb_priv_t* ehci_alloc_int_urb_priv(unsigned int num_qtds)
 {
   ehci_int_urb_priv_t* temp;
-  pow2_alloc(sizeof(ehci_int_urb_priv_t) +
-             num_qtds * sizeof(qtd_t*),
-             (uint8_t**)&temp);
+  temp = kmalloc(sizeof(ehci_int_urb_priv_t) +
+             num_qtds * sizeof(qtd_t*));
   if(temp == NULL) {
     return NULL;
   }
@@ -954,9 +952,8 @@ static inline
 ehci_bulk_urb_priv_t* ehci_alloc_bulk_urb_priv(unsigned int num_qtds)
 {
   ehci_bulk_urb_priv_t* temp;
-  pow2_alloc(sizeof(ehci_bulk_urb_priv_t) +
-             num_qtds * sizeof(qtd_t*),
-             (uint8_t**)&temp);
+  temp = kmalloc(sizeof(ehci_bulk_urb_priv_t) +
+             num_qtds * sizeof(qtd_t*));
   if(temp == NULL) {
     return NULL;
   }
@@ -1000,9 +997,8 @@ static inline
 ehci_ctrl_urb_priv_t* ehci_alloc_ctrl_urb_priv(unsigned int num_qtds)
 {
   ehci_ctrl_urb_priv_t* temp;
-  pow2_alloc(sizeof(ehci_ctrl_urb_priv_t) +
-             num_qtds * sizeof(qtd_t*),
-             (uint8_t**)&temp);
+  temp = kmalloc(sizeof(ehci_ctrl_urb_priv_t) +
+             num_qtds * sizeof(qtd_t*));
   if(temp == NULL) {
     return NULL;
   }
