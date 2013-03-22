@@ -29,3 +29,6 @@ CFG += -DUSB_REALTIME_ASYNC
 
 # Use USB Migration for cross machine migration
 CFG += -DUSB_MIGRATION
+
+# Change to use different allocator (pow2 default for now)
+KMALLOC = pow2
