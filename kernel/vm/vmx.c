@@ -574,7 +574,7 @@ vmx_create_pmode_VM (virtual_machine *vm, u32 rip0, u32 rsp0)
   vmwrite (0, VMXENC_PAGE_FAULT_ERRCODE_MATCH);
   vmwrite (0, VMXENC_CR0_GUEST_HOST_MASK); /* all bits "owned" by guest */
   vmwrite (0, VMXENC_CR0_READ_SHADOW);
-  vmwrite (0, VMXENC_CR4_GUEST_HOST_MASK); /* all bits "owned" by guest */
+  vmwrite (0x2000, VMXENC_CR4_GUEST_HOST_MASK); /* VMXE "owned" by host */
   vmwrite (0, VMXENC_CR4_READ_SHADOW);
 
   return 0;
@@ -966,8 +966,8 @@ vmx_start_VM (virtual_machine *vm)
     /* VM-exited */
     uint32 reason = vmread (VMXENC_EXIT_REASON);
     uint32 intinf = vmread (VMXENC_VM_EXIT_INTERRUPT_INFO);
-#if DEBUG_VMX > 1
     uint32 qualif = vmread (VMXENC_EXIT_QUAL);
+#if DEBUG_VMX > 1
     uint32 ercode = vmread (VMXENC_VM_EXIT_INTERRUPT_ERRCODE);
     uint32 inslen = vmread (VMXENC_VM_EXIT_INSTR_LEN);
     uint32 insinf = vmread (VMXENC_VM_EXIT_INSTR_INFO);
@@ -1089,6 +1089,13 @@ vmx_start_VM (virtual_machine *vm)
       /* Trying to execute XSETBV instruction */
       logger_printf ("Guest trying to execute XSETBV instruction\n");
       /* TODO: Try to change XCR0 somewhere in VMCS Guest State if this breaks anything */
+      vmwrite (vmread (VMXENC_GUEST_RIP) + inslen, VMXENC_GUEST_RIP); /* skip instruction */
+      goto enter;               /* resume guest */
+    } else if (reason == 0x1C) {
+      /* MOV to control register */
+      logger_printf ("GUEST-STATE: EAX=0x%X, EBX=0x%X, ECX=0x%X, EDX=0x%X\n",
+                     vm->guest_regs.eax, vm->guest_regs.ebx, vm->guest_regs.ecx,
+                     vm->guest_regs.edx);
       vmwrite (vmread (VMXENC_GUEST_RIP) + inslen, VMXENC_GUEST_RIP); /* skip instruction */
       goto enter;               /* resume guest */
     } else {

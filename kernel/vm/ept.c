@@ -649,7 +649,7 @@ vmx_init_ept (uint32 cpu)
           }
 #ifdef USE_LINUX_SANDBOX
           if (cpu == LINUX_SANDBOX) {
-            if ((index >= (1 << 20)) && (index <= SANDBOX_KERN_OFFSET)) {
+            if ((index >= (1 << 20)) && (index <= LINUX_SANDBOX_KERN_OFFSET)) {
 	      pt[k] = (index + SANDBOX_KERN_OFFSET * (LINUX_SANDBOX + 1))
 	              | (memtype << 3) | EPT_ALL_ACCESS;
 	    }
@@ -699,7 +699,7 @@ vmx_init_ept (uint32 cpu)
 
 #ifdef USE_LINUX_SANDBOX
           if (cpu == LINUX_SANDBOX) {
-            if ((index >= (1 << 20)) && (index <= SANDBOX_KERN_OFFSET)) {
+            if ((index >= (1 << 20)) && (index <= LINUX_SANDBOX_KERN_OFFSET)) {
 	      pt[k] = (index + SANDBOX_KERN_OFFSET * (LINUX_SANDBOX + 1))
 	              | (memtype << 3) | EPT_ALL_ACCESS;
 	    }

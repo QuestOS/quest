@@ -31,7 +31,11 @@
 #endif
 
 #define LINUX_BZIMAGE_PATH    "/boot/vmlinuz"
-#define LINUX_BOOT_PARAM      "root=/dev/sda1 pmedia=atahd loglevel=7"
+//#define LINUX_BOOT_PARAM      "root=/dev/sda1 pmedia=atahd loglevel=7"
+#define LINUX_BOOT_PARAM      "loglevel=7"
+
+/* Size of Linux sandbox in MB */
+#define LINUX_SANDBOX_KERN_OFFSET    0x20000000
 
 /* 
  * Size of virtual memory pool reserved for initial kernel load.
