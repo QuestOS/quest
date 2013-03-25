@@ -1379,7 +1379,9 @@ __exit (int status)
 
   /* Free user-level virtual address space */
   for (i = 0; i < 1023; i++) {
-    if (virt_addr[i]            /* Free page directory entry */
+    if (virt_addr[i]             /* Free page directory entry */
+        && (virt_addr[i] & 4 || i == (KERN_STK >> 22))      /* and is a user space page or
+                                                               kernel stack */
         &&!(virt_addr[i] & 0x80)) {     /* and not 4MB page */
       tmp_page = map_virtual_page (virt_addr[i] | 3);
       for (j = 0; j < 1024; j++) {
