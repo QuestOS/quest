@@ -18,6 +18,15 @@
 
 #include "kernel.h"
 #include "mem/mem.h"
+#include "util/printf.h"
+
+#define DEBUG_MALLOC
+
+#ifdef DEBUG_MALLOC
+#define DLOG(fmt, ...) com1_printf(fmt, ##__VA_ARGS__)
+#else
+#define DLOG(fmt, ...) ;
+#endif
 
 
 static uint32 page_table_phys_addrs[MALLOC_POOL_NUM_PAGE_TABLES];
@@ -40,7 +49,7 @@ bool init_malloc_pool_page_tables()
     }
     page_table_phys_addrs[i] = directory[i + MALLOC_POOL_START_PAGE_TABLE].raw = phys_frame | 3;
     page_table_virtual_addrs[i] = map_result = map_virtual_page(phys_frame | 3);
-    com1_printf("page virt = 0x%p\n", map_result);
+    DLOG("page virt = 0x%p\n", map_result);
     
     if(map_result == NULL) {
       return FALSE;
@@ -77,13 +86,13 @@ map_malloc_pool_virtual_page (uint32 phys_frame)
     for (i = 0; i < 0x400; i++)
       if (!page_table[i]) {       /* Free page */
         page_table[i] = phys_frame | 3;
-        com1_printf("In %s, pt entry[%d] = 0x%X\n", __FUNCTION__, i, page_table[i]);
+        DLOG("In %s, pt entry[%d] = 0x%X\n", __FUNCTION__, i, page_table[i]);
         va = (char *) ((MALLOC_POOL_START_PAGE_TABLE + j) * 0x400000) + (i << 12);
         
         /* Invalidate page in case it was cached in the TLB */
         invalidate_page (va);
 
-        com1_printf("mapped 0x%X\n", ((MALLOC_POOL_START_PAGE_TABLE + j) * 0x400000) + (i << 12));
+        DLOG("mapped 0x%X\n", ((MALLOC_POOL_START_PAGE_TABLE + j) * 0x400000) + (i << 12));
         memset(va, 0, 4096);
         
         return va;
@@ -128,9 +137,9 @@ map_malloc_pool_virtual_pages (uint32 * phys_frames, uint32 count)
         /* Invalidate page in case it was cached in the TLB */
         for (j = 0; j < count; j++) {
           invalidate_page (va + j * 0x1000);
-          com1_printf("mapped 0x%X\n", va + j * 0x1000);
+          DLOG("mapped 0x%X\n", va + j * 0x1000);
           memset(va + j * 0x1000, 0, 4096);
-          com1_printf("In %s, pt entry[%d] = 0x%X\n", __FUNCTION__, i+j, page_table[i+j]);
+          DLOG("In %s, pt entry[%d] = 0x%X\n", __FUNCTION__, i+j, page_table[i+j]);
         }
         
         return va;
@@ -177,8 +186,8 @@ map_contiguous_malloc_pool_virtual_pages (uint32 phys_frame, uint32 count)
         for (j = 0; j < count; j++) {
           invalidate_page (va + j * 0x1000);
           memset(va + j * 0x1000, 0, 4096);
-          com1_printf("mapped 0x%X\n", va + j * 0x1000);
-          com1_printf("In %s, pt entry[%d] = 0x%X\n", __FUNCTION__, i+j, page_table[i+j]);
+          DLOG("mapped 0x%X\n", va + j * 0x1000);
+          DLOG("In %s, pt entry[%d] = 0x%X\n", __FUNCTION__, i+j, page_table[i+j]);
         }
         
         return va;
@@ -211,7 +220,7 @@ unmap_malloc_pool_virtual_page (void *virt_addr)
       return;
     }
   }
-  com1_printf("virt_addr = 0x%p\n", virt_addr);
+  DLOG("virt_addr = 0x%p\n", virt_addr);
   int *temp =0;
   *temp = 0;
   panic("Failed to unmap page in malloc pool");
