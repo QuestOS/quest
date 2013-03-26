@@ -385,6 +385,7 @@ ap_init (void)
       }
     }
   }
+  map_malloc_page_tables(pg_dir[mod_num], SANDBOX_KERN_OFFSET * phys_id);
 
   
   /* Shift stack page */

@@ -529,6 +529,9 @@ _fork (uint32 ebp, uint32 *esp)
 #endif
   lock_kernel ();
 
+  char* temp = kmalloc(20);
+  if(temp == NULL) panic("temp is null");
+  kfree(temp);
   /* 
    * This ugly bit of assembly is designed to obtain the value of EIP
    * in the parent and return from the `call 1f' in the child.

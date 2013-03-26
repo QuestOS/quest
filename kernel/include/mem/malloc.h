@@ -39,7 +39,7 @@ void* kmalloc(uint32 size);
 void kfree(void* ptr);
 
 bool init_malloc_pool_page_tables();
-void map_malloc_page_tables(pgdir_entry_t* pageDir);
+void map_malloc_page_tables(pgdir_entry_t* pageDir, uint32 offset);
 
 void* map_malloc_pool_virtual_page (uint32 phys_frame);
 void* map_malloc_pool_virtual_pages (uint32 * phys_frames, uint32 count);

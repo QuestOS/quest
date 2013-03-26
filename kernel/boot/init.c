@@ -130,7 +130,7 @@ load_module (multiboot_module * pmm, int mod_num)
     plPageDirectory[i] = ((i << 22) + 0x83);
   }
 #endif
-  map_malloc_page_tables((pgdir_entry_t*)plPageDirectory);
+  map_malloc_page_tables((pgdir_entry_t*)plPageDirectory, 0);
 
   /* Populate ring 3 page directory with entries for its private address
      space */
