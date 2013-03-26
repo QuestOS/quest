@@ -479,7 +479,12 @@ init (multiboot * pmb)
   /* Initialise the programmable interval timer (PIT) */
   init_pit ();
 
-  init_malloc_pool_page_tables(); /* initialize kmalloc page tables */
+  /* initialize kmalloc page tables */
+  if(!init_malloc_pool_page_tables()) {
+    com1_printf("Failed to initialise malloc pool");
+    panic("Failed to initialise malloc pool");
+  }
+  
   init_malloc ();                 /* initialize kmalloc memory pool */
 
   /* Initialise the floating-point unit (FPU) */

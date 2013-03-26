@@ -20,7 +20,7 @@
 #include "mem/mem.h"
 #include "util/printf.h"
 
-#define DEBUG_MALLOC
+//#define DEBUG_MALLOC
 
 #ifdef DEBUG_MALLOC
 #define DLOG(fmt, ...) com1_printf(fmt, ##__VA_ARGS__)
@@ -29,17 +29,21 @@
 #endif
 
 
-static uint32 page_table_phys_addrs[MALLOC_POOL_NUM_PAGE_TABLES];
+static uint32  page_table_phys_addrs   [MALLOC_POOL_NUM_PAGE_TABLES];
 static uint32* page_table_virtual_addrs[MALLOC_POOL_NUM_PAGE_TABLES];
 
 bool init_malloc_pool_page_tables()
 {
   /* The page tables here won't be carried over to the first process
      but we need to map them anyway because the kmalloc init function
-     might call the map_malloc_page table related functions */
+     might call the map malloc page table related functions */
   uint32 cr3 = (uint32)get_pdbr();
   pgdir_entry_t* directory = map_virtual_page((cr3 & 0xFFFFF000) | 3);
   uint i;
+
+  if(directory == NULL) {
+    return FALSE;
+  }
 
   for(i = 0; i < MALLOC_POOL_NUM_PAGE_TABLES; ++i) {
     uint32 phys_frame = alloc_phys_frame();
@@ -65,7 +69,7 @@ void map_malloc_page_tables(pgdir_entry_t* pageDir)
 {
   int i;
   for(i = 0; i < MALLOC_POOL_NUM_PAGE_TABLES; ++i) {
-    pageDir[i + MALLOC_POOL_START_PAGE_TABLE].raw = page_table_phys_addrs[i];
+    pageDir[i + MALLOC_POOL_START_PAGE_TABLE].raw = page_table_phys_addrs[i] | 3;
   }
 }
 
@@ -85,7 +89,7 @@ map_malloc_pool_virtual_page (uint32 phys_frame)
     uint32* page_table = page_table_virtual_addrs[j];
     for (i = 0; i < 0x400; i++)
       if (!page_table[i]) {       /* Free page */
-        page_table[i] = phys_frame | 3;
+        page_table[i] = phys_frame;
         DLOG("In %s, pt entry[%d] = 0x%X\n", __FUNCTION__, i, page_table[i]);
         va = (char *) ((MALLOC_POOL_START_PAGE_TABLE + j) * 0x400000) + (i << 12);
         
@@ -98,7 +102,7 @@ map_malloc_pool_virtual_page (uint32 phys_frame)
         return va;
       }
   }
-  panic("Failed to map virtual page");
+  
   return NULL;                  /* Invalid address */
 }
 
@@ -128,7 +132,7 @@ map_malloc_pool_virtual_pages (uint32 * phys_frames, uint32 count)
         }
         
         for (j = 0; j < count; j++) {
-          page_table[i + j] = phys_frames[j] | 3;
+          page_table[i + j] = phys_frames[j];
           
         }
         
@@ -148,7 +152,7 @@ map_malloc_pool_virtual_pages (uint32 * phys_frames, uint32 count)
       ;
     }
   }
-  panic("Failed to map virtual pages");
+  
   return NULL;                  /* Invalid address */
 }
 
@@ -177,7 +181,7 @@ map_contiguous_malloc_pool_virtual_pages (uint32 phys_frame, uint32 count)
         }
         
         for (j = 0; j < count; j++) {
-          page_table[i + j] = (phys_frame + j * 0x1000) | 3;
+          page_table[i + j] = (phys_frame + j * 0x1000);
         }
         
         va = (char *) ((MALLOC_POOL_START_PAGE_TABLE + k) * 0x400000) + (i << 12);
@@ -196,7 +200,6 @@ map_contiguous_malloc_pool_virtual_pages (uint32 phys_frame, uint32 count)
       ;
     }
   }
-  panic("Failed to map virtual pages");
   return NULL;                  /* Invalid address */
 }
 
@@ -220,9 +223,6 @@ unmap_malloc_pool_virtual_page (void *virt_addr)
       return;
     }
   }
-  DLOG("virt_addr = 0x%p\n", virt_addr);
-  int *temp =0;
-  *temp = 0;
   panic("Failed to unmap page in malloc pool");
 }
 
