@@ -38,6 +38,9 @@
 #include "drivers/net/ethernet.h"
 #include "vm/spow2.h"
 #endif
+#ifdef USE_LINUX_SANDBOX
+#include "vm/linux_boot.h"
+#endif
 
 extern descriptor idt[];
 
@@ -170,7 +173,7 @@ load_module (multiboot_module * pmm, int mod_num)
   }
 
   /* map stack */
-  get_pg_dir_and_table_indices(USER_STACK_START - 1, &pg_dir_index, &pg_tbl_index);
+  get_pg_dir_and_table_indices ((void *) (USER_STACK_START - 1), &pg_dir_index, &pg_tbl_index);
   if(pg_dir_index != 0) {
     /* The stack resides in a different page table than the rest
        of the program */
@@ -432,7 +435,11 @@ init (multiboot * pmb)
    */
 
   /* Here, clear mm_table entries for any loadable modules. */
+#ifdef GRUB_LOAD_BZIMAGE
+  for (i = 0; i < pmb->mods_count - 1; i++) {
+#else
   for (i = 0; i < pmb->mods_count; i++) {
+#endif
 
     pe = map_virtual_page ((uint32)pmb->mods_addr[i].pe | 3);
 
@@ -513,9 +520,30 @@ init (multiboot * pmb)
   /* Load modules from GRUB */
   if (!pmb->mods_count)
     panic ("No modules available");
+#ifdef GRUB_LOAD_BZIMAGE
+  /* If there is only one module, it has to be shell */
+  if (pmb->mods_count < 2)
+    panic ("GRUB_LOAD_BZIMAGE configured but no bzImage provided!");
+#endif
   for (i = 0; i < pmb->mods_count; i++) {
+#ifdef GRUB_LOAD_BZIMAGE
+    /*
+     * If GRUB is used to load Linux kernel bzImage, it *MUST* be placed
+     * at the *BOTTOM* of the module list in GRUB configuration file.
+     */
+    if (i == (pmb->mods_count - 1)) {
+      /* Relocate Linux kernel bzImage loaded by GRUB */
+      /* LINUX_KERNEL_LOAD_VA was mapped 1 to 1 in boot.S */
+      com1_printf ("Relocating Linux bzImage...\n");
+      grub_load_linux_bzImage (pmb->mods_addr + i, (uint32 *) LINUX_KERNEL_LOAD_VA);
+    } else {
+      tss[i] = load_module (pmb->mods_addr + i, i);
+      lookup_TSS (tss[i])->priority = MIN_PRIO;
+    }
+#else
     tss[i] = load_module (pmb->mods_addr + i, i);
     lookup_TSS (tss[i])->priority = MIN_PRIO;
+#endif
   }
 
   /* --??-- Assume the first is shell here */

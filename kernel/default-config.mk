@@ -32,3 +32,6 @@ CFG += -DUSB_MIGRATION
 
 # Change to use different allocator (pow2 default for now)
 KMALLOC = pow2
+
+# Enable Linux sandbox
+# CFG += -DUSE_LINUX_SANDBOX

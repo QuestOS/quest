@@ -139,6 +139,7 @@ extern void vcpu_remove_from_runqueue (vcpu *, task_id);
 extern bool vcpu_fix_replenishment (quest_tss*, vcpu*, replenishment[], bool remote_tsc_diff,
                                     uint64 remote_tsc);
 #ifdef USE_VMX
+extern bool validate_migration_condition (quest_tss*);
 extern void vcpu_reset (void);
 #endif
 

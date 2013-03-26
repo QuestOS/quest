@@ -736,6 +736,10 @@ vcpu_schedule (void)
                              tss->sandbox_affinity);
               goto vmx_migration_end;
             } else {
+              /* Can migration condition be met? */
+              //if (!validate_migration_condition (tss)) {
+              //  goto resume_schedule;
+              //}
               /* Detach the migrating task from local scheduler */
               ph_tss = detach_task (tss->tid, TRUE);
               DLOG ("Process quest_tss to be migrated: 0x%X", ph_tss);
@@ -1328,6 +1332,69 @@ vcpu_init (void)
   }
   return TRUE;
 }
+
+#ifdef USE_VMX
+/*
+ * Verify the migration condition is met. Refer to Quest-V publication
+ * for details. E_s needs to be determined and compare with migration
+ * cost prediction if the migrating thread requires predictable migration.
+ *
+ * E_s >= floor (Delta_s / C_m) * T_m + Delta_s mod C_m
+ *
+ * TODO: Only monitoring now. Need to implement a flag and corresponding
+ * user interface for user to specify migration requirement for each VCPU.
+ */
+bool
+validate_migration_condition (quest_tss * tss)
+{
+  repl_queue * rq = NULL;
+  replenishment * rp = NULL;
+  vcpu * v = NULL;
+  uint64 E_s = 0, time = 0;
+
+  if (!tss) {
+    logger_printf ("validate_migration_condition: Invalid tss!\n");
+    return FALSE;
+  }
+
+  v = vcpu_lookup (tss->cpu);
+  rq = &v->main.Q;
+  rp = rq->head;
+
+  if (rp) {
+    /* TODO: Need to also look at sleep time and compare it with E_s */
+    /* TODO: If the following equation holds:
+     *
+     *   E_s >= floor (Delta_s / C_m) * T_m + Delta_s mod C_m
+     *
+     * We return TRUE. Otherwise, we need to check wheter tss (its VCPU)
+     * requires strict predictability.
+     */
+    RDTSC (time);
+    if (rp->t <= time) {
+      DLOG ("Migration rejected, replenishment pending!");
+      return FALSE;
+    }
+    E_s = rp->t - time;
+    //com1_printf ("Next Rep: 0x%llX\n", rp->t);
+    //com1_printf ("Current Time: 0x%llX\n", time);
+    //com1_printf ("Next event time is: 0x%llX\n", E_s);
+  } else {
+    /* Replenishment queue is empty */
+    /* TODO: Check sleep queue */
+    return FALSE;
+  }
+
+  if (!v) {
+    DLOG ("validate_migration_condition: No VCPU for tss!");
+    return FALSE;
+  }
+
+  return TRUE;
+}
+
+#endif
+
 
 /* Fix replenishment queue */
 bool

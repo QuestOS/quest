@@ -28,11 +28,17 @@
 #include "util/printf.h"
 #include "util/perfmon.h"
 #include "sched/sched.h"
+
 #ifdef USE_VMX
 #include "vm/ept.h"
 #include "vm/shm.h"
 #include "vm/vmx.h"
 #include "sched/vcpu.h"
+
+#ifdef USE_LINUX_SANDBOX
+#include "vm/linux_boot.h"
+#endif
+
 #endif
 
 //#define DEBUG_SMP 1
@@ -181,7 +187,7 @@ smp_boot_cpu (uint8 apic_id, uint8 APIC_version)
 {
   int success = 1;
   volatile int to;
-  uint32 bootaddr, accept_status;
+  uint32 bootaddr;
 
   /* Get a page for the AP's C stack */
   uint32 page_frame = (uint32) alloc_phys_frame ();
@@ -205,7 +211,7 @@ smp_boot_cpu (uint8 apic_id, uint8 APIC_version)
    * ASSERT INIT IPI, DE-ASSERT INIT IPI, STARTUP IPI, STARTUP IPI */
 
   /* clear APIC error register */
-  accept_status = LAPIC_clear_error();
+  LAPIC_clear_error();
 
   /* assert INIT interprocessor interrupt */
   LAPIC_send_ipi (apic_id,
@@ -241,7 +247,7 @@ smp_boot_cpu (uint8 apic_id, uint8 APIC_version)
   }
 
   /* cleanup */
-  accept_status = LAPIC_clear_error();
+  LAPIC_clear_error();
 
   return success;
 }
@@ -303,7 +309,7 @@ ap_init (void)
 
   while (!shm->bsp_booted)
     asm volatile ("pause");
-
+  
   { extern bool vcpu_init (void); vcpu_init (); }
   { extern void net_init (void); net_init (); }
   //if (phys_id == 1) {
@@ -313,6 +319,10 @@ ap_init (void)
   //}
   { extern bool migration_init (void); migration_init (); }
   { extern bool logger_init (void); logger_init (); }
+#ifdef USE_LINUX_SANDBOX
+  if (phys_id == LINUX_SANDBOX)
+  { extern bool linux_boot_thread_init (void); linux_boot_thread_init (); }
+#endif
   //if (phys_id == 1)
   //{ extern bool hog_thread_init (void); hog_thread_init (); }
   //{ extern bool msgt_bandwidth_init (void); msgt_bandwidth_init (); }
@@ -338,8 +348,8 @@ ap_init (void)
   uint32 * plPageDirectory = get_phys_addr (pg_dir[mod_num]);
   uint32 * plPageTable = get_phys_addr (pg_table[mod_num]);
   uint32 * plStackPageTable = get_phys_addr(uls_pg_table[mod_num]);
-  uint32* page_directory_virt = pg_dir[mod_num];
-  uint32* stack_page_table;
+  //uint32* page_directory_virt = pg_dir[mod_num];
+  //uint32* stack_page_table;
   int stack_dir_index, stack_tbl_index;
   void * pStack = get_phys_addr (ul_stack[mod_num]);
   int i = 0;
@@ -352,8 +362,8 @@ ap_init (void)
 
   unmap_virtual_page (vpdbr);
 
-  
-  get_pg_dir_and_table_indices(USER_STACK_START - 1, &stack_dir_index, &stack_tbl_index);
+  get_pg_dir_and_table_indices ((void *) (USER_STACK_START - 1), &stack_dir_index,
+                                &stack_tbl_index);
 
   /* Populate ring 3 page directory with entries for its private address
      space */

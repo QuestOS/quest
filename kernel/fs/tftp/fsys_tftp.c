@@ -299,6 +299,94 @@ eztftp_dir (char *pathname)
   return filesize;
 }
 
+/* --YL-- Hack!!! Will be replaced by a new file system.
+ *
+ * eztftp_bulk_read is for loading Linux kernel image which is too
+ * big for our kernel address space. An out-of-band memory region
+ * "load_addr" should be provided. This will be replaced by a "decent"
+ * file system in the very near future.
+ */
+int
+eztftp_bulk_read (char *pathname, uint32 * load_addr)
+{
+  struct pbuf *p, *q;
+  uint8 buf[TFTP_BLOCK_SIZE+4], *ins;
+  uint32 len, rem, filesize=0;
+
+  circular_init (&incoming, incoming_buf,
+                 TFTP_RING_LEN, sizeof (struct pbuf *));
+
+  DLOG ("dir (%s)", pathname);
+  if (pathname[0] == '/')
+    /* some servers don't like leading slash */
+    pathname++;
+
+  /* format and send a read request */
+  len = format_rrq (buf, TFTP_BLOCK_SIZE+4, pathname);
+  server_port = TFTP_PORT;
+  if (send (buf, len) < 0) {
+    DLOG ("failed to send request: %d %s", *((u16 *) buf), buf+2);
+    return -1;
+  }
+
+  /* fetch file loop */
+  rem = TFTP_BLOCK_SIZE+4; len=0; ins=buf;
+  for (;;) {
+    /* wait for incoming data */
+    circular_remove (&incoming, &p);
+    if (!p) continue;
+
+    while (rem > 0) {
+      /* copy data from current pbuf */
+      memcpy (ins, p->payload, p->len);
+
+      /* adjust counters */
+      rem -= p->len;
+      ins += p->len;
+      len += p->len;
+
+      /* chop pbuf off */
+      q = p->next;
+      if (q) pbuf_ref (q);
+      pbuf_free (p);
+      p = q;
+
+      /* if last pbuf in chain */
+      if (!p) break;
+    }
+
+    /* check for valid DATA packet */
+    if (buf[1] == TFTP_OP_DATA) {
+      DLOG ("received DATA packet num=0x%.04X len=%d bytes",
+            (buf[2] << 8) | buf[3], len-4);
+      /* send ACK the easy way */
+      buf[1] = TFTP_OP_ACK;
+      send (buf, 4);
+      memcpy (load_addr, buf + 4, len - 4);
+      load_addr = (uint32 *) (((uint8 *) load_addr) + len - 4);
+    } else if (buf[1] == TFTP_OP_ERR) {
+      /* got error, probably file not found */
+      DLOG ("error code=%d str=%s", (buf[2] << 8) | buf[3], &buf[4]);
+      return -1;
+    } else {
+      /* discard buffer */
+      DLOG ("received unexpected packet opcode=%d", buf[1]);
+    }
+
+    filesize += len-4;
+
+    if (len - 4 < TFTP_BLOCK_SIZE)
+      /* that was the last packet */
+      break;
+
+    /* reset buffer */
+    rem = TFTP_BLOCK_SIZE+4; len=0; ins=buf;
+  }
+
+  DLOG ("opened file size=%d bytes", filesize);
+  return filesize;
+}
+
 int
 eztftp_read (char *buf, int len)
 {

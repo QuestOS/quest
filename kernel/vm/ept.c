@@ -29,6 +29,9 @@
 #include "arch/i386-mtrr.h"
 #include "sched/sched.h"
 #include "vm/spow2.h"
+#ifdef USE_LINUX_SANDBOX
+#include "vm/linux_boot.h"
+#endif
 
 #define DEBUG_EPT    0
 #if DEBUG_EPT > 0
@@ -44,7 +47,7 @@ void
 vmx_init_mem (uint32 cpu)
 {
   extern uint32 _physicalbootstrapstart;
-  extern uint32 _code16start, _code16_pages, _code16physicalstart;
+  //extern uint32 _code16start, _code16_pages, _code16physicalstart;
 
   /* Original Quest Paging Data Structures */
   uint32 phys_cr3 = (uint32) get_pdbr ();
@@ -207,9 +210,9 @@ vmx_init_mem (uint32 cpu)
    * memory is shared, but pages starting at 0x8000 should be re-mapped.
    * Look at vmx_global_init in vmx.c for detail.
    */
-  for (i=0; i<((uint32) &_code16_pages); i++)
-    vm86_pgt[((((uint32) &_code16start) >> 12) & 0x3FF) + i] =
-    ((uint32) &_code16physicalstart + physical_offset + (i << 12)) | 7;
+  //for (i=0; i<((uint32) &_code16_pages); i++)
+  //  vm86_pgt[((((uint32) &_code16start) >> 12) & 0x3FF) + i] =
+  //  ((uint32) &_code16physicalstart + physical_offset + (i << 12)) | 7;
 
   unmap_virtual_page (vm86_pgt);
 
@@ -246,9 +249,14 @@ vmx_init_mem (uint32 cpu)
    * sandbox. This way, shared driver efficiency can be improved.
    */
   for (i = 1; i < (APIC_VIRT_ADDR >> 22); i++) {
-    if ((i >= (PHY_SHARED_MEM_POOL_START >> 22)) ||
+    if ((i >= (PHY_SHARED_MEM_POOL_START >> 22)) &&
         (i < ((PHY_SHARED_MEM_POOL_START + SHARED_MEM_POOL_SIZE) >> 22))) {
       virt_pgd_new[i] = ((i << 22) + 0x83);
+#ifdef USE_LINUX_SANDBOX
+    } else if ((i >= (LINUX_KERNEL_LOAD_VA >> 22)) &&
+               (i < ((LINUX_KERNEL_LOAD_VA + LINUX_KERNEL_LOAD_SIZE) >> 22))) {
+      virt_pgd_new[i] = ((i << 22) + 0x83);
+#endif
     } else {
       virt_pgd_new[i] = 0;
     }
@@ -265,11 +273,16 @@ vmx_init_mem (uint32 cpu)
   /* Restore Paging Structures for Host */
   virt_pgd[0] = bios_backup;
   for (i = 1; i < (APIC_VIRT_ADDR >> 22); i++) {
-    if ((i >= (PHY_SHARED_MEM_POOL_START >> 22)) ||
+    if ((i >= (PHY_SHARED_MEM_POOL_START >> 22)) &&
         (i < ((PHY_SHARED_MEM_POOL_START + SHARED_MEM_POOL_SIZE) >> 22))) {
-      virt_pgd_new[i] = ((i << 22) + 0x83);
+      virt_pgd[i] = ((i << 22) + 0x83);
+#ifdef USE_LINUX_SANDBOX
+    } else if ((i >= (LINUX_KERNEL_LOAD_VA >> 22)) &&
+               (i < ((LINUX_KERNEL_LOAD_VA + LINUX_KERNEL_LOAD_SIZE) >> 22))) {
+      virt_pgd[i] = ((i << 22) + 0x83);
+#endif
     } else {
-      virt_pgd_new[i] = 0;
+      virt_pgd[i] = 0;
     }
   }
   flush_tlb_all ();
@@ -536,7 +549,7 @@ vmx_init_ept (uint32 cpu)
           memtype = def_memtype;
 
           /*--!!-- NOTICE
-           * OK, this chunck of code to set memory type according to MTRRs is a
+           * OK, this chunk of code to set memory type according to MTRRs is a
            * real pain... It works on all the platforms we had in the lab. But
            * double check this if the boot process is extremely slow, the system
            * halts unpredictably or a ping round-trip time without kernel debug
@@ -554,47 +567,47 @@ vmx_init_ept (uint32 cpu)
             /* 512 KB IA32_MTRR_FIX64K */
             if (k < 128) {
               sub_index = k * 0x1000;
-              sub_range = index >> 16;
+              sub_range = sub_index >> 16;
               memtype = (mtrr_fix64k >> (sub_range * 8)) & 0xFF;
             } else if (k < 160) {
               sub_index = (k - 128) * 0x1000;
-              sub_range = index >> 14;
+              sub_range = sub_index >> 14;
               memtype = (mtrr_fix16k8 >> (sub_range * 8)) & 0xFF;
             } else if (k < 192) {
               sub_index = (k - 160) * 0x1000;
-              sub_range = index >> 14;
+              sub_range = sub_index >> 14;
               memtype = (mtrr_fix16kA >> (sub_range * 8)) & 0xFF;
             } else if (k < 200) {
               sub_index = (k - 192) * 0x1000;
-              sub_range = index >> 12;
+              sub_range = sub_index >> 12;
               memtype = (mtrr_fix4kC0 >> (sub_range * 8)) & 0xFF;
             } else if (k < 208) {
               sub_index = (k - 200) * 0x1000;
-              sub_range = index >> 12;
+              sub_range = sub_index >> 12;
               memtype = (mtrr_fix4kC8 >> (sub_range * 8)) & 0xFF;
             } else if (k < 216) {
               sub_index = (k - 208) * 0x1000;
-              sub_range = index >> 12;
+              sub_range = sub_index >> 12;
               memtype = (mtrr_fix4kD0 >> (sub_range * 8)) & 0xFF;
             } else if (k < 224) {
               sub_index = (k - 216) * 0x1000;
-              sub_range = index >> 12;
+              sub_range = sub_index >> 12;
               memtype = (mtrr_fix4kD8 >> (sub_range * 8)) & 0xFF;
             } else if (k < 232) {
               sub_index = (k - 224) * 0x1000;
-              sub_range = index >> 12;
+              sub_range = sub_index >> 12;
               memtype = (mtrr_fix4kE0 >> (sub_range * 8)) & 0xFF;
             } else if (k < 240) {
               sub_index = (k - 232) * 0x1000;
-              sub_range = index >> 12;
+              sub_range = sub_index >> 12;
               memtype = (mtrr_fix4kE8 >> (sub_range * 8)) & 0xFF;
             } else if (k < 248) {
               sub_index = (k - 240) * 0x1000;
-              sub_range = index >> 12;
+              sub_range = sub_index >> 12;
               memtype = (mtrr_fix4kF0 >> (sub_range * 8)) & 0xFF;
             } else {
               sub_index = (k - 248) * 0x1000;
-              sub_range = index >> 12;
+              sub_range = sub_index >> 12;
               memtype = (mtrr_fix4kF8 >> (sub_range * 8)) & 0xFF;
             }
           }
@@ -634,6 +647,14 @@ vmx_init_ept (uint32 cpu)
               pt[k] = (k << 12) | (memtype << 3) | EPT_ALL_ACCESS;
             }
           }
+#ifdef USE_LINUX_SANDBOX
+          if (cpu == LINUX_SANDBOX) {
+            if ((index >= (1 << 20)) && (index <= LINUX_SANDBOX_KERN_OFFSET)) {
+	      pt[k] = (index + SANDBOX_KERN_OFFSET * (LINUX_SANDBOX + 1))
+	              | (memtype << 3) | EPT_ALL_ACCESS;
+	    }
+          }
+#endif
         }
 
         pd[j] = pt_frame | (0 << 7) | EPT_ALL_ACCESS;
@@ -675,6 +696,15 @@ vmx_init_ept (uint32 cpu)
               pt[k] = index | (memtype << 3) | EPT_ALL_ACCESS;
             }
           }
+
+#ifdef USE_LINUX_SANDBOX
+          if (cpu == LINUX_SANDBOX) {
+            if ((index >= (1 << 20)) && (index <= LINUX_SANDBOX_KERN_OFFSET)) {
+	      pt[k] = (index + SANDBOX_KERN_OFFSET * (LINUX_SANDBOX + 1))
+	              | (memtype << 3) | EPT_ALL_ACCESS;
+	    }
+          }
+#endif
         }
 
         pd[j] = pt_frame | (0 << 7) | EPT_ALL_ACCESS;

@@ -48,6 +48,7 @@
 /* Software VM-Exit reasons */
 #define VM_EXIT_REASON_MIGRATION     0x0001  /* Process migration */
 #define VM_EXIT_REASON_GET_HPA       0x0002  /* Get HPA for a given GPA */
+#define VM_EXIT_REASON_LINUX_BOOT    0x0003  /* Boot Linux sandbox */
 
 extern bool shared_driver_available;
 
@@ -66,7 +67,7 @@ typedef struct
 } virtual_machine;
 
 #define VM_REG(n) ((((uint32 *) (&vm->guest_regs)))[7 - (n)])
-static char *gp_register_names[] = {
+static const char gp_register_names[][4] = {
    "edi", "esi", "ebp", "esp", "ebx", "edx", "ecx", "eax"
 };
 #define VM_REG_NAME(n) (gp_register_names[7 - n])

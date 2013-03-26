@@ -39,14 +39,13 @@
 
 /* Starting physical address of this pool. Let's put it together with shared memory. */
 /* See shm.h for detail about the location. */
-
-/* --!!-- This value is now hard coded in boot.S. So, if you change it here, also fix
- * boot.S. We'll fix this later. (0x9F000000) */
 #define PHY_SHARED_MEM_POOL_START   \
     (PHYS_SHARED_MEM_HIGH - SHARED_MEM_SIZE - SHARED_MEM_POOL_SIZE)
 
 /* SHARED_MEM_POOL_INDEX_MAX 32-bit integers bitmap for SHARED_MEM_POOL_SIZE of memory */
 #define SHARED_MEM_POOL_INDEX_MAX     (SHARED_MEM_POOL_SIZE >> 17)
+
+#ifndef __ASSEMBLER__
 
 #define SPOW2_BITMAP_SET(table,index)                                \
     ((table)[((index) - (PHY_SHARED_MEM_POOL_START >> 12))>>5] |=    \
@@ -63,6 +62,8 @@
 void shm_kmalloc_init (void);
 void* shm_kmalloc(uint32_t size);
 void shm_kfree(void* ptr);
+
+#endif /* __ASSEMBLER__ */
 
 #endif
 

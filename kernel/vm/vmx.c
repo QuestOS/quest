@@ -31,7 +31,11 @@
 #include "vm/shm.h"
 #include "vm/migration.h"
 
-#define DEBUG_VMX 2
+#ifdef USE_LINUX_SANDBOX
+#include "vm/linux_boot.h"
+#endif
+
+#define DEBUG_VMX 3
 #define VMX_EPT
 
 #if DEBUG_VMX > 2
@@ -232,7 +236,7 @@ vmx_global_init (void)
 {
   DLOG ("global_init");
   /* Map real-mode code at virtual address 0x8000 for VM86 task */
-  extern uint32 _code16start, _code16_pages, _code16physicalstart;
+  //extern uint32 _code16start, _code16_pages, _code16physicalstart;
   uint32 phys_pgt = (uint32) get_phys_addr (vmx_vm86_pgt);
   uint32 phys_pgd = (uint32) get_pdbr ();
   uint32 *virt_pgd = map_virtual_page (phys_pgd | 3);
@@ -246,11 +250,11 @@ vmx_global_init (void)
   for (i=0; i<256; i++)
     vmx_vm86_pgt[i] = (i << 12) | 7;
   /* but then re-map pages starting at 0x8000 to our real-mode section */
-  for (i=0; i<((uint32) &_code16_pages); i++)
-    vmx_vm86_pgt[((((uint32) &_code16start) >> 12) & 0x3FF) + i] =
-      ((uint32) &_code16physicalstart + (i << 12)) | 7;
+  //for (i=0; i<((uint32) &_code16_pages); i++)
+  //  vmx_vm86_pgt[((((uint32) &_code16start) >> 12) & 0x3FF) + i] =
+  //    ((uint32) &_code16physicalstart + (i << 12)) | 7;
   /* and unmap page 0 so that null pointer dereferences cause faults */
-  vmx_vm86_pgt[0] = 0;
+  //vmx_vm86_pgt[0] = 0;
 
   flush_tlb_all ();
 
@@ -570,6 +574,8 @@ vmx_create_pmode_VM (virtual_machine *vm, u32 rip0, u32 rsp0)
   vmwrite (0, VMXENC_PAGE_FAULT_ERRCODE_MATCH);
   vmwrite (0, VMXENC_CR0_GUEST_HOST_MASK); /* all bits "owned" by guest */
   vmwrite (0, VMXENC_CR0_READ_SHADOW);
+  vmwrite (0x2000, VMXENC_CR4_GUEST_HOST_MASK); /* VMXE "owned" by host */
+  vmwrite (0, VMXENC_CR4_READ_SHADOW);
 
   return 0;
 
@@ -577,6 +583,27 @@ vmx_create_pmode_VM (virtual_machine *vm, u32 rip0, u32 rsp0)
   vmx_destroy_VM (vm);
   return -1;
 }
+
+#ifdef USE_LINUX_SANDBOX
+static void
+linux_vm_init (uint32 kernel_addr, int kernel_size)
+{
+  int real_mode_size = 0;
+  uint32 exec_ctrls2 = 0;
+  linux_setup_header_t * setup_header = NULL;
+  setup_header = (linux_setup_header_t *) (((uint8 *) kernel_addr) + LINUX_SETUP_HEADER_OFFSET);
+  /* TODO:Setup EPT for Linux sandbox */
+  /* TODO:Enable Unrestricted Guest */
+  real_mode_size = (setup_header->setup_sects + 1) * 512;
+  /* Move real mode Linux code to 0x00090000 */
+  memcpy ((void *) 0x90000, (const void *) kernel_addr, real_mode_size);
+  logger_printf ("%d bytes copied to 0x90000\n", real_mode_size);
+  exec_ctrls2 = vmread (VMXENC_PROCBASED_VM_EXEC_CTRLS2);
+  vmwrite (exec_ctrls2 | 0x80, VMXENC_PROCBASED_VM_EXEC_CTRLS2);
+  exec_ctrls2 = vmread (VMXENC_PROCBASED_VM_EXEC_CTRLS2);
+  logger_printf ("exec_ctrls2=0x%X\n", exec_ctrls2);
+}
+#endif
 
 /* --YL-- We use two global variables for input and output of vm_exit routine. These
  * variables should be placed in sandbox kernel memory instead of monitor and some
@@ -600,11 +627,21 @@ vmx_process_exit (uint32 status)
     void * ptss;
     u64 dl;
   };
+  struct _linux_boot_param {
+    uint32 kernel_addr;
+    int size;
+  };
   struct _tm_param * param = (struct _tm_param *) vm_exit_input_param;
   DLOG ("Sandbox%d: performing VM-Exit Status: 0x%X Input: 0x%X\n",
         cpu, status, vm_exit_input_param);
 
   switch (status) {
+    case VM_EXIT_REASON_LINUX_BOOT:
+#ifdef USE_LINUX_SANDBOX
+      linux_vm_init (((struct _linux_boot_param *) vm_exit_input_param)->kernel_addr,
+                     ((struct _linux_boot_param *) vm_exit_input_param)->size);
+#endif
+      break;
     case VM_EXIT_REASON_MIGRATION:
 #ifdef USE_VMX
       if (new_request) {
@@ -929,8 +966,8 @@ vmx_start_VM (virtual_machine *vm)
     /* VM-exited */
     uint32 reason = vmread (VMXENC_EXIT_REASON);
     uint32 intinf = vmread (VMXENC_VM_EXIT_INTERRUPT_INFO);
-#if DEBUG_VMX > 1
     uint32 qualif = vmread (VMXENC_EXIT_QUAL);
+#if DEBUG_VMX > 1
     uint32 ercode = vmread (VMXENC_VM_EXIT_INTERRUPT_ERRCODE);
     uint32 inslen = vmread (VMXENC_VM_EXIT_INSTR_LEN);
     uint32 insinf = vmread (VMXENC_VM_EXIT_INSTR_INFO);
@@ -1048,6 +1085,19 @@ vmx_start_VM (virtual_machine *vm)
       logger_printf ("EPT misconfiguration:\n  VMXENC_EPT_PTR=0x%p\n",
                      vmread (VMXENC_EPT_PTR));
 #endif
+    } else if (reason == 0x37) {
+      /* Trying to execute XSETBV instruction */
+      logger_printf ("Guest trying to execute XSETBV instruction\n");
+      /* TODO: Try to change XCR0 somewhere in VMCS Guest State if this breaks anything */
+      vmwrite (vmread (VMXENC_GUEST_RIP) + inslen, VMXENC_GUEST_RIP); /* skip instruction */
+      goto enter;               /* resume guest */
+    } else if (reason == 0x1C) {
+      /* MOV to control register */
+      logger_printf ("GUEST-STATE: EAX=0x%X, EBX=0x%X, ECX=0x%X, EDX=0x%X\n",
+                     vm->guest_regs.eax, vm->guest_regs.ebx, vm->guest_regs.ecx,
+                     vm->guest_regs.edx);
+      vmwrite (vmread (VMXENC_GUEST_RIP) + inslen, VMXENC_GUEST_RIP); /* skip instruction */
+      goto enter;               /* resume guest */
     } else {
       /* Not a vm86 related VM-EXIT */
 #if DEBUG_VMX > 1
