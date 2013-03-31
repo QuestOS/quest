@@ -51,7 +51,7 @@ static inline int usb_write(int fd, void* buf, int data_len)
   return usb_syscall(fd, USB_USER_WRITE, buf, data_len);
 }
 
-static inline int usb_open(void* name)
+static inline int usb_open(char* name)
 {
   return usb_syscall(0, USB_USER_OPEN, name, 0);
 }

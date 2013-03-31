@@ -33,6 +33,9 @@ $(LIB_DEST)/libc.a: $(LIBC_BUILD_DIR)/Makefile $(ARCH_INDEPENDENT_QUEST_LIBC_FIL
 	cd $(ARCH_INDEPENDENT_QUEST_FILES); find . -type d -exec mkdir -p $(INC_DEST)/{} \;
 	cd $(ARCH_INDEPENDENT_QUEST_FILES); find . -type f -name "*.[h]" \
 		-exec cp {} $(INC_DEST)/{} \;
+	cd $(ARCH_DEPENDENT_QUEST_FILES); find . -type d -exec mkdir -p $(INC_DEST)/{} \;
+	cd $(ARCH_DEPENDENT_QUEST_FILES); find . -type f -name "*.[h]" \
+		-exec cp {} $(INC_DEST)/{} \;
 
 
 $(LIBC_BUILD_DIR)/Makefile:
