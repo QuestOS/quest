@@ -26,32 +26,31 @@
 #define HOST_DEVICE_NUM 1
 //#define HOST_DEVICE_NUM 2
 
-//#define OPEN_BUF_SIZE 544868
-//#define OPEN_BUF_SIZE 1024
-#define OPEN_BUF_SIZE 25600
 
-#define SECONDARY_BUFFER_SIZE 4096
+#define BUFFER_SIZE 4096
 
-char open_buf[OPEN_BUF_SIZE];
-char rw_buf1[SECONDARY_BUFFER_SIZE];
-char rw_buf2[SECONDARY_BUFFER_SIZE];
+char rw_buf1[BUFFER_SIZE];
+char rw_buf2[BUFFER_SIZE];
 
 int main()
 {
   int res;
+  int beagle_fd, net2280_fd;
   printf("usb_gadget_test started\n");
   
-  if(usb_open("net2280_communication0") < 0) {
-    printf("Failed to open gadget\n");
-    while(1);
-  }
-
+ retry_net2280_open:
+  if(net2280_fd = usb_open("net2280_communication0") < 0) {
+    printf("Failed to open net2280 device\n");
+    usleep(1000000);
+    goto retry_net2280_open;
+  }  
   printf("Gadget opened\n");
- retry_open:
-  if(usb_open("net2280_communication0") < 0) {
+
+ retry_beagle_open:
+  if(beagle_fd = usb_open("beagle_communication0") < 0) {
     printf("Failed to open device %d\n", HOST_DEVICE_NUM);
     usleep(1000000);
-    goto retry_open;
+    goto retry_beagle_open;
   }
 
   printf("Device %d opened\n", HOST_DEVICE_NUM);
@@ -62,7 +61,7 @@ int main()
     int i;
 #define INCREMENTS 1
     for(i = 0; i < INCREMENTS; ++i) {
-      res = usb_write(HOST_DEVICE_NUM, rw_buf1, SECONDARY_BUFFER_SIZE / INCREMENTS);
+      res = usb_write(HOST_DEVICE_NUM, rw_buf1, BUFFER_SIZE / INCREMENTS);
       usleep(1000000);
       if(res < 0) {
         printf("Failed to write to device %d\n", HOST_DEVICE_NUM);
@@ -75,7 +74,7 @@ int main()
     
 
 #if 0
-    res = usb_write(HOST_DEVICE_NUM, rw_buf1, SECONDARY_BUFFER_SIZE);
+    res = usb_write(HOST_DEVICE_NUM, rw_buf1, BUFFER_SIZE);
     if(res < 0) {
       printf("Failed to write to device %d\n", HOST_DEVICE_NUM);
       while(1);
@@ -85,14 +84,14 @@ int main()
 #endif 
     usleep(1000000);
     while(1) {
-      res = usb_read(0, rw_buf2, SECONDARY_BUFFER_SIZE);
+      res = usb_read(0, rw_buf2, BUFFER_SIZE);
       if(res != 0) {
         printf("usb read returned %d\n", res);
       }
     }
   }
   else {
-    res = usb_write(0, rw_buf1, SECONDARY_BUFFER_SIZE);
+    res = usb_write(0, rw_buf1, BUFFER_SIZE);
     if(res < 0) {
       printf("Failed to write to device 0\n");
       while(1);
@@ -101,7 +100,7 @@ int main()
     printf("usb write on 0 returned %d\n", res);
     
     usleep(1000000);
-    res = usb_read (HOST_DEVICE_NUM, rw_buf2, SECONDARY_BUFFER_SIZE);
+    res = usb_read (HOST_DEVICE_NUM, rw_buf2, BUFFER_SIZE);
   }
 
   printf("usb read returned %d\n", res);

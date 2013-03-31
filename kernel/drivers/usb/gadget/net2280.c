@@ -972,11 +972,6 @@ static int net2280_read(USB_DEVICE_INFO* device, int dev_num, char* buf, int dat
 }
 
 static USB_DRIVER net2280_driver = {
-#ifdef NET2280_MIGRATION_MODE
-  .dev_root_name = "net2280_migration",
-#else
-  .dev_root_name = "net2280_communication",
-#endif
   .open = net2280_open,
   .read = net2280_read,
   .write = net2280_write
@@ -3619,7 +3614,14 @@ static void net2280_init_thread(struct net2280* net2280_dev)
 #  endif
 #endif
 
-  net2280_dev_num = usb_register_device(temp, &net2280_driver);
+  net2280_dev_num = usb_register_device(temp, &net2280_driver,
+#ifdef NET2280_MIGRATION_MODE
+                                        "net2280_migration"
+#else
+                                        "net2280_communication"
+#endif
+                                        );
+  
   if(net2280_dev_num < 0) {
     DLOG("Failed to register net2280 device");
     panic("Failed to register net2280 device");

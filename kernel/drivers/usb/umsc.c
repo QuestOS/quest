@@ -290,7 +290,7 @@ umsc_probe (USB_DEVICE_INFO *info, USB_CFG_DESC *cfgd, USB_IF_DESC *ifd)
     return FALSE;
   }
 
-  usb_register_device(info, &umsc_driver);
+  usb_register_device(info, &umsc_driver, "umsc");
   
   DLOG("endpoint packet size = %d", ep[0].wMaxPacketSize);
   maxpkt = ep[0].wMaxPacketSize;

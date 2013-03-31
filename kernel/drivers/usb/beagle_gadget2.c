@@ -356,7 +356,7 @@ static bool gadget2_probe (USB_DEVICE_INFO *device, USB_CFG_DESC *cfg,
       device->ep_out[usb_pipeendpoint(sub_dev->pipe)].desc = *ept;
     }
 
-    dev_num = usb_register_device(device, &gadget2_driver);
+    dev_num = usb_register_device(device, &gadget2_driver, "beagle2_communication");
 
     if(dev_num < 0) {
       DLOG("Failed to register device");

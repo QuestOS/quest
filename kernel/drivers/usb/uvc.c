@@ -344,7 +344,6 @@ static int uvc_write(USB_DEVICE_INFO* device, int dev_num, char* buf, int data_l
 }
 
 static USB_DRIVER uvc_driver = {
-  .dev_root_name = "camera",
   .probe = uvc_probe,
   .open = uvc_open,
   .close = uvc_close,
@@ -665,7 +664,7 @@ uvc_probe (USB_DEVICE_INFO *dev, USB_CFG_DESC *cfg, USB_IF_DESC *ifd)
     return FALSE;
   }
   
-  usb_register_device(dev, &uvc_driver);
+  usb_register_device(dev, &uvc_driver, "camera");
   ((uvc_device_info_t*)dev->device_priv)->initialised = TRUE;
 
 #ifdef UVC_TEST_ENABLED

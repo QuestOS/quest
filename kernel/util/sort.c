@@ -112,7 +112,7 @@ void sort(void *base, size_t num, size_t size,
 }
 
 
-#if 1
+#ifdef DEBUG_SORT
 /* a simple boot-time regression test */
 
 int cmpint(const void *a, const void *b)

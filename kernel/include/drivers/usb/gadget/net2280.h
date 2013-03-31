@@ -39,7 +39,7 @@
 #include <mem/virtual.h>
 #include <smp/spinlock.h>
 
-#define NET2280_MIGRATION_MODE
+//#define NET2280_MIGRATION_MODE
 #define NET2280_IO_VCPU
 //#define NET2280_MAIN_VCPU
 

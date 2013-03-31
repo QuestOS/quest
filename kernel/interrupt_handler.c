@@ -448,6 +448,8 @@ syscall_usb (u32 eax, u32 ebx, u32 ecx, u32 edx, u32 esi)
   int ret;
   int device_id;
   quest_tss * tss;
+
+  /* -- EM -- Need to do error checking of arguments */
   
   task_id cur = percpu_read (current_task);
 
@@ -482,7 +484,12 @@ syscall_usb (u32 eax, u32 ebx, u32 ecx, u32 edx, u32 esi)
     /* Failed to open device or successfully closed device, free fd table entry */
     tss->fd_table[fd].entry = NULL;
   }
-  return ret;
+  if(ret >= 0 && operation == USB_USER_OPEN) {
+    return ret;
+  }
+  else {
+    return ret;
+  }
 }
 
 struct syscall {

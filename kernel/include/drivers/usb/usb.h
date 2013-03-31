@@ -502,7 +502,6 @@ typedef struct usb_device
   uint port_num;
 
   struct _USB_DRIVER* driver;
-  char* name;
   void* device_priv; /* A place for a device to put its own private data */
   
   /*
@@ -599,7 +598,7 @@ typedef struct _USB_DRIVER
 
 bool get_usb_device_id(char* name);
 
-int usb_register_device(USB_DEVICE_INFO* device, USB_DRIVER* driver);
+int usb_register_device(USB_DEVICE_INFO* device, USB_DRIVER* driver, char* base_name);
 
 bool usb_register_driver (USB_DRIVER *driver);
 
