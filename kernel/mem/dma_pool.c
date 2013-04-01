@@ -15,15 +15,36 @@
  *  along with this program.  If not, see <http://www.gnu.org/licenses/>.
  */
 
-#ifndef _MEM_H_
-#define _MEM_H_
+#include "types.h"
+#include "arch/i386.h"
+#include "mem/mem.h"
+#include "kernel.h"
 
-#include "mem/physical.h"
-#include "mem/virtual.h"
-#include "mem/malloc.h"
-#include "mem/dma_pool.h"
 
-#endif
+struct dma_pool* dma_pool_create(const char *name,
+				 size_t size, size_t align, size_t alloc)
+{
+  return NULL;
+}
+
+void *dma_pool_alloc(struct dma_pool *pool, 
+		     phys_addr_t *dma_handle)
+{
+  return NULL;
+}
+
+void dma_pool_free(struct dma_pool *pool, void *vaddr,
+		   phys_addr_t addr)
+{
+}
+
+void dma_pool_destroy(struct dma_pool *pool)
+{
+}
+
+
+
+
 
 /* 
  * Local Variables:
@@ -33,5 +54,3 @@
  * c-basic-offset: 2
  * End: 
  */
-
-/* vi: set et sw=2 sts=2: */
