@@ -18,12 +18,21 @@
 #include "kernel.h"
 #include "mem/mem.h"
 #include "smp/spinlock.h"
+#include <util/printf.h>
+
+//#define DEBUG_POW2
+
+#ifdef DEBUG_POW2
+#define DLOG(fmt,...) DLOG_PREFIX("pow2",fmt,##__VA_ARGS__)
+#else
+#define DLOG(fmt,...) ;
+#endif
 
 /* power-of-2 memory allocator works with blocks in increasing sizes
  * in powers of 2, from 2^POW2_MIN_POW to 2^POW2_MAX_POW */
 
 #define POW2_MIN_POW 5
-#define POW2_MAX_POW 16
+#define POW2_MAX_POW 20
 /* NB: the value of POW2_MAX_POW has to be smaller than 2^POW2_MIN_POW
  * because it needs to be able to fit within the POW2_MASK_POW.  Also
  * keep in mind it needs to be able to find a contiguous virtual
@@ -76,7 +85,16 @@ pow2_add_free_block (uint8 * ptr, uint8 index)
         hdr = hdr->next;
       } else {
         /* End of the list -- make a new header */
-        hdr->next = map_malloc_pool_virtual_page (alloc_phys_frame () | 3);
+        uint32 frame = alloc_phys_frame ();
+        if(frame == 0xFFFFFFFF) {
+          DLOG("Failed to allocate physical frame in %s", __FUNCTION__);
+          panic("Failed to allocate physical frame in pow2_add_free_block");
+        }
+        if((hdr->next = map_malloc_pool_virtual_page (frame | 3)) == NULL) {
+          DLOG("Failed to map malloc pool frame");
+          panic("Failed to map malloc pool frame");
+        }
+
         memset (hdr->next, 0, 0x1000);
         hdr = hdr->next;
       }
@@ -118,8 +136,13 @@ pow2_get_free_block (uint8 index)
       } else {
         /* grab new pages */
         int i;
-        for (i = 0; i < POW2_MAX_POW_FRAMES; i++)
+        for (i = 0; i < POW2_MAX_POW_FRAMES; i++) {
           pow2_tmp_phys_frames[i] = alloc_phys_frame () | 3;
+          if(pow2_tmp_phys_frames[i] == 0xFFFFFFFF) {
+            DLOG("Failed to allocate physical frame in %s", __FUNCTION__);
+            panic("Failed to allocate physical frame for malloc pool");
+          }
+        }
         return map_malloc_pool_virtual_pages (pow2_tmp_phys_frames, POW2_MAX_POW_FRAMES);
       }
     } else if (hdr->count < POW2_MAX_COUNT || hdr->next == NULL) {
@@ -148,7 +171,18 @@ pow2_insert_used_table (uint8 * ptr, uint8 index)
   if (pow2_used_count >= (pow2_used_table_pages * 0x400)) {
     uint32 count = pow2_used_table_pages + 1;
     uint32 frames = alloc_phys_frames (count), old_frames;
-    void *virt = map_contiguous_malloc_pool_virtual_pages (frames | 3, count);
+    void *virt;
+
+    if(frames == 0xFFFFFFFF) {
+      DLOG("Failed to allocate physical frames in %s", __FUNCTION__);
+      panic("Failed to allocate physical frames for malloc pool");
+    }
+
+    virt = map_contiguous_malloc_pool_virtual_pages (frames | 3, count);
+    if(virt == NULL) {
+      DLOG("Failed to map frames for malloc pool in %s", __FUNCTION__);
+      panic("Failed to map frames for malloc pool");
+    }
     memcpy (virt, pow2_used_table, sizeof (uint32) * pow2_used_count);
     old_frames = (uint32) get_phys_addr (pow2_used_table);
     unmap_malloc_pool_virtual_pages ((void *) pow2_used_table, pow2_used_table_pages);
@@ -194,9 +228,20 @@ pow2_compute_index (uint32 size)
 int
 pow2_alloc (uint32 size, uint8 ** ptr)
 {
-  uint8 index = pow2_compute_index (size);
+  uint8 index;
+
+  if(size > POW2_MAX_SIZE) {
+    DLOG("tried to allocate something larger "
+                "than the pow2 allocator allows");
+    *ptr = NULL;
+    return -1;
+  }
+  index = pow2_compute_index (size);
   spinlock_lock (&pow2_lock);
   *ptr = pow2_get_free_block (index);
+  if(*ptr == NULL) {
+    return -1;
+  }
   pow2_insert_used_table (*ptr, index);
   spinlock_unlock (&pow2_lock);
   if(*ptr != NULL) {
