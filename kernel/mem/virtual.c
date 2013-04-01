@@ -24,6 +24,21 @@
 
 extern uint32 _kernelstart;
 
+//#define DEBUG_VIRTUAL
+//#define DEBUG_VIRTUAL_VERBOSE
+
+#ifdef DEBUG_VIRTUAL
+#define DLOG(fmt, ...) com1_printf(fmt, ##__VA_ARGS__)
+#else
+#define DLOG(fmt, ...) ;
+#endif
+
+#ifdef DEBUG_VIRTUAL_VERBOSE
+#define DLOGV(fmt, ...) com1_printf(fmt, ##__VA_ARGS__)
+#else
+#define DLOGV(fmt, ...) ;
+#endif
+
 
 /* Find free virtual page and map it to a corresponding physical frame
  *
@@ -158,6 +173,180 @@ unmap_virtual_pages (void *virt_addr, uint32 count)
   for (j = 0; j < count; j++)
     unmap_virtual_page (virt_addr + j * 0x1000);
 }
+
+/* ******************************************** */
+
+/* Find free virtual page and map it to a corresponding physical frame
+ *
+ * Returns virtual address
+ *
+ */
+void *
+map_pool_virtual_page (uint32 phys_frame, uint32 start_dir_entry, uint32 num_dir_entries,
+                       uint32* page_table_virtual_addrs[])
+{
+  uint i, j;
+  void *va;
+
+  for(j = 0; j < num_dir_entries; ++j) {
+    uint32* page_table = page_table_virtual_addrs[j];
+    for (i = 0; i < 0x400; i++)
+      if (!page_table[i]) {       /* Free page */
+        page_table[i] = phys_frame;
+        DLOGV("In %s, pt entry[%d] = 0x%X\n", __FUNCTION__, i, page_table[i]);
+        va = (char *) ((start_dir_entry + j) * 0x400000) + (i << 12);
+        
+        /* Invalidate page in case it was cached in the TLB */
+        invalidate_page (va);
+
+        DLOGV("mapped 0x%X\n", ((start_dir_entry + j) * 0x400000) + (i << 12));
+        memset(va, 0, 4096);
+        
+        return va;
+      }
+  }
+  
+  return NULL;                  /* Invalid address */
+}
+
+
+/* Map non-contiguous physical memory to contiguous virtual memory */
+void *
+map_pool_virtual_pages (uint32 * phys_frames, uint32 count,
+                        uint32 start_dir_entry, uint32 num_dir_entries,
+                        uint32* page_table_virtual_addrs[])
+{
+  uint i, j, k;
+  void *va;
+
+  if (count == 0)
+    return NULL;
+
+  /* -- EM -- Right now for simplicity we do not cross 4MB regions
+     when trying to map multiple pages */
+  for(k = 0; k < num_dir_entries; ++k) {
+    uint32 *page_table = page_table_virtual_addrs[k];
+    for (i = 0; i < 0x400 - count + 1; i++) {
+      if (!page_table[i]) {       /* Free page */
+        for (j = 0; j < count; j++) {
+          if (page_table[i + j]) {
+            /* Not enough pages in this window */
+            i = i + j;
+            goto keep_searching;
+          }
+        }
+        
+        for (j = 0; j < count; j++) {
+          page_table[i + j] = phys_frames[j];
+          
+        }
+        
+        va = (char *) ((start_dir_entry + k) * 0x400000) + (i << 12);
+        
+        /* Invalidate page in case it was cached in the TLB */
+        for (j = 0; j < count; j++) {
+          invalidate_page (va + j * 0x1000);
+          DLOGV("mapped 0x%X\n", va + j * 0x1000);
+          memset(va + j * 0x1000, 0, 4096);
+          DLOGV("In %s, pt entry[%d] = 0x%X\n", __FUNCTION__, i+j, page_table[i+j]);
+        }
+        
+        return va;
+      }
+    keep_searching:
+      ;
+    }
+  }
+  
+  return NULL;                  /* Invalid address */
+}
+
+/* Map contiguous physical memory to contiguous virtual memory */
+void *
+map_contiguous_pool_virtual_pages (uint32 phys_frame, uint32 count,
+                                   uint32 start_dir_entry, uint32 num_dir_entries,
+                                   uint32* page_table_virtual_addrs[])
+{
+  uint i, j, k;
+  void *va;
+
+  if (count == 0)
+    return NULL;
+
+  /* -- EM -- Right now for simplicity we do not cross 4MB regions
+     when trying to map multiple pages */
+  for(k = 0; k < num_dir_entries; ++k) {
+    uint32 *page_table = page_table_virtual_addrs[k];
+    for (i = 0; i < 0x400 - count + 1; i++) {
+      if (!page_table[i]) {       /* Free page */
+        for (j = 0; j < count; j++) {
+          if (page_table[i + j]) {
+            /* Not enough pages in this window */
+            i = i + j;
+            goto keep_searching;
+          }
+        }
+        
+        for (j = 0; j < count; j++) {
+          page_table[i + j] = (phys_frame + j * 0x1000);
+        }
+        
+        va = (char *) ((start_dir_entry + k) * 0x400000) + (i << 12);
+        
+        /* Invalidate page in case it was cached in the TLB */
+        for (j = 0; j < count; j++) {
+          invalidate_page (va + j * 0x1000);
+          memset(va + j * 0x1000, 0, 4096);
+          DLOGV("mapped 0x%X\n", va + j * 0x1000);
+          DLOGV("In %s, pt entry[%d] = 0x%X\n", __FUNCTION__, i+j, page_table[i+j]);
+        }
+        
+        return va;
+      }
+    keep_searching:
+      ;
+    }
+  }
+  return NULL;                  /* Invalid address */
+}
+
+
+/*
+ * Release previously mapped virtual page
+ */
+void
+unmap_pool_virtual_page (void *virt_addr, uint32 start_dir_entry, uint32 num_dir_entries,
+                         uint32* page_table_virtual_addrs[])
+{
+  uint i;
+  for(i = 0; i < num_dir_entries; ++i) {
+
+    if((0xFFC00000 & (uint32)virt_addr) == ((start_dir_entry + i) * 0x400000)) {
+      uint32 *page_table = page_table_virtual_addrs[i];
+    
+      page_table[((uint32) virt_addr >> 12) & 0x3FF] = 0;
+      
+      /* Invalidate page in case it was cached in the TLB */
+      invalidate_page (virt_addr);
+      return;
+    }
+  }
+  panic("Failed to unmap page in pool");
+}
+
+void
+unmap_pool_virtual_pages (void *virt_addr, uint32 count, uint32 start_dir_entry, uint32 num_dir_entries,
+                          uint32* page_table_virtual_addrs[])
+{
+  uint j;
+  for (j = 0; j < count; j++)
+    unmap_pool_virtual_page (virt_addr + j * 0x1000, start_dir_entry, num_dir_entries,
+                             page_table_virtual_addrs);
+}
+
+
+
+/* ******************************************** */
 
 
 void *

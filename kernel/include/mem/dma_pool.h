@@ -36,6 +36,7 @@
 #include "types.h"
 #include "arch/i386.h"
 #include "mem/mem.h"
+#include "util/list.h"
 
 
 #define DMA_POOL_NUM_PAGE_TABLES ((uint32)1)
@@ -47,11 +48,22 @@
 #define DMA_POOL_START_PAGE_TABLE					\
   ((uint32)(MALLOC_POOL_LAST_PAGE_TABLE - MALLOC_POOL_NUM_PAGE_TABLES + 1))
 
+typedef struct dma_page {
+  void* virt_addr;
+  phys_addr_t phys_addr;
+  list_head_t chain;
+} dma_page_t;
+
 typedef struct dma_pool {
+  char* name;
+  list_head_t dma_pages;
+  size_t size;
+  size_t align;
+  size_t boundary;
 } dma_pool_t;
 
 struct dma_pool* dma_pool_create(const char *name,
-				 size_t size, size_t align, size_t alloc);
+				 size_t size, size_t align, size_t boundary);
 
 void *dma_pool_alloc(struct dma_pool *pool, 
 		     phys_addr_t *dma_handle);

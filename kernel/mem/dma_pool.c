@@ -19,12 +19,38 @@
 #include "arch/i386.h"
 #include "mem/mem.h"
 #include "kernel.h"
+#include <util/printf.h>
+
+
+#define DEBUG_DMA_POOL
+
+
+#ifdef DEBUG_DMA_POOL
+#define DLOG(fmt,...) DLOG_PREFIX("dma-pool",fmt,##__VA_ARGS__)
+#else
+#define DLOG(fmt,...) ;
+#endif
+
+
 
 
 struct dma_pool* dma_pool_create(const char *name,
-				 size_t size, size_t align, size_t alloc)
+				 size_t size, size_t align, size_t boundary)
 {
-  return NULL;
+  dma_pool_t* pool = kmalloc(sizeof(dma_pool_t) + strlen(name) + 1);
+  if(pool == NULL) return NULL;
+  /* Put the name right after the dma_pool itself, avoid two calls to
+     kmalloc */
+  pool->name = ((char*)pool) + sizeof(dma_pool_t);
+  strcpy(pool->name, name);
+  pool->size = size;
+  pool->align = align;
+  pool->boundary = boundary;
+  INIT_LIST_HEAD(&pool->dma_pages);
+
+  DLOG("dma_pool: name = %s, size = %d, align = %d, boundary = %d",
+       pool->name, pool->size, pool->align, pool->boundary);
+  return pool;
 }
 
 void *dma_pool_alloc(struct dma_pool *pool, 
@@ -40,6 +66,13 @@ void dma_pool_free(struct dma_pool *pool, void *vaddr,
 
 void dma_pool_destroy(struct dma_pool *pool)
 {
+  dma_page_t *page, *temp;
+  
+  list_for_each_entry_safe(page, temp, &pool->dma_pages, chain) {
+    
+  }
+
+  kfree(pool);
 }
 
 
