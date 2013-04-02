@@ -204,6 +204,47 @@ static struct _linux_boot_param {
   int size;
 } exit_param;
 
+#if 0
+static void
+linux_sandbox_mem_check (void)
+{
+  int i = 0;
+  uint8 * vaddr = NULL;
+  uint32 paddr = 0;
+  //extern void * vm_exit_input_param;
+
+  com1_printf ("Check Linux memory region in Sandbox %d\n", get_pcpu_id ());
+  com1_printf ("Clear memory region used by Linux sandbox ... ");
+  for (paddr = LINUX_PHYS_START;
+       paddr < LINUX_SANDBOX_KERN_OFFSET;
+       paddr += 0x1000) {
+    vaddr = (uint8 *) map_virtual_page (paddr | 0x3);
+    //vm_exit_input_param = (void *) paddr;
+    //vm_exit (VM_EXIT_REASON_GET_HPA);
+    memset (vaddr, 0, 0x1000);
+    unmap_virtual_page (vaddr);
+  }
+  com1_printf ("Done!\n");
+
+  sched_usleep (10000000);
+
+  com1_printf ("Validate memory region used by Linux sandbox ... ");
+  for (paddr = LINUX_PHYS_START;
+       paddr < LINUX_SANDBOX_KERN_OFFSET;
+       paddr += 0x1000) {
+    vaddr = (uint8 *) map_virtual_page (paddr | 0x3);
+    for (i = 0; i < 0x1000; i++) {
+      if (vaddr[i]) {
+        com1_printf ("Memory corruption in page frame: 0x%X!!!\n", paddr);
+        break;
+      }
+    }
+    unmap_virtual_page (vaddr);
+  }
+  com1_printf ("Done!\n");
+}
+#endif
+
 static void
 linux_boot_thread (void)
 {
@@ -234,6 +275,8 @@ linux_boot_thread (void)
   //  com1_printf ("PGD Entry %d: %x\n", i, virt_pgd[i]);
   //}
   //for (;;);
+
+  //linux_sandbox_mem_check ();
 
 #ifdef HAS_INITRD
   /* Loading initrd for Linux */

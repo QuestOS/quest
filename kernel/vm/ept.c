@@ -649,7 +649,7 @@ vmx_init_ept (uint32 cpu)
           }
 #ifdef USE_LINUX_SANDBOX
           if (cpu == LINUX_SANDBOX) {
-            if ((index >= (1 << 20)) && (index <= LINUX_SANDBOX_KERN_OFFSET)) {
+            if ((index >= (1 << 20)) && (index < LINUX_SANDBOX_KERN_OFFSET)) {
 	      pt[k] = (index + SANDBOX_KERN_OFFSET * (LINUX_SANDBOX + 1))
 	              | (memtype << 3) | EPT_ALL_ACCESS;
 	    }
@@ -699,7 +699,7 @@ vmx_init_ept (uint32 cpu)
 
 #ifdef USE_LINUX_SANDBOX
           if (cpu == LINUX_SANDBOX) {
-            if ((index >= (1 << 20)) && (index <= LINUX_SANDBOX_KERN_OFFSET)) {
+            if ((index >= (1 << 20)) && (index < LINUX_SANDBOX_KERN_OFFSET)) {
 	      pt[k] = (index + SANDBOX_KERN_OFFSET * (LINUX_SANDBOX + 1))
 	              | (memtype << 3) | EPT_ALL_ACCESS;
 	    }
@@ -774,6 +774,49 @@ get_host_phys_addr (uint32 guest_phys_addr)
   unmap_virtual_page (pml4);
 
   return (uint32) phys;
+}
+
+void
+mask_sandbox (uint32 sandbox)
+{
+  extern uint32 _physicalbootstrapstart;
+
+  int i = 0, j = 0, k = 0;
+  uint32 index = 0;
+  uint32 kernel_phys_start, kernel_phys_end;
+  uint32 pml4_frame = vmread (VMXENC_EPT_PTR);
+  uint64 * pml4 = map_virtual_page ((pml4_frame & 0xFFFFF000) | 3);
+  uint64 * pdpt = NULL, * pd = NULL, * pt = NULL;
+
+  kernel_phys_start = (uint32) &_physicalbootstrapstart +
+                      SANDBOX_KERN_OFFSET * sandbox;
+  /* EPT data structure is not mapped for any sandbox kernel */
+  kernel_phys_end = (uint32) &_physicalbootstrapstart +
+                    SANDBOX_KERN_OFFSET * (sandbox + 1) - EPT_DATA_SIZE;
+
+  pdpt = map_virtual_page ((pml4[0] & 0xFFFFF000) | 3);
+
+  logger_printf ("Mask sandbox %d in EPT...\n", sandbox);
+
+  /* --YL-- Very inefficient. Serve as a prototype. Should rewrite. */
+  for (i = 0; i < 4; i++) {
+    pd = map_virtual_page ((pdpt[i] & 0xFFFFF000) | 3);
+    for (j = 0; j < 512; j++) {
+      pt = map_virtual_page ((pd[(((i << 30) + (j << 21)) >> 21) & 0x1FF] & 0xFFFFF000) | 3);
+      for (k = 0; k < 512; k++) {
+        index = (i << 30) + (j << 21) + (k << 12);
+        if (((index >= kernel_phys_start) && (index < kernel_phys_end)) ||
+            ((index >= LINUX_KERNEL_LOAD_VA) && (index < PHYS_SHARED_MEM_HIGH))) {
+          pt[k] &= 0xFFFFFFFFFFFFFFF8;
+        }
+      }
+      unmap_virtual_page (pt);
+    }
+    unmap_virtual_page (pd);
+  }
+
+  unmap_virtual_page (pdpt);
+  unmap_virtual_page (pml4);
 }
 
 /* vi: set et sw=2 sts=2: */

@@ -102,6 +102,8 @@ load_module (multiboot_module * pmm, int mod_num)
   uint32 *stack_virt_addr;
   uint32 page_count = 0;
   int pg_dir_index, pg_tbl_index;
+  uint32 tmp_pf = 0;
+  uint32 * tmp_vf = NULL;
 
   /* find out how many pages for the module */
   for (i = 0; i < pe0->e_phnum; i++) {
@@ -145,13 +147,18 @@ load_module (multiboot_module * pmm, int mod_num)
       /* map pages loaded from file */
       c = (pph->p_filesz + 0xFFF) >> 12;        /* #pages to load for module */
 
-      for (j = 0; j < c; j++)
-        plPageTable[((uint32) pph->p_vaddr >> 12) + j] =
-          (uint32) pmm->pe + (pph->p_offset & 0xFFFFF000) + (j << 12) + 7;
-
       /* zero remainder of final page */
       memset ((void *) pe + pph->p_offset + pph->p_filesz,
               0, (pph->p_memsz - pph->p_filesz) & 0x0FFF);
+
+      for (j = 0; j < c; j++) {
+        tmp_pf = alloc_phys_frame ();
+        tmp_vf = map_virtual_page (tmp_pf | 0x3);
+        memcpy (tmp_vf, (void *) (((uint32) pe + pph->p_offset) & 0xFFFFF000) + (j << 12),
+                0x1000);
+        plPageTable[((uint32) pph->p_vaddr >> 12) + j] = (tmp_pf & 0xFFFFF000) | 0x7;
+        unmap_virtual_page (tmp_vf);
+      }
 
       /* map additional zeroed pages */
       c = (pph->p_memsz + 0xFFF) >> 12;
@@ -329,14 +336,88 @@ mem_check (void)
   }
 }
 
+/*
+ * Manage physical memory region used by GRUB modules.
+ *
+ * If op is MM_MODULE_MASK, mm_module will mask all physical memory used
+ * by GRUB modules as used in mm_table.
+ * If op is MM_MODULE_UNMASK, mm_module will mask all physical memory
+ * used by GRUB modules as free in mm_table.
+ *
+ * This function is only used during initialisation where Quest relocates
+ * GRUB modules. Before relocation, we mask all modules. After relocation,
+ * we release them.
+ */
+#define MM_MODULE_MASK    0x0
+#define MM_MODULE_UNMASK  0x1
+
+static void
+mm_module (multiboot * pmb, int op)
+{
+  Elf32_Phdr *pph;
+  Elf32_Ehdr *pe;
+  int i, j, k, c;
+#ifdef USE_VMX
+  uint32 limit = 256 + (SANDBOX_KERN_OFFSET >> 12);
+#else
+  uint32 limit = 0xFFFFF;
+#endif
+
+#ifdef GRUB_LOAD_BZIMAGE
+  for (i = 0; i < pmb->mods_count - 1; i++) {
+#else
+  for (i = 0; i < pmb->mods_count; i++) {
+#endif
+
+    pe = map_virtual_page ((uint32)pmb->mods_addr[i].pe | 3);
+
+    pph = (void *) pe + pe->e_phoff;
+
+    for (j = 0; j < pe->e_phnum; j++) {
+
+      if (pph->p_type == PT_LOAD) {
+        c = (pph->p_filesz + 0xFFF) >> 12;      /* #pages required for module */
+
+        if (op == MM_MODULE_MASK) {
+          for (k = 0; k < c; k++) {
+            if (((((uint32) pe + pph->p_offset) >> 12) + k) < limit)
+              BITMAP_CLR (mm_table, (((uint32) pe + pph->p_offset) >> 12) + k);
+          }
+        } else if (op == MM_MODULE_UNMASK) {
+          for (k = 0; k < c; k++) {
+            if (((((uint32) pe + pph->p_offset) >> 12) + k) < limit)
+              BITMAP_SET (mm_table, (((uint32) pe + pph->p_offset) >> 12) + k);
+          }
+        }
+      }
+      pph = (void *) pph + pe->e_phentsize;
+    }
+
+    unmap_virtual_page (pe);
+  }
+
+  /* Handling Linux kernel bzImage module */
+#ifdef GRUB_LOAD_BZIMAGE
+  uint32 start = 0, end = 0;
+  start = (uint32)pmb->mods_addr[pmb->mods_count - 1].pe;
+  end = (uint32)pmb->mods_addr[pmb->mods_count - 1].mod_end;
+
+  for (i = (start >> 12); i < ((end >> 12) + 1); i++) {
+    if (op == MM_MODULE_MASK) {
+      if (i < limit) BITMAP_CLR (mm_table, i);
+    } else if (op == MM_MODULE_UNMASK) {
+      if (i < limit) BITMAP_SET (mm_table, i);
+    }
+  }
+#endif
+}
+
 void
 init (multiboot * pmb)
 {
-  int i, j, k, c, num_cpus;
+  int i, num_cpus;
   memory_map_t *mmap;
   uint32 limit;
-  Elf32_Phdr *pph;
-  Elf32_Ehdr *pe;
   char brandstring[I386_CPUID_BRAND_STRING_LENGTH];
   uint16 tss[NR_MODS];
 
@@ -434,29 +515,7 @@ init (multiboot * pmb)
    */
 
   /* Here, clear mm_table entries for any loadable modules. */
-#ifdef GRUB_LOAD_BZIMAGE
-  for (i = 0; i < pmb->mods_count - 1; i++) {
-#else
-  for (i = 0; i < pmb->mods_count; i++) {
-#endif
-
-    pe = map_virtual_page ((uint32)pmb->mods_addr[i].pe | 3);
-
-    pph = (void *) pe + pe->e_phoff;
-
-    for (j = 0; j < pe->e_phnum; j++) {
-
-      if (pph->p_type == PT_LOAD) {
-        c = (pph->p_filesz + 0xFFF) >> 12;      /* #pages required for module */
-
-        for (k = 0; k < c; k++)
-          BITMAP_CLR (mm_table, (((uint32) pe + pph->p_offset) >> 12) + k);
-      }
-      pph = (void *) pph + pe->e_phentsize;
-    }
-
-    unmap_virtual_page (pe);
-  }
+  mm_module (pmb, MM_MODULE_MASK);
 
   /* Clear bitmap entries for first megabyte of RAM so we don't
    * overwrite BIOS tables we might be interested in later. */
@@ -489,7 +548,6 @@ init (multiboot * pmb)
 
   /* Initialise the floating-point unit (FPU) */
   initialise_fpu();
-  
   
   /* Setup per-CPU area for bootstrap CPU */
   percpu_per_cpu_init ();
@@ -538,6 +596,9 @@ init (multiboot * pmb)
     lookup_TSS (tss[i])->priority = MIN_PRIO;
 #endif
   }
+
+  /* Release physical memory region occupied by modules. They are already relocated. */
+  mm_module (pmb, MM_MODULE_UNMASK);
 
   /* --??-- Assume the first is shell here */
   char * name = "/boot/shell";

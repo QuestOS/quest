@@ -698,6 +698,9 @@ abort:
       DLOG ("Sandbox%d: Host Phys for 0x%X is 0x%X\n", get_pcpu_id (),
             (uint32) vm_exit_input_param, (uint32) vm_exit_return_val);
       break;
+    case VM_EXIT_REASON_MASK_SB:
+      mask_sandbox ((uint32) LINUX_SANDBOX);
+      break;
     default:
       logger_printf ("Unknow reason 0x%X caused VM-Exit in sandbox %d\n", status, cpu);
   }
