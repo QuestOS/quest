@@ -146,7 +146,9 @@ vmx_init_mem (uint32 cpu)
        (((uint32)(&_physicalbootstrapstart)) >> 12) - (EPT_DATA_SIZE >> 12); i++) {
     if (!BITMAP_TST (mm_table, i)) {
       if (!BITMAP_TST (mm_table, i + (SANDBOX_KERN_OFFSET >> 12) * cpu)) {
-        com1_printf ("Wiping out memory! CPU#%d\n", get_pcpu_id ());
+        com1_printf ("Wiping out memory at 0x%X! CPU#%d\n",
+                     (i + (SANDBOX_KERN_OFFSET >> 12) * cpu) << 12,
+                     get_pcpu_id ());
         while (1);
       }
       /* Physical page allocated, relocate it */

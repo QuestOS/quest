@@ -402,7 +402,7 @@ mm_module (multiboot * pmb, int op)
   start = (uint32)pmb->mods_addr[pmb->mods_count - 1].pe;
   end = (uint32)pmb->mods_addr[pmb->mods_count - 1].mod_end;
 
-  for (i = (start >> 12); i < ((end >> 12) + 1); i++) {
+  for (i = (start >> 12); i < (((end + 0xFFF) >> 12)); i++) {
     if (op == MM_MODULE_MASK) {
       if (i < limit) BITMAP_CLR (mm_table, i);
     } else if (op == MM_MODULE_UNMASK) {
