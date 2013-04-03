@@ -40,6 +40,10 @@
 #define NULL ((void*)0)
 #endif
 
+#define ALIGN(x, a) ALIGN_MASK(x, (typeof(x))(a) - 1)
+#define ALIGN_MASK(x, mask)   (((x) + (mask)) & ~(mask))
+
+
 #define offsetof(TYPE, MEMBER) ((size_t) &((TYPE *)0)->MEMBER)
 #define container_of(ptr, type, member) ({                      \
       const typeof( ((type *)0)->member ) *__mptr = (ptr);      \

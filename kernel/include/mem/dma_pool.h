@@ -46,12 +46,16 @@
 
 #define DMA_POOL_LAST_PAGE_TABLE ((uint32)(MALLOC_POOL_START_PAGE_TABLE - 1))
 #define DMA_POOL_START_PAGE_TABLE					\
-  ((uint32)(MALLOC_POOL_LAST_PAGE_TABLE - MALLOC_POOL_NUM_PAGE_TABLES + 1))
+  ((uint32)(DMA_POOL_LAST_PAGE_TABLE - DMA_POOL_NUM_PAGE_TABLES + 1))
+
+#define DMA_PAGE_BITMAP_SIZE 2
 
 typedef struct dma_page {
-  void* virt_addr;
+  char* virt_addr;
   phys_addr_t phys_addr;
   list_head_t chain;
+  uint32 bitmap[DMA_PAGE_BITMAP_SIZE];
+  uint obj_count;
 } dma_page_t;
 
 typedef struct dma_pool {
@@ -60,7 +64,12 @@ typedef struct dma_pool {
   size_t size;
   size_t align;
   size_t boundary;
+  size_t objs_per_page;
 } dma_pool_t;
+
+bool init_dma_pool_page_tables();
+void map_dma_page_tables(pgdir_entry_t* pageDir, uint32 offset);
+
 
 struct dma_pool* dma_pool_create(const char *name,
 				 size_t size, size_t align, size_t boundary);
