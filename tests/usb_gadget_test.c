@@ -23,8 +23,6 @@
 #include <arpa/inet.h>
 #include <netinet/in.h>
 
-#define HOST_DEVICE_NUM 1
-//#define HOST_DEVICE_NUM 2
 
 
 #define BUFFER_SIZE 4096
@@ -39,69 +37,44 @@ int main()
   printf("usb_gadget_test started\n");
   
  retry_net2280_open:
-  if(net2280_fd = usb_open("net2280_communication0") < 0) {
+  if((net2280_fd = usb_open("net2280_communication0")) < 0) {
     printf("Failed to open net2280 device\n");
     usleep(1000000);
     goto retry_net2280_open;
   }  
-  printf("Gadget opened\n");
+  printf("Gadget opened net2280_fd = %d\n", net2280_fd);
 
  retry_beagle_open:
-  if(beagle_fd = usb_open("beagle_communication0") < 0) {
-    printf("Failed to open device %d\n", HOST_DEVICE_NUM);
+  if((beagle_fd = usb_open("beagle_communication0")) < 0) {
+    printf("Failed to open device beagle_communication0\n");
     usleep(1000000);
     goto retry_beagle_open;
   }
 
-  printf("Device %d opened\n", HOST_DEVICE_NUM);
+  printf("beagle_communication0 device opened, fd = %d\n", beagle_fd);
 
   memcpy(rw_buf1, "Hello from " __FILE__, 40);
 
-  if(HOST_DEVICE_NUM == 1) {
-    int i;
+  int i;
 #define INCREMENTS 1
-    for(i = 0; i < INCREMENTS; ++i) {
-      res = usb_write(HOST_DEVICE_NUM, rw_buf1, BUFFER_SIZE / INCREMENTS);
-      usleep(1000000);
-      if(res < 0) {
-        printf("Failed to write to device %d\n", HOST_DEVICE_NUM);
-        while(1);
-      }
-
-      printf("usb write on %d returned %d\n", HOST_DEVICE_NUM, res);
-    }
-    
-    
-
-#if 0
-    res = usb_write(HOST_DEVICE_NUM, rw_buf1, BUFFER_SIZE);
+  for(i = 0; i < INCREMENTS; ++i) {
+    res = usb_write(beagle_fd, rw_buf1, BUFFER_SIZE / INCREMENTS);
+    usleep(1000000);
     if(res < 0) {
-      printf("Failed to write to device %d\n", HOST_DEVICE_NUM);
+      printf("Failed to write to device %d\n", beagle_fd);
       while(1);
     }
-
-    printf("usb write on %d returned %d\n", HOST_DEVICE_NUM, res);
-#endif 
-    usleep(1000000);
+    
+    printf("usb write on %d returned %d\n", beagle_fd, res);
+  }
+  
+    usleep(2000000);
     while(1) {
-      res = usb_read(0, rw_buf2, BUFFER_SIZE);
+      res = usb_read(net2280_fd, rw_buf2, BUFFER_SIZE);
       if(res != 0) {
         printf("usb read returned %d\n", res);
       }
     }
-  }
-  else {
-    res = usb_write(0, rw_buf1, BUFFER_SIZE);
-    if(res < 0) {
-      printf("Failed to write to device 0\n");
-      while(1);
-    }
-
-    printf("usb write on 0 returned %d\n", res);
-    
-    usleep(1000000);
-    res = usb_read (HOST_DEVICE_NUM, rw_buf2, BUFFER_SIZE);
-  }
 
   printf("usb read returned %d\n", res);
 

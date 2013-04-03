@@ -473,10 +473,13 @@ syscall_usb (u32 eax, u32 ebx, u32 ecx, u32 edx, u32 esi)
     device_id = get_usb_device_id(buf);
     if(device_id < 0) return device_id;
     tss->fd_table[fd].type = FD_TYPE_USB_DEV;
-    tss->fd_table[fd].entry = (void*)device_id;
+    /* -- EM -- Need to offset it by 1 so entry is never NULL, fix
+       this later to store device struct address instead of it's
+       index */
+    tss->fd_table[fd].entry = (void*)(device_id+1);
   }
   else {
-    device_id = (int)tss->fd_table[fd].entry;
+    device_id = (int)(tss->fd_table[fd].entry-1);
   }
   
   ret = usb_syscall_handler(device_id, operation, buf, data_len);
