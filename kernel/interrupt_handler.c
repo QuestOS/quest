@@ -485,7 +485,7 @@ syscall_usb (u32 eax, u32 ebx, u32 ecx, u32 edx, u32 esi)
     tss->fd_table[fd].entry = NULL;
   }
   if(ret >= 0 && operation == USB_USER_OPEN) {
-    return ret;
+    return fd;
   }
   else {
     return ret;
