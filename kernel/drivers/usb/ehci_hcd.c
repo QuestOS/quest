@@ -227,7 +227,7 @@ static int ehci_rt_free_write_resources(struct urb* urb)
     list_for_each_entry_safe(qtd_to_remove, temp_qtd, &qh->qtd_list, chain_list) {
 
       
-      if(qh->current_qtd_ptr_raw == EHCI_QTD_VIRT_TO_PHYS(ehci_hcd, qtd_to_remove) ||
+      if(qh->current_qtd_ptr_raw == qtd_to_remove->dma_addr ||
          qh->dummy_qtd == qtd_to_remove) {
         break;
       }
@@ -687,8 +687,7 @@ static int ehci_rt_qh_free_data(struct urb* urb, ehci_qh_urb_priv_t* qh_urb_priv
           current_qtd->original_total_bytes_to_transfer
           - qh_urb_priv->next_byte_to_free_in_qtd;
         
-        if(qh->current_qtd_ptr_raw ==
-           EHCI_QTD_VIRT_TO_PHYS(ehci_hcd, current_qtd)) {
+        if(qh->current_qtd_ptr_raw == current_qtd->dma_addr) {
           /*
            * The current qtd in the qh is the one we are trying to
            * free, can't free it yet, need to wait for hardware to
@@ -758,8 +757,7 @@ static int ehci_rt_qh_free_data(struct urb* urb, ehci_qh_urb_priv_t* qh_urb_priv
              * process this qtd next, instead of last.
              */
 
-            if(qh->current_qtd_ptr_raw ==
-               EHCI_QTD_VIRT_TO_PHYS(ehci_hcd, current_qtd)) {
+            if(qh->current_qtd_ptr_raw == current_qtd->dma_addr) {
               /*
                * The current qtd in the qh is the one we are trying to
                * free, can't free it yet, need to wait for hardware to
@@ -1734,11 +1732,10 @@ initialise_async_head(ehci_hcd_t* ehci_hcd)
   async_head->hw_info1 = QH_HEAD;
   async_head->qtd_token_raw = QTD_HALT;
   async_head->next_qtd_ptr_raw = EHCI_LIST_END;
-  async_head->alt_qtd_ptr_raw
-    = EHCI_QTD_VIRT_TO_PHYS(ehci_hcd, async_head->dummy_qtd);
+  async_head->alt_qtd_ptr_raw = async_head->dummy_qtd->dma_addr;
   async_head->state = QH_STATE_LINKED;
   
-  ehci_hcd->regs->async_next = EHCI_QH_VIRT_TO_PHYS(ehci_hcd, async_head);
+  ehci_hcd->regs->async_next = async_head->dma_addr;
 
   INIT_LIST_HEAD(&ehci_hcd->reclaim_list);
   
@@ -2494,7 +2491,7 @@ create_qtd_chain(ehci_hcd_t* ehci_hcd,
     if(data_len == 0) {
       token |= QTD_INPUT;
     }
-    previous_qtd->next_pointer_raw = EHCI_QTD_VIRT_TO_PHYS(ehci_hcd, current_qtd);
+    previous_qtd->next_pointer_raw = current_qtd->dma_addr;
   }
 
   /* If zero length data stage then data is input or if request type
@@ -2546,7 +2543,7 @@ create_qtd_chain(ehci_hcd_t* ehci_hcd,
     
     list_add_tail(&current_qtd->chain_list, qtd_list);
 
-    previous_qtd->next_pointer_raw = EHCI_QTD_VIRT_TO_PHYS(ehci_hcd, current_qtd);
+    previous_qtd->next_pointer_raw = current_qtd->dma_addr;
   }
 
 
@@ -2589,8 +2586,7 @@ create_qtd_chain(ehci_hcd_t* ehci_hcd,
       
       list_add_tail(&current_qtd->chain_list, qtd_list);
       
-      previous_qtd->next_pointer_raw
-        = EHCI_QTD_VIRT_TO_PHYS(ehci_hcd, current_qtd);
+      previous_qtd->next_pointer_raw = current_qtd->dma_addr;
 
       qtd_fill(current_qtd, 0, 0, 0, token);
       
@@ -2630,7 +2626,7 @@ static void qh_refresh(ehci_hcd_t* ehci_hcd, qh_t* qh)
      * first qtd may already be partially processed in which case we
      * don't do anything
      */ 
-    if(qh->current_qtd_ptr_raw == EHCI_QTD_VIRT_TO_PHYS(ehci_hcd, qtd)) {
+    if(qh->current_qtd_ptr_raw == qtd->dma_addr) {
       qtd = NULL;
     }
   }
@@ -2640,7 +2636,7 @@ static void qh_refresh(ehci_hcd_t* ehci_hcd, qh_t* qh)
       DLOG("Should never reached here if qh->state == QH_STATE_LINKED");
       panic("Should never reached here if qh->state == QH_STATE_LINKED");
     }
-    qh->next_qtd_ptr_raw = EHCI_QTD_VIRT_TO_PHYS(ehci_hcd, qtd);
+    qh->next_qtd_ptr_raw = qtd->dma_addr;
     qh->alt_qtd_ptr_raw  = EHCI_LIST_END;
     
     if(!(qh->hw_info1 & QH_DATA_TOGGLE_CONTROL)) {
@@ -2775,11 +2771,11 @@ static void qh_append_qtds(ehci_hcd_t* ehci_hcd, struct urb* urb,
   qtd_t* qtd;
   qtd_t* dummy;
   uint32_t token;
-  phys_addr_t new_dummy_phys_addr;
   ehci_qh_urb_priv_t* qh_urb_priv = NULL;
   int urb_swap_index;
   qtd_t** urb_qtd_list = NULL;
   int i, num_qtds;
+  phys_addr_t dma;
 
   urb_qh_compatiblity_check(urb, qh);
   
@@ -2828,7 +2824,9 @@ static void qh_append_qtds(ehci_hcd_t* ehci_hcd, struct urb* urb,
   gccmb();
 
   dummy = qh->dummy_qtd;
+  dma = dummy->dma_addr;
   *dummy = *qtd;
+  dummy->dma_addr = dma;
 
   if(urb_qtd_list) {
     urb_qtd_list[urb_swap_index] = dummy;
@@ -2839,9 +2837,9 @@ static void qh_append_qtds(ehci_hcd_t* ehci_hcd, struct urb* urb,
   list_splice_tail(qtd_list, &qh->qtd_list);
   initialise_qtd(ehci_hcd, qtd);
   qh->dummy_qtd = qtd;
-  new_dummy_phys_addr = EHCI_QTD_VIRT_TO_PHYS(ehci_hcd, qtd);
+  dma = qtd->dma_addr;
   qtd = list_entry(qh->qtd_list.prev, qtd_t, chain_list);
-  qtd->next_pointer_raw = new_dummy_phys_addr;
+  qtd->next_pointer_raw = dma;
   gccmb();
   dummy->token = token;
 }
@@ -2982,7 +2980,7 @@ static sint32 spin_for_transfer_completion(ehci_hcd_t* ehci_hcd,
 
   
   list_for_each_entry_safe(qtd_to_remove, qtd_tmp, &qh->qtd_list, chain_list) {
-    if(EHCI_QTD_VIRT_TO_PHYS(ehci_hcd, qtd_to_remove) == qh->current_qtd_ptr_raw) {
+    if(qtd_to_remove->dma_addr == qh->current_qtd_ptr_raw) {
       break;
     }
     else {
@@ -3391,7 +3389,7 @@ ehci_async_transfer(ehci_hcd_t* ehci_hcd, struct urb* urb)
       qtd_t* qtd_to_remove;
       qtd_t* qtd_tmp;
       list_for_each_entry_safe(qtd_to_remove, qtd_tmp, &qh->qtd_list, chain_list) {
-        if(EHCI_QTD_VIRT_TO_PHYS(ehci_hcd, qtd_to_remove) == qh->current_qtd_ptr_raw) {
+        if(qtd_to_remove->dma_addr == qh->current_qtd_ptr_raw) {
           /* If we are not at the last qtd or are at the last qtd but
              there is still data remaining */
           if(qtd_to_remove->chain_list.next != &qh->qtd_list ||

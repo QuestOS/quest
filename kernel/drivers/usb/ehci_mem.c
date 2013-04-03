@@ -56,14 +56,11 @@ inline bool
 initialise_qtd(ehci_hcd_t* ehci_hcd, qtd_t* qtd)
 {
   memset(qtd, 0, sizeof(*qtd));
-  if(qtd == 0xFFE36500) {
-    char *temp = NULL;
-    //*temp = 'a';
-  }
   qtd->token = QTD_HALT;
   qtd->next_pointer_raw = EHCI_LIST_END;
   qtd->alt_pointer_raw = EHCI_LIST_END;
   INIT_LIST_HEAD(&qtd->chain_list);
+  qtd->dma_addr = EHCI_QTD_VIRT_TO_PHYS(ehci_hcd, qtd);
   return TRUE;
 }
 
@@ -74,9 +71,11 @@ inline bool initialise_qh(ehci_hcd_t* ehci_hcd, qh_t* qh)
   qh->state = QH_STATE_NOT_LINKED;
   INIT_LIST_HEAD(&qh->qtd_list);
   qh->dummy_qtd = allocate_qtd(ehci_hcd);
+  if(qh->dummy_qtd == NULL) return FALSE;
   qh->dummy_qtd->ioc_called = TRUE; /* avoids calling ioc for dummy qtd */
   qh->previous = &qh->horizontalPointer;
-  return qh->dummy_qtd != NULL;
+  qh->dma_addr = EHCI_QH_VIRT_TO_PHYS(ehci_hcd, qh);
+  return TRUE;
 }
 
 inline bool initialise_itd(ehci_hcd_t* ehci_hcd, itd_t* itd)
@@ -90,6 +89,7 @@ inline bool initialise_itd(ehci_hcd_t* ehci_hcd, itd_t* itd)
   memset(itd, 0, sizeof(*itd));
   INIT_LIST_HEAD(&itd->chain_list);
   INIT_LIST_HEAD(&itd->uninserted_list);
+  itd->dma_addr = EHCI_ITD_VIRT_TO_PHYS(ehci_hcd, itd);
   return TRUE;
 }
 

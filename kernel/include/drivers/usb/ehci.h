@@ -378,6 +378,7 @@ typedef struct _qtd_t
   qtd_buffer_page_pointer_t buffer_page_zero_backup;
   bool ioc_called;
   void* completion_context;
+  phys_addr_t dma_addr;
   uint32_t padding[6];
 } PACKED ALIGNED(32) qtd_t;
 
@@ -387,7 +388,7 @@ CASSERT( (sizeof(qtd_t) % 32) == 0, ehci_qtd_size);
 CASSERT( (sizeof(qtd_t) & (sizeof(qtd_t) - 1)) == 0, qtd_alignedment)
 
 #define QH_NEXT(hcd, qh_virt)                                   \
-  ( (EHCI_QH_VIRT_TO_PHYS(hcd, qh_virt)) | (TYPE_QH << 1) )
+  ( ((qh_virt)->dma_addr) | (TYPE_QH << 1) )
 
 typedef struct _qh_t{
   
@@ -541,6 +542,7 @@ typedef struct _qh_t{
                                  buffer but the HC might still have
                                  links to it */
 
+  phys_addr_t dma_addr;
   frm_lst_lnk_ptr_t* previous;  /* pointer to physical address */
 } PACKED ALIGNED(32) qh_t;
 
@@ -567,7 +569,7 @@ typedef struct {
 } PACKED itd_transaction_t;
 
 #define ITD_NEXT(hcd, itd_virt)                                 \
-  ( (EHCI_ITD_VIRT_TO_PHYS(hcd, itd_virt) ) | (TYPE_ITD << 1) )
+  ( ((itd_virt)->dma_addr ) | (TYPE_ITD << 1) )
 
 typedef struct _itd_t {
   frm_lst_lnk_ptr_t next_link_pointer;
@@ -609,6 +611,7 @@ typedef struct _itd_t {
       being inserted into periodic list or restarted to receive more
       data */
   uint ioc_processed_bitmap;
+  phys_addr_t dma_addr;
   void* completion_context;
   uint32_t padding[17];
 } PACKED ALIGNED(32) itd_t;

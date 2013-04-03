@@ -88,7 +88,7 @@ print_qtd_info(ehci_hcd_t* ehci, qtd_t* qtd, char* msg)
 #define PRINT_QTD_MEMBER(member) DLOGV(#member ": 0x%X", qtd->member)
 
   DLOGV("%s", msg);
-  DLOGV("This QTD: 0x%X", EHCI_QTD_VIRT_TO_PHYS(ehci,qtd));
+  DLOGV("This QTD: 0x%X", ehci,qtd->dma_addr);
   PRINT_QTD_MEMBER(next_pointer_raw);
   PRINT_QTD_MEMBER(alt_pointer_raw);
   PRINT_QTD_MEMBER(token);
