@@ -7,6 +7,9 @@
 #include <sys/select.h>
 #include <sys/types.h>
 
+#define execvp(name, args) exec(name, args)
+
+
 ssize_t sendmsg (int sockfd, const struct msghdr *msg, int flags);
 
 //int snprintf(char *str, size_t size, const char *format, ...);

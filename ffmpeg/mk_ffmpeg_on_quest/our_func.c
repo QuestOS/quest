@@ -20,6 +20,8 @@
 //  return 0;
 //}
 
+#define execvp exec
+
 double atof(const char * s)
 {
   unimplemented_funcion_called();
