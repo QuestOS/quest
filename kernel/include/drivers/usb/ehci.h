@@ -288,10 +288,6 @@ typedef union {
 
 #define EHCI_LIST_END 1 
 
-#define CLEAR_FRAME_LIST_LINK_POINTER(ehci_hcd, frame_list, frame_index) \
-  (frame_list[frame_index].raw = EHCI_LIST_END)
-
-
 
 typedef union {
   uint32_t raw;
@@ -533,6 +529,7 @@ typedef struct _qh_t{
   list_head_t reclaim_chain;
   USB_DEVICE_INFO* dev;
   uint interval;
+  frm_lst_lnk_ptr_t* next_virt;
 
 
 #define QH_STATE_NOT_LINKED 1 /* Not in the buffer at all */
@@ -604,6 +601,7 @@ typedef struct _itd_t {
   
   /* previous is used when the itd is removed */
   frm_lst_lnk_ptr_t* previous;
+  frm_lst_lnk_ptr_t* next_virt;
 
    /* Could be just 8 bits but using unit to keep everything aligned,
       used for rt-urbs to keep track of which transactions have had
@@ -613,6 +611,7 @@ typedef struct _itd_t {
   uint ioc_processed_bitmap;
   phys_addr_t dma_addr;
   void* completion_context;
+  
   uint32_t padding[17];
 } PACKED ALIGNED(32) itd_t;
 
@@ -655,10 +654,9 @@ typedef struct
   ehci_regs_t*  regs;
 
   frm_lst_lnk_ptr_t* frame_list;
+  frm_lst_lnk_ptr_t** frame_list_virt;
   frm_lst_lnk_ptr_t* last_frame_list_entries;
   uint32_t           frame_list_size;
-
-  list_head_t frame_list_heads[1024];
   
   uint32_t* micro_frame_remaining_time_periodic;
   uint32_t* micro_frame_remaining_time_async;
@@ -788,11 +786,12 @@ typedef struct
  * not update previous for the element it links to but that should not
  * matter until we start removing qhs from the periodic list
  */
-#define insert_qh_into_frame_list(lst_lnk_ptr, qh)      \
-  do {                                                  \
-    (qh)->horizontalPointer = *lst_lnk_ptr;             \
-    (qh)->previous = lst_lnk_ptr;                       \
-    lst_lnk_ptr->raw = QH_NEXT(ehci_hcd, qh);           \
+#define insert_qh_into_frame_list(lst_lnk_ptr, lst_lnk_ptr_virt, qh)    \
+  do {                                                                  \
+    (qh)->next_virt = *lst_lnk_ptr_virt;                                \
+    *lst_lnk_ptr_virt = qh;                                             \
+    (qh)->horizontalPointer = *lst_lnk_ptr;                             \
+    lst_lnk_ptr->raw = QH_NEXT(ehci_hcd, qh);                           \
 } while (0)
 
 /*

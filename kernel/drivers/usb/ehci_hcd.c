@@ -94,29 +94,32 @@ static int create_itd_chain(ehci_hcd_t* ehci_hcd, uint8_t address,
                             struct urb* urb, uint interrupt_frame_rate,
                             void* completion_context);
 
-
 static inline frm_lst_lnk_ptr_t**
-get_next_frm_lst_lnk_ptrs_previous(ehci_hcd_t* ehci_hcd, frm_lst_lnk_ptr_t* ptr);
+get_next_frm_lst_lnk_ptrs_previous(ehci_hcd_t* ehci_hcd, frm_lst_lnk_ptr_t* ptr,
+                                   frm_lst_lnk_ptr_t* next_virt);
 
 static void insert_remaining_realtime_itds(ehci_hcd_t* ehci_hcd, struct urb* urb);
 
 /* Reminder: inserting itds is time sensitive */
-#define insert_itd_into_frame_list(hcd, list, index, itd)       \
-  do {                                                          \
-    frm_lst_lnk_ptr_t** __nexts_prev =                          \
-      get_next_frm_lst_lnk_ptrs_previous(hcd, &(list)[index]);  \
-    (itd)->frame_index = index;                                 \
-    if(__nexts_prev) *__nexts_prev = &(itd)->next_link_pointer; \
-    (itd)->next_link_pointer = (list)[index];                   \
-    (itd)->previous = &(list[index]);                           \
-    (list)[index].raw = ITD_NEXT(hcd, (itd));                   \
+#define insert_itd_into_frame_list(hcd, list, list_virt, index, itd)    \
+  do {                                                                  \
+    frm_lst_lnk_ptr_t** __nexts_prev =                                  \
+      get_next_frm_lst_lnk_ptrs_previous(hcd, &(list)[index],           \
+                                         (hcd)->frame_list_virt[index]); \
+    (itd)->frame_index = index;                                         \
+    if(__nexts_prev) *__nexts_prev = &(itd)->next_link_pointer;         \
+    (itd)->next_link_pointer = (list)[index];                           \
+    (itd)->previous = &(list[index]);                                   \
+    (list)[index].raw = ITD_NEXT(hcd, (itd));                           \
+    (itd)->next_virt = (list_virt)[index];                              \
+    (list_virt)[index] = (frm_lst_lnk_ptr_t*)(itd);                     \
   } while(0)
 
 
 #define unlink_itd_from_frame_list(hcd, itd)                            \
   do {                                                                  \
     frm_lst_lnk_ptr_t** __itds_nexts_prev =                             \
-      get_next_frm_lst_lnk_ptrs_previous(hcd, &(itd)->next_link_pointer); \
+      get_next_frm_lst_lnk_ptrs_previous(hcd, &(itd)->next_link_pointer, itd->next_virt); \
     if(__itds_nexts_prev) (*__itds_nexts_prev) = (itd)->previous;       \
     *((itd)->previous) = (itd)->next_link_pointer;                      \
   } while(0)
@@ -626,16 +629,35 @@ int ehci_rt_iso_push_data(struct urb* urb, char* data, int count,
 
 
 static inline frm_lst_lnk_ptr_t**
-get_next_frm_lst_lnk_ptrs_previous(ehci_hcd_t* ehci_hcd, frm_lst_lnk_ptr_t* ptr)
+get_next_frm_lst_lnk_ptrs_previous(ehci_hcd_t* ehci_hcd, frm_lst_lnk_ptr_t* ptr,
+                                   frm_lst_lnk_ptr_t* next_virt)
 {
+  frm_lst_lnk_ptr_t** temp_result_old;
+  frm_lst_lnk_ptr_t** temp_result;
   if(ptr->tBit) return NULL;
 
   switch(ptr->type) {
   case TYPE_ITD:
-    return &(EHCI_ITD_PHYS_TO_VIRT(ehci_hcd, ptr->raw & (~0x1F)))->previous;
-
+    temp_result_old = &(EHCI_ITD_PHYS_TO_VIRT(ehci_hcd, ptr->raw & (~0x1F)))->previous; /* Fixed */
+    temp_result = &((itd_t*)next_virt)->previous;
+    if(temp_result != temp_result_old) {
+      DLOG("case 1 temp_result = 0x%p, temp_result_old = 0x%p", temp_result,
+           temp_result_old);
+      DLOG("temp result != temp_result_old");
+      panic("temp result != temp_result_old");
+    }
+    return temp_result;
   case TYPE_QH:
-    return &(EHCI_QH_PHYS_TO_VIRT(ehci_hcd, ptr->raw & (~0x1F)))->previous;
+    temp_result_old =  &(EHCI_QH_PHYS_TO_VIRT(ehci_hcd, ptr->raw & (~0x1F)))->previous; /* Fixed */
+    temp_result = &((qh_t*)next_virt)->previous;
+    if(temp_result != temp_result_old) {
+      DLOG("case 2 temp_result = 0x%p, temp_result_old = 0x%p", temp_result,
+           temp_result_old);
+      DLOG("temp result != temp_result_old");
+      panic("temp result != temp_result_old");
+    }
+    return temp_result;
+    
 
   default: // Other two types we don't support yet
     DLOG("Reached default in %s", __FUNCTION__);
@@ -1452,6 +1474,7 @@ void insert_remaining_realtime_itds_for_urb(ehci_hcd_t* ehci_hcd, ehci_iso_urb_p
 {
 
   frm_lst_lnk_ptr_t* frame_list = ehci_hcd->frame_list;
+  frm_lst_lnk_ptr_t** frame_list_virt = ehci_hcd->frame_list_virt;
   uint32_t frame_list_size = ehci_hcd->frame_list_size;
   uint32_t frame_list_mask = frame_list_size - 1;
   
@@ -1490,7 +1513,7 @@ void insert_remaining_realtime_itds_for_urb(ehci_hcd_t* ehci_hcd, ehci_iso_urb_p
     if(looped_around) {
       if( (frame_index >= start_frame_index) &&
           (frame_index < current_frame_index) ) {
-        insert_itd_into_frame_list(ehci_hcd, frame_list, frame_index, itd);
+        insert_itd_into_frame_list(ehci_hcd, frame_list, frame_list_virt, frame_index, itd);
           
         list_del(&itd->uninserted_list);
       }
@@ -1501,7 +1524,7 @@ void insert_remaining_realtime_itds_for_urb(ehci_hcd_t* ehci_hcd, ehci_iso_urb_p
     else {
       if( (frame_index >= start_frame_index  ) ||
           (frame_index <  current_frame_index) ) {
-        insert_itd_into_frame_list(ehci_hcd, frame_list, frame_index, itd);
+        insert_itd_into_frame_list(ehci_hcd, frame_list, frame_list_virt, frame_index, itd);
         list_del(&itd->uninserted_list);
       }
       else {
@@ -1707,9 +1730,12 @@ initialise_frame_list(ehci_hcd_t* ehci_hcd)
       return FALSE;
     }
   }
-  
+
+  ehci_hcd->frame_list_virt = kmalloc(frm_lst_size * sizeof(frm_lst_lnk_ptr_t*));
+  if(ehci_hcd->frame_list_virt == NULL) return FALSE;
+  memset(ehci_hcd->frame_list_virt, 0, frm_lst_size * sizeof(frm_lst_lnk_ptr_t*));
   while(frm_lst_size--) {
-    CLEAR_FRAME_LIST_LINK_POINTER(ehci_hcd, frame_list, frm_lst_size);
+    frame_list[frm_lst_size].raw = EHCI_LIST_END;
   }
   
   ehci_hcd->regs->frame_list = (uint32_t)get_phys_addr(ehci_hcd->frame_list);
@@ -1734,6 +1760,7 @@ initialise_async_head(ehci_hcd_t* ehci_hcd)
   async_head->next_qtd_ptr_raw = EHCI_LIST_END;
   async_head->alt_qtd_ptr_raw = async_head->dummy_qtd->dma_addr;
   async_head->state = QH_STATE_LINKED;
+  async_head->next_virt = (frm_lst_lnk_ptr_t*)async_head;
   
   ehci_hcd->regs->async_next = async_head->dma_addr;
 
@@ -1846,12 +1873,20 @@ static void unlink_all_qhs_from_async(ehci_hcd_t* ehci_hcd)
   qh_t* async_head = ehci_hcd->async_head;
   uint32_t async_head_hw = QH_NEXT(ehci_hcd, async_head);
   qh_t* current_qh = async_head;
+  qh_t* next_qh_old;
   qh_t* next_qh;
-
+  
   do {
-    next_qh = EHCI_QH_PHYS_TO_VIRT(ehci_hcd,
-                                   current_qh->horizontalPointer.raw & (~0x1F));
+    next_qh_old = EHCI_QH_PHYS_TO_VIRT(ehci_hcd, /* fixed */
+                                       current_qh->horizontalPointer.raw & (~0x1F));
+    next_qh = (qh_t*)current_qh->next_virt;
+    if(next_qh_old != next_qh) {
+      DLOG("next_qh_old = 0x%p, next_qh = 0x%p", next_qh_old, next_qh);
+      DLOG("Failure in unlink_all_qhs_from_async");
+      panic("Failure in unlink_all_qhs_from_async");
+    }
     current_qh->horizontalPointer.raw = async_head_hw;
+    current_qh->next_virt = (frm_lst_lnk_ptr_t*)async_head;
     /*
      * -- EM -- Should really free the qh but that would involve going
      * into the device struct and release the qh there as well so just
@@ -2859,10 +2894,25 @@ static void qh_append_qtd(ehci_hcd_t* ehci_hcd, struct urb* urb,
  */
 static inline void unlink_async_queue_head(ehci_hcd_t* ehci_hcd, qh_t* head_to_unlink)
 {
-  qh_t* previous = EHCI_QH_PHYS_TO_VIRT(ehci_hcd, ((*(head_to_unlink->previous)).raw & (~0x1F)));
-  qh_t* next     = EHCI_QH_PHYS_TO_VIRT(ehci_hcd, head_to_unlink->horizontalPointer.raw & (~0x1F));
+  qh_t* previous_old  = EHCI_QH_PHYS_TO_VIRT(ehci_hcd, ((*(head_to_unlink->previous)).raw & (~0x1F))); /* Fixed */
+  qh_t* previous  = (qh_t*)head_to_unlink->previous; 
+  qh_t* next_old  = EHCI_QH_PHYS_TO_VIRT(ehci_hcd, head_to_unlink->horizontalPointer.raw & (~0x1F)); /* Fixed */
+  qh_t* next = (qh_t*)head_to_unlink->next_virt;
+  if(next != next_old) {
+    DLOG("next = 0x%p, next_old = 0x%p", next, next_old);
+    DLOG("failure in unlink_async_queue_head");
+    panic("failure in unlink_async_queue_head");
+  }
+
+  //if(previous != previous_old) {
+  //  DLOG("previous = 0x%p, previous_old = 0x%p", previous, previous_old);
+  //  DLOG("failure in unlink_async_queue_head");
+  //  panic("failure in unlink_async_queue_head");
+  //}
+
   next->previous = head_to_unlink->previous;
   previous->horizontalPointer = head_to_unlink->horizontalPointer;
+  previous->next_virt = head_to_unlink->next_virt;
   
   /* Add qh to reclaim list */
   head_to_unlink->state = QH_STATE_RECLAIM;
@@ -2871,17 +2921,25 @@ static inline void unlink_async_queue_head(ehci_hcd_t* ehci_hcd, qh_t* head_to_u
 
 void link_qh_to_async(ehci_hcd_t* ehci_hcd, qh_t* qh)
 {
-  qh_t* next = EHCI_QH_PHYS_TO_VIRT(ehci_hcd,
+  qh_t* next_old = EHCI_QH_PHYS_TO_VIRT(ehci_hcd, /* fixed */
                                     (ehci_hcd->async_head->horizontalPointer.raw & (~0x1F)));
+  qh_t* next = (qh_t*)ehci_hcd->async_head->next_virt;
+  if(next != next_old) {
+    DLOG("async_head = 0x%p", ehci_hcd->async_head);
+    DLOG("next = 0x%p, next_old = 0x%p", next, next_old);
+    DLOG("failure in link qh to async");
+    panic("failure in link qh to async");
+  }
   qh_refresh(ehci_hcd, qh);
   qh->previous = next->previous;
   next->previous = &qh->horizontalPointer;
   qh->state = QH_STATE_LINKED;
   qh->horizontalPointer = ehci_hcd->async_head->horizontalPointer;
+  qh->next_virt = ehci_hcd->async_head->next_virt;
   qh->previous = &ehci_hcd->async_head->horizontalPointer;
   gccmb();
   ehci_hcd->async_head->horizontalPointer.raw = QH_NEXT(ehci_hcd, qh);
-  
+  ehci_hcd->async_head->next_virt = (frm_lst_lnk_ptr_t*)qh;
 }
 
 static sint32 spin_for_transfer_completion(ehci_hcd_t* ehci_hcd,
@@ -3065,14 +3123,17 @@ static int submit_async_qtd_chain(ehci_hcd_t* ehci_hcd, struct urb* urb, qh_t** 
 void link_qh_to_periodic_list(ehci_hcd_t* ehci_hcd, qh_t* qh, struct urb* urb)
 {
   qh_t* temp_qh;
+  qh_t* temp_qh_old;
+  itd_t* temp_itd_old;
   itd_t* temp_itd;
   int i;
-  ehci_int_urb_priv_t* int_urb_priv = get_int_urb_priv(urb);
   unsigned int temp_frame_interval;
-  frm_lst_lnk_ptr_t* frame_list     = ehci_hcd->frame_list;
-  uint32_t frame_list_size          = ehci_hcd->frame_list_size;
-  uint32_t frame_interval           = urb->interval / 8;
-  uint32_t frame_interval_offset    = int_urb_priv->ehci_urb_priv.sched_assignment / 8;
+  ehci_int_urb_priv_t* int_urb_priv  = get_int_urb_priv(urb);
+  frm_lst_lnk_ptr_t* frame_list      = ehci_hcd->frame_list;
+  frm_lst_lnk_ptr_t** frame_list_virt = ehci_hcd->frame_list_virt;
+  uint32_t frame_list_size           = ehci_hcd->frame_list_size;
+  uint32_t frame_interval            = urb->interval / 8;
+  uint32_t frame_interval_offset     = int_urb_priv->ehci_urb_priv.sched_assignment / 8;
 
   if(frame_interval == 0) {
     frame_interval = 1;
@@ -3082,23 +3143,37 @@ void link_qh_to_periodic_list(ehci_hcd_t* ehci_hcd, qh_t* qh, struct urb* urb)
     for(i = frame_interval_offset; i < frame_list_size; i += frame_interval) {
       bool not_inserted = TRUE;
       frm_lst_lnk_ptr_t* current = &frame_list[i];
+      frm_lst_lnk_ptr_t** current_virt = &frame_list_virt[i];
       while(not_inserted) {
         /*
          * If the tBit is 1 then we have reached the end of the list
          */
         if(current->tBit) {
-          insert_qh_into_frame_list(current, qh);
+          insert_qh_into_frame_list(current, current_virt, qh);
           not_inserted = FALSE;
         }
         else {
           switch(current->type) {
           case TYPE_ITD:
-            temp_itd = EHCI_ITD_PHYS_TO_VIRT(ehci_hcd, current->raw & (~0x1F));
+            temp_itd_old = EHCI_ITD_PHYS_TO_VIRT(ehci_hcd, current->raw & (~0x1F)); /* Fixed */
+            temp_itd = (itd_t*) *current_virt;
+            if(temp_itd != temp_itd_old) {
+              DLOG("temp_itd = 0x%p, temp_itd_old = 0x%p", temp_itd, temp_itd_old);
+              DLOG("temp itd does not equal temp_itd_old in link_qh_to_periodic_list");
+              panic("temp itd does not equal temp_itd_old in link_qh_to_periodic_list");
+            }
             current = &temp_itd->next_link_pointer;
+            current_virt = &temp_itd->next_virt;
             break;
             
           case TYPE_QH:
-            temp_qh = EHCI_QH_PHYS_TO_VIRT(ehci_hcd, current->raw & (~0x1F));
+            temp_qh_old = EHCI_QH_PHYS_TO_VIRT(ehci_hcd, current->raw & (~0x1F)); /* Fixed */
+            temp_qh = (qh_t*)*current_virt;
+            if(temp_qh != temp_qh_old) {
+              DLOG("temp_qh = 0x%p, temp_qh_old = 0x%p", temp_qh, temp_qh_old);
+              DLOG("temp qh does not equal temp_qh_old in link_qh_to_periodic_list");
+              panic("temp qh does not equal temp_qh_old in link_qh_to_periodic_list");
+            }
             if(temp_qh == qh) {
               not_inserted = FALSE;
               break;
@@ -3114,7 +3189,7 @@ void link_qh_to_periodic_list(ehci_hcd_t* ehci_hcd, qh_t* qh, struct urb* urb)
                * interval so we insert the element right before
                * temp_qh
                */
-              insert_qh_into_frame_list(current, qh);
+              insert_qh_into_frame_list(current, current_virt, qh);
               not_inserted = FALSE;
             }
             else {
@@ -3122,6 +3197,7 @@ void link_qh_to_periodic_list(ehci_hcd_t* ehci_hcd, qh_t* qh, struct urb* urb)
                * Need to keep traversing list
                */
               current = &temp_qh->horizontalPointer;
+              current_virt = &temp_qh->next_virt;
             }
             break;
 
@@ -3691,6 +3767,7 @@ static int submit_itd_chain(ehci_hcd_t* ehci_hcd, list_head_t* itd_list,
   uint32_t frame_index;
   ehci_iso_urb_priv_t* iso_urb_priv = get_iso_urb_priv(urb);
   frm_lst_lnk_ptr_t* frame_list     = ehci_hcd->frame_list;
+  frm_lst_lnk_ptr_t** frame_list_virt     = ehci_hcd->frame_list_virt;
   uint32_t frame_list_size          = ehci_hcd->frame_list_size;
   uint32_t frame_list_mask          = frame_list_size - 1;
   uint32_t frame_interval_offset    = iso_urb_priv->ehci_urb_priv.sched_assignment / 8;
@@ -3745,7 +3822,7 @@ static int submit_itd_chain(ehci_hcd_t* ehci_hcd, list_head_t* itd_list,
           uninserted_items = TRUE;
         }
         else {
-          insert_itd_into_frame_list(ehci_hcd, frame_list, frame_index, itd);
+          insert_itd_into_frame_list(ehci_hcd, frame_list, frame_list_virt, frame_index, itd);
         }
         
         itd->frame_index = frame_index;
@@ -3802,7 +3879,7 @@ static int submit_itd_chain(ehci_hcd_t* ehci_hcd, list_head_t* itd_list,
                                                       current_frame_index,
                                                       start_frame_index));
 
-        insert_itd_into_frame_list(ehci_hcd, frame_list, frame_index, itd);
+        insert_itd_into_frame_list(ehci_hcd, frame_list, frame_list_virt, frame_index, itd);
         itd->frame_index = frame_index;
         frame_index = (frame_index + frame_interval) & frame_list_mask;
       }
@@ -3818,7 +3895,7 @@ static int submit_itd_chain(ehci_hcd_t* ehci_hcd, list_head_t* itd_list,
     //frame_index = EHCI_GET_SAFE_FRAME_INDEX(ehci_hcd);
     list_for_each_entry(itd, itd_list, chain_list) {
       frame_index = frame_index & frame_list_mask;
-      insert_itd_into_frame_list(ehci_hcd, frame_list, frame_index, itd);
+      insert_itd_into_frame_list(ehci_hcd, frame_list, frame_list_virt, frame_index, itd);
       ++frame_index;
     }
   }

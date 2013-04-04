@@ -33,7 +33,7 @@ char rw_buf2[BUFFER_SIZE];
 int main()
 {
   int res;
-  int beagle_fd, net2280_fd;
+  int beagle_fd_out, beagle_fd_in, net2280_fd;
   printf("usb_gadget_test started\n");
   
  retry_net2280_open:
@@ -45,42 +45,55 @@ int main()
   printf("Gadget opened net2280_fd = %d\n", net2280_fd);
 
  retry_beagle_open:
-  if((beagle_fd = usb_open("beagle_communication0")) < 0) {
-    printf("Failed to open device beagle_communication0\n");
+  if((beagle_fd_in = usb_open("beagle_communication1")) < 0) {
+    printf("Failed to open device beagle_communication1\n");
     usleep(1000000);
     goto retry_beagle_open;
   }
 
-  printf("beagle_communication0 device opened, fd = %d\n", beagle_fd);
+  if((beagle_fd_out = usb_open("beagle_communication0")) < 0) {
+    printf("Failed to open device beagle_communication0\n");
+    while(1);
+  }
+
+  printf("beagle_communication0 device opened, fd = %d\n", beagle_fd_out);
+  printf("beagle_communication1 device opened, fd = %d\n", beagle_fd_in);
 
   memcpy(rw_buf1, "Hello from " __FILE__, 40);
 
   int i;
 #define INCREMENTS 1
   for(i = 0; i < INCREMENTS; ++i) {
-    res = usb_write(beagle_fd, rw_buf1, BUFFER_SIZE / INCREMENTS);
+    res = usb_write(beagle_fd_out, rw_buf1, BUFFER_SIZE / INCREMENTS);
     usleep(1000000);
     if(res < 0) {
-      printf("Failed to write to device %d\n", beagle_fd);
+      printf("Failed to write to device %d\n", beagle_fd_out);
       while(1);
     }
     
-    printf("usb write on %d returned %d\n", beagle_fd, res);
+    printf("usb write on %d returned %d\n", beagle_fd_out, res);
   }
   
-    usleep(2000000);
-    while(1) {
-      res = usb_read(net2280_fd, rw_buf2, BUFFER_SIZE);
-      if(res != 0) {
-        printf("usb read returned %d\n", res);
-      }
+  usleep(2000000);
+  res = usb_read(net2280_fd, rw_buf2, BUFFER_SIZE);
+  printf("usb read on net2280_fd returned %d\n", res);
+
+
+  for(i = 0; i < INCREMENTS; ++i) {
+    res = usb_write(net2280_fd, rw_buf1, BUFFER_SIZE / INCREMENTS);
+    usleep(1000000);
+    if(res < 0) {
+      printf("Failed to write to device %d\n", net2280_fd);
+      while(1);
     }
+    
+    printf("usb write on %d returned %d\n", net2280_fd, res);
+  }
+  
+  usleep(2000000);
+  res = usb_read(beagle_fd_in, rw_buf2, BUFFER_SIZE);
+  printf("usb read on beagle_fd_in returned %d\n", res);
 
-  printf("usb read returned %d\n", res);
-
-  rw_buf2[30] = 0;
-
-  printf("%s\n", rw_buf2);
 
   while(1);
 }
