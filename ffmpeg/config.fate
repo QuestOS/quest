@@ -1,0 +1,1 @@
+config:x86:x86_32:generic:linux:gcc 4.6 (Ubuntu/Linaro 4.6.3-1ubuntu5):--disable-pthreads --disable-avdevice
