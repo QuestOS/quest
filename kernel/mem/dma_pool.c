@@ -208,7 +208,7 @@ void dma_pool_destroy(struct dma_pool *pool)
 {
   dma_page_t *page;
   
-  list_for_each_entry_safe(page, &pool->dma_pages, chain) {
+  list_for_each_entry(page, &pool->dma_pages, chain) {
     kfree(page);
   }
 
