@@ -131,17 +131,6 @@ static void insert_remaining_realtime_itds(ehci_hcd_t* ehci_hcd, struct urb* urb
 
 #define FRM_LIST_SIZE 1024  /* Frame list size used in Quest */
 #define DEFAULT_INT_THRESHOLD 8
-#define QH_POOL_SIZE  32
-#define QTD_POOL_SIZE 1024
-#define ITD_POOL_SIZE (1024 * 1)
-#define EHCI_COMPLETION_ELEMENT_POOL_SIZE 128
-
-CASSERT((QH_POOL_SIZE  % 32) == 0, ehci_qh_pool_size )
-CASSERT((QTD_POOL_SIZE % 32) == 0, ehci_qtd_pool_size)
-CASSERT((ITD_POOL_SIZE % 32) == 0, ehci_itd_pool_size)
-CASSERT((EHCI_COMPLETION_ELEMENT_POOL_SIZE % 32) == 0,
-        ehci_completion_element_pool_size)
-
 
 static ehci_hcd_t ehci_hcd;
 static frm_lst_lnk_ptr_t frame_list[FRM_LIST_SIZE] ALIGNED(0x1000);
@@ -150,27 +139,6 @@ static frm_lst_lnk_ptr_t last_frame_list_entries[FRM_LIST_SIZE] ALIGNED(0x1000);
 static uint32_t micro_frame_remaining_time_periodic[FRM_LIST_SIZE * 8];
 static uint32_t micro_frame_remaining_time_async[FRM_LIST_SIZE * 8];
 
-static qh_t qh_pool[QH_POOL_SIZE] ALIGNED(0x1000);
-static uint32_t used_qh_bitmap [(QH_POOL_SIZE  + EHCI_ELEMENTS_PER_BITMAP_ENTRY - 1)
-                                / EHCI_ELEMENTS_PER_BITMAP_ENTRY];
-
-static qtd_t qtd_pool[QTD_POOL_SIZE] ALIGNED(0x1000);
-static uint32_t used_qtd_bitmap[(QTD_POOL_SIZE + EHCI_ELEMENTS_PER_BITMAP_ENTRY - 1)
-                                / EHCI_ELEMENTS_PER_BITMAP_ENTRY];
-
-static itd_t itd_pool[ITD_POOL_SIZE] ALIGNED(0x1000);
-static uint32_t used_itd_bitmap[(ITD_POOL_SIZE + EHCI_ELEMENTS_PER_BITMAP_ENTRY - 1)
-                                / EHCI_ELEMENTS_PER_BITMAP_ENTRY];
-
-
-
-static ehci_completion_element_t
-ehci_completion_element_pool[EHCI_COMPLETION_ELEMENT_POOL_SIZE] ALIGNED(0x1000);
-
-static uint32_t
-used_ehci_completion_element_bitmap[(EHCI_COMPLETION_ELEMENT_POOL_SIZE +
-                                     EHCI_ELEMENTS_PER_BITMAP_ENTRY - 1)
-                                    / EHCI_ELEMENTS_PER_BITMAP_ENTRY];
 
 
 static int ehci_rt_int_data_lost(struct urb* urb);
@@ -632,33 +600,15 @@ static inline frm_lst_lnk_ptr_t**
 get_next_frm_lst_lnk_ptrs_previous(ehci_hcd_t* ehci_hcd, frm_lst_lnk_ptr_t* ptr,
                                    frm_lst_lnk_ptr_t* next_virt)
 {
-  frm_lst_lnk_ptr_t** temp_result_old;
-  frm_lst_lnk_ptr_t** temp_result;
   if(ptr->tBit) return NULL;
 
   switch(ptr->type) {
   case TYPE_ITD:
-    temp_result_old = &(EHCI_ITD_PHYS_TO_VIRT(ehci_hcd, ptr->raw & (~0x1F)))->previous; /* Fixed */
-    temp_result = &((itd_t*)next_virt)->previous;
-    if(temp_result != temp_result_old) {
-      DLOG("case 1 temp_result = 0x%p, temp_result_old = 0x%p", temp_result,
-           temp_result_old);
-      DLOG("temp result != temp_result_old");
-      panic("temp result != temp_result_old");
-    }
-    return temp_result;
-  case TYPE_QH:
-    temp_result_old =  &(EHCI_QH_PHYS_TO_VIRT(ehci_hcd, ptr->raw & (~0x1F)))->previous; /* Fixed */
-    temp_result = &((qh_t*)next_virt)->previous;
-    if(temp_result != temp_result_old) {
-      DLOG("case 2 temp_result = 0x%p, temp_result_old = 0x%p", temp_result,
-           temp_result_old);
-      DLOG("temp result != temp_result_old");
-      panic("temp result != temp_result_old");
-    }
-    return temp_result;
+    return &((itd_t*)next_virt)->previous;
     
-
+  case TYPE_QH:
+    return &((qh_t*)next_virt)->previous;
+    
   default: // Other two types we don't support yet
     DLOG("Reached default in %s", __FUNCTION__);
     panic("Default case reached in get_next_frm_lst_lnk_ptr");
@@ -1342,7 +1292,7 @@ static void ehci_check_for_urb_completions(ehci_hcd_t* ehci_hcd)
       }
       else {
         if(handle_non_rt_urb_completion(ehci_hcd, comp_element)) {
-          free_ehci_completion_element(ehci_hcd, comp_element);
+          free_ehci_completion_element(comp_element);
         }
       }
     }
@@ -1873,18 +1823,10 @@ static void unlink_all_qhs_from_async(ehci_hcd_t* ehci_hcd)
   qh_t* async_head = ehci_hcd->async_head;
   uint32_t async_head_hw = QH_NEXT(ehci_hcd, async_head);
   qh_t* current_qh = async_head;
-  qh_t* next_qh_old;
   qh_t* next_qh;
   
   do {
-    next_qh_old = EHCI_QH_PHYS_TO_VIRT(ehci_hcd, /* fixed */
-                                       current_qh->horizontalPointer.raw & (~0x1F));
     next_qh = (qh_t*)current_qh->next_virt;
-    if(next_qh_old != next_qh) {
-      DLOG("next_qh_old = 0x%p, next_qh = 0x%p", next_qh_old, next_qh);
-      DLOG("Failure in unlink_all_qhs_from_async");
-      panic("Failure in unlink_all_qhs_from_async");
-    }
     current_qh->horizontalPointer.raw = async_head_hw;
     current_qh->next_virt = (frm_lst_lnk_ptr_t*)async_head;
     /*
@@ -2097,6 +2039,31 @@ int ehci_rt_iso_free_packets(struct urb* urb, int number_of_packets)
   return i;
 }
 
+
+static bool initialise_ehci_dma_pools(ehci_hcd_t* ehci_hcd)
+{
+  ehci_hcd->qh_pool = ehci_hcd->qtd_pool = ehci_hcd->itd_pool = NULL;
+
+  ehci_hcd->qh_pool = dma_pool_create("ehci-qh", sizeof(qh_t), 32, 0x1000);
+  if(ehci_hcd->qh_pool == NULL) goto dma_pool_failure;
+
+  ehci_hcd->qtd_pool = dma_pool_create("ehci-qtd", sizeof(qtd_t), 32, 0x1000);
+  if(ehci_hcd->qtd_pool == NULL) goto dma_pool_failure;
+
+  ehci_hcd->itd_pool = dma_pool_create("ehci-itd", sizeof(itd_t), 32, 0x1000);
+  if(ehci_hcd->itd_pool == NULL) goto dma_pool_failure;
+  
+
+  return TRUE;
+ dma_pool_failure:
+
+  if(ehci_hcd->qh_pool) dma_pool_destroy(ehci_hcd->qh_pool);
+  if(ehci_hcd->qtd_pool) dma_pool_destroy(ehci_hcd->qtd_pool);
+  if(ehci_hcd->itd_pool) dma_pool_destroy(ehci_hcd->itd_pool);
+  return FALSE;
+}
+
+
 /*
  * Host controller initiailization sequence taken from page 53 of the
  * EHCI Specs
@@ -2119,18 +2086,6 @@ initialise_ehci_hcd(uint32_t usb_base,
                     uint32_t* micro_frame_remaining_time_periodic,
                     uint32_t* micro_frame_remaining_time_async,
                     uint32_t frm_lst_size,
-                    qh_t* qh_pool,
-                    uint32_t qh_pool_size,
-                    uint32_t* used_qh_bitmap,
-                    qtd_t* qtd_pool,
-                    uint32_t qtd_pool_size,
-                    uint32_t* used_qtd_bitmap,
-                    itd_t* itd_pool,
-                    uint32_t itd_pool_size,
-                    uint32_t* used_itd_bitmap,
-                    ehci_completion_element_t* ehci_completion_element_pool,
-                    uint32_t ehci_completion_element_pool_size,
-                    uint32_t* used_ehci_completion_element_bitmap,
                     uint32_t int_threshold)
 {
   uint32_t i;
@@ -2187,35 +2142,7 @@ initialise_ehci_hcd(uint32_t usb_base,
   spinlock_init(&ehci_hcd->completion_lock);
   spinlock_init(&ehci_hcd->uninserted_itd_lock);
 
-
-#define INIT_EHCI_POOL(type)                                            \
-  do {                                                                  \
-    ehci_hcd->type##_pool = type##_pool;                                \
-    ehci_hcd->type##_pool_phys_addr = (phys_addr_t)get_phys_addr(type##_pool); \
-    ehci_hcd->type##_pool_size = type##_pool_size;                      \
-    ehci_hcd->used_##type##_bitmap = used_##type##_bitmap;              \
-    memset(type##_pool, 0, type##_pool_size * sizeof(type##_t));        \
-    ehci_hcd->used_##type##_bitmap_size = calc_used_##type##_bitmap_size(ehci_hcd); \
-    memset(used_##type##_bitmap, 0,                                     \
-           ehci_hcd->used_##type##_bitmap_size * sizeof(*used_##type##_bitmap)); \
-  }                                                                     \
-  while(0)
-  
-  INIT_EHCI_POOL(qh);
-  INIT_EHCI_POOL(qtd);
-  INIT_EHCI_POOL(itd);
-  INIT_EHCI_POOL(ehci_completion_element);
-
-
-#if 0
-  ehci_hcd->itd_pool = itd_pool;                                  
-  ehci_hcd->itd_pool_phys_addr = (phys_addr_t)get_phys_addr(itd_pool); 
-  ehci_hcd->itd_pool_size = itd_pool_size;                    
-  ehci_hcd->used_itd_bitmap = used_itd_bitmap;
-  memset(itd_pool, 0, itd_pool_size * sizeof(itd_t));       
-#endif
-    
-#undef INIT_EHCI_POOL
+  if(!initialise_ehci_dma_pools(ehci_hcd)) return FALSE;
   
   ehci_hcd->interrupt_threshold = int_threshold;
   ehci_hcd->num_ports           = GET_NUM_PORTS(ehci_hcd);
@@ -2395,19 +2322,6 @@ bool ehci_init(void)
                           micro_frame_remaining_time_periodic,
                           micro_frame_remaining_time_async,
                           sizeof(frame_list)/sizeof(frm_lst_lnk_ptr_t),
-                          qh_pool,
-                          sizeof(qh_pool)/sizeof(qh_t),
-                          used_qh_bitmap,
-                          qtd_pool,
-                          sizeof(qtd_pool)/sizeof(qtd_t),
-                          used_qtd_bitmap,
-                          itd_pool,
-                          sizeof(itd_pool)/sizeof(itd_t),
-                          used_itd_bitmap,
-                          ehci_completion_element_pool,
-                          sizeof(ehci_completion_element_pool)
-                          / sizeof(ehci_completion_element_t),
-                          used_ehci_completion_element_bitmap,
                           DEFAULT_INT_THRESHOLD)) {
     EHCI_DEBUG_HALT();
     return FALSE;
@@ -2870,7 +2784,7 @@ static void qh_append_qtds(ehci_hcd_t* ehci_hcd, struct urb* urb,
   list_del(&qtd->chain_list);
   list_add(&dummy->chain_list, qtd_list);
   list_splice_tail(qtd_list, &qh->qtd_list);
-  initialise_qtd(ehci_hcd, qtd);
+  initialise_qtd(qtd, qtd->dma_addr);
   qh->dummy_qtd = qtd;
   dma = qtd->dma_addr;
   qtd = list_entry(qh->qtd_list.prev, qtd_t, chain_list);
@@ -2894,22 +2808,9 @@ static void qh_append_qtd(ehci_hcd_t* ehci_hcd, struct urb* urb,
  */
 static inline void unlink_async_queue_head(ehci_hcd_t* ehci_hcd, qh_t* head_to_unlink)
 {
-  qh_t* previous_old  = EHCI_QH_PHYS_TO_VIRT(ehci_hcd, ((*(head_to_unlink->previous)).raw & (~0x1F))); /* Fixed */
   qh_t* previous  = (qh_t*)head_to_unlink->previous; 
-  qh_t* next_old  = EHCI_QH_PHYS_TO_VIRT(ehci_hcd, head_to_unlink->horizontalPointer.raw & (~0x1F)); /* Fixed */
   qh_t* next = (qh_t*)head_to_unlink->next_virt;
-  if(next != next_old) {
-    DLOG("next = 0x%p, next_old = 0x%p", next, next_old);
-    DLOG("failure in unlink_async_queue_head");
-    panic("failure in unlink_async_queue_head");
-  }
-
-  //if(previous != previous_old) {
-  //  DLOG("previous = 0x%p, previous_old = 0x%p", previous, previous_old);
-  //  DLOG("failure in unlink_async_queue_head");
-  //  panic("failure in unlink_async_queue_head");
-  //}
-
+  
   next->previous = head_to_unlink->previous;
   previous->horizontalPointer = head_to_unlink->horizontalPointer;
   previous->next_virt = head_to_unlink->next_virt;
@@ -2921,15 +2822,8 @@ static inline void unlink_async_queue_head(ehci_hcd_t* ehci_hcd, qh_t* head_to_u
 
 void link_qh_to_async(ehci_hcd_t* ehci_hcd, qh_t* qh)
 {
-  qh_t* next_old = EHCI_QH_PHYS_TO_VIRT(ehci_hcd, /* fixed */
-                                    (ehci_hcd->async_head->horizontalPointer.raw & (~0x1F)));
   qh_t* next = (qh_t*)ehci_hcd->async_head->next_virt;
-  if(next != next_old) {
-    DLOG("async_head = 0x%p", ehci_hcd->async_head);
-    DLOG("next = 0x%p, next_old = 0x%p", next, next_old);
-    DLOG("failure in link qh to async");
-    panic("failure in link qh to async");
-  }
+  
   qh_refresh(ehci_hcd, qh);
   qh->previous = next->previous;
   next->previous = &qh->horizontalPointer;
@@ -3123,8 +3017,6 @@ static int submit_async_qtd_chain(ehci_hcd_t* ehci_hcd, struct urb* urb, qh_t** 
 void link_qh_to_periodic_list(ehci_hcd_t* ehci_hcd, qh_t* qh, struct urb* urb)
 {
   qh_t* temp_qh;
-  qh_t* temp_qh_old;
-  itd_t* temp_itd_old;
   itd_t* temp_itd;
   int i;
   unsigned int temp_frame_interval;
@@ -3155,25 +3047,15 @@ void link_qh_to_periodic_list(ehci_hcd_t* ehci_hcd, qh_t* qh, struct urb* urb)
         else {
           switch(current->type) {
           case TYPE_ITD:
-            temp_itd_old = EHCI_ITD_PHYS_TO_VIRT(ehci_hcd, current->raw & (~0x1F)); /* Fixed */
             temp_itd = (itd_t*) *current_virt;
-            if(temp_itd != temp_itd_old) {
-              DLOG("temp_itd = 0x%p, temp_itd_old = 0x%p", temp_itd, temp_itd_old);
-              DLOG("temp itd does not equal temp_itd_old in link_qh_to_periodic_list");
-              panic("temp itd does not equal temp_itd_old in link_qh_to_periodic_list");
-            }
+            
             current = &temp_itd->next_link_pointer;
             current_virt = &temp_itd->next_virt;
             break;
             
           case TYPE_QH:
-            temp_qh_old = EHCI_QH_PHYS_TO_VIRT(ehci_hcd, current->raw & (~0x1F)); /* Fixed */
             temp_qh = (qh_t*)*current_virt;
-            if(temp_qh != temp_qh_old) {
-              DLOG("temp_qh = 0x%p, temp_qh_old = 0x%p", temp_qh, temp_qh_old);
-              DLOG("temp qh does not equal temp_qh_old in link_qh_to_periodic_list");
-              panic("temp qh does not equal temp_qh_old in link_qh_to_periodic_list");
-            }
+            
             if(temp_qh == qh) {
               not_inserted = FALSE;
               break;

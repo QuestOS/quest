@@ -125,7 +125,6 @@ print_qh_info(ehci_hcd_t* ehci_hcd, qh_t* qh, bool print_tds ,char* msg)
 #ifdef DEBUG_EHCI_VERBOSE
 #define PRINT_QH_MEMBER(member) DLOGV(#member ": 0x%X", qh->member)
 #define QUEUE_HEAD_PRINT_VERBOSE
-  int qtd_count = 0;
   
   DLOGV("**************************************************************************");
   DLOGV("%s", msg);
@@ -175,41 +174,10 @@ print_qh_info(ehci_hcd_t* ehci_hcd, qh_t* qh, bool print_tds ,char* msg)
 
   if(print_tds) {
     qtd_t* qtd;
-    qtd_t* alt_qtd = NULL;
-    if(qh->current_qtd_ptr_raw > 32) {
-      qtd = EHCI_QTD_PHYS_TO_VIRT(ehci_hcd, qh->current_qtd_ptr_raw);
-      print_qtd_info(ehci_hcd, qtd, "\n\n\nCurrent QTD");
-    }
-    qtd = NULL;
-    if(qh->next_qtd_ptr_raw > 32) {
-      qtd = EHCI_QTD_PHYS_TO_VIRT(ehci_hcd, qh->next_qtd_ptr_raw);
-    }
-    if(qh->alt_qtd_ptr_raw > 32) {
-      
-      alt_qtd = EHCI_QTD_PHYS_TO_VIRT(ehci_hcd, qh->alt_qtd_ptr_raw);
-    }
-    while(qtd != NULL) {
-      DLOGV("\n\n\nQTD %d info", qtd_count);
+    uint count = 0;
+    list_for_each_entry(qtd, &qh->qtd_list, chain_list) {
+      DLOG("qtd #%d", count++);
       print_qtd_info(ehci_hcd, qtd, "");
-      if(alt_qtd != NULL) {
-        DLOGV("Alt qtd %d info:", qtd_count);
-        print_qtd_info(ehci_hcd, alt_qtd, "");
-      }
-      else {
-        DLOGV("Alt qtd %d is NULL", qtd_count);
-      }
-      qtd_count++;
-      alt_qtd = NULL;
-      if(qtd->next_pointer_raw > 32) {
-        qtd = EHCI_QTD_PHYS_TO_VIRT(ehci_hcd, qtd->next_pointer_raw);
-        
-        if(qtd->alt_pointer_raw > 32) {
-          alt_qtd = EHCI_QTD_PHYS_TO_VIRT(ehci_hcd, qtd->alt_pointer_raw);
-        }
-      }
-      else {
-        qtd = NULL;
-      }
     }
   }
   
@@ -414,6 +382,8 @@ void SQUELCH_UNUSED
 print_periodic_list(ehci_hcd_t* ehci_hcd, bool first_row_only,
 		    bool print_qhs, bool print_itds)
 {
+  DLOG("print periodic list is currently broken");
+#if 0
   int i;
   frm_lst_lnk_ptr_t* frame_list = ehci_hcd->frame_list;
   for(i = 0; i < ehci_hcd->frame_list_size; ++i) {
@@ -449,4 +419,5 @@ print_periodic_list(ehci_hcd_t* ehci_hcd, bool first_row_only,
       }
     }
   }
+#endif
 }

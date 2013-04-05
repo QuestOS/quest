@@ -52,150 +52,100 @@
 
 /* Start of initialisation functions */
 
-inline bool
-initialise_qtd(ehci_hcd_t* ehci_hcd, qtd_t* qtd)
+inline void
+initialise_qtd(qtd_t* qtd, phys_addr_t dma_addr)
 {
   memset(qtd, 0, sizeof(*qtd));
   qtd->token = QTD_HALT;
   qtd->next_pointer_raw = EHCI_LIST_END;
   qtd->alt_pointer_raw = EHCI_LIST_END;
   INIT_LIST_HEAD(&qtd->chain_list);
-  qtd->dma_addr = EHCI_QTD_VIRT_TO_PHYS(ehci_hcd, qtd);
-  return TRUE;
+  qtd->dma_addr = dma_addr;
 }
 
-/* If we cannot allocate a dummy qtd return false */
-inline bool initialise_qh(ehci_hcd_t* ehci_hcd, qh_t* qh)
+inline qtd_t* allocate_qtd(ehci_hcd_t* ehci_hcd)
 {
+  phys_addr_t dma_addr;
+  qtd_t* qtd = dma_pool_alloc(ehci_hcd->qtd_pool, &dma_addr);
+  if(qtd == NULL) return NULL;
+  initialise_qtd(qtd, dma_addr);
+  return qtd;
+}
+
+/* If we cannot allocate a dummy qtd return NULL */
+inline qh_t* allocate_qh(ehci_hcd_t* ehci_hcd)
+{
+  phys_addr_t dma_addr;
+  qh_t* qh = dma_pool_alloc(ehci_hcd->qh_pool, &dma_addr);
+  if(qh == NULL) return NULL;
+  
   memset(qh, 0, sizeof(*qh));
   qh->state = QH_STATE_NOT_LINKED;
   INIT_LIST_HEAD(&qh->qtd_list);
   qh->dummy_qtd = allocate_qtd(ehci_hcd);
-  if(qh->dummy_qtd == NULL) return FALSE;
+  if(qh->dummy_qtd == NULL) {
+    dma_pool_free(ehci_hcd->qh_pool, qh, dma_addr);
+    return NULL;
+  }
   qh->dummy_qtd->ioc_called = TRUE; /* avoids calling ioc for dummy qtd */
   qh->previous = &qh->horizontalPointer;
-  qh->dma_addr = EHCI_QH_VIRT_TO_PHYS(ehci_hcd, qh);
-  return TRUE;
+  qh->dma_addr = dma_addr;
+  return qh;
 }
 
-inline bool initialise_itd(ehci_hcd_t* ehci_hcd, itd_t* itd)
+inline itd_t* allocate_itd(ehci_hcd_t* ehci_hcd)
 {
+  phys_addr_t dma_addr;
+  itd_t* itd = dma_pool_alloc(ehci_hcd->itd_pool, &dma_addr);
+  if(itd == NULL) return NULL;
   
-  //void *phys_addr, *phys_addr2;
-  //uint32 *virt_addr, *virt_addr2;
-  //phys_addr = get_pdbr ();      /* Parent page dir base address */
-  //virt_addr = map_virtual_page ((uint32) phys_addr | 3);        /* Temporary virtual address */
-  //DLOG("%d: 0x%X", 1010, virt_addr[1010]);
   memset(itd, 0, sizeof(*itd));
   INIT_LIST_HEAD(&itd->chain_list);
   INIT_LIST_HEAD(&itd->uninserted_list);
-  itd->dma_addr = EHCI_ITD_VIRT_TO_PHYS(ehci_hcd, itd);
-  return TRUE;
+  itd->dma_addr = dma_addr;
+  return itd;
 }
 
-inline bool initialise_ehci_completion_element(ehci_hcd_t* ehci_hcd,
-                                               ehci_completion_element_t* element)
+inline ehci_completion_element_t* allocate_ehci_completion_element()
 {
-  memset(element, 0, sizeof(*element));
+  ehci_completion_element_t* element = kzalloc(sizeof(ehci_completion_element_t));
+  if(element == NULL) return NULL;
   INIT_LIST_HEAD(&element->chain_list);
-  return TRUE;
+  return element;
 }
 
-inline void qh_release(qh_t* qh)
+inline void free_qh(ehci_hcd_t* ehci_hcd, qh_t* qh)
 {
+  dma_pool_free(ehci_hcd->qh_pool, qh, qh->dma_addr);
 }
 
-inline void qtd_release(qtd_t* qtd)
+inline void free_qtd(ehci_hcd_t* ehci_hcd, qtd_t* qtd)
 {
   list_del(&qtd->chain_list);
+  dma_pool_free(ehci_hcd->qtd_pool, qtd, qtd->dma_addr);
 }
 
-inline void itd_release(itd_t* itd)
+inline void free_qtds(ehci_hcd_t* ehci_hcd, qtd_t** items, uint num_items)
+{
+  while(num_items--) {
+    free_qtd(ehci_hcd, items[num_items]);
+  }
+}
+
+inline void free_itd(ehci_hcd_t* ehci_hcd, itd_t* itd)
 {
   list_del(&itd->chain_list);
+  dma_pool_free(ehci_hcd->itd_pool, itd, itd->dma_addr);
 }
 
-inline void ehci_completion_element_release(ehci_completion_element_t* comp_element)
+inline void free_ehci_completion_element(ehci_completion_element_t* comp_element)
 {
   list_del(&comp_element->chain_list);
+  kfree(comp_element);
 }
 
 /* End of initialisation functions */
 
-/*
- * -- EM -- I know the following is ugly, but right now since all the
- * pools are statically declared and that is not the way it will
- * permanently be it does not matter.  Eventually the ehci memory
- * stuff will use the kernel heap/we will have a more unified dma pool
- * system similar to Linux and this can be redone to be nicer and
- * simpler since all these static pools will go away
- */
-
-#define EHCI_RESOURCE_MEMORY_FUNCS(res)                                 \
-  uint32_t allocate_##res##s(ehci_hcd_t* ehci_hcd, res##_t** items, uint32_t num) \
-  {                                                                     \
-    uint32_t  count       = 0;                                          \
-    uint32_t  entry;                                                    \
-    uint32_t  i           = ehci_hcd->used_##res##_bitmap_size;         \
-    uint32_t* used_bitmap = ehci_hcd->used_##res##_bitmap;              \
-    res##_t*  pool        = ehci_hcd->res##_pool;                       \
-                                                                        \
-    while(i--) {                                                        \
-      if(used_bitmap[i] == INT_MAX) continue;                           \
-                                                                        \
-      entry = EHCI_ELEMENTS_PER_BITMAP_ENTRY;                           \
-      while(entry--) {                                                  \
-        if(!(used_bitmap[i] & (1 << entry)) ) {                         \
-          used_bitmap[i] |= (1 << entry); /* Mark entry as allocated */ \
-          items[count] = &pool[i * EHCI_ELEMENTS_PER_BITMAP_ENTRY + entry]; \
-          if(!initialise_##res(ehci_hcd, items[count])) {               \
-            free_##res(ehci_hcd, items[count]);                         \
-            return count;                                               \
-          }                                                             \
-          /*EHCI_MEM_ASSERT( !( ((uint32_t)items[count]) & 0x1F) );*/   \
-          if(++count == num) {                                          \
-            return count;                                               \
-          }                                                             \
-        }                                                               \
-      }                                                                 \
-    }                                                                   \
-    return count;                                                       \
-  }                                                                     \
-                                                                        \
-  inline res##_t* allocate_##res(ehci_hcd_t* ehci_hcd)                  \
-  {                                                                     \
-    res##_t* temp;                                                      \
-    return allocate_##res##s(ehci_hcd, &temp, 1) ? temp : NULL;         \
-  }                                                                     \
-                                                                        \
-  void free_##res##s(ehci_hcd_t* ehci_hcd, res##_t** items, uint32_t num) \
-  {                                                                     \
-    uint32_t* used_bitmap = ehci_hcd->used_##res##_bitmap;              \
-    res##_t*    pool        = ehci_hcd->res##_pool;                     \
-                                                                        \
-    while(num--) {                                                      \
-      uint32_t index = items[num] - pool;                               \
-      EHCI_MEM_ASSERT(&pool[index] == items[num]);                      \
-      res##_release(items[num]);                                        \
-                                                                        \
-      /* Flip the one bit to zero */                                    \
-      used_bitmap[index >> BITMAP_INDEX_SHIFT] &=                       \
-        ~(1 << (index & BITMAP_SUBINDEX_MASK));                         \
-    }                                                                   \
-  }                                                                     \
-                                                                        \
-  inline void free_##res(ehci_hcd_t* ehci_hcd, res##_t* item)           \
-  {                                                                     \
-    free_##res##s(ehci_hcd, &item, 1);                                  \
-  }
-  
-
-EHCI_RESOURCE_MEMORY_FUNCS(qtd)
-EHCI_RESOURCE_MEMORY_FUNCS(itd)
-EHCI_RESOURCE_MEMORY_FUNCS(qh)
-EHCI_RESOURCE_MEMORY_FUNCS(ehci_completion_element)
-
-#undef EHCI_RESOURCE_MEMORY_FUNCS
 
 
 

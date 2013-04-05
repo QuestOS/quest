@@ -386,7 +386,7 @@ CASSERT( (sizeof(qtd_t) & (sizeof(qtd_t) - 1)) == 0, qtd_alignedment)
 #define QH_NEXT(hcd, qh_virt)                                   \
   ( ((qh_virt)->dma_addr) | (TYPE_QH << 1) )
 
-typedef struct _qh_t{
+typedef struct _qh_t {
   
   // dword 0
   frm_lst_lnk_ptr_t horizontalPointer;
@@ -663,21 +663,10 @@ typedef struct
 
   spinlock uninserted_itd_lock;
   list_head_t uninserted_itd_urb_list;
-  
-#define EHCI_DECLARE_POOL(type)                 \
-  type##_t*   type##_pool;                      \
-  phys_addr_t type##_pool_phys_addr;            \
-  uint32_t    type##_pool_size;                 \
-  uint32_t*   used_##type##_bitmap;             \
-  uint32_t    used_##type##_bitmap_size;        
-  
-  
-  EHCI_DECLARE_POOL(qh)
-  EHCI_DECLARE_POOL(qtd)
-  EHCI_DECLARE_POOL(itd)
-  EHCI_DECLARE_POOL(ehci_completion_element)
 
-#undef EHCI_DECLARE_POOL
+  dma_pool_t* qtd_pool;
+  dma_pool_t* itd_pool;
+  dma_pool_t* qh_pool;
   
   uint32_t interrupt_threshold;
   uint32_t num_ports;
@@ -789,7 +778,7 @@ typedef struct
 #define insert_qh_into_frame_list(lst_lnk_ptr, lst_lnk_ptr_virt, qh)    \
   do {                                                                  \
     (qh)->next_virt = *lst_lnk_ptr_virt;                                \
-    *lst_lnk_ptr_virt = qh;                                             \
+    *lst_lnk_ptr_virt = (frm_lst_lnk_ptr_t*)qh;                         \
     (qh)->horizontalPointer = *lst_lnk_ptr;                             \
     lst_lnk_ptr->raw = QH_NEXT(ehci_hcd, qh);                           \
 } while (0)
@@ -1029,21 +1018,6 @@ ehci_ctrl_urb_priv_t* ehci_alloc_ctrl_urb_priv(unsigned int num_qtds)
   ((ehci_hcd)->ehci_devinfo[(addr)]                                     \
    .queue_heads[(is_input) && ((endpoint) != 0)][(endpoint)] = qh)
 
-#define calc_bitmap_size(hcd, pool_size)                        \
-  ((hcd)->pool_size + (EHCI_ELEMENTS_PER_BITMAP_ENTRY - 1))     \
-  / EHCI_ELEMENTS_PER_BITMAP_ENTRY;
-
-#define calc_used_qh_bitmap_size(hcd)           \
-  calc_bitmap_size(hcd, qh_pool_size)
-
-#define calc_used_qtd_bitmap_size(hcd)          \
-  calc_bitmap_size(hcd, qtd_pool_size)
-
-#define calc_used_itd_bitmap_size(hcd)          \
-  calc_bitmap_size(hcd, itd_pool_size)
-
-#define calc_used_ehci_completion_element_bitmap_size(hcd)    \
-  calc_bitmap_size(hcd, ehci_completion_element_pool_size)
 
 #endif // _EHCI_H_
 
