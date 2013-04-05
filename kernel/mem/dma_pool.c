@@ -191,6 +191,17 @@ void *dma_pool_alloc(struct dma_pool *pool,
 void dma_pool_free(struct dma_pool *pool, void *vaddr,
 		   phys_addr_t addr)
 {
+  dma_page_t* page;
+  list_for_each_entry(page, &pool->dma_pages, chain) {
+    if((((uint)vaddr) & (~0xFFF)) == ((uint)page->virt_addr)) {
+      BITMAP_SET(page->bitmap, ((((uint)vaddr) & (~0xFFF)) / pool->size));
+      return;
+    }
+  }
+  DLOG("Error should never reach end of dma_pool_free");
+#ifdef DEBUG_DMA_POOL
+  panic("Error should never reach end of dma_pool_free");
+#endif
 }
 
 void dma_pool_destroy(struct dma_pool *pool)
