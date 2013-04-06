@@ -168,7 +168,7 @@ load_linux_kernel (uint32 * load_addr, char * pathname, uint32 * initrd_paddr, i
   /* heap_end_ptr = heap_end - 0x200 */
   setup_header->heap_end_ptr = 0x9600;
   /* Set loader type to GRUB */
-  setup_header->type_of_loader = 0x7;
+  setup_header->type_of_loader = 0xFF;
   /* Set command line argument to "auto" for now */
   setup_header->cmd_line_ptr = 0xA0000 - strlen (command_line) - 1;
   memcpy ((void *) (setup_header->cmd_line_ptr), command_line, strlen (command_line) + 1);

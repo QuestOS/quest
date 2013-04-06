@@ -574,7 +574,7 @@ vmx_create_pmode_VM (virtual_machine *vm, u32 rip0, u32 rsp0)
   vmwrite (0, VMXENC_PAGE_FAULT_ERRCODE_MATCH);
   vmwrite (0, VMXENC_CR0_GUEST_HOST_MASK); /* all bits "owned" by guest */
   vmwrite (0, VMXENC_CR0_READ_SHADOW);
-  vmwrite (0x2000, VMXENC_CR4_GUEST_HOST_MASK); /* VMXE "owned" by host */
+  vmwrite (0x42000, VMXENC_CR4_GUEST_HOST_MASK); /* VMXE and OSXSAVE "owned" by host */
   vmwrite (0, VMXENC_CR4_READ_SHADOW);
 
   return 0;
@@ -1045,11 +1045,15 @@ vmx_start_VM (virtual_machine *vm)
         /* continue guest */
         goto enter;
     } else if (reason == 0x0A) {
+      bool need_ecx_fix = FALSE;
       /* We use CPUID as a way of intentional VM-Exit in Guest too */
       if (vm->guest_regs.eax == 0xFFFFFFFF) {
         vmx_process_exit (vm->guest_regs.ecx);
         vmwrite (vmread (VMXENC_GUEST_RIP) + inslen, VMXENC_GUEST_RIP); /* skip instruction */
         goto enter;
+      }
+      if (vm->guest_regs.eax == 0x1) {
+        need_ecx_fix = TRUE;
       }
       /* CPUID -- unconditional VM-EXIT -- perform in monitor */
       logger_printf ("VM: performing CPUID (0x%p, 0x%p) => ",
@@ -1059,6 +1063,12 @@ vmx_start_VM (virtual_machine *vm)
       logger_printf ("(0x%p, 0x%p, 0x%p, 0x%p)\n",
                      vm->guest_regs.eax, vm->guest_regs.ebx,
                      vm->guest_regs.ecx, vm->guest_regs.edx);
+      if (need_ecx_fix) {
+        vm->guest_regs.ecx &= ~(1ul << 26);  /* Clear XSAVE */
+        vm->guest_regs.ecx &= ~(1ul << 27);  /* Clear OSXSAVE */
+        vm->guest_regs.ecx &= ~(1ul << 28);  /* Clear AVX */
+        logger_printf ("Fixed ECX: 0x%p\n", vm->guest_regs.ecx);
+      }
       vmwrite (vmread (VMXENC_GUEST_RIP) + inslen, VMXENC_GUEST_RIP); /* skip instruction */
       goto enter;               /* resume guest */
     } else if (reason == 0x1F || reason == 0x20) {
