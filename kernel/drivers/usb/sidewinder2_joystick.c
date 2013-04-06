@@ -50,7 +50,6 @@ static void usb_sidewinder2_callback(struct urb* urb)
   int new_bytes = usb_rt_update_data(urb, 6);
   static int next_bytes = 0;
   static int bytes_available = 0;
-  int i;
   uint8 new[6];
 
   bytes_available += new_bytes;
