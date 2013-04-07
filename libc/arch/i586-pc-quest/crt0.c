@@ -7,7 +7,7 @@ extern char __bss_start, _end; // BSS should be the last think before _end
 char *__env[1] = { 0 };
 //extern char **environ = __env;
 
-void _start() {
+void _start(int argc, char *argv[]) {
   char *i;
 
   // zero BSS
@@ -19,5 +19,5 @@ void _start() {
 
   // XXX: get argc and argv
 
-  exit(main(0,0, __env));
+  exit(main(argc, argv,  __env));
 }

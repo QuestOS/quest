@@ -13,3 +13,4 @@ usb_test_rtt
 float_test
 usb_gadget_test
 joystick_test
+cl-param-test
