@@ -9,6 +9,11 @@
 
 #define execvp(name, args) exec(name, args)
 
+int gethostname(char *name, size_t len);
+
+int getpeername(int sockfd, struct sockaddr *addr, socklen_t *addrlen);
+
+int ftruncate (int a, int b);
 
 ssize_t sendmsg (int sockfd, const struct msghdr *msg, int flags);
 

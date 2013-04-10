@@ -22,6 +22,12 @@
 
 #define execvp exec
 
+int ftruncate(int a, int b) 
+{
+  unimplemented_function_called();
+  return 0;
+}
+
 double atof(const char * s)
 {
   unimplemented_funcion_called();
