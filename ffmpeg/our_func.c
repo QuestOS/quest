@@ -24,7 +24,7 @@
 
 int ftruncate(int a, int b) 
 {
-  unimplemented_function_called();
+  unimplemented_funcion_called();
   return 0;
 }
 
@@ -292,11 +292,11 @@ int isdigit(int c)
   return 0;
 }
 
-double strtod(const char *nptr, char **endptr)
-{
-  unimplemented_funcion_called();
-  return 0;
-}
+//double strtod(const char *nptr, char **endptr)
+//{
+//  unimplemented_funcion_called();
+//  return 0;
+//}
 
 int sscanf(const char *str, const char *format, ...)
 {

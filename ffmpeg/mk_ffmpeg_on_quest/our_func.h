@@ -90,7 +90,7 @@ long int strtol(const char *nptr, char **endptr, int base);
 
 int isdigit(int c);
 
-double strtod(const char *nptr, char **endptr);
+//double strtod(const char *nptr, char **endptr);
 
 int sscanf(const char *str, const char *format, ...);
 
