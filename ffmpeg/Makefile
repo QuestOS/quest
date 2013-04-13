@@ -1,5 +1,12 @@
 MAIN_MAKEFILE=1
 include config.mak
+include ../config.mk
+
+ifndef INSTALL_DIR
+INSTALL_DIR=/tftp/boot
+endif
+
+
 
 vpath %.c    $(SRC_PATH)
 vpath %.cpp  $(SRC_PATH)
@@ -122,11 +129,15 @@ version.h .version:
 # force version.sh to run whenever version might have changed
 -include .version
 
-ifdef PROGS
-install: install-progs install-data
-endif
+#ifdef PROGS
+#install: install-progs install-data
+#endif
+#
+#install: install-libs install-headers
 
-install: install-libs install-headers
+install: $(PROGS-yes)
+	$(INSTALL_CMD) $(PROGS-yes) $(INSTALL_DIR)
+
 
 install-libs: install-libs-yes
 

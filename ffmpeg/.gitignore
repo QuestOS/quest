@@ -34,3 +34,4 @@ doc/libswscale.pod
 doc/print_options
 ffserver
 ffserver_g
+errorlog.txt
