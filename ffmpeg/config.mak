@@ -60,7 +60,7 @@ LD_O=-o $@
 LD_LIB=-l%
 LD_PATH=-L
 DLLTOOL=
-LDFLAGS=-L/home/scif/bin/cross/lib/gcc/i586-pc-quest/4.7.2/ --as-needed --warn-common -rpath-link=libpostproc:libswresample:libswscale:libavfilter:libavdevice:libavformat:libavcodec:libavutil:libavresample
+LDFLAGS=-L$(HOME)/bin/cross/lib/gcc/i586-pc-quest/4.7.2/ --as-needed --warn-common -rpath-link=libpostproc:libswresample:libswscale:libavfilter:libavdevice:libavformat:libavcodec:libavutil:libavresample
 LDFLAGS-ffserver=-E
 SHFLAGS=-shared -Wl,-soname,$$(@F) -Wl,-Bsymbolic -Wl,--version-script,$(SUBDIR)lib$(NAME).ver
 YASMFLAGS=-f elf  -g dwarf2
