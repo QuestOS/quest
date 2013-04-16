@@ -576,7 +576,7 @@ migration_thread (void)
       tmp_tss = (quest_tss *) map_virtual_page (((uint32) shm->migration_queue[cpu]) | 3);
       mtss = lookup_TSS (tmp_tss->tid);
       unmap_virtual_page (tmp_tss);
-      if (!attach_task (mtss)) {
+      if (!attach_task (mtss, shm->remote_tsc_diff[cpu], shm->remote_tsc[cpu])) {
         DLOG ("Attaching task failed!");
       }
       shm->migration_queue[cpu] = 0;
