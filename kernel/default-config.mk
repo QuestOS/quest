@@ -35,3 +35,7 @@ KMALLOC = pow2
 
 # Enable Linux sandbox
 # CFG += -DUSE_LINUX_SANDBOX
+
+# Enable Quest-V multi-kernel without VMX enabled
+# CFG += -DQUESTV_NO_VMX
+
