@@ -20,7 +20,8 @@
 
 #include "mem/physical.h"
 #include "mem/virtual.h"
-#include "mem/pow2.h"
+#include "mem/malloc.h"
+#include "mem/dma_pool.h"
 
 #endif
 

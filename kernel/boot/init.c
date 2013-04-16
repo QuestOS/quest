@@ -132,6 +132,8 @@ load_module (multiboot_module * pmm, int mod_num)
     plPageDirectory[i] = ((i << 22) + 0x83);
   }
 #endif
+  map_malloc_page_tables((pgdir_entry_t*)plPageDirectory, 0);
+  map_dma_page_tables((pgdir_entry_t*)plPageDirectory, 0);
 
   /* Populate ring 3 page directory with entries for its private address
      space */
@@ -544,7 +546,18 @@ init (multiboot * pmb)
   /* Initialise the programmable interval timer (PIT) */
   init_pit ();
 
-  pow2_init ();                 /* initialize power-of-2 memory allocator */
+  /* initialize kmalloc page tables */
+  if(!init_malloc_pool_page_tables()) {
+    com1_printf("Failed to initialise malloc pool");
+    panic("Failed to initialise malloc pool");
+  }
+  
+  init_malloc ();                 /* initialize kmalloc memory pool */
+
+  if(!init_dma_pool_page_tables()) {
+    com1_printf("Failed to initialise dma pool");
+    panic("Failed to initialise dma pool");
+  }
 
   /* Initialise the floating-point unit (FPU) */
   initialise_fpu();

@@ -28,6 +28,7 @@ targ64_extra_libpath=
 # break the alpha sorting.
 case "${targ}" in
 i[3-7]86-*-quest*)	targ_emul=quest_i386 ;;
+arm-*-quest*)	        targ_emul=quest_arm ;;
 aarch64_be-*-elf)	targ_emul=aarch64elfb
 			targ_extra_emuls="aarch64elf armelfb armelf" ;;
 aarch64-*-elf)		targ_emul=aarch64elf

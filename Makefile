@@ -28,7 +28,7 @@ quest.iso: export INSTALL_DIR = $(ISO_DIR)
 all: $(BUILDDIRS)
 
 $(DIRS):
-	$(MAKE) build-$@
+	$(MAKE) -C $@
 
 $(BUILDDIRS):
 	$(MAKE) -C $(@:build-%=%)

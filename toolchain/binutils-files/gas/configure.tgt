@@ -99,6 +99,7 @@ generic_target=${cpu_type}-$vendor-$os
 # Note: This table is alpha-sorted, please try to keep it that way.
 case ${generic_target} in
   i386-*-quest*)                        fmt=elf ;;
+  arm-*-quest*)                         fmt=elf ;;
   aarch64*-*-elf)			fmt=elf;;
   aarch64*-*-linux*)			fmt=elf em=linux ;;
 

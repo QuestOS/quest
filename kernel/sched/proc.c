@@ -18,7 +18,7 @@
 #include "arch/i386.h"
 #include "kernel.h"
 #include "smp/spinlock.h"
-#include "mem/pow2.h"
+#include "mem/malloc.h"
 #include "mem/virtual.h"
 #include "mem/physical.h"
 #include "sched/proc.h"
@@ -188,6 +188,7 @@ duplicate_TSS (uint32 ebp,
   pTSS->tid = new_task_id ();
   save_fpu_state(pTSS->fpu_state);
   pTSS->sandbox_affinity = get_pcpu_id ();
+  pTSS->machine_affinity = 0;
 
   semaphore_init (&pTSS->Msem, 1, 0);
 
@@ -221,6 +222,7 @@ alloc_idle_TSS (int cpu_num)
   pTSS->EBP = pTSS->ESP;
   pTSS->tid = new_task_id ();
   pTSS->sandbox_affinity = cpu_num;
+  pTSS->machine_affinity = 0;
   memcpy (pTSS->name, name, strlen (name));
   pTSS->name[strlen (name)] = '\0';
 
@@ -249,6 +251,7 @@ alloc_TSS (void *pPageDirectory, void *pEntry, int mod_num)
   pTSS->EBP = USER_STACK_START - 100;
   pTSS->tid = new_task_id ();
   pTSS->sandbox_affinity = get_pcpu_id ();
+  pTSS->machine_affinity = 0;
 
   semaphore_init (&pTSS->Msem, 1, 0);
 
@@ -263,16 +266,16 @@ alloc_TSS (void *pPageDirectory, void *pEntry, int mod_num)
 fd_table_file_entry_t* alloc_fd_table_file_entry(char* pathname)
 {
   fd_table_file_entry_t* res;
-  pow2_alloc(sizeof(fd_table_file_entry_t), &res);
+  res = kmalloc(sizeof(fd_table_file_entry_t));
 
   if(!res) {
     return NULL;
   }
 
-  pow2_alloc(strlen(pathname) + 1, &res->pathname);
+  res->pathname = kmalloc(strlen(pathname) + 1);
 
   if(!res->pathname) {
-    pow2_free(res);
+    kfree(res);
     return NULL;
   }
 

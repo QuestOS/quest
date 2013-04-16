@@ -111,11 +111,11 @@ umsc_bulk_scsi (USB_DEVICE_INFO* info, uint ep_out, uint ep_in,
   if (data_len > 0) {
     if (dir) {
       status = usb_bulk_msg(info, usb_rcvbulkpipe(info, ep_in), data, data_len, &act_len,
-                                 USB_DEFAULT_CONTROL_MSG_TIMEOUT);
+                                 USB_DEFAULT_BULK_MSG_TIMEOUT);
     }
     else {
       status = usb_bulk_msg(info, usb_sndbulkpipe(info, ep_out), data, data_len, &act_len,
-                                 USB_DEFAULT_CONTROL_MSG_TIMEOUT);
+                                 USB_DEFAULT_BULK_MSG_TIMEOUT);
     }
 
     DLOG ("status=%d", status);
@@ -290,7 +290,7 @@ umsc_probe (USB_DEVICE_INFO *info, USB_CFG_DESC *cfgd, USB_IF_DESC *ifd)
     return FALSE;
   }
 
-  usb_register_device(info, &umsc_driver);
+  usb_register_device(info, &umsc_driver, "umsc");
   
   DLOG("endpoint packet size = %d", ep[0].wMaxPacketSize);
   maxpkt = ep[0].wMaxPacketSize;

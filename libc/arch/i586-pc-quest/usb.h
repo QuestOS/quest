@@ -32,33 +32,33 @@
 #define CLOBBERS7 "memory","cc","%edi"
 
 static inline int
-usb_syscall(int device_id, int operation, void* buf, int data_len)
+usb_syscall(int fd, int operation, void* buf, int data_len)
 {
   int ret;
-  asm volatile ("int $0x30\n":"=a" (ret) : "a" (2L), "b"(device_id), "c" (operation),
+  asm volatile ("int $0x30\n":"=a" (ret) : "a" (2L), "b"(fd), "c" (operation),
                 "d" (buf), "S" (data_len) : CLOBBERS7);
   return ret;
 }
 
-static inline int usb_read(int device_id, void* buf, int data_len)
+static inline int usb_read(int fd, void* buf, int data_len)
 {
-  return usb_syscall(device_id, USB_USER_READ, buf, data_len);
+  return usb_syscall(fd, USB_USER_READ, buf, data_len);
 }
 
 
-static inline int usb_write(int device_id, void* buf, int data_len)
+static inline int usb_write(int fd, void* buf, int data_len)
 {
-  return usb_syscall(device_id, USB_USER_WRITE, buf, data_len);
+  return usb_syscall(fd, USB_USER_WRITE, buf, data_len);
 }
 
-static inline int usb_open(int device_id, void* buf, int data_len)
+static inline int usb_open(char* name)
 {
-  return usb_syscall(device_id, USB_USER_OPEN, buf, data_len);
+  return usb_syscall(0, USB_USER_OPEN, name, 0);
 }
 
-static inline int usb_close(int device_id)
+static inline int usb_close(int fd)
 {
-  return usb_syscall(device_id, USB_USER_CLOSE, 0, 0);
+  return usb_syscall(fd, USB_USER_CLOSE, 0, 0);
 }
 
 #endif //_USER_USB_H

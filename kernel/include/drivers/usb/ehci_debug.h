@@ -54,10 +54,15 @@
     }                                                                   \
   }                                                                     \
   while(0)
+#else
+#define EHCI_ASSERT(test) ;
 #endif
 
-#define DLOG_INT(val) DLOG(#val " = %d", (int)(val));
-#define DLOG_UINT(val) DLOG(#val " = %u", (unsigned int)(val));
+#define DLOG_INT(val) DLOG(#val " = %d", (int)(val))
+#define DLOG_UINT(val) DLOG(#val " = %u", (unsigned int)(val))
+
+
+void urb_qh_compatiblity_check(struct urb* urb, qh_t* qh);
 
 void SQUELCH_UNUSED
 print_caps_and_regs_info(ehci_hcd_t* ehci_hcd, char* msg);
@@ -67,10 +72,10 @@ void SQUELCH_UNUSED
 print_qtd_info(ehci_hcd_t* ehci, qtd_t* qtd, char* msg);
 
 void SQUELCH_UNUSED
-print_qh_info(ehci_hcd_t* ehci_hcd, qh_t* qh, bool print_tds ,char* msg);
+print_qh_info(ehci_hcd_t* ehci_hcd, qh_t* qh, bool print_tds, char* msg);
 
 void SQUELCH_UNUSED
-print_itd_info(ehci_hcd_t* ehci_hcd, itd_t* itd ,char* msg);
+print_itd_info(ehci_hcd_t* ehci_hcd, itd_t* itd, char* msg);
 
 uint32_t SQUELCH_UNUSED
 print_itd_dma(ehci_hcd_t* ehci_hcd, itd_t* itd, int transaction, char* msg);

@@ -283,6 +283,9 @@ vmx_init_mem (uint32 cpu)
     }
   }
 
+  map_malloc_page_tables(virt_pgd_new, physical_offset);
+  map_dma_page_tables(virt_pgd_new, physical_offset);
+
 #if 0
   for (i = 0; i < 0x400; i++) {
     logger_printf ("Kernl Page Tabe Entry %d: %x\n", i, virt_kern_pgt_new[i]);
@@ -306,6 +309,8 @@ vmx_init_mem (uint32 cpu)
       virt_pgd[i] = 0;
     }
   }
+  map_malloc_page_tables(virt_pgd, 0);
+  map_dma_page_tables(virt_pgd, 0);
   flush_tlb_all ();
 
   DLOG ("Host Mapping Restored on cpu#%d", cpu);

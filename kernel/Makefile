@@ -5,7 +5,7 @@ TFTPDIR=tftp
 
 TAR = tar
 CFLAGS = -fno-builtin -fno-stack-protector -fno-strict-aliasing -fno-delete-null-pointer-checks -nostdinc -g -Wall -Wno-attributes -O$(OPT) $(CFG) $(EXTRA_CFLAGS)
-CPPFLAGS = $(CFG) -D_QUEST -Wa,--32 -MMD -Iinclude -Iinclude/drivers/acpi -I. -I../libc/include 
+CPPFLAGS = $(CFG) -D_QUEST -Wa,--32 -MMD -Iinclude -Iinclude/drivers/acpi -I.
 INDENT = indent
 INDENTFLAGS = -gnu -br -ce --no-tabs
 
@@ -20,8 +20,8 @@ PROGS = quest
 ##################################################
 
 
-# The following we removed because I changed the USB interface and broke them
-# drivers/usb/ftdi.o drivers/usb/pl2303.o 
+# -- EM --The following I removed because I changed the USB interface and broke them
+# drivers/usb/ftdi.o  
 # drivers/usb/rtl8187b.o 
 # drivers/usb/net.o drivers/usb/asix.o
 # drivers/usb/uhci_hcd.o
@@ -34,7 +34,7 @@ OBJS =  boot/boot.o boot/init.o kernel.o module/loader.o \
 	vm/vmx.o vm/vm86.o vm/code16.o vm/ept.o vm/shm.o vm/shdr.o vm/migration.o \
 	vm/linux_boot.o \
 	sched/task.o sched/sched.o sched/sleep.o sched/vcpu.o sched/ipc.o sched/msgt.o sched/proc.o \
-	mem/physical.o mem/virtual.o mem/pow2.o \
+	mem/physical.o mem/virtual.o mem/$(KMALLOC).o mem/malloc.o mem/dma_pool.o \
 	util/cpuid.o util/printf.o util/screen.o util/debug.o util/circular.o \
 	util/crc32.o util/bitrev.o util/logger.o util/perfmon.o util/sort.o \
 	drivers/ata/ata.o drivers/ata/diskio.o \
@@ -54,7 +54,11 @@ OBJS =  boot/boot.o boot/init.o kernel.o module/loader.o \
 	drivers/acpi/quest-acpica.o \
 	drivers/eeprom/93cx6.o \
 	drivers/usb/umsc.o \
-	drivers/usb/hub.o drivers/usb/uvc.o drivers/usb/gadget.o drivers/usb/gadget2.o \
+	drivers/usb/gadget/net2280.o \
+	drivers/usb/usb-keyboard.o drivers/usb/sidewinder2_joystick.o \
+	drivers/usb/pl2303.o \
+	drivers/usb/usb-migration.o \
+	drivers/usb/hub.o drivers/usb/uvc.o drivers/usb/beagle_gadget.o drivers/usb/beagle_gadget2.o \
 	drivers/usb/ehci_hcd.o drivers/usb/ehci_mem.o drivers/usb/ehci_debug.o \
 	drivers/usb/usb.o drivers/usb/enumeration.o \
 	kdb/i386-stub.o

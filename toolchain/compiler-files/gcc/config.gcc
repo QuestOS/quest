@@ -1213,6 +1213,10 @@ i[3-7]86-*-quest*)
 	tmake_file="i386/t-i386elf t-svr4 i386/t-crtstuff"
 	use_fixproto=yes
 	;;
+arm-*-quest*)
+	tm_file="dbxelf.h elfos.h newlib-stdint.h arm/unknown-elf.h arm/elf.h arm/aout.h arm/arm.h"
+	tmake_file="arm/t-arm arm/t-arm-elf"
+	;;
 i[34567]86-*-elf*)
 	tm_file="${tm_file} i386/unix.h i386/att.h dbxelf.h elfos.h newlib-stdint.h i386/i386elf.h"
 	;;

@@ -144,9 +144,14 @@ case "${targ}" in
 
 # START OF targmatch.h
   i[3-7]86-*-quest*)
-   targ_defvec=bfd_elf32_i386_vec
-   targ_selvecs=i386coff_vec
-   ;;
+    targ_defvec=bfd_elf32_i386_vec
+    targ_selvecs=i386coff_vec
+    ;;
+
+  arm-*-quest*)
+    targ_defvec=bfd_elf32_littlearm_vec
+    targ_selvecs=bfd_elf32_bigarm_vec
+    ;;
 
 #ifdef BFD64
   aarch64-*-elf)

@@ -1,8 +1,10 @@
 #!/bin/bash
 
-if [ "$#" -ne 0 ]
+if [ "$#" -eq 0 ]
 then
-	make -C toolchain clean uninstall -j $1
+	parallel_count=1
 else
-	make -C toolchain clean uninstall
+	parallel_count=$1
 fi
+
+make -C `dirname "$0"`/toolchain clean uninstall -j $parallel_count

@@ -36,7 +36,7 @@ struct pl2303_config
   uint8_t stop_bits; /* Stop Bits, 0 = 1, 1 = 1.5, 2 = 2 */
   uint8_t parity; /* 0 = none, 1 = odd, 2 = even, 3 = mark, 4 = space */
   uint8_t data_bits; /* Data Bits, 5, 6, 7 or 8 */
-} __attribute__ ((packed));
+} PACKED;
 
 typedef struct pl2303_config PL2303_CONFIG;
 extern bool pl2303_initialized;

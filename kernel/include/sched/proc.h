@@ -38,6 +38,7 @@ CASSERT (sizeof (task_id) == sizeof (uint32), task_id);
 #define FD_TYPE_FILE    0
 #define FD_TYPE_UDP     1
 #define FD_TYPE_TCP     2
+#define FD_TYPE_USB_DEV 3
 
 typedef struct _fd_table_entry {
   uint8 type;
@@ -103,6 +104,12 @@ typedef struct _quest_tss
   task_id tid;
   char * name[32];              /* A simple description or the path of the process */
   uint sandbox_affinity;        /* Sandbox binding. Change this to migrate. */
+
+  /* -- EM -- Machine affinity right now since we do not have a global
+     namespace across machines a 0 here indicate stay on current
+     machine and a non-zero means migrate to the one other machine */
+  uint machine_affinity;
+  
   fd_table_entry_t fd_table[MAX_FD];
   /* Array used to back up (main) VCPU replenishment queue if necessary during migration */
   replenishment vcpu_backup[MAX_REPL];

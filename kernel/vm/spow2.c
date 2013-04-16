@@ -285,6 +285,12 @@ shm_pow2_alloc (uint32 size, uint8 ** ptr)
   return index;
 }
 
+void* shm_kmalloc(uint32_t size) {
+  uint8* temp;
+  shm_pow2_alloc(size, &temp);
+  return temp;
+}
+
 void
 shm_pow2_free (uint8 * ptr)
 {
@@ -296,8 +302,13 @@ shm_pow2_free (uint8 * ptr)
   spinlock_unlock (shm_pow2_lock);
 }
 
+void shm_kfree(void* ptr)
+{
+  shm_pow2_free(ptr);
+}
+
 void
-shm_pow2_init (void)
+shm_kmalloc_init (void)
 {
   int i;
   uint32 m_frame = 0;

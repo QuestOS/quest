@@ -145,7 +145,7 @@ shm_init (uint32 cpu)
   shm_screen_init (cpu);
 
   if (cpu == 0) {
-    shm_pow2_init ();
+    shm_kmalloc_init ();
   }
 }
 

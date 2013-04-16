@@ -38,6 +38,20 @@ extern void unmap_virtual_page (void *virt_addr);
 extern void *map_virtual_pages (uint32 * phys_frames, uint32 count);
 extern void *map_contiguous_virtual_pages (uint32 phys_frame, uint32 count);
 extern void unmap_virtual_pages (void *virt_addr, uint32 count);
+
+void* map_pool_virtual_page (uint32 phys_frame, uint32 start_dir_entry, uint32 num_dir_entries,
+                             uint32* page_table_virtual_addrs[]);
+void* map_pool_virtual_pages (uint32 * phys_frames, uint32 count,
+                              uint32 start_dir_entry, uint32 num_dir_entries,
+                              uint32* page_table_virtual_addrs[]);
+void* map_contiguous_pool_virtual_pages (uint32 phys_frame, uint32 count,
+                                         uint32 start_dir_entry, uint32 num_dir_entries,
+                                         uint32* page_table_virtual_addrs[]);
+void unmap_pool_virtual_page (void *virt_addr, uint32 start_dir_entry, uint32 num_dir_entries,
+                              uint32* page_table_virtual_addrs[]);
+void unmap_pool_virtual_pages (void *virt_addr, uint32 count, uint32 start_dir_entry, uint32 num_dir_entries,
+                               uint32* page_table_virtual_addrs[]);
+
 extern void *get_phys_addr (void *virt_addr);
 
 typedef union {

@@ -20,7 +20,7 @@
 #include <drivers/usb/uhci.h>
 #include <util/printf.h>
 #include <mem/virtual.h>
-#include <mem/pow2.h>
+#include <mem/malloc.h>
 #include <arch/i386-div64.h>
 #include <kernel.h>
 #include "sched/sched.h"
@@ -700,9 +700,9 @@ uhci_enumerate (void)
   DLOG ("uhci_enumerate: total_length=%d", total_length);
 
   /* allocate memory to hold everything */
-  pow2_alloc (total_length, &info->raw);
+  info->raw = kmalloc(total_length);
   if (!info->raw) {
-    DLOG ("uhci_enumerate: pow2_alloc (%d) failed", total_length);
+    DLOG ("uhci_enumerate: kmalloc (%d) failed", total_length);
     goto abort;
   }
 
@@ -765,7 +765,7 @@ uhci_enumerate (void)
   return TRUE;
 
  abort_mem:
-  pow2_free (info->raw);
+  kfree (info->raw);
  abort:
   return FALSE;
 }

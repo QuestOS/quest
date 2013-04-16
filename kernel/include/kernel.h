@@ -40,6 +40,10 @@
 #define NULL ((void*)0)
 #endif
 
+#define ALIGN(x, a) ALIGN_MASK(x, (typeof(x))(a) - 1)
+#define ALIGN_MASK(x, mask)   (((x) + (mask)) & ~(mask))
+
+
 #define offsetof(TYPE, MEMBER) ((size_t) &((TYPE *)0)->MEMBER)
 #define container_of(ptr, type, member) ({                      \
       const typeof( ((type *)0)->member ) *__mptr = (ptr);      \
@@ -70,16 +74,22 @@
 #define USER_STACK_START 0x40000000
 #define USER_STACK_SIZE 16
 
+/* If sched_param is changed it must also be changed in libc's vcpu.h */
+
 struct sched_param
 {
   int sched_priority;
-  int affinity;                 /* CPU (or Quest-V sandbox affinity) */
 
   /* Below are paramters used for window-constrained scheduling */
   int C;                        /* service quantum */
   int T;                        /* period */
   int m;                        /* mandatory instance count in a window */
   int k;                        /* window of requests  */
+  int affinity;                 /* CPU (or Quest-V sandbox affinity) */
+  int machine_affinity;         /* -- EM -- Machine affinity hack
+                                   right now is a just a bool to
+                                   indicate stay (0) or move to other
+                                   machine (1) */
 };
 
 void map_user_level_stack(uint32_t* plPageDirectory, void* start_addr, int num_frames,

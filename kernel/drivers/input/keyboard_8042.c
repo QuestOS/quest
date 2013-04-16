@@ -56,17 +56,13 @@ clean_entry (int i)
 
 #ifdef DEBUG_KEYS
 static inline void
-check_debug_keys (void)
+check_debug_keys (bool have_kernel_lock)
 {
   int i;
   for (i=0; i<KEY_EVENT_MAX; i++) {
     if (cur_event.keys[i].present && cur_event.keys[i].pressed) {
       if (cur_event.keys[i].scancode == 0x16) {
         /* pressed 'U' */
-        void debug_dump_bulk_qhs (void);
-        lock_kernel ();
-        debug_dump_bulk_qhs ();
-        unlock_kernel ();
       }
     }
   }
@@ -123,30 +119,16 @@ check_control_alt_del (void)
   }
 }
 
-/* Process the keyboard IRQ. */
-static uint32
-kbd_irq_handler (uint8 vec)
+void new_keyboard_code(uint8 code, bool have_kernel_lock)
 {
-  uint8 code;
   int i;
-
-#ifdef USE_VMX
-  uint32 cpu;
-  cpu = get_pcpu_id ();
-  if (shm_initialized && shm_screen_initialized &&
-      (shm->virtual_display.cur_screen != cpu)) {
-    return 0;
-  }
-#endif
-
-  code = inb (KEYBOARD_DATA_PORT);
-
   if (escape) {
     /* Received 2-byte scancode. */
     code |= (escape << 8);
     escape = 0;
   }
 
+    
   if (code == 0xE0 || code == 0xE1)
     escape = code;
   else if (code & 0x80) {
@@ -158,7 +140,7 @@ kbd_irq_handler (uint8 vec)
     for (i=0; i<KEY_EVENT_MAX; i++) {
       if (cur_event.keys[i].present == 1 &&
           cur_event.keys[i].scancode == code) {
-
+        
         /* found previously inserted entry in event buffer: */
         cur_event.keys[i].release = 1;
         cur_event.keys[i].pressed = 0;
@@ -166,22 +148,22 @@ kbd_irq_handler (uint8 vec)
 
         /* enqueue release event */
         if (circular_insert_nowait (&keyb_buffer, (void *)&cur_event) < 0) {
-          lock_kernel();
+          if(!have_kernel_lock) lock_kernel();
           com1_printf ("keyboard_8042: dropped break code: %X\n", code);
-          unlock_kernel();
+          if(!have_kernel_lock) unlock_kernel();
         }
-
+        
         clean_entry (i);      /* remove it from cur_event */
-
+        
         break;
       }
     }
 
     /* No previous Press event found. */
     if (i == KEY_EVENT_MAX) {
-      lock_kernel();
+      if(!have_kernel_lock) lock_kernel();
       com1_printf ("keyboard_8042: spurious break code: %X\n", code);
-      unlock_kernel();
+      if(!have_kernel_lock) unlock_kernel();
     }
 
   } else {
@@ -206,27 +188,32 @@ kbd_irq_handler (uint8 vec)
       }
     }
 
+    static char lcase_scancode[128] =
+    "\0\e1234567890-=\177\tqwertyuiop[]\n\0asdfghjkl;'`\0\\zxcvbnm,./\0*\0 \0\0\0\0\0\0\0\0\0\0\0\0\000789-456+1230.\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0";
+
+
     if (i == KEY_EVENT_MAX) {
       /* no free entry */
-      lock_kernel();
+      if(!have_kernel_lock) lock_kernel();
       com1_printf ("keyboard_8042: too many keys: %X\n", code);
-      unlock_kernel();
+      if(!have_kernel_lock) unlock_kernel();
 
-    } else {
+    }
+    else {
       /* operate on entry: 0 <= i < KEY_EVENT_MAX */
-
+      
       cur_event.keys[i].scancode = code;
       cur_event.keys[i].present  = 1;
       cur_event.keys[i].pressed  = 1;
       cur_event.keys[i].latest   = 1;
-
+      
       /* enqueue press event */
       if (circular_insert_nowait (&keyb_buffer, (void *)&cur_event) < 0) {
-        lock_kernel();
+        if(!have_kernel_lock) lock_kernel();
         com1_printf ("keyboard_8042: dropped make code: %X\n", code);
-        unlock_kernel();
+        if(!have_kernel_lock) unlock_kernel();
       }
-
+      
       cur_event.keys[i].latest = 0;
     }
   }
@@ -234,8 +221,28 @@ kbd_irq_handler (uint8 vec)
   check_control_alt_del ();
 
 #ifdef DEBUG_KEYS
-  check_debug_keys ();
+  check_debug_keys (have_kernel_lock);
 #endif
+
+}
+
+/* Process the keyboard IRQ. */
+static uint32
+kbd_irq_handler (uint8 vec)
+{
+  uint8 code;
+
+#ifdef USE_VMX
+  uint32 cpu;
+  cpu = get_pcpu_id ();
+  if (shm_initialized && shm_screen_initialized &&
+      (shm->virtual_display.cur_screen != cpu)) {
+    return 0;
+  }
+#endif
+
+  code = inb (KEYBOARD_DATA_PORT);
+  new_keyboard_code(code, FALSE);
 
   return 0;
 }

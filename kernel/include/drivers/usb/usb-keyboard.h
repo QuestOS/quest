@@ -15,23 +15,26 @@
  *  along with this program.  If not, see <http://www.gnu.org/licenses/>.
  */
 
-#ifndef _POW2_H_
-#define _POW2_H_
-#include "types.h"
 
-void pow2_init (void);
-int pow2_alloc (uint32 size, uint8 ** ptr);
-void pow2_free (uint8 * ptr);
+#ifndef _USB_KEYBOARD_H_
+#define _USB_KEYBOARD_H_
 
-#endif
+#define USB_KEYBOARD_BUFFER_SIZE 64
 
-/* 
- * Local Variables:
- * indent-tabs-mode: nil
- * mode: C
- * c-file-style: "gnu"
- * c-basic-offset: 2
- * End: 
- */
 
-/* vi: set et sw=2 sts=2: */
+typedef struct _usb_keyboard_dev{
+  struct urb* urb;
+  USB_DEVICE_INFO *dev;
+  USB_EPT_DESC int_ep;
+  char buffer[USB_KEYBOARD_BUFFER_SIZE];
+  uint8 old[8];
+
+} usb_keyboard_dev_t;
+
+void init_usb_keyboard_dev(usb_keyboard_dev_t* dev)
+{
+  memset(dev, 0, sizeof(usb_keyboard_dev_t));
+}
+
+
+#endif // _USB_KEYBOARD_H_

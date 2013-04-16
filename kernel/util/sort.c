@@ -28,9 +28,9 @@
 #include <util/printf.h>
 #include <types.h>
 #include <kernel.h>
-#include <mem/pow2.h>
+#include <mem/malloc.h>
 
-#define DEBUG_SORT
+//#define DEBUG_SORT
 
 #ifdef DEBUG_SORT
 #define DLOG(fmt,...) DLOG_PREFIX("sort",fmt,##__VA_ARGS__)
@@ -112,7 +112,7 @@ void sort(void *base, size_t num, size_t size,
 }
 
 
-#if 1
+#ifdef DEBUG_SORT
 /* a simple boot-time regression test */
 
 int cmpint(const void *a, const void *b)
@@ -124,7 +124,7 @@ static bool sort_test(void)
 {
   int *a, i, r = 1;
 
-  pow2_alloc(1000 * sizeof(int), (uint8_t**)&a);
+  a = kmalloc(1000 * sizeof(int));
         
   if(a == NULL) {
     DLOG("Could not allocate memory for sort_test");
@@ -146,7 +146,7 @@ static bool sort_test(void)
       return FALSE;
     }
 
-  pow2_free((uint8_t*)a);
+  kfree((uint8_t*)a);
   DLOG("Sort test was successful");
   return TRUE;
 }

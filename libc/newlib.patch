@@ -20,13 +20,13 @@
  fi
 --- ../../newlib-1.18.0/newlib/configure.host	2009-12-10 12:12:11.000000000 -0500
 +++ newlib/configure.host	2010-04-03 15:57:57.000000000 -0400
-@@ -519,6 +519,9 @@ case "${host}" in
-   w65-*-*)
- 	sys_dir=w65
- 	;;
-+  i[34567]86-*-quest*)
-+	sys_dir=quest
+@@ -346,6 +346,9 @@
+ # THIS TABLE IS ALPHA SORTED.  KEEP IT THAT WAY.
+ 
+ case "${host}" in
++  *-*-quest*)
++        sys_dir=quest
 +	;;
-   xscale-*-*)
- 	sys_dir=arm
- 	if [ "x${newlib_may_supply_syscalls}" = "xno" ] ; then
+   *-*-cygwin*)
+ 	posix_dir=posix
+ 	stdio64_dir=stdio64

@@ -24,7 +24,7 @@
 #include <drivers/net/ieee80211_standard.h>
 #include <drivers/net/ethernet.h>
 #include <util/debug.h>
-#include <mem/pow2.h>
+#include <mem/malloc.h>
 #include <sched/sched.h>
 #include <arch/i386.h>
 #include <string.h>
@@ -73,12 +73,7 @@ local_to_hw(struct ieee80211_local *local)
 struct wiphy *
 wiphy_new (int sizeof_priv)
 {
-  int sz = sizeof_priv + sizeof (struct wiphy);
-  struct wiphy *wiphy;
-  if (pow2_alloc (sz, (u8 **)&wiphy))
-    return wiphy;
-  else
-    return NULL;
+  return kmalloc(sizeof_priv + sizeof (struct wiphy));
 }
 
 struct ieee80211_hw *

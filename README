@@ -1,18 +1,12 @@
 Steps for building Quest (See the toolchain Quest white paper for more
 information about the toolchain and libc build):
 
-1) Make sure you have the necessary versions of GMP MPFR and MPC.  If
-you do not have the correct versions the build processes will fail in
-the beginning. It is recommended to run uninstall-toolchain if it fails
-just as a precaution (although it probably isn't needed).
-
-2) Set your PATH to include $HOME/bin/cross/bin as this is where the
+1) Set your PATH to include $HOME/bin/cross/bin as this is where the
 toolchain is installed by default.  If you wish to change this you
 must change the variable TOOLCHAIN_INSTALL_DIR (default value of
-$HOME/bin/cross) in both the config.mk in this directory and in
-toolchain/Makefile.
+$HOME/bin/cross) in target-config.mk
 
-3) Run ./install-toolchain.  This takes an optional parameter which is
+2) Run ./install-toolchain.  This takes an optional parameter which is
 the number parallel builds you want to use in the build process (the
 number for the make -j parameter).  On some machines too large of a
 number will actually slow the build processes down to a halt.  If no
@@ -20,7 +14,7 @@ parameter is specified it defaults to 1.  install-toolchain will build
 binutils, a compiler, and libc (since part of it is needed to finish
 the compiler build).
 
-4) Run make.  This will build the kernel and all user level programs.
+3) Run make.  This will build the kernel and all user level programs.
 
 
 See kernel/README for instructions on building the kernel
