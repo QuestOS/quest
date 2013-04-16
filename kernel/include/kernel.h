@@ -73,13 +73,13 @@
 struct sched_param
 {
   int sched_priority;
+  int affinity;                 /* CPU (or Quest-V sandbox affinity) */
 
   /* Below are paramters used for window-constrained scheduling */
   int C;                        /* service quantum */
   int T;                        /* period */
   int m;                        /* mandatory instance count in a window */
   int k;                        /* window of requests  */
-  int affinity;                 /* CPU (or Quest-V sandbox affinity) */
 };
 
 void map_user_level_stack(uint32_t* plPageDirectory, void* start_addr, int num_frames,

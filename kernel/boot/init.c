@@ -629,7 +629,11 @@ init (multiboot * pmb)
   mem_check ();
 
 #ifdef USE_VMX
+#ifdef QUESTV_NO_VMX
+  { extern void vmx_init_mem (uint32); vmx_init_mem (0); }
+#else
   { extern bool vmx_init (void); vmx_init (); }
+#endif
 #endif
 
   /* Shared component initialization in Quest-V */

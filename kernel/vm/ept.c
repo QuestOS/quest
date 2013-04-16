@@ -63,6 +63,11 @@ vmx_init_mem (uint32 cpu)
   uint32 *new_mm_table = 0, new_mm_begin = 0;
   int i;
 
+#ifdef QUESTV_NO_VMX
+  extern uint32 _shared_driver_bss, _shared_driver_bss_end;
+  extern uint32 _shared_driver_data, _shared_driver_data_end;
+#endif
+
 #if 0
   virt_pgd = map_virtual_page (phys_cr3 | 3);
   for (i = 0; i < 0x400; i++) {
@@ -232,6 +237,20 @@ vmx_init_mem (uint32 cpu)
         continue;
       }
 
+#ifdef QUESTV_NO_VMX
+      if ((i >= (((uint32) (&_shared_driver_data) >> 12) & 0x3FF)) &&
+          (i < (((uint32) (&_shared_driver_data_end) >> 12) & 0x3FF))) {
+        //logger_printf ("New Entry %d: 0x%x\n", i, virt_kern_pgt_new[i]);
+        continue;
+      }
+
+      if ((i >= (((uint32) (&_shared_driver_bss) >> 12) & 0x3FF)) &&
+          (i < (((uint32) (&_shared_driver_bss_end) >> 12) & 0x3FF))) {
+        //logger_printf ("New Entry %d: 0x%x\n", i, virt_kern_pgt_new[i]);
+        continue;
+      }
+#endif
+
       /* For the rest of the kernel, everything is shifted. */
       if (((virt_kern_pgt[i] & 0xFFFFF000) >> 12) <
            ((SANDBOX_KERN_OFFSET >> 12) + 256 /* BIOS */)) {
@@ -340,8 +359,11 @@ vmx_init_mem (uint32 cpu)
 
   asm volatile ("movl %%cr3, %0":"=r" (cr));
   DLOG ("Set Host and Guest CR3 to: 0x%x", cr);
+#ifndef QUESTV_NO_VMX
+  /* If VMX is enabled, update new CR3 for both host and guest. */
   vmwrite (cr, VMXENC_HOST_CR3);
   vmwrite (cr, VMXENC_GUEST_CR3);
+#endif
 }
 
 //#define MTRR_DEBUG
@@ -778,6 +800,7 @@ get_host_phys_addr (uint32 guest_phys_addr)
   return (uint32) phys;
 }
 
+#ifdef USE_LINUX_SANDBOX
 void
 mask_sandbox (uint32 sandbox)
 {
@@ -820,5 +843,6 @@ mask_sandbox (uint32 sandbox)
   unmap_virtual_page (pdpt);
   unmap_virtual_page (pml4);
 }
+#endif
 
 /* vi: set et sw=2 sts=2: */

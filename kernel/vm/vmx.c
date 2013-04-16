@@ -699,7 +699,9 @@ abort:
             (uint32) vm_exit_input_param, (uint32) vm_exit_return_val);
       break;
     case VM_EXIT_REASON_MASK_SB:
+#ifdef USE_LINUX_SANDBOX
       mask_sandbox ((uint32) LINUX_SANDBOX);
+#endif
       break;
     default:
       logger_printf ("Unknow reason 0x%X caused VM-Exit in sandbox %d\n", status, cpu);

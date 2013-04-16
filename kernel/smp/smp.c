@@ -303,8 +303,13 @@ ap_init (void)
   hw_ltr (cpuTSS_selector[phys_id]);
 
 #ifdef USE_VMX
+#ifdef QUESTV_NO_VMX
+  /* VMX not enabled. Start VM fork without VM initilization. */
+  { void vmx_init_mem (uint32); vmx_init_mem (phys_id); }
+#else
   /* Initialize virtual machine per-processor infrastructure */
   { void vmx_processor_init (void); vmx_processor_init (); }
+#endif
   spinlock_lock (&(shm->global_lock));
 
   while (!shm->bsp_booted)

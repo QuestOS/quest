@@ -237,7 +237,6 @@ remote_clone_page_directory (pgdir_t dir, u64 deadline)
   static bool new_as = TRUE;  /* Is dir a new address space to be cloned or preempted? */
   pgdir_t tmp_dir;
   u64 cur_tsc = 0;
-  int k = 0;
 
   /* If preempted, go directly to the loop. */
   if (!new_as) goto for_loop;
@@ -430,6 +429,8 @@ request_migration (int sandbox)
                          | MIGRATION_RECV_REQ_VECTOR);
 }
 
+#ifndef QUESTV_NO_VMX
+
 extern void * vm_exit_input_param;
 extern void * vm_exit_return_val;
 
@@ -452,6 +453,8 @@ trap_and_migrate (void * phy_tss, u64 deadline)
   vm_exit (VM_EXIT_REASON_MIGRATION);
   return (quest_tss *) vm_exit_return_val;
 }
+
+#endif /* QUESTV_NO_VMX */
 
 static uint32
 receive_migration_request (uint8 vector)
@@ -533,6 +536,41 @@ abort:
 
 //#define MIGRATION_EXPERIMENT
 bool migration_thread_ready = FALSE;
+
+#ifdef QUESTV_NO_VMX
+/*
+ * Migration thread used by Quest-V if VMX is not enabled. In this case, we don't
+ * need to trap into hypervisor and do the address space copy.
+ */
+static void
+migration_thread (void)
+{
+  quest_tss * mtss = NULL;
+  quest_tss * tmp_tss = NULL;
+  int cpu = 0;
+
+  cpu = get_pcpu_id ();
+  migration_thread_ready = TRUE;
+  DLOG ("Migration thread for non-VMX Quest-V started in sandbox %d", cpu);
+
+  for (;;) {
+    if (((!shm->migration_queue[cpu]) && (!mig_working_flag)) || !migration_thread_ready) {
+      sched_usleep (1000000);
+    } else {
+      DLOG ("Start migration in sandbox %d!", cpu);
+      tmp_tss = (quest_tss *) map_virtual_page (((uint32) shm->migration_queue[cpu]) | 3);
+      mtss = lookup_TSS (tmp_tss->tid);
+      unmap_virtual_page (tmp_tss);
+      if (!attach_task (mtss)) {
+        DLOG ("Attaching task failed!");
+      }
+      shm->migration_queue[cpu] = 0;
+      mig_working_flag = FALSE;
+    }
+  }
+}
+
+#else
 
 /* Migration thread which is responsible for duplicating the address space should
  * be placed on a VCPU that has the highest priority in each sandbox kernel with
@@ -740,6 +778,8 @@ resume_attach:
     }
   }
 }
+
+#endif /* QUESTV_NO_VMX */
 
 static uint32
 receive_cleanup_request (uint8 vector)
