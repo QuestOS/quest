@@ -588,18 +588,21 @@ _exec (char *filename, char *argv[], uint32 *curr_stack)
 {
   uint32 *plPageDirectory;
   uint32 *plPageTable;
+  uint32 currentPageTableEntry;
+  uint32 newPageTableEntry;
   uint32 pStack[USER_STACK_SIZE];
-  Elf32_Ehdr *pe = (Elf32_Ehdr *) 0xFF400000;   /* 4MB below KERN_STK virt address */
+  Elf32_Ehdr *pe = (Elf32_Ehdr *) 0x60000000;   /* Read executable in at 1.5 gigabyte */
   Elf32_Phdr *pph;
   void *pEntry;
   int filesize, orig_filesize;
   /* Temporary storage for frame pointers for a file image up to 4MB
      discounting bss */
-  uint32 phys_addr;
+  uint32 *phys_addrs;
   /* frame_map is a 1024 bit bitmap to mark frames not needed for 
      file of specific size when not all sections need loading into RAM */
-  uint32 frame_map[32];
-  uint32 *frame_ptr;
+  uint32* frame_map;
+  uint32 **frame_ptrs;
+  uint32 num_frame_ptrs;
   uint32 *tmp_page;
   int i, j, c;
   char command_args[80];
@@ -608,14 +611,8 @@ _exec (char *filename, char *argv[], uint32 *curr_stack)
 
   lock_kernel ();
 
-  plPageDirectory = map_virtual_page ((uint32) get_pdbr () | 3);
-  phys_addr = alloc_phys_frame () | 3;
-  frame_ptr = map_virtual_page (phys_addr);
   
   if (!argv || !argv[0]) {
-    BITMAP_SET (mm_table, phys_addr >> 12);
-    unmap_virtual_page (plPageDirectory);
-    unmap_virtual_page (frame_ptr);
     unlock_kernel ();
     return -1;
   }
@@ -648,12 +645,32 @@ _exec (char *filename, char *argv[], uint32 *curr_stack)
 #endif
   /* Find file on disk -- essentially a basic open call */
   if ((filesize = vfs_dir (filename)) < 0) {    /* Error */
-    BITMAP_SET (mm_table, phys_addr >> 12);
-    unmap_virtual_page (plPageDirectory);
-    unmap_virtual_page (frame_ptr);
     unlock_kernel ();
     return -1;
   }
+
+#define DIV_ROUND_UP(n,d) (((n) + (d) - 1) / (d))
+
+  num_frame_ptrs = DIV_ROUND_UP(filesize, 0x400000);
+
+  pow2_alloc(num_frame_ptrs * sizeof(*phys_addrs), (uint8_t**)&phys_addrs);
+  if(phys_addrs == NULL) goto exec_cleanup;
+  pow2_alloc(num_frame_ptrs * sizeof(*frame_ptrs), (uint8_t**)&frame_ptrs);
+  if(frame_ptrs== NULL) goto exec_cleanup;
+  pow2_alloc(32 * sizeof (uint32) * num_frame_ptrs, (uint8_t**)&frame_map);
+  if(frame_map == NULL) goto exec_cleanup;
+  
+  plPageDirectory = map_virtual_page ((uint32) get_pdbr () | 3);
+
+  for(i = 0; i < num_frame_ptrs; ++i) {
+    phys_addrs[i] = alloc_phys_frame () | 3;
+    if(phys_addrs[i] == 0xFFFFFFFF) goto exec_cleanup;
+    frame_ptrs[i] = map_virtual_page (phys_addrs[i]);
+    if(frame_ptrs[i] == NULL) goto exec_cleanup;
+  }
+  
+  
+  
 
   /* Free frames used for old address space before _exec was called
    *
@@ -686,20 +703,37 @@ _exec (char *filename, char *argv[], uint32 *curr_stack)
       plPageDirectory[i] = 0;
     }
   }
+    
+  /* Allocate space for new page tables */
 
-  /* Allocate space for new page table */
-  plPageDirectory[0] = alloc_phys_frame () | 7;
-  plPageTable = map_virtual_page (plPageDirectory[0]);
-  memset (plPageTable, 0, 0x1000);
-
-  for (i = 0; i < filesize; i += 4096) {
-    frame_ptr[i >> 12] = alloc_phys_frame () | 3;
+  currentPageTableEntry = 0;
+  plPageDirectory[currentPageTableEntry] = alloc_phys_frame() | 7;
+  if(plPageDirectory[currentPageTableEntry] == 0xFFFFFFFF) {
+    goto exec_cleanup;
   }
-
-  /* Temporary dir entry for mapping file image into virtual address space */
-  plPageDirectory[(uint32) pe >> 22] = phys_addr;
-
+  plPageTable = map_virtual_page(plPageDirectory[currentPageTableEntry]);
+  if(plPageTable == NULL) goto exec_cleanup;
+  memset(plPageTable, 0, 0x1000);
+  
+  
+  for (i = 0, c = 0; i < filesize; ++c) {
+    for(j = 0; (j < 1024) && (i < filesize); ++j, i += 4096) {
+      frame_ptrs[c][j] = alloc_phys_frame () | 3;
+      if(frame_ptrs[c][j] == 0xFFFFFFFF) {
+        goto exec_cleanup;
+      }
+    }
+  }
+    
+  /* Temporary dir entry for mapping file image into virtual address
+     space */
+  for(i = 0; i < num_frame_ptrs; ++i) {
+    plPageDirectory[((uint32) pe >> 22) + i] = phys_addrs[i];
+    com1_printf(" plPageDirectory[%d] = 0x%X\n",  ((uint32) pe >> 22) + i,  plPageDirectory[((uint32) pe >> 22) + i]);
+  }
+  
   flush_tlb_all ();
+
 
 #ifdef DEBUG_SYSCALL
   com1_printf ("_exec: vfs read\n");
@@ -715,7 +749,7 @@ _exec (char *filename, char *argv[], uint32 *curr_stack)
   pph = (void *) pe + pe->e_phoff;
   pEntry = (void *) pe->e_entry;
 
-  memset (frame_map, 0, 32 * sizeof (uint32));
+  memset (frame_map, 0, 32 * sizeof (uint32) * num_frame_ptrs);
 
 #ifdef DEBUG_SYSCALL
   com1_printf ("_exec: walk ELF header\n");
@@ -745,16 +779,54 @@ _exec (char *filename, char *argv[], uint32 *curr_stack)
 
           unmap_virtual_page (buf);
 
-          plPageTable[((uint32) pph->p_vaddr >> 12) + j] = frame | 7;
+          if(currentPageTableEntry !=
+             (newPageTableEntry = (((uint32) pph->p_vaddr >> 12) + j) / 1024)) {
+            currentPageTableEntry = newPageTableEntry;
+            unmap_virtual_page(plPageTable);
+            if(!plPageDirectory[newPageTableEntry]) {
+              plPageDirectory[currentPageTableEntry] = alloc_phys_frame() | 7;
+              if(plPageDirectory[currentPageTableEntry] == 0xFFFFFFFF) {
+                goto exec_cleanup;
+              }
+              plPageTable = map_virtual_page(plPageDirectory[currentPageTableEntry]);
+              if(plPageTable == NULL) goto exec_cleanup;
+              memset(plPageTable, 0, 0x1000);
+            }
+            else {
+              plPageTable = map_virtual_page(plPageDirectory[currentPageTableEntry]);
+            }
+
+            
+          }
+          plPageTable[(((uint32) pph->p_vaddr >> 12) + j) % 1024] = frame | 7;
         } else {
           BITMAP_SET (frame_map, j + (pph->p_offset >> 12));
-          plPageTable[((uint32) pph->p_vaddr >> 12) + j] =
-            frame_ptr[j + (pph->p_offset >> 12)] | 7;
+
+          if(currentPageTableEntry !=
+             (newPageTableEntry = (((uint32) pph->p_vaddr >> 12) + j) / 1024)) {
+              currentPageTableEntry = newPageTableEntry;
+              unmap_virtual_page(plPageTable);
+              if(!plPageDirectory[newPageTableEntry]) {
+                plPageDirectory[currentPageTableEntry] = alloc_phys_frame() | 7;
+                if(plPageDirectory[currentPageTableEntry] == 0xFFFFFFFF) {
+                  goto exec_cleanup;
+                }
+                plPageTable = map_virtual_page(plPageDirectory[currentPageTableEntry]);
+                if(plPageTable == NULL) goto exec_cleanup;
+                memset(plPageTable, 0, 0x1000);
+              }
+              else {
+                plPageTable = map_virtual_page(plPageDirectory[currentPageTableEntry]);
+              }
+          }
+          plPageTable[(((uint32) pph->p_vaddr >> 12) + j) % 1024] =
+            frame_ptrs[(j + (pph->p_offset >> 12)) / 1024][(j + (pph->p_offset >> 12)) % 1024] | 7;
         }
       }
 
       /* map additional zeroed pages */
       c = ((pph->p_offset + pph->p_memsz - 1) >> 12) - (pph->p_offset >> 12) + 1;       /* page limit to clear for module */
+      
 
       /* Allocate space for bss section.  Use temporary virtual memory for
        * memset call to clear physical frame(s)
@@ -762,7 +834,26 @@ _exec (char *filename, char *argv[], uint32 *curr_stack)
       for (; j < c; j++) {
         uint32 page_frame = (uint32) alloc_phys_frame ();
         void *virt_page = map_virtual_page (page_frame | 3);
-        plPageTable[((uint32) pph->p_vaddr >> 12) + j] = page_frame | 7;
+
+        if(currentPageTableEntry !=
+           (newPageTableEntry = ((((uint32) pph->p_vaddr >> 12) + j) / 1024))) {
+          currentPageTableEntry = newPageTableEntry;
+          unmap_virtual_page(plPageTable);
+          if(!plPageDirectory[newPageTableEntry]) {
+            plPageDirectory[currentPageTableEntry] = alloc_phys_frame() | 7;
+            if(plPageDirectory[currentPageTableEntry] == 0xFFFFFFFF) {
+              goto exec_cleanup;
+            }
+            plPageTable = map_virtual_page(plPageDirectory[currentPageTableEntry]);
+            if(plPageTable == NULL) goto exec_cleanup;
+            memset(plPageTable, 0, 0x1000);
+          }
+          else {
+            plPageTable = map_virtual_page(plPageDirectory[currentPageTableEntry]);
+          }
+          
+        }
+        plPageTable[(((uint32) pph->p_vaddr >> 12) + j) % 1024] = page_frame | 7;
         memset (virt_page, 0, 0x1000);
         unmap_virtual_page (virt_page);
       }
@@ -772,9 +863,12 @@ _exec (char *filename, char *argv[], uint32 *curr_stack)
   }
 
   /* Deallocate unsued frames for file that were not loaded with contents */
-  for (i = 0; i < filesize; i += 4096) {
-    if (!BITMAP_TST (frame_map, i >> 12))
-      BITMAP_SET (mm_table, frame_ptr[i >> 12] >> 12);
+
+  for (i = 0, c = 0; i < filesize; ++c) {
+    for(j = 0; (j < 1024) && (i < filesize); ++j, i += 4096) {
+      if (!BITMAP_TST (frame_map, i >> 12))
+        BITMAP_SET (mm_table, frame_ptrs[c][j] >> 12);
+    }
   }
 
   /* --??-- temporarily map video memory into exec()ed process */
@@ -795,12 +889,21 @@ _exec (char *filename, char *argv[], uint32 *curr_stack)
   memset ((void *) USER_STACK_START - (0x1000 * USER_STACK_SIZE),
           0, 0x1000 * USER_STACK_SIZE);       /* Clear 16 page stack */
 
-  plPageDirectory[1021] = 0;
+  for(i = 0; i < num_frame_ptrs; ++i) {
+    plPageDirectory[((uint32) pe >> 22) + i] = 0;
+  }
   unmap_virtual_page (plPageDirectory);
+  
   unmap_virtual_page (plPageTable);
-  unmap_virtual_page (frame_ptr);
-  BITMAP_SET (mm_table, phys_addr >> 12);
+  for(i = 0; i < num_frame_ptrs; ++i) {
+    unmap_virtual_page (frame_ptrs[i]);
+    BITMAP_SET (mm_table, phys_addrs[i] >> 12);
+  }
 
+  pow2_free((uint8_t*)frame_ptrs);
+  pow2_free((uint8_t*)phys_addrs);
+  pow2_free((uint8_t*)frame_map);
+  
   flush_tlb_all ();
 
   /* Copy command-line arguments to top of new stack */
@@ -830,8 +933,16 @@ _exec (char *filename, char *argv[], uint32 *curr_stack)
   curr_stack[5] = USER_STACK_START - 100;       /* -100 after pushing command-line args */
   curr_stack[6] = 0x23;         /* ss selector */
 
+
+  
   unlock_kernel ();
   return 0;
+
+
+  exec_cleanup:
+  com1_printf("Exec cleanup not implemented\n");
+  panic("Exec cleanup not implemented");
+  return -1;
 }
 
 /* Syscall: getchar / getcode */

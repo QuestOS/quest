@@ -275,7 +275,14 @@ eztftp_dir (char *pathname)
       buf[1] = TFTP_OP_ACK;
       send (buf, 4);
       /* now put the data on our cached pbuf chain */
-      cache (buf+4, len-4);
+      /* -- EM -- Not caching the block because for larger files,
+         (specifically for larger binaries which is the problem right
+         now) this will use up all the page tables entries, the
+         solution is to use eztftp_bulk_read in place of eztftp_read
+         in vfs_read which will load the file only in the buffer, this
+         however causes the file to be read over tftp twice since it
+         is not buffered here */
+      //cache (buf+4, len-4);
     } else if (buf[1] == TFTP_OP_ERR) {
       /* got error, probably file not found */
       DLOG ("error code=%d str=%s", (buf[2] << 8) | buf[3], &buf[4]);

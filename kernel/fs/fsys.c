@@ -98,7 +98,8 @@ vfs_read (char *pathname, char *buf, int len)
   case VFS_FSYS_EZUSB:
     return vfat_read (buf, len);
   case VFS_FSYS_EZTFTP:
-    return eztftp_read (buf, len);
+    /* -- EM -- This is an ugly hack to allow larger binaries to load */
+    return eztftp_bulk_read(pathname, buf);
   default:
     print ("Unknown vfs_type");
     return -1;
