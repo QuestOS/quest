@@ -36,8 +36,8 @@
 #define DLOG(fmt,...) ;
 #endif
 
-uint16 serial_port1 = 0x03F8;    /* Default COM1 */
-//uint16 serial_port1 = 0xDE00;    /* Default COM1 (Shoebox) */
+//uint16 serial_port1 = 0x03F8;    /* Default COM1 */
+uint16 serial_port1 = 0xDF00;    /* Default COM1 (Shoebox) */
 //uint16 serial_port1 = 0xEF00;    /* Default COM1 */
 
 extern void initialize_serial_port (void);

@@ -24,7 +24,7 @@
 #include "mem/mem.h"
 
 
-#define MALLOC_POOL_NUM_PAGE_TABLES ((uint32)1)
+#define MALLOC_POOL_NUM_PAGE_TABLES ((uint32)5)
 
 /* The malloc pool "grows" down, always ending at 1018 */
 
