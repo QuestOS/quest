@@ -194,7 +194,7 @@ void dma_pool_free(struct dma_pool *pool, void *vaddr,
   dma_page_t* page;
   list_for_each_entry(page, &pool->dma_pages, chain) {
     if((((uint)vaddr) & (~0xFFF)) == ((uint)page->virt_addr)) {
-      BITMAP_SET(page->bitmap, ((((uint)vaddr) & (~0xFFF)) / pool->size));
+      BITMAP_SET(page->bitmap, ((((uint)vaddr) & (0xFFF)) / pool->size));
       return;
     }
   }
