@@ -26,9 +26,12 @@ main ()
   int i = 0;
   struct sched_param param;
   for (;;) {
-    if (i == 1) {
-      printf ("Set sandbox machine to 1!\n");
-      param.machine_affinity = 1;
+    if (i == 5) {
+      //printf ("Set sandbox machine to 1!\n");
+      //param.machine_affinity = 1;
+      param.affinity = 1;
+      param.machine_affinity = -1;
+      printf ("Set affinity to %d\n", param.affinity);
       sched_setparam (-1, &param);
     }
     printf ("Migration Test Process, counter = %d\n", i);

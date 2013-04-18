@@ -704,123 +704,6 @@ vcpu_schedule (void)
       percpu_write (vcpu_current, NULL);
     }
 
-#ifdef USE_VMX
-    /* Check migration request */
-    if (str () != next) {
-      quest_tss * tss = lookup_TSS (str ());
-      uint32 * ph_tss = NULL;
-      task_id waiter;
-      uint current_cpu = get_pcpu_id ();
-      if (tss) {
-        if (tss->sandbox_affinity != current_cpu) {
-          DLOG ("Migration Request: taskid=0x%X, src=%d, dest=%d, vcpu=%d",
-                str (), current_cpu, tss->sandbox_affinity, tss->cpu);
-          DLOG ("Current task: 0x%X, Next task: 0x%X", str (), next);
-          mvcpu = vcpu_lookup (tss->cpu);
-          if (!mvcpu) {
-            logger_printf ("No VCPU (%d) associated with Task 0x%X\n", tss->cpu, tss->tid);
-          } else {
-#ifdef USE_MIGRATION_THREAD
-            if (!migration_thread_ready) {
-              /* migration thread is not ready */
-              goto vmx_migration_end;
-            }
-#endif
-            if (shm->migration_queue[tss->sandbox_affinity]) {
-              /* Located the migrating quest_tss and its VCPU */
-              /* TODO:
-               * Assume the queue can have only one element for now. In case of queued
-               * requests, quest_tss should be chained as usual.
-               */
-              logger_printf ("Migration queue in sandbox %d is not empty\n",
-                             tss->sandbox_affinity);
-              goto vmx_migration_end;
-            } else {
-              /* Can migration condition be met? */
-              //if (!validate_migration_condition (tss)) {
-              //  goto resume_schedule;
-              //}
-              /* Detach the migrating task from local scheduler */
-              ph_tss = detach_task (tss->tid, TRUE);
-              DLOG ("Process quest_tss to be migrated: 0x%X", ph_tss);
-              /* Add the migrating process to migration queue of destination sandbox */
-              shm->migration_queue[tss->sandbox_affinity] = ph_tss;
-            }
-
-            /* All tasks waiting for us now belong on the runqueue. */
-            /* TODO:
-             * For now, we wake up all the waiting processes. This
-             * is not really a solution for the shared resource problem.
-             * Some more specific mechanisms must be devised for this
-             * issue in the future.
-             */
-            while ((waiter = queue_remove_head (&tss->waitqueue)))
-              wakeup (waiter);
-
-            if (ph_tss) {
-              /* Request migration */
-              if (!request_migration (tss->sandbox_affinity))
-                logger_printf ("Failed to send migration request to sandbox %d\n",
-                               tss->sandbox_affinity);
-            } else {
-              logger_printf ("Failed to detach task 0x%X from local scheduler\n", tss->tid);
-            }
-          }
-        }
-      }
-    }
-  vmx_migration_end:
-#endif
-
-#ifdef USB_MIGRATION
-    /* Check migration request */
-    if (str () != next) {
-      quest_tss * tss = lookup_TSS (str ());
-      uint32 * ph_tss = NULL;
-      task_id waiter;
-      if (tss) {
-        if (tss->machine_affinity) {
-          DLOG ("Migration Request to another machine: taskid=0x%X, vcpu=%d",
-                str (), tss->cpu);
-          DLOG ("Current task: 0x%X, Next task: 0x%X", str (), next);
-          mvcpu = vcpu_lookup (tss->cpu);
-          if (!mvcpu) {
-            logger_printf ("No VCPU (%d) associated with Task 0x%X\n", tss->cpu, tss->tid);
-          }
-          else {
-            
-            if (usb_migration_queue_full()) {
-              logger_printf ("Migration queue for usb is not empty empty\n");
-            }
-            else {
-              /* Detach the migrating task from local scheduler */
-              ph_tss = detach_task (tss->tid, FALSE);
-              if(!ph_tss) {
-                DLOG("Failed to detach task for usb migration");
-                panic("Failed to detach task for usb migration");
-              }
-              DLOG ("Process quest_tss to be migrated: 0x%X", ph_tss);
-              /* Add the migrating process to the usb migration queue  */
-              usb_add_task_to_migration_queue(ph_tss);
-                            
-              /* All tasks waiting for us now belong on the runqueue. */
-              /* TODO:
-               * For now, we wake up all the waiting processes. This
-               * is not really a solution for the shared resource problem.
-               * Some more specific mechanisms must be devised for this
-               * issue in the future.
-               */
-              while ((waiter = queue_remove_head (&tss->waitqueue))) {
-                wakeup (waiter);
-              }
-            }
-          }
-        }
-      }
-    }
-#endif
-    
-
     /* find time of next important event */
     if (vcpu)
       tdelta = vcpu->b;
@@ -851,6 +734,123 @@ vcpu_schedule (void)
       timer_set = TRUE;
     }
   }
+
+#ifdef USE_VMX
+  /* Check migration request */
+  if ((!queue) || (str () != next)) {
+    quest_tss * tss = lookup_TSS (str ());
+    uint32 * ph_tss = NULL;
+    task_id waiter;
+    uint current_cpu = get_pcpu_id ();
+
+    if (tss) {
+      if (tss->sandbox_affinity != current_cpu) {
+        DLOG ("Migration Request: taskid=0x%X, src=%d, dest=%d, vcpu=%d",
+            str (), current_cpu, tss->sandbox_affinity, tss->cpu);
+        DLOG ("Current task: 0x%X, Next task: 0x%X", str (), next);
+        mvcpu = vcpu_lookup (tss->cpu);
+        if (!mvcpu) {
+          logger_printf ("No VCPU (%d) associated with Task 0x%X\n", tss->cpu, tss->tid);
+        } else {
+#ifdef USE_MIGRATION_THREAD
+          if (!migration_thread_ready) {
+            /* migration thread is not ready */
+            goto vmx_migration_end;
+          }
+#endif
+          if (shm->migration_queue[tss->sandbox_affinity]) {
+            /* Located the migrating quest_tss and its VCPU */
+            /* TODO:
+             * Assume the queue can have only one element for now. In case of queued
+             * requests, quest_tss should be chained as usual.
+             */
+            logger_printf ("Migration queue in sandbox %d is not empty\n",
+                tss->sandbox_affinity);
+            goto vmx_migration_end;
+          } else {
+            /* Can migration condition be met? */
+            //if (!validate_migration_condition (tss)) {
+            //  goto resume_schedule;
+            //}
+            /* Detach the migrating task from local scheduler */
+            ph_tss = detach_task (tss->tid, TRUE);
+            DLOG ("Process quest_tss to be migrated: 0x%X", ph_tss);
+            /* Add the migrating process to migration queue of destination sandbox */
+            shm->migration_queue[tss->sandbox_affinity] = ph_tss;
+          }
+
+          /* All tasks waiting for us now belong on the runqueue. */
+          /* TODO:
+           * For now, we wake up all the waiting processes. This
+           * is not really a solution for the shared resource problem.
+           * Some more specific mechanisms must be devised for this
+           * issue in the future.
+           */
+          while ((waiter = queue_remove_head (&tss->waitqueue)))
+            wakeup (waiter);
+
+          if (ph_tss) {
+            /* Request migration */
+            if (!request_migration (tss->sandbox_affinity))
+              logger_printf ("Failed to send migration request to sandbox %d\n",
+                  tss->sandbox_affinity);
+          } else {
+            logger_printf ("Failed to detach task 0x%X from local scheduler\n", tss->tid);
+          }
+        }
+      }
+    }
+  }
+vmx_migration_end:
+#endif
+
+#ifdef USB_MIGRATION
+  /* Check migration request */
+  if ((!queue) || (str () != next)) {
+    quest_tss * tss = lookup_TSS (str ());
+    uint32 * ph_tss = NULL;
+    task_id waiter;
+    if (tss) {
+      if (tss->machine_affinity) {
+        DLOG ("Migration Request to another machine: taskid=0x%X, vcpu=%d",
+            str (), tss->cpu);
+        DLOG ("Current task: 0x%X, Next task: 0x%X", str (), next);
+        mvcpu = vcpu_lookup (tss->cpu);
+        if (!mvcpu) {
+          logger_printf ("No VCPU (%d) associated with Task 0x%X\n", tss->cpu, tss->tid);
+        }
+        else {
+
+          if (usb_migration_queue_full()) {
+            logger_printf ("Migration queue for usb is not empty empty\n");
+          }
+          else {
+            /* Detach the migrating task from local scheduler */
+            ph_tss = detach_task (tss->tid, FALSE);
+            if(!ph_tss) {
+              DLOG("Failed to detach task for usb migration");
+              panic("Failed to detach task for usb migration");
+            }
+            DLOG ("Process quest_tss to be migrated: 0x%X", ph_tss);
+            /* Add the migrating process to the usb migration queue  */
+            usb_add_task_to_migration_queue(ph_tss);
+
+            /* All tasks waiting for us now belong on the runqueue. */
+            /* TODO:
+             * For now, we wake up all the waiting processes. This
+             * is not really a solution for the shared resource problem.
+             * Some more specific mechanisms must be devised for this
+             * issue in the future.
+             */
+            while ((waiter = queue_remove_head (&tss->waitqueue))) {
+              wakeup (waiter);
+            }
+          }
+        }
+      }
+    }
+  }
+#endif
 
   if (!timer_set)
     LAPIC_start_timer (cpu_bus_freq / QUANTUM_HZ);
