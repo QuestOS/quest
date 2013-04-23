@@ -219,6 +219,17 @@ detach_task (task_id tid, bool phys_addr)
        */
       if (!sleepqueue_detach (tid)) tss->time = 0;
       goto success;
+    } else {
+      if (v->runqueue == 0) {
+        v->runnable = FALSE;
+      }
+      /* Detach the task from local sleep queue if necessary. If task is not
+       * in the sleep queue, we set the sleep time to 0 so that the destination
+       * sandbox knows it won't need to put it to its sleep queue.
+       */
+      if (!sleepqueue_detach (tid)) tss->time = 0;
+
+      goto success;
     }
   } else {
     /* Remove migrating quest_tss from its VCPU run queue */
@@ -247,17 +258,11 @@ success:
   }
 }
 
-
-
-
 #ifdef USE_VMX
 
 static task_id migration_thread_id = 0;
 static u32 migration_stack[1024] ALIGNED (0x1000);
 static bool mig_working_flag = FALSE;
-
-
-
 
 quest_tss *
 pull_quest_tss (void * phy_tss)
@@ -300,7 +305,6 @@ abort:
   unmap_virtual_page (target_tss);
   return NULL;
 }
-
 
 pgdir_t
 remote_clone_page_directory (pgdir_t dir, u64 deadline)
@@ -560,8 +564,8 @@ bool migration_thread_ready = FALSE;
 static void
 migration_thread (void)
 {
-  quest_tss * mtss = NULL;
-  quest_tss * tmp_tss = NULL;
+  quest_tss * ret_tss = NULL;
+  static pgdir_t mdir = {-1, 0}, cdir = {-1, 0};
   int cpu = 0;
 
   cpu = get_pcpu_id ();
@@ -573,12 +577,41 @@ migration_thread (void)
       sched_usleep (1000000);
     } else {
       DLOG ("Start migration in sandbox %d!", cpu);
-      tmp_tss = (quest_tss *) map_virtual_page (((uint32) shm->migration_queue[cpu]) | 3);
-      mtss = lookup_TSS (tmp_tss->tid);
-      unmap_virtual_page (tmp_tss);
-      if (!attach_task (mtss, shm->remote_tsc_diff[cpu], shm->remote_tsc[cpu])) {
+      ret_tss = pull_quest_tss (shm->migration_queue[cpu]);
+
+      if (ret_tss) {
+        mdir.dir_pa = ret_tss->CR3;
+        mdir.dir_va = map_virtual_page (mdir.dir_pa | 3);
+        if (!mdir.dir_va) {
+          logger_printf ("map_virtual_page failed in migration!\n");
+          free_quest_tss (ret_tss);
+          panic ("map_virtual_page failed in migration");
+        }
+
+        cdir = remote_clone_page_directory (mdir, 0);
+        unmap_virtual_page (mdir.dir_va);
+        if (!cdir.dir_va) {
+          /* Clone failed */
+          logger_printf ("Task 0x%X address space clone failed in migration!\n", ret_tss->tid);
+          /* Clean up ret_tss */
+          free_quest_tss (ret_tss);
+        } else {
+          ret_tss->CR3 = cdir.dir_pa;
+          unmap_virtual_page (mdir.dir_va);
+        }
+      } else {
+        panic ("pull_quest_tss failed!\n");
+      }
+
+      if (!attach_task (ret_tss, shm->remote_tsc_diff[cpu], shm->remote_tsc[cpu])) {
         DLOG ("Attaching task failed!");
       }
+
+      /* Reset all static variables */
+      ret_tss = NULL;
+      mdir.dir_pa = cdir.dir_pa = -1;
+      mdir.dir_va = cdir.dir_va = NULL;
+
       shm->migration_queue[cpu] = 0;
       mig_working_flag = FALSE;
     }

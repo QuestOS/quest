@@ -737,7 +737,7 @@ vcpu_schedule (void)
 
 #ifdef USE_VMX
   /* Check migration request */
-  if ((!queue) || (str () != next)) {
+  if (str () != next) {
     quest_tss * tss = lookup_TSS (str ());
     uint32 * ph_tss = NULL;
     task_id waiter;
@@ -806,7 +806,7 @@ vmx_migration_end:
 
 #ifdef USB_MIGRATION
   /* Check migration request */
-  if ((!queue) || (str () != next)) {
+  if (str () != next) {
     quest_tss * tss = lookup_TSS (str ());
     uint32 * ph_tss = NULL;
     task_id waiter;
