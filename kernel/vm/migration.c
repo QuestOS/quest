@@ -481,6 +481,12 @@ receive_migration_request (uint8 vector)
 #ifndef USE_MIGRATION_THREAD
   quest_tss * new_tss = NULL;
   uint64 cur_tsc = 0, prev_tsc = 0;
+#  ifdef QUESTV_NO_VMX
+  int i;
+  extern task_id shell_tss;
+  quest_tss * stss = NULL;
+  pgdir_t dir = {-1, 0}, shell_dir = {-1, 0};
+#  endif
 #endif
   int cpu = 0;
   uint64 now;
@@ -523,7 +529,46 @@ receive_migration_request (uint8 vector)
     DLOG ("Process quest_tss to be migrated: 0x%X", (uint32) shm->migration_queue[cpu]);
     RDTSC (prev_tsc);
     /* Trap to monitor now for convenience */
+
+#ifdef QUESTV_NO_VMX
+    new_tss = pull_quest_tss(shm->migration_queue[cpu]);
+    if (new_tss) {
+      stss = lookup_TSS (shell_tss);
+      if (stss) {
+        shell_dir.dir_pa = stss->CR3;
+        shell_dir.dir_va = map_virtual_page (shell_dir.dir_pa | 3);
+        
+        dir.dir_pa = new_tss->CR3;
+        dir.dir_va = map_virtual_page (dir.dir_pa | 3);
+        if (!dir.dir_va) {
+          logger_printf ("map_virtual_page failed in migration!\n");
+          free_quest_tss (new_tss);
+          panic ("map_virtual_page failed in migration");
+        }
+        
+        for(i = 0; i < 1024; ++i) {
+          if (dir.dir_va[i].flags.present) {
+            if (i >= PGDIR_KERNEL_BEGIN && i != PGDIR_KERNEL_STACK) {
+              /* Replace kernel mappings with destination sandbox kernel */
+              /* To make things easier, let's use local shell's kernel mappings directly. */
+              /* This is what fork does anyway:-) */
+              dir.dir_va[i].raw = shell_dir.dir_va[i].raw;
+            }
+          }
+        }
+      }
+      else {
+        DLOG("Failed to get shell tss");
+        panic("Failed to get shell tss");
+      }
+    }
+    else {
+      DLOG("Failed to pull tss");
+      panic("Failed to pull tss");
+    }
+#else
     new_tss = trap_and_migrate (shm->migration_queue[cpu], 0);
+#endif
     if (new_tss) {
       DLOG ("New quest_tss:");
       DLOG ("  name: %s, task_id: 0x%X, affinity: %d, CR3: 0x%X",
@@ -565,8 +610,11 @@ static void
 migration_thread (void)
 {
   quest_tss * ret_tss = NULL;
-  static pgdir_t mdir = {-1, 0}, cdir = {-1, 0};
+  pgdir_t shell_dir = {-1, 0}, dir = {-1, 0};
+  extern task_id shell_tss;
+  quest_tss * stss = NULL;
   int cpu = 0;
+  int i;
 
   cpu = get_pcpu_id ();
   migration_thread_ready = TRUE;
@@ -580,37 +628,45 @@ migration_thread (void)
       ret_tss = pull_quest_tss (shm->migration_queue[cpu]);
 
       if (ret_tss) {
-        mdir.dir_pa = ret_tss->CR3;
-        mdir.dir_va = map_virtual_page (mdir.dir_pa | 3);
-        if (!mdir.dir_va) {
-          logger_printf ("map_virtual_page failed in migration!\n");
-          free_quest_tss (ret_tss);
-          panic ("map_virtual_page failed in migration");
+        stss = lookup_TSS (shell_tss);
+        if (stss) {
+          shell_dir.dir_pa = stss->CR3;
+          shell_dir.dir_va = map_virtual_page (shell_dir.dir_pa | 3);
+          
+          dir.dir_pa = ret_tss->CR3;
+          dir.dir_va = map_virtual_page (dir.dir_pa | 3);
+          if (!dir.dir_va) {
+            logger_printf ("map_virtual_page failed in migration!\n");
+            free_quest_tss (ret_tss);
+            panic ("map_virtual_page failed in migration");
+          }
+          
+          for(i = 0; i < 1024; ++i) {
+            if (dir.dir_va[i].flags.present) {
+              if (i >= PGDIR_KERNEL_BEGIN && i != PGDIR_KERNEL_STACK) {
+                /* Replace kernel mappings with destination sandbox kernel */
+                /* To make things easier, let's use local shell's kernel mappings directly. */
+                /* This is what fork does anyway:-) */
+                dir.dir_va[i].raw = shell_dir.dir_va[i].raw;
+              }
+            }
+          }
         }
-
-        cdir = remote_clone_page_directory (mdir, 0);
-        unmap_virtual_page (mdir.dir_va);
-        if (!cdir.dir_va) {
-          /* Clone failed */
-          logger_printf ("Task 0x%X address space clone failed in migration!\n", ret_tss->tid);
-          /* Clean up ret_tss */
-          free_quest_tss (ret_tss);
-        } else {
-          ret_tss->CR3 = cdir.dir_pa;
-          unmap_virtual_page (mdir.dir_va);
+        else {
+          DLOG("Failed to get shell tss");
+          panic("Failed to get shell tss");
         }
-      } else {
-        panic ("pull_quest_tss failed!\n");
       }
-
+      else {
+        DLOG("Failed to pull tss");
+        panic("Failed to pull tss");
+      }
+      
       if (!attach_task (ret_tss, shm->remote_tsc_diff[cpu], shm->remote_tsc[cpu])) {
         DLOG ("Attaching task failed!");
       }
 
-      /* Reset all static variables */
-      ret_tss = NULL;
-      mdir.dir_pa = cdir.dir_pa = -1;
-      mdir.dir_va = cdir.dir_va = NULL;
+      
 
       shm->migration_queue[cpu] = 0;
       mig_working_flag = FALSE;
