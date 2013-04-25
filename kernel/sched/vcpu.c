@@ -59,7 +59,7 @@
 u32 tsc_freq_msec, tsc_unit_freq;
 u64 vcpu_init_time;
 
-struct vcpu_params { vcpu_type type; u32 C, T; iovcpu_class class; };
+
 static struct vcpu_params init_params[] = {
   { MAIN_VCPU, 10, 100 },
   { MAIN_VCPU, 10, 50 },
@@ -77,16 +77,23 @@ static struct vcpu_params init_params[] = {
   { IO_VCPU, 1, 10, IOVCPU_CLASS_NET },
 #endif
 };
-#define NUM_VCPUS (sizeof (init_params) / sizeof (struct vcpu_params))
-static vcpu vcpus[NUM_VCPUS] ALIGNED (VCPU_ALIGNMENT);
+
+#define NUM_INIT_VCPUS (sizeof (init_params) / sizeof (struct vcpu_params))
+
+#define MAX_NUM_VCPUS 100
+
+static vcpu *vcpu_list[MAX_NUM_VCPUS];
+static uint max_vcpu_id = 0;
+static int num_vcpus = 0;
 
 extern uint
 lowest_priority_vcpu (void)
 {
-  uint i, n=0, T=0;
-  for (i=0; i<NUM_VCPUS; i++) {
-    if (init_params[i].type == MAIN_VCPU && init_params[i].T >= T) {
-      T = init_params[i].T;
+  uint i;
+  u64 n=0, T=0;
+  for (i=0; i<max_vcpu_id; i++) {
+    if (vcpu_list[i] && vcpu_list[i]->type == MAIN_VCPU && vcpu_list[i]->T >= T) {
+      T = vcpu_list[i]->T;
       n = i;
     }
   }
@@ -96,15 +103,15 @@ lowest_priority_vcpu (void)
 vcpu *
 vcpu_lookup (int i)
 {
-  if (0 <= i && i < NUM_VCPUS)
-    return &vcpus[i];
+  if (0 <= i && i < MAX_NUM_VCPUS)
+    return vcpu_list[i];
   return NULL;
 }
 
 int
 vcpu_index (vcpu *v)
 {
-  return (((uint) v) - ((uint) &vcpus)) / sizeof (vcpu);
+  return v->index;
 }
 
 void
@@ -208,6 +215,17 @@ vcpu_queue_append (vcpu **queue, vcpu *vcpu)
   vcpu->next = NULL;
   *queue = vcpu;
 }
+
+
+static int next_vcpu_index()
+{
+  int i;
+  for(i = 0; i < MAX_NUM_VCPUS; ++i) {
+    if(!vcpu_list[i]) return i;
+  }
+  return -1;
+}
+
 
 vcpu *
 vcpu_queue_remove_head (vcpu **queue)
@@ -327,6 +345,7 @@ vcpu_rr_schedule (void)
     switch_to (next);
 }
 
+#if 0
 extern void
 vcpu_rr_wakeup (task_id task)
 {
@@ -356,6 +375,7 @@ vcpu_rr_wakeup (task_id task)
     vcpu->hooks->unblock (vcpu);
   vcpu->runnable = TRUE;
 }
+#endif
 
 /* ************************************************** */
 
@@ -504,39 +524,43 @@ vcpu_dump_stats (void)
   percpu_write64 (pcpu_idle_time, 0LL);
   percpu_write (pcpu_sched_time, 0);
 
-  for (i=0; i<NUM_VCPUS; i++) {
-    vcpu *vcpu = &vcpus[i];
+  for (i=0; i<max_vcpu_id; i++) {
+    vcpu *vcpu = vcpu_list[i];
+    if(vcpu) {
 #if defined(DUMP_STATS_VERBOSE) && defined (DUMP_STATS_VERBOSE_2)
-    if (vcpu->type == IO_VCPU) {
-      logger_printf ("vcpu=%d pcpu=%d tsc=0x%llX pmc[0]=0x%llX pmc[1]=0x%llX%s\n",
-                     i, vcpu->cpu,
-                     vcpu->timestamps_counted,
-                     vcpu->pmc_total[0],
-                     vcpu->pmc_total[1],
-                     (vcpu == cur ? " (*)" : ""));
-      logger_printf ("  b=0x%llX overhead=0x%llX delta=0x%llX usage=0x%X\n",
-                     vcpu->b, vcpu->sched_overhead, vcpu->prev_delta,
-                     vcpu->prev_usage);
-    }
+      if (vcpu->type == IO_VCPU) {
+        logger_printf ("vcpu=%d pcpu=%d tsc=0x%llX pmc[0]=0x%llX pmc[1]=0x%llX%s\n",
+                       i, vcpu->cpu,
+                       vcpu->timestamps_counted,
+                       vcpu->pmc_total[0],
+                       vcpu->pmc_total[1],
+                       (vcpu == cur ? " (*)" : ""));
+        logger_printf ("  b=0x%llX overhead=0x%llX delta=0x%llX usage=0x%X\n",
+                       vcpu->b, vcpu->sched_overhead, vcpu->prev_delta,
+                       vcpu->prev_usage);
+      }
 #endif
+    }
     sum += vcpu->timestamps_counted;
   }
 
   u32 res = compute_percentage (now, idle_time);
   logger_printf (" idle=%02d.%02d\n", res >> 16, res & 0xFF);
-  for (i=0; i<NUM_VCPUS; i++) {
-    vcpu *vcpu = &vcpus[i];
-    res = compute_percentage (now, vcpu->timestamps_counted);
-    vcpu->timestamps_counted = 0;
+  for (i=0; i<max_vcpu_id; i++) {
+    vcpu *vcpu = vcpu_list[i];
+    if(vcpu) {
+      res = compute_percentage (now, vcpu->timestamps_counted);
+      vcpu->timestamps_counted = 0;
 #ifndef SPORADIC_IO
-    logger_printf (" V%02d=%02d.%02d %d", i, res >> 16, res & 0xFF,
-                   vcpu->type != MAIN_VCPU ? 0 : vcpu->main.Q.size);
+      logger_printf (" V%02d=%02d.%02d %d", i, res >> 16, res & 0xFF,
+                     vcpu->type != MAIN_VCPU ? 0 : vcpu->main.Q.size);
 #else
-    logger_printf (" V%02d=%02d.%02d %d", i, res >> 16, res & 0xFF,
-                   vcpu->main.Q.size);
+      logger_printf (" V%02d=%02d.%02d %d", i, res >> 16, res & 0xFF,
+                     vcpu->main.Q.size);
 #endif
-    if ((i % 4) == 3) {
-      logger_printf ("\n");
+      if ((i % 4) == 3) {
+        logger_printf ("\n");
+      }
     }
   }
   logger_printf ("\nend vcpu_dump_stats\n");
@@ -895,18 +919,12 @@ extern void
 vcpu_wakeup (task_id task)
 {
   quest_tss *tssp = lookup_TSS (task);
-  static int next_vcpu_binding = 1;
   extern bool sleepqueue_detach (task_id);
 
-  /* assign vcpu if not already set */
+  /* assign to vcpu 0 if not already set, vcpu 0 is the best effort
+     vcpu */
   if (tssp->cpu == 0xFF) {
-    do {
-      tssp->cpu = next_vcpu_binding;
-      next_vcpu_binding++;
-      if (next_vcpu_binding >= NUM_VCPUS)
-        next_vcpu_binding = 0;
-    } while (vcpu_lookup (tssp->cpu)->type != MAIN_VCPU);
-    //com1_printf ("vcpu: task 0x%x now bound to vcpu=%d\n", task, tssp->cpu);
+    tssp->cpu = 0;
   }
 
   sleepqueue_detach (task);
@@ -1228,10 +1246,10 @@ extern uint
 select_iovcpu (iovcpu_class class)
 {
   uint i, idx = lowest_priority_vcpu (), matches = 0;
-  for (i=0; i<NUM_VCPUS; i++) {
-    struct vcpu_params *p = &init_params[i];
-    if (p->type == IO_VCPU) {
-      u32 m = count_set_bits (p->class & class);
+  for (i=0; i<max_vcpu_id; i++) {
+    vcpu* v = vcpu_list[i];
+    if (v->type == IO_VCPU) {
+      u32 m = count_set_bits (v->io.class & class);
       if (m >= matches) {
         idx = i;
         matches = m;
@@ -1266,24 +1284,87 @@ static vcpu_hooks *vcpu_hooks_table[] = {
   [IO_VCPU] = &io_vcpu_hooks
 };
 
+int create_vcpu(struct vcpu_params* params, vcpu** vcpu_p)
+{
+  vcpu* vcpu;
+  static int cpu_i=0;
+  u32 C = params->C;
+  u32 T = params->T;
+  vcpu_type type = params->type;
+  int vcpu_i = next_vcpu_index();
+    
+  if(vcpu_i < 0) return vcpu_i;
+
+  vcpu = vcpu_list[vcpu_i] = kzalloc(sizeof(struct _vcpu));
+
+  if(!vcpu) return -1;
+
+  /* Can't fail at this point */
+
+  vcpu->index = vcpu_i;
+
+  num_vcpus++;
+  if(max_vcpu_id < vcpu_i+1) max_vcpu_id = vcpu_i + 1;
+
+#ifdef USE_VMX
+  /* All VCPUs bind to current sandbox.
+   * Initialization function will be called after forking
+   * VM by each sandbox again.
+   */
+  cpu_i = get_pcpu_id ();
+  vcpu->cpu = cpu_i;
+#else
+  vcpu->cpu = cpu_i++;
+  if (cpu_i >= mp_num_cpus)
+    cpu_i = 0;
+#endif
+  vcpu->quantum = div_u64_u32_u32 (tsc_freq, QUANTUM_HZ);
+  vcpu->C = C * tsc_unit_freq;
+  vcpu->T = T * tsc_unit_freq;
+  vcpu->type = type;
+#ifndef SPORADIC_IO
+  if (vcpu->type == MAIN_VCPU) {
+    repl_queue_add (&vcpu->main.Q, vcpu->C, vcpu_init_time);
+  } else if (vcpu->type == IO_VCPU) {
+    vcpu->io.Unum = C;
+    vcpu->io.Uden = T;
+    vcpu->b = vcpu->C;
+  }
+  vcpu->hooks = vcpu_hooks_table[type];
+#else
+  repl_queue_add (&vcpu->main.Q, vcpu->C, vcpu_init_time);
+  vcpu->hooks = vcpu_hooks_table[MAIN_VCPU];
+#endif
+
+  if(vcpu_p) {
+    *vcpu_p = vcpu;
+  }
+
+  DLOG("vcpu: %svcpu=%d pcpu=%d C=0x%llX T=0x%llX U=%d%%\n",
+       type == IO_VCPU ? "IO " : "",
+       vcpu_i, vcpu->cpu, vcpu->C, vcpu->T, (C * 100) / T);
+
+  return vcpu_i;
+  
+}
+
+
 extern bool
 vcpu_init (void)
 {
   uint eax, ecx;
+  int i;
 
   cpuid (1, 0, NULL, NULL, &ecx, NULL);
   cpuid (6, 0, &eax, NULL, NULL, NULL);
 
-  logger_printf ("vcpu: init num_vcpus=%d num_cpus=%d TSC_deadline=%s ARAT=%s\n",
-                 NUM_VCPUS, mp_num_cpus,
-                 (ecx & (1 << 24)) ? "yes" : "no",
-                 (eax & (1 << 2))  ? "yes" : "no");
+  DLOG("vcpu: init num_vcpus=%d num_cpus=%d TSC_deadline=%s ARAT=%s",
+       NUM_INIT_VCPUS, mp_num_cpus,
+       (ecx & (1 << 24)) ? "yes" : "no",
+       (eax & (1 << 2))  ? "yes" : "no");
 
-  memset (vcpus, 0, sizeof(vcpus));
-
-  int cpu_i=0, vcpu_i;
-  vcpu *vcpu;
-
+  memset (vcpu_list, 0, sizeof(vcpu_list));
+  
   RDTSC (vcpu_init_time);
   tsc_freq_msec = div_u64_u32_u32 (tsc_freq, 1000);
   tsc_unit_freq = div_u64_u32_u32 (tsc_freq, UNITS_PER_SEC);
@@ -1291,45 +1372,22 @@ vcpu_init (void)
                  tsc_freq_msec, tsc_unit_freq);
 
   /* distribute VCPUs across PCPUs */
-  for (vcpu_i=0; vcpu_i<NUM_VCPUS; vcpu_i++) {
-    u32 C = init_params[vcpu_i].C;
-    u32 T = init_params[vcpu_i].T;
-    vcpu_type type = init_params[vcpu_i].type;
-    vcpu = vcpu_lookup (vcpu_i);
-#ifdef USE_VMX
-    /* All VCPUs bind to current sandbox.
-     * Initialization function will be called after forking
-     * VM by each sandbox again.
-     */
-    cpu_i = get_pcpu_id ();
-    vcpu->cpu = cpu_i;
-#else
-    vcpu->cpu = cpu_i++;
-    if (cpu_i >= mp_num_cpus)
-      cpu_i = 0;
-#endif
-    vcpu->quantum = div_u64_u32_u32 (tsc_freq, QUANTUM_HZ);
-    vcpu->C = C * tsc_unit_freq;
-    vcpu->T = T * tsc_unit_freq;
-    vcpu->type = type;
-#ifndef SPORADIC_IO
-    if (vcpu->type == MAIN_VCPU) {
-      repl_queue_add (&vcpu->main.Q, vcpu->C, vcpu_init_time);
-    } else if (vcpu->type == IO_VCPU) {
-      vcpu->io.Unum = C;
-      vcpu->io.Uden = T;
-      vcpu->b = vcpu->C;
+  for (i=0; i<NUM_INIT_VCPUS; i++) {
+    int temp;
+    if((temp = create_vcpu(&init_params[i], NULL)) < 0) {
+      com1_printf("Failed to create initial VCPUs\n");
+      panic("Failed to create initial VCPUs");
     }
-    vcpu->hooks = vcpu_hooks_table[type];
-#else
-    repl_queue_add (&vcpu->main.Q, vcpu->C, vcpu_init_time);
-    vcpu->hooks = vcpu_hooks_table[MAIN_VCPU];
-#endif
-
-    logger_printf ("vcpu: %svcpu=%d pcpu=%d C=0x%llX T=0x%llX U=%d%%\n",
-                   type == IO_VCPU ? "IO " : "",
-                   vcpu_i, vcpu->cpu, vcpu->C, vcpu->T, (C * 100) / T);
+    com1_printf("created vcpu with index %d\n", temp);
   }
+
+  if(vcpu_lookup(0)->type != MAIN_VCPU) {
+    /* VCPU zero must be a main VCPU.  Tasks that are not explicitly
+       assigned a VCPU are treated as best effort tasks and assigned
+       to VCPU zero */
+    panic("Error VCPU 0 must be a main vcpu");
+  }
+  
   return TRUE;
 }
 

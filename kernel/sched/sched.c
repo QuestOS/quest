@@ -46,10 +46,12 @@ queue_append (task_id * queue, task_id selector)
     if (*queue == selector)
       return;                   /* already on queue */
 
-    for (tssp = lookup_TSS (*queue); tssp->next; tssp = lookup_TSS (tssp->next))
-      if (tssp->next == selector)
+    for (tssp = lookup_TSS (*queue); tssp->next; tssp = lookup_TSS (tssp->next)) {
+      if (tssp->next == selector) {
         /* already on queue */
         return;
+      }
+    }
 
     /* add to end of queue */
     tssp->next = selector;
