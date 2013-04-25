@@ -70,9 +70,6 @@ typedef struct _replenishment {
 #define MAX_REPL 32
 #endif
 
-
-struct vcpu_params { vcpu_type type; u32 C, T; iovcpu_class class; };
-
 typedef struct {
   replenishment array[MAX_REPL];
   replenishment *head;
@@ -158,7 +155,7 @@ extern void iovcpu_job_wakeup (task_id job, u64 T);
 extern void iovcpu_job_wakeup_for_me (task_id job);
 extern void iovcpu_job_completion (void);
 
-extern int create_vcpu(struct vcpu_params* params, vcpu** vcpu_p);
+extern int create_vcpu(struct sched_param* params, vcpu** vcpu_p);
 
 extern uint lowest_priority_vcpu (void);
 extern uint select_iovcpu (iovcpu_class);

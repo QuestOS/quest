@@ -60,25 +60,25 @@ u32 tsc_freq_msec, tsc_unit_freq;
 u64 vcpu_init_time;
 
 
-static struct vcpu_params init_params[] = {
-  { MAIN_VCPU, 10, 100 },
-  { MAIN_VCPU, 10, 50 },
-  { MAIN_VCPU, 20, 100 },
-  { MAIN_VCPU, 20, 100 },
-  { MAIN_VCPU, 20, 100 },
+static struct sched_param init_params[] = {
+  { .type = MAIN_VCPU, .C = 10, .T = 100 },
+  { .type = MAIN_VCPU, .C = 10, .T = 50 },
+  { .type = MAIN_VCPU, .C = 20, .T = 100 },
+  { .type = MAIN_VCPU, .C = 20, .T = 100 },
+  { .type = MAIN_VCPU, .C = 20, .T = 100 },
 
 #ifdef SPORADIC_IO
-  { IO_VCPU, 10, 300, IOVCPU_CLASS_USB },
-  { IO_VCPU, 10, 400, IOVCPU_CLASS_ATA },
-  { IO_VCPU, 10, 500, IOVCPU_CLASS_NET },
+  { .type = IO_VCPU, .C = 10, .T = 300, .io_class = IOVCPU_CLASS_USB },
+  { .type = IO_VCPU, .C = 10, .T = 400, .io_class = IOVCPU_CLASS_ATA },
+  { .type = IO_VCPU, .C = 10, .T = 500, .io_class = IOVCPU_CLASS_NET },
 #else
-  { IO_VCPU, 1, 10, IOVCPU_CLASS_USB },
-  { IO_VCPU, 1, 10, IOVCPU_CLASS_ATA },
-  { IO_VCPU, 1, 10, IOVCPU_CLASS_NET },
+  { .type = IO_VCPU, .C = 1, .T = 10, .io_class = IOVCPU_CLASS_USB },
+  { .type = IO_VCPU, .C = 1, .T = 10, .io_class = IOVCPU_CLASS_ATA },
+  { .type = IO_VCPU, .C = 1, .T = 10, .io_class = IOVCPU_CLASS_NET },
 #endif
 };
 
-#define NUM_INIT_VCPUS (sizeof (init_params) / sizeof (struct vcpu_params))
+#define NUM_INIT_VCPUS (sizeof (init_params) / sizeof (struct sched_param))
 
 #define MAX_NUM_VCPUS 100
 
@@ -1283,7 +1283,7 @@ static vcpu_hooks *vcpu_hooks_table[] = {
   [IO_VCPU] = &io_vcpu_hooks
 };
 
-int create_vcpu(struct vcpu_params* params, vcpu** vcpu_p)
+int create_vcpu(struct sched_param* params, vcpu** vcpu_p)
 {
   vcpu* vcpu;
   static int cpu_i=0;
