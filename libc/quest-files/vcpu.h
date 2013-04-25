@@ -1,7 +1,7 @@
 #ifndef _VCPU_H_
 #define _VCPU_H_
 
-/* If this is changed it must also be changed in kernel.h */
+/* If this is changed it must also be changed in kernel's vcpu.h */
 #define BEST_EFFORT_VCPU 0
 
 struct sched_param

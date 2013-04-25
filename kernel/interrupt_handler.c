@@ -501,6 +501,11 @@ syscall_getpid (u32 eax, u32 ebx, u32 ecx, u32 edx, u32 esi)
   return str();
 }
 
+static int syscall_create_vcpu(u32 eax, u32 ebx, u32 ecx, u32 edx, u32 esi)
+{
+  
+}
+
 
 struct syscall {
   u32 (*func) (u32, u32, u32, u32, u32);
@@ -510,6 +515,7 @@ struct syscall syscall_table[] = {
   { .func = syscall_usleep },
   { .func = syscall_usb },
   { .func = syscall_getpid },
+  { .func = syscall_create_vcpu },
 };
 #define NUM_SYSCALLS (sizeof (syscall_table) / sizeof (struct syscall))
 

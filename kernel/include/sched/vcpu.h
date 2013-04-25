@@ -23,6 +23,7 @@
 #include "util/cassert.h"
 
 #define VCPU_ALIGNMENT (LOCK_ALIGNMENT<<3)
+#define BEST_EFFORT_VCPU 0
 
 typedef enum {
   MAIN_VCPU = 0, IO_VCPU
@@ -36,6 +37,24 @@ typedef enum {
   IOVCPU_CLASS_DISK = (1<<3),
   IOVCPU_CLASS_CDROM = (1<<4),
 } iovcpu_class;
+
+/* If sched_param is changed it must also be changed in libc's vcpu.h */
+
+struct sched_param
+{
+  int sched_priority;
+
+  /* Below are paramters used for window-constrained scheduling */
+  int C;                        /* service quantum */
+  int T;                        /* period */
+  int m;                        /* mandatory instance count in a window */
+  int k;                        /* window of requests  */
+  int affinity;                 /* CPU (or Quest-V sandbox affinity) */
+  int machine_affinity;         /* -- EM -- Machine affinity hack
+                                   right now is a just a bool to
+                                   indicate stay (0) or move to other
+                                   machine (1) */
+};
 
 #ifndef _SCHED_VCPU_REPL_
 #define _SCHED_VCPU_REPL_
