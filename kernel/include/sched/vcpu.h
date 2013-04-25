@@ -25,6 +25,9 @@
 #define VCPU_ALIGNMENT (LOCK_ALIGNMENT<<3)
 #define BEST_EFFORT_VCPU 0
 
+/* If BEST_EFFORT_VCPU, sched_param, vcpu_type or iovcpu_class are
+   changed they must also be changed in libc's vcpu.h */
+
 typedef enum {
   MAIN_VCPU = 0, IO_VCPU
 } vcpu_type;
@@ -38,11 +41,13 @@ typedef enum {
   IOVCPU_CLASS_CDROM = (1<<4),
 } iovcpu_class;
 
-/* If sched_param is changed it must also be changed in libc's vcpu.h */
 
 struct sched_param
 {
   int sched_priority;
+
+  vcpu_type type;
+  iovcpu_class io_class;
 
   /* Below are paramters used for window-constrained scheduling */
   int C;                        /* service quantum */
