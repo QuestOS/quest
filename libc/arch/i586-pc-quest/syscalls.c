@@ -7,6 +7,7 @@
 #include <sys/time.h>
 #include <stdio.h>
 #include <stdint.h>
+#include <vcpu.h>
 
 #define CLOBBERS1 "memory","cc","%ebx","%ecx","%edx","%esi","%edi"
 #define CLOBBERS2 "memory","cc","%ecx","%edx","%esi","%edi"
@@ -49,8 +50,13 @@ int exec(char *name, char **argv)
 
 int fork()
 {
+  return vcpu_fork(BEST_EFFORT_VCPU);
+}
+
+int vcpu_fork(uint vcpu_id)
+{
   unsigned int retval;
-  asm volatile ("int $0x31\n":"=a" (retval)::CLOBBERS1);
+  asm volatile ("int $0x31\n":"=a" (retval):"a"(vcpu_id):CLOBBERS1);
   return (int) retval;
 }
 
@@ -135,10 +141,9 @@ int fstat(int file, struct stat *st)
 
 int getpid()
 {
-  write(1, "In getpid which is a no op\n", sizeof("In getpid which is a no op\n"));
-  while(1);
-  errno = ENOSYS;
-  return -1;
+  int pid;
+  asm volatile ("int $0x30\n":"=a"(pid):"a" (3L):CLOBBERS1);
+  return pid;
 }
 
 

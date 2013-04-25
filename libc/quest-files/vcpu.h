@@ -1,6 +1,9 @@
 #ifndef _VCPU_H_
 #define _VCPU_H_
 
+/* If this is changed it must also be changed in kernel.h */
+#define BEST_EFFORT_VCPU 0
+
 struct sched_param
 {
   int sched_priority;
@@ -16,5 +19,8 @@ struct sched_param
                                    indicate stay (0) or move to other
                                    machine (1) */
 };
+
+
+int vcpu_fork(uint vcpu_id);
 
 #endif _VCPU_H_

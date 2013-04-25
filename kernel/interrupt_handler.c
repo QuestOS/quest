@@ -495,6 +495,13 @@ syscall_usb (u32 eax, u32 ebx, u32 ecx, u32 edx, u32 esi)
   }
 }
 
+static int
+syscall_getpid (u32 eax, u32 ebx, u32 ecx, u32 edx, u32 esi)
+{
+  return str();
+}
+
+
 struct syscall {
   u32 (*func) (u32, u32, u32, u32, u32);
 };
@@ -502,6 +509,7 @@ struct syscall syscall_table[] = {
   { .func = syscall_putchar },
   { .func = syscall_usleep },
   { .func = syscall_usb },
+  { .func = syscall_getpid },
 };
 #define NUM_SYSCALLS (sizeof (syscall_table) / sizeof (struct syscall))
 
@@ -525,7 +533,7 @@ handle_syscall0 (u32 eax, u32 ebx, u32 ecx, u32 edx, u32 esi)
  * registers inherited by child
  */
 task_id
-_fork (uint32 ebp, uint32 *esp)
+_fork (uint32 vcpu_id, uint32 ebp, uint32 *esp)
 {
 
   task_id child_tid;
@@ -533,15 +541,22 @@ _fork (uint32 ebp, uint32 *esp)
   uint32 *virt_addr;
   uint32 priority;
   uint32 eflags, eip, this_esp, this_ebp;
+  vcpu* v;
 
 #ifdef DEBUG_SYSCALL
   com1_printf ("_fork (%X, %p)\n", ebp, esp);
 #endif
+  
   lock_kernel ();
 
-  char* temp = kmalloc(20);
-  if(temp == NULL) panic("temp is null");
-  kfree(temp);
+  
+  v = vcpu_lookup(vcpu_id);
+  if( (!v)  || (v->type != MAIN_VCPU)) {
+    unlock_kernel();
+    return -1;
+  }
+
+  
   /* 
    * This ugly bit of assembly is designed to obtain the value of EIP
    * in the parent and return from the `call 1f' in the child.

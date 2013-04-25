@@ -183,6 +183,8 @@ checksum (uint8 * ptr, int length)
   return sum;
 }
 
+#define BEST_EFFORT_VCPU 0
+
 extern uint get_pcpu_id (void);
 
 #endif /* __ASSEMBLER__ */

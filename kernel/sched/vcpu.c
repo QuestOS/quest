@@ -921,10 +921,9 @@ vcpu_wakeup (task_id task)
   quest_tss *tssp = lookup_TSS (task);
   extern bool sleepqueue_detach (task_id);
 
-  /* assign to vcpu 0 if not already set, vcpu 0 is the best effort
-     vcpu */
+  /* assign to vcpu BEST_EFFORT_VCPU if not already set */
   if (tssp->cpu == 0xFF) {
-    tssp->cpu = 0;
+    tssp->cpu = BEST_EFFORT_VCPU;
   }
 
   sleepqueue_detach (task);
