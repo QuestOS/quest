@@ -13,7 +13,7 @@ CFLAGS = -g
 PROGS = exec migtest race test1 test2 test3 test4 test5 \
 	test6 test7  float_test \
 	usb_gadget_test joystick_test \
-	cl-param-test
+	cl-param-test vcpu-syscall-test
 #usb_test usb_test_rtt
 
 .PHONY: all clean install

@@ -153,6 +153,13 @@ int vcpu_create(struct sched_param* sched_param)
   return res;
 }
 
+int vcpu_bind_task(uint vcpu_id)
+{
+  int res;
+  asm volatile ("int $0x30\n":"=a"(res):"a" (5L), "b"(vcpu_id):CLOBBERS2);
+  return res;
+}
+
 
 
 int kill(int pid, int sig)

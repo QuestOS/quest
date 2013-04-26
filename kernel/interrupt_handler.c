@@ -498,12 +498,34 @@ syscall_usb (u32 eax, u32 ebx, u32 ecx, u32 edx, u32 esi)
 static int
 syscall_getpid (u32 eax, u32 ebx, u32 ecx, u32 edx, u32 esi)
 {
+  com1_printf("Current VCPU for %d is %d\n", str(), lookup_TSS(str())->cpu);
   return str();
 }
 
-static int syscall_create_vcpu(u32 eax, u32 ebx, u32 ecx, u32 edx, u32 esi)
+static int syscall_vcpu_create(u32 eax, u32 ebx, u32 ecx, u32 edx, u32 esi)
 {
   return create_vcpu((struct sched_param*)ebx, NULL);
+}
+
+static int syscall_vcpu_bind_task(u32 eax, u32 ebx, u32 ecx, u32 edx, u32 esi)
+{
+  uint new_vcpu_index = ebx;
+  task_id t_id = str();
+  quest_tss *tssp = lookup_TSS(t_id);
+  vcpu* new_vcpu;
+  
+  if(!tssp) return -1;
+  
+  new_vcpu = vcpu_lookup(new_vcpu_index);
+
+  if( (!new_vcpu)|| (new_vcpu->type != MAIN_VCPU) ) {
+    return -1;
+  }
+
+
+  tssp->cpu = new_vcpu_index;
+    
+  return 0;
 }
 
 
@@ -515,7 +537,8 @@ struct syscall syscall_table[] = {
   { .func = syscall_usleep },
   { .func = syscall_usb },
   { .func = syscall_getpid },
-  { .func = syscall_create_vcpu },
+  { .func = syscall_vcpu_create },
+  { .func = syscall_vcpu_bind_task },
 };
 #define NUM_SYSCALLS (sizeof (syscall_table) / sizeof (struct syscall))
 
