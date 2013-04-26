@@ -148,11 +148,11 @@ int nftw(const char *dirpath,
   return 0;
 }
 
-int fgetc(FILE *stream);char *fgets(char *s, int size, FILE *stream)
-{
-  unimplemented_funcion_called();
-  return 0;
-}
+//int fgetc(FILE *stream);char *fgets(char *s, int size, FILE *stream)
+//{
+//  unimplemented_funcion_called();
+//  return 0;
+//}
 
 double rint(double x)
 {
