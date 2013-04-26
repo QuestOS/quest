@@ -503,7 +503,7 @@ syscall_getpid (u32 eax, u32 ebx, u32 ecx, u32 edx, u32 esi)
 
 static int syscall_create_vcpu(u32 eax, u32 ebx, u32 ecx, u32 edx, u32 esi)
 {
-  
+  return create_vcpu((struct sched_param*)ebx, NULL);
 }
 
 

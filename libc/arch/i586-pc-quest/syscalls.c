@@ -146,6 +146,13 @@ int getpid()
   return pid;
 }
 
+int vcpu_create(struct sched_param* sched_param)
+{
+  int res;
+  asm volatile ("int $0x30\n":"=a"(res):"a" (4L), "b"(sched_param):CLOBBERS2);
+  return res;
+}
+
 
 
 int kill(int pid, int sig)
