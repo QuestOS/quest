@@ -155,17 +155,13 @@ send (uint8 *buf, uint32 len)
 static blocklist_t *
 alloc_node (void)
 {
-  uint32 frame = alloc_phys_frame ();
-  if (frame == -1) return NULL;
-  return map_virtual_page (frame | 3);
+  return kmalloc(0x1000);
 }
 
 static void
 free_node (blocklist_t *bl)
 {
-  uint32 frame = (uint32) get_phys_addr (bl);
-  unmap_virtual_page (bl);
-  free_phys_frame (frame);
+  kfree(bl);
 }
 
 #define NODE_CAPACITY (BLOCKS_PER_NODE * TFTP_BLOCK_SIZE)
@@ -282,7 +278,7 @@ eztftp_dir (char *pathname)
          in vfs_read which will load the file only in the buffer, this
          however causes the file to be read over tftp twice since it
          is not buffered here */
-      //cache (buf+4, len-4);
+      cache (buf+4, len-4);
     } else if (buf[1] == TFTP_OP_ERR) {
       /* got error, probably file not found */
       DLOG ("error code=%d str=%s", (buf[2] << 8) | buf[3], &buf[4]);
@@ -369,8 +365,10 @@ eztftp_bulk_read (char *pathname, uint32 * load_addr)
       /* send ACK the easy way */
       buf[1] = TFTP_OP_ACK;
       send (buf, 4);
-      memcpy (load_addr, buf + 4, len - 4);
-      load_addr = (uint32 *) (((uint8 *) load_addr) + len - 4);
+      if (load_addr) {
+        memcpy (load_addr, buf + 4, len - 4);
+        load_addr = (uint32 *) (((uint8 *) load_addr) + len - 4);
+      }
     } else if (buf[1] == TFTP_OP_ERR) {
       /* got error, probably file not found */
       DLOG ("error code=%d str=%s", (buf[2] << 8) | buf[3], &buf[4]);

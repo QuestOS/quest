@@ -695,11 +695,11 @@ _exec (char *filename, char *argv[], uint32 *curr_stack)
 
   num_frame_ptrs = DIV_ROUND_UP(filesize, 0x400000);
 
-  pow2_alloc(num_frame_ptrs * sizeof(*phys_addrs), (uint8_t**)&phys_addrs);
+  phys_addrs = kmalloc(num_frame_ptrs * sizeof(*phys_addrs));
   if(phys_addrs == NULL) goto exec_cleanup;
-  pow2_alloc(num_frame_ptrs * sizeof(*frame_ptrs), (uint8_t**)&frame_ptrs);
+  frame_ptrs = kmalloc(num_frame_ptrs * sizeof(*frame_ptrs));
   if(frame_ptrs== NULL) goto exec_cleanup;
-  pow2_alloc(32 * sizeof (uint32) * num_frame_ptrs, (uint8_t**)&frame_map);
+  frame_map = kmalloc(32 * sizeof (uint32) * num_frame_ptrs);
   if(frame_map == NULL) goto exec_cleanup;
   
   plPageDirectory = map_virtual_page ((uint32) get_pdbr () | 3);
@@ -737,11 +737,8 @@ _exec (char *filename, char *argv[], uint32 *curr_stack)
       tmp_page = map_virtual_page (plPageDirectory[i] | 3);
       for (j = 0; j < 1024; j++) {
         if (tmp_page[j]) {      /* Present in current address space */
-          if ((j < 0x200) || (j > 0x20F) || i) {        /* --??-- Don't free
-                                                           temp video memory */
-            BITMAP_SET (mm_table, tmp_page[j] >> 12);   /* Free frame */
-            tmp_page[j] = 0;
-          }
+          BITMAP_SET (mm_table, tmp_page[j] >> 12);   /* Free frame */
+          tmp_page[j] = 0;
         }
       }
       unmap_virtual_page (tmp_page);
@@ -775,7 +772,6 @@ _exec (char *filename, char *argv[], uint32 *curr_stack)
      space */
   for(i = 0; i < num_frame_ptrs; ++i) {
     plPageDirectory[((uint32) pe >> 22) + i] = phys_addrs[i];
-    com1_printf(" plPageDirectory[%d] = 0x%X\n",  ((uint32) pe >> 22) + i,  plPageDirectory[((uint32) pe >> 22) + i]);
   }
   
   flush_tlb_all ();
@@ -946,9 +942,9 @@ _exec (char *filename, char *argv[], uint32 *curr_stack)
     BITMAP_SET (mm_table, phys_addrs[i] >> 12);
   }
 
-  pow2_free((uint8_t*)frame_ptrs);
-  pow2_free((uint8_t*)phys_addrs);
-  pow2_free((uint8_t*)frame_map);
+  kfree (frame_ptrs);
+  kfree (phys_addrs);
+  kfree (frame_map);
   
   flush_tlb_all ();
 

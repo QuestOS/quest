@@ -35,7 +35,7 @@
 #include "vm/linux_boot.h"
 #endif
 
-#define DEBUG_VMX 3
+#define DEBUG_VMX 2
 #define VMX_EPT
 
 #if DEBUG_VMX > 2

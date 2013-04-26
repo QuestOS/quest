@@ -318,9 +318,9 @@ ap_init (void)
   { extern bool vcpu_init (void); vcpu_init (); }
   { extern void net_init (void); net_init (); }
   //if (phys_id == 1) {
-  { extern bool r8169_register (void); r8169_register (); }
-  { extern bool netsetup_init (void); netsetup_init (); }
-  { extern bool vfs_init (void); vfs_init (); }
+  //{ extern bool r8169_register (void); r8169_register (); }
+  //{ extern bool netsetup_init (void); netsetup_init (); }
+  //{ extern bool vfs_init (void); vfs_init (); }
   //}
   { extern bool migration_init (void); migration_init (); }
   { extern bool logger_init (void); logger_init (); }

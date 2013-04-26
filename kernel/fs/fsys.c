@@ -77,6 +77,7 @@ vfs_dir (char *pathname)
     return vfat_dir (filepart);
   case VFS_FSYS_EZTFTP:
     return eztftp_dir (filepart);
+    //return eztftp_bulk_read (filepart, NULL);
   default:
     print ("Unknown vfs_type");
     return -1;
@@ -99,7 +100,8 @@ vfs_read (char *pathname, char *buf, int len)
     return vfat_read (buf, len);
   case VFS_FSYS_EZTFTP:
     /* -- EM -- This is an ugly hack to allow larger binaries to load */
-    return eztftp_bulk_read(pathname, buf);
+    //return eztftp_bulk_read(pathname, buf);
+    return eztftp_read (buf, len);
   default:
     print ("Unknown vfs_type");
     return -1;
