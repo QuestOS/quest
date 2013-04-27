@@ -498,7 +498,6 @@ syscall_usb (u32 eax, u32 ebx, u32 ecx, u32 edx, u32 esi)
 static int
 syscall_getpid (u32 eax, u32 ebx, u32 ecx, u32 edx, u32 esi)
 {
-  com1_printf("Current VCPU for %d is %d\n", str(), lookup_TSS(str())->cpu);
   return str();
 }
 
@@ -556,6 +555,34 @@ static int syscall_vcpu_destroy(u32 eax, u32 vcpu_index, u32 force, u32 edx, u32
 }
 
 
+static int syscall_vcpu_getparams(u32 eax, struct sched_param* sched_param,
+                                  u32 ecx, u32 edx, u32 esi)
+{
+  quest_tss *tssp = lookup_TSS(str());
+  if(tssp) {
+    vcpu* v = vcpu_lookup(tssp->cpu);
+    if(v) {
+      memset(sched_param, 0, sizeof(struct sched_param));
+      sched_param->C = v->_C;
+      sched_param->T = v->_T;
+      sched_param->type = MAIN_VCPU;
+    }
+    else {
+      return -1;
+    }
+  }
+  else {
+    return -1;
+  }
+}
+
+static int syscall_vcpu_setparams(u32 eax, u32 vcpu_index, struct sched_param* sched_param,
+                                  u32 edx, u32 esi)
+{
+  return -1;
+}
+
+
 struct syscall {
   u32 (*func) (u32, u32, u32, u32, u32);
 };
@@ -567,6 +594,8 @@ struct syscall syscall_table[] = {
   { .func = syscall_vcpu_create },
   { .func = syscall_vcpu_bind_task },
   { .func = syscall_vcpu_destroy },
+  { .func = syscall_vcpu_getparams },
+  { .func = syscall_vcpu_setparams },
 };
 #define NUM_SYSCALLS (sizeof (syscall_table) / sizeof (struct syscall))
 

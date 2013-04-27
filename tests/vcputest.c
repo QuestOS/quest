@@ -22,7 +22,9 @@
 
 int main(int argc, char* argv[])
 {
-  struct sched_param s_params = {.type = MAIN_VCPU, .C = 10, .T = 100};
+  struct sched_param s_params = {.type = MAIN_VCPU, .C = 20, .T = 100};
+  struct sched_param s_params2;
+  memset(&s_params2, 0, sizeof(s_params2));
   int new_vcpu = vcpu_create(&s_params);
 
   if(new_vcpu < 0) {
@@ -30,13 +32,15 @@ int main(int argc, char* argv[])
     exit(1);
   }
 
-  getpid();
+  vcpu_getparams(&s_params2);
+  printf("Before vcpu bind task: C = %d, T = %d\n", s_params2.C, s_params2.T);
   vcpu_bind_task(new_vcpu);
   usleep(1000000);
   usleep(1000000);
   usleep(1000000);
   usleep(1000000);
-  getpid();
+  vcpu_getparams(&s_params2);
+  printf("After vcpu bind task: C = %d, T = %d\n", s_params2.C, s_params2.T);
   
 }
 

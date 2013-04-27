@@ -109,6 +109,7 @@ typedef struct _vcpu
       int index;
 
       u64 C, T, b, usage;       /* common scheduling parameters */
+      u32 _C, _T;               /* Original C and T before frequency computation */
 
       /* type-specific parameters */
       union {

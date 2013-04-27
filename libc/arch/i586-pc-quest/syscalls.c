@@ -167,6 +167,20 @@ int vcpu_destroy(uint vcpu_id, uint force)
   return res;
 }
 
+int vcpu_getparams(struct sched_param* sched_param)
+{
+  int res;
+  asm volatile ("int $0x30\n":"=a"(res):"a" (7L), "b"(sched_param):CLOBBERS2);
+  return res;
+}
+
+int vcpu_setparams(uint vcpu_id, struct sched_param* sched_param)
+{
+  int res;
+  asm volatile ("int $0x30\n":"=a"(res):"a" (7L), "b"(vcpu_id), "c"(sched_param):CLOBBERS5);
+  return res;
+}
+
 int kill(int pid, int sig)
 {
   write(1, "In kill which is a no op\n", sizeof("In kill which is a no op\n"));
