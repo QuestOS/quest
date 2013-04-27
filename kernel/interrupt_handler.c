@@ -576,6 +576,7 @@ static int syscall_vcpu_getparams(u32 eax, struct sched_param* sched_param,
   }
 }
 
+/* -- EM -- Just return -1 for now */
 static int syscall_vcpu_setparams(u32 eax, u32 vcpu_index, struct sched_param* sched_param,
                                   u32 edx, u32 esi)
 {
