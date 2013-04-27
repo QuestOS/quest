@@ -906,6 +906,12 @@ migration_init (void)
 #ifdef DEBUG_MIGRATION
   int cpu = get_pcpu_id ();
 #endif
+  int vcpu_id = create_main_vcpu(10, 50, NULL);
+  
+  if(vcpu_id < 0) {
+    DLOG("Failed to create migration thread");
+    return FALSE;
+  }
 
   if (vector_used (MIGRATION_RECV_REQ_VECTOR)) {
     DLOG ("Interrupt vector %d has been used in sandbox %d. IPI handler registration failed!",
@@ -921,10 +927,9 @@ migration_init (void)
     set_vector_handler (MIGRATION_CLEANUP_VECTOR, &receive_cleanup_request);
   }
 
-  /* --YL-- Put migration thread on VCPU 1 for now */
   migration_thread_id =
     create_kernel_thread_vcpu_args ((u32) migration_thread, (u32) &migration_stack[1023],
-                                    "Migration Thread", 1, TRUE, 0);
+                                    "Migration Thread", vcpu_id, TRUE, 0);
   DLOG ("Migration thread 0x%X created in sandbox %d", migration_thread_id, cpu);
 
   DLOG ("Migration subsystem initialized in sandbox kernel %d", cpu);

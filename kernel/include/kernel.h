@@ -74,6 +74,7 @@
 #define USER_STACK_START 0x40000000
 #define USER_STACK_SIZE 16
 
+#define BEST_EFFORT_VCPU 0
 
 
 void map_user_level_stack(uint32_t* plPageDirectory, void* start_addr, int num_frames,
@@ -115,7 +116,7 @@ task_id create_kernel_thread_vcpu_args (uint eip, uint esp, const char * name,
                                         u16 vcpu, bool run, uint n, ...);
 
 #define create_kernel_thread_args(eip, esp, name, run, n, ...)    \
-        create_kernel_thread_vcpu_args(eip, esp, name, 0xFFFF, run, n, ##__VA_ARGS__)
+        create_kernel_thread_vcpu_args(eip, esp, name, BEST_EFFORT_VCPU, run, n, ##__VA_ARGS__)
 
 void exit_kernel_thread (void);
 

@@ -23,10 +23,13 @@
 #include "util/cassert.h"
 
 #define VCPU_ALIGNMENT (LOCK_ALIGNMENT<<3)
-#define BEST_EFFORT_VCPU 0
 
 /* If BEST_EFFORT_VCPU, sched_param, vcpu_type or iovcpu_class are
    changed they must also be changed in libc's vcpu.h */
+
+/* Moving BEST_EFFORT_VCPU to kernel.h */
+//#define BEST_EFFORT_VCPU 0
+
 
 typedef enum {
   MAIN_VCPU = 0, IO_VCPU

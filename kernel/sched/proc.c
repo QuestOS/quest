@@ -22,6 +22,7 @@
 #include "mem/virtual.h"
 #include "mem/physical.h"
 #include "sched/proc.h"
+#include "sched/vcpu.h"
 #ifdef USE_VMX
 #include "vm/ept.h"
 #include "vm/shm.h"
@@ -192,7 +193,7 @@ duplicate_TSS (uint32 ebp,
 
   semaphore_init (&pTSS->Msem, 1, 0);
 
-  pTSS->cpu = 0xFF;
+  pTSS->cpu = BEST_EFFORT_VCPU;
   
   /* Return the index into the GDT for the segment */
   return pTSS->tid;

@@ -58,15 +58,11 @@
 
 u32 tsc_freq_msec, tsc_unit_freq;
 u64 vcpu_init_time;
+static bool vcpu_init_called = FALSE;
 
 
 static struct sched_param init_params[] = {
-  { .type = MAIN_VCPU, .C = 10, .T = 100 },
-  { .type = MAIN_VCPU, .C = 10, .T = 50 },
-  { .type = MAIN_VCPU, .C = 20, .T = 100 },
-  { .type = MAIN_VCPU, .C = 20, .T = 100 },
-  { .type = MAIN_VCPU, .C = 20, .T = 100 },
-
+  { .type = MAIN_VCPU, .C = 10, .T = 100 }, /* Best Effort VCPU */
 #ifdef SPORADIC_IO
   { .type = IO_VCPU, .C = 10, .T = 300, .io_class = IOVCPU_CLASS_USB },
   { .type = IO_VCPU, .C = 10, .T = 400, .io_class = IOVCPU_CLASS_ATA },
@@ -1283,6 +1279,12 @@ static vcpu_hooks *vcpu_hooks_table[] = {
   [IO_VCPU] = &io_vcpu_hooks
 };
 
+int create_main_vcpu(u32 C, u32 T, vcpu** vcpu_p)
+{
+  struct sched_param sp = { .type = MAIN_VCPU, .C = 10, .T = 100 };
+  return create_vcpu(&sp, vcpu_p);
+}
+
 int create_vcpu(struct sched_param* params, vcpu** vcpu_p)
 {
   vcpu* vcpu;
@@ -1291,7 +1293,11 @@ int create_vcpu(struct sched_param* params, vcpu** vcpu_p)
   u32 T = params->T;
   vcpu_type type = params->type;
   int vcpu_i = next_vcpu_index();
-    
+
+  if(!vcpu_init_called) {
+    DLOG("Called VCPU create before init called");
+    panic("Called VCPU create before init called");
+  }
   if(vcpu_i < 0) return vcpu_i;
 
   vcpu = vcpu_list[vcpu_i] = kzalloc(sizeof(struct _vcpu));
@@ -1354,6 +1360,8 @@ vcpu_init (void)
   uint eax, ecx;
   int i;
 
+  vcpu_init_called = TRUE;
+
   cpuid (1, 0, NULL, NULL, &ecx, NULL);
   cpuid (6, 0, &eax, NULL, NULL, NULL);
 
@@ -1372,12 +1380,10 @@ vcpu_init (void)
 
   /* distribute VCPUs across PCPUs */
   for (i=0; i<NUM_INIT_VCPUS; i++) {
-    int temp;
-    if((temp = create_vcpu(&init_params[i], NULL)) < 0) {
+    if(create_vcpu(&init_params[i], NULL) < 0) {
       com1_printf("Failed to create initial VCPUs\n");
       panic("Failed to create initial VCPUs");
     }
-    com1_printf("created vcpu with index %d\n", temp);
   }
 
   if(vcpu_lookup(0)->type != MAIN_VCPU) {
