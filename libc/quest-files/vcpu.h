@@ -38,6 +38,12 @@ struct sched_param
                                    machine (1) */
 };
 
+static int vcpu_create_main(int C, int T)
+{
+  struct sched_param sp = { .type = MAIN_VCPU, .C = C, .T = T };
+  return vcpu_create(&sp);
+}
+
 
 int vcpu_fork(uint vcpu_id);
 

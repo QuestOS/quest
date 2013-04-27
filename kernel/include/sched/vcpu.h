@@ -159,6 +159,7 @@ extern void iovcpu_job_wakeup_for_me (task_id job);
 extern void iovcpu_job_completion (void);
 
 extern int create_vcpu(struct sched_param* params, vcpu** vcpu_p);
+extern int create_main_vcpu(int C, int T, vcpu** vcpu_p);
 
 extern uint lowest_priority_vcpu (void);
 extern uint select_iovcpu (iovcpu_class);

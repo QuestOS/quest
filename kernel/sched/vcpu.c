@@ -136,6 +136,26 @@ vcpu_in_runqueue (vcpu *vcpu, task_id task)
   return task == i;
 }
 
+void vcpu_queue_remove(vcpu** queue, vcpu* vcpu)
+{
+  while (*queue) {
+    if (*queue == vcpu) {
+      *queue = vcpu->next;
+      return;
+    }
+    queue = &((*queue)->next);
+  }
+}
+
+void vcpu_destroy(u32 vcpu_index)
+{
+  vcpu* v = vcpu_lookup(vcpu_index);
+  if(v) {
+    vcpu_queue_remove(percpu_pointer (v->cpu, vcpu_queue), v);
+    vcpu_list[vcpu_index] = NULL;
+  }
+}
+
 void
 vcpu_remove_from_runqueue (vcpu *vcpu, task_id task)
 {
@@ -213,7 +233,7 @@ vcpu_queue_append (vcpu **queue, vcpu *vcpu)
 }
 
 
-static int next_vcpu_index()
+static int next_vcpu_index(void)
 {
   int i;
   for(i = 0; i < MAX_NUM_VCPUS; ++i) {
@@ -1279,9 +1299,9 @@ static vcpu_hooks *vcpu_hooks_table[] = {
   [IO_VCPU] = &io_vcpu_hooks
 };
 
-int create_main_vcpu(u32 C, u32 T, vcpu** vcpu_p)
+int create_main_vcpu(int C, int T, vcpu** vcpu_p)
 {
-  struct sched_param sp = { .type = MAIN_VCPU, .C = 10, .T = 100 };
+  struct sched_param sp = { .type = MAIN_VCPU, .C = C, .T = T };
   return create_vcpu(&sp, vcpu_p);
 }
 

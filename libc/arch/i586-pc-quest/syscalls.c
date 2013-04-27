@@ -160,7 +160,12 @@ int vcpu_bind_task(uint vcpu_id)
   return res;
 }
 
-
+int vcpu_destroy(uint vcpu_id, uint force)
+{
+  int res;
+  asm volatile ("int $0x30\n":"=a"(res):"a" (6L), "b"(vcpu_id), "c"(force):CLOBBERS5);
+  return res;
+}
 
 int kill(int pid, int sig)
 {

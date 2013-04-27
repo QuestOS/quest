@@ -528,6 +528,33 @@ static int syscall_vcpu_bind_task(u32 eax, u32 ebx, u32 ecx, u32 edx, u32 esi)
   return 0;
 }
 
+/* -- EM -- The force flag is currently ignored and the vcpu can only
+      be destroyed if it is empty */
+static int syscall_vcpu_destroy(u32 eax, u32 vcpu_index, u32 force, u32 edx, u32 esi)
+{
+  task_id t_id = str();
+  quest_tss *tssp = lookup_TSS(t_id);
+  vcpu* v = vcpu_lookup(vcpu_index);
+
+  if(vcpu_index == BEST_EFFORT_VCPU) return -1;
+
+  v = vcpu_lookup(vcpu_index);
+
+  if( (!v) || (v->type != MAIN_VCPU) ) {
+    return -1;
+  }
+  
+  if(tssp) {
+    if(tssp->cpu == vcpu_index) return -1;
+  }
+
+  if(v->runqueue) return -1;
+
+  vcpu_destroy(vcpu_index);
+    
+  return 0;
+}
+
 
 struct syscall {
   u32 (*func) (u32, u32, u32, u32, u32);
@@ -539,6 +566,7 @@ struct syscall syscall_table[] = {
   { .func = syscall_getpid },
   { .func = syscall_vcpu_create },
   { .func = syscall_vcpu_bind_task },
+  { .func = syscall_vcpu_destroy },
 };
 #define NUM_SYSCALLS (sizeof (syscall_table) / sizeof (struct syscall))
 
