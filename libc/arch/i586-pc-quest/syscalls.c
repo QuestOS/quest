@@ -44,12 +44,12 @@ int execve(char *name, char **argv, char **env)
 
 int _execve(char *name, char **argv, char **env)
 {
-  execve(char *name, char **argv, char **env)
+  execve(name, argv, env);
 }
 
 int exec(char *name, char **argv)
 {
-  execve(char *name, char **argv, char **env)
+  execve(name, argv, NULL);
 }
 
 
