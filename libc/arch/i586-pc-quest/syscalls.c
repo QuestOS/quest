@@ -42,9 +42,14 @@ int execve(char *name, char **argv, char **env)
   asm volatile ("int $0x33\n"::"a" (name), "b" (argv):CLOBBERS2);
 }
 
+int _execve(char *name, char **argv, char **env)
+{
+  execve(char *name, char **argv, char **env)
+}
+
 int exec(char *name, char **argv)
 {
-  asm volatile ("int $0x33\n"::"a" (name), "b" (argv):CLOBBERS2);
+  execve(char *name, char **argv, char **env)
 }
 
 

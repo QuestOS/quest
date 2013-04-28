@@ -59,6 +59,10 @@ main ()
   char *p;
   int child_pid;
   int vcpu_index;
+  
+  if(setenv("PATH","/boot/", 0)) {
+    fprintf(stderr, "Failed add path to environment\n");
+  }
 
   while (1) {
 
@@ -111,7 +115,7 @@ main ()
         for (p = "child!\n"; *p; p++)
           putchar (*p);
 #endif
-        exec (line, &command_line_args);
+        execvp (line, &command_line_args);
 
         /* Got here due to exec failing on an ext2fs_dir call  */
         for (p = "Error: file not found\n"; *p; p++)
