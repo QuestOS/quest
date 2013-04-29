@@ -58,11 +58,11 @@ int fork()
   return vcpu_fork(BEST_EFFORT_VCPU);
 }
 
-int vcpu_fork(uint vcpu_id)
+int vcpu_fork(vcpu_id_t vcpu_id)
 {
-  unsigned int retval;
+  int retval;
   asm volatile ("int $0x31\n":"=a" (retval):"a"(vcpu_id):CLOBBERS1);
-  return (int) retval;
+  return retval;
 }
 
 
@@ -151,21 +151,21 @@ int getpid()
   return pid;
 }
 
-int vcpu_create(struct sched_param* sched_param)
+vcpu_id_t vcpu_create(struct sched_param* sched_param)
 {
-  int res;
+  vcpu_id_t res;
   asm volatile ("int $0x30\n":"=a"(res):"a" (4L), "b"(sched_param):CLOBBERS2);
   return res;
 }
 
-int vcpu_bind_task(uint vcpu_id)
+int vcpu_bind_task(vcpu_id_t vcpu_id)
 {
   int res;
   asm volatile ("int $0x30\n":"=a"(res):"a" (5L), "b"(vcpu_id):CLOBBERS2);
   return res;
 }
 
-int vcpu_destroy(uint vcpu_id, uint force)
+int vcpu_destroy(vcpu_id_t vcpu_id, uint force)
 {
   int res;
   asm volatile ("int $0x30\n":"=a"(res):"a" (6L), "b"(vcpu_id), "c"(force):CLOBBERS5);
@@ -179,7 +179,7 @@ int vcpu_getparams(struct sched_param* sched_param)
   return res;
 }
 
-int vcpu_setparams(uint vcpu_id, struct sched_param* sched_param)
+int vcpu_setparams(vcpu_id_t vcpu_id, struct sched_param* sched_param)
 {
   int res;
   asm volatile ("int $0x30\n":"=a"(res):"a" (8L), "b"(vcpu_id), "c"(sched_param):CLOBBERS5);

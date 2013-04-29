@@ -1,6 +1,8 @@
 #ifndef _VCPU_H_
 #define _VCPU_H_
 
+typedef int vcpu_id_t;
+
 /* If BEST_EFFORT_VCPU, sched_param, vcpu_type or iovcpu_class are
    changed they must also be changed in the kernel's vcpu.h */
 
@@ -38,13 +40,13 @@ struct sched_param
                                    machine (1) */
 };
 
-static int vcpu_create_main(int C, int T)
+static vcpu_id_t vcpu_create_main(int C, int T)
 {
   struct sched_param sp = { .type = MAIN_VCPU, .C = C, .T = T };
   return vcpu_create(&sp);
 }
 
 
-int vcpu_fork(uint vcpu_id);
+int vcpu_fork(vcpu_id_t vcpu_id);
 
 #endif _VCPU_H_

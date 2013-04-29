@@ -79,14 +79,15 @@ static struct sched_param init_params[] = {
 #define MAX_NUM_VCPUS 100
 
 static vcpu *vcpu_list[MAX_NUM_VCPUS];
-static uint max_vcpu_id = 0;
+static vcpu_id_t max_vcpu_id = 0;
 static int num_vcpus = 0;
 
-extern uint
+extern vcpu_id_t
 lowest_priority_vcpu (void)
 {
-  uint i;
-  u64 n=0, T=0;
+  vcpu_id_t i;
+  vcpu_id_t n=0;
+  u64 T=0;
   for (i=0; i<max_vcpu_id; i++) {
     if (vcpu_list[i] && vcpu_list[i]->type == MAIN_VCPU && vcpu_list[i]->T >= T) {
       T = vcpu_list[i]->T;
@@ -97,14 +98,14 @@ lowest_priority_vcpu (void)
 }
 
 vcpu *
-vcpu_lookup (int i)
+vcpu_lookup (vcpu_id_t i)
 {
   if (0 <= i && i < MAX_NUM_VCPUS)
     return vcpu_list[i];
   return NULL;
 }
 
-int
+vcpu_id_t
 vcpu_index (vcpu *v)
 {
   return v->index;
@@ -147,7 +148,7 @@ void vcpu_queue_remove(vcpu** queue, vcpu* vcpu)
   }
 }
 
-void vcpu_destroy(u32 vcpu_index)
+void vcpu_destroy(vcpu_id_t vcpu_index)
 {
   vcpu* v = vcpu_lookup(vcpu_index);
   if(v) {
@@ -233,9 +234,9 @@ vcpu_queue_append (vcpu **queue, vcpu *vcpu)
 }
 
 
-static int next_vcpu_index(void)
+static vcpu_id_t next_vcpu_index(void)
 {
-  int i;
+  vcpu_id_t i;
   for(i = 0; i < MAX_NUM_VCPUS; ++i) {
     if(!vcpu_list[i]) return i;
   }
@@ -1299,20 +1300,20 @@ static vcpu_hooks *vcpu_hooks_table[] = {
   [IO_VCPU] = &io_vcpu_hooks
 };
 
-int create_main_vcpu(int C, int T, vcpu** vcpu_p)
+vcpu_id_t create_main_vcpu(int C, int T, vcpu** vcpu_p)
 {
   struct sched_param sp = { .type = MAIN_VCPU, .C = C, .T = T };
   return create_vcpu(&sp, vcpu_p);
 }
 
-int create_vcpu(struct sched_param* params, vcpu** vcpu_p)
+vcpu_id_t create_vcpu(struct sched_param* params, vcpu** vcpu_p)
 {
   vcpu* vcpu;
   static int cpu_i=0;
   u32 C = params->C;
   u32 T = params->T;
   vcpu_type type = params->type;
-  int vcpu_i = next_vcpu_index();
+  vcpu_id_t vcpu_i = next_vcpu_index();
 
   if(!vcpu_init_called) {
     DLOG("Called VCPU create before init called");

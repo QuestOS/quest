@@ -501,14 +501,13 @@ syscall_getpid (u32 eax, u32 ebx, u32 ecx, u32 edx, u32 esi)
   return str();
 }
 
-static int syscall_vcpu_create(u32 eax, u32 ebx, u32 ecx, u32 edx, u32 esi)
+static vcpu_id_t syscall_vcpu_create(u32 eax, u32 ebx, u32 ecx, u32 edx, u32 esi)
 {
   return create_vcpu((struct sched_param*)ebx, NULL);
 }
 
-static int syscall_vcpu_bind_task(u32 eax, u32 ebx, u32 ecx, u32 edx, u32 esi)
+static int syscall_vcpu_bind_task(u32 eax, vcpu_id_t new_vcpu_index, u32 ecx, u32 edx, u32 esi)
 {
-  uint new_vcpu_index = ebx;
   task_id t_id = str();
   quest_tss *tssp = lookup_TSS(t_id);
   vcpu* new_vcpu;
@@ -520,8 +519,7 @@ static int syscall_vcpu_bind_task(u32 eax, u32 ebx, u32 ecx, u32 edx, u32 esi)
   if( (!new_vcpu)|| (new_vcpu->type != MAIN_VCPU) ) {
     return -1;
   }
-
-
+  
   tssp->cpu = new_vcpu_index;
     
   return 0;
@@ -529,7 +527,7 @@ static int syscall_vcpu_bind_task(u32 eax, u32 ebx, u32 ecx, u32 edx, u32 esi)
 
 /* -- EM -- The force flag is currently ignored and the vcpu can only
       be destroyed if it is empty */
-static int syscall_vcpu_destroy(u32 eax, u32 vcpu_index, u32 force, u32 edx, u32 esi)
+static int syscall_vcpu_destroy(u32 eax, vcpu_id_t vcpu_index, u32 force, u32 edx, u32 esi)
 {
   task_id t_id = str();
   quest_tss *tssp = lookup_TSS(t_id);
@@ -579,7 +577,7 @@ static int syscall_vcpu_getparams(u32 eax, struct sched_param* sched_param,
 }
 
 /* -- EM -- Just return -1 for now */
-static int syscall_vcpu_setparams(u32 eax, u32 vcpu_index, struct sched_param* sched_param,
+static int syscall_vcpu_setparams(u32 eax, vcpu_id_t vcpu_index, struct sched_param* sched_param,
                                   u32 edx, u32 esi)
 {
   return -1;
@@ -622,7 +620,7 @@ handle_syscall0 (u32 eax, u32 ebx, u32 ecx, u32 edx, u32 esi)
  * registers inherited by child
  */
 task_id
-_fork (uint32 vcpu_id, uint32 ebp, uint32 *esp)
+_fork (vcpu_id_t vcpu_id, uint32 ebp, uint32 *esp)
 {
 
   task_id child_tid;

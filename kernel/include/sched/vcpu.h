@@ -106,7 +106,7 @@ typedef struct _vcpu
       u64 next_schedule;        /* when to trigger internal schedule */
       u64 prev_tsc;             /* when started running */
       u64 virtual_tsc;          /* virtual timestamp counter */
-      int index;
+      vcpu_id_t index;
 
       u64 C, T, b, usage;       /* common scheduling parameters */
       u32 _C, _T;               /* Original C and T before frequency computation */
@@ -159,13 +159,13 @@ extern void iovcpu_job_wakeup (task_id job, u64 T);
 extern void iovcpu_job_wakeup_for_me (task_id job);
 extern void iovcpu_job_completion (void);
 
-extern int create_vcpu(struct sched_param* params, vcpu** vcpu_p);
-extern int create_main_vcpu(int C, int T, vcpu** vcpu_p);
+extern vcpu_id_t create_vcpu(struct sched_param* params, vcpu** vcpu_p);
+extern vcpu_id_t create_main_vcpu(int C, int T, vcpu** vcpu_p);
 
-extern uint lowest_priority_vcpu (void);
+extern vcpu_id_t lowest_priority_vcpu (void);
 extern uint select_iovcpu (iovcpu_class);
 extern void set_iovcpu (task_id, iovcpu_class);
-extern vcpu * vcpu_lookup (int);
+extern vcpu * vcpu_lookup (vcpu_id_t);
 extern bool vcpu_in_runqueue (vcpu *, task_id);
 extern void vcpu_remove_from_runqueue (vcpu *, task_id);
 extern bool vcpu_fix_replenishment (quest_tss*, vcpu*, replenishment[], bool remote_tsc_diff,
