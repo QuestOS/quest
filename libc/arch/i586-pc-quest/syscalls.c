@@ -182,7 +182,7 @@ int vcpu_getparams(struct sched_param* sched_param)
 int vcpu_setparams(uint vcpu_id, struct sched_param* sched_param)
 {
   int res;
-  asm volatile ("int $0x30\n":"=a"(res):"a" (7L), "b"(vcpu_id), "c"(sched_param):CLOBBERS5);
+  asm volatile ("int $0x30\n":"=a"(res):"a" (8L), "b"(vcpu_id), "c"(sched_param):CLOBBERS5);
   return res;
 }
 
