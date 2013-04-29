@@ -559,6 +559,7 @@ static int syscall_vcpu_getparams(u32 eax, struct sched_param* sched_param,
                                   u32 ecx, u32 edx, u32 esi)
 {
   quest_tss *tssp = lookup_TSS(str());
+  if(!sched_param) return -1;
   if(tssp) {
     vcpu* v = vcpu_lookup(tssp->cpu);
     if(v) {
