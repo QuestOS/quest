@@ -250,6 +250,13 @@ handle_interrupt (u32 edi, u32 esi, u32 ebp, u32 _esp, u32 ebx, u32 edx, u32 ecx
   send_eoi ();
 }
 
+static void move_cursor(int x, int y)
+{
+  outb (0x0E, 0x3D4);                /* CRTC Cursor location high index */
+  outb ((y * 80 + x) >> 8, 0x3D5);   /* CRTC Cursor location high data */
+  outb (0x0F, 0x3D4);                /* CRTC Cursor location low index */
+  outb ((y * 80 + x) & 0xFF, 0x3D5); /* CRTC Cursor location low data */
+}
 
 int
 user_putchar (int ch, int attribute)
@@ -260,6 +267,39 @@ user_putchar (int ch, int attribute)
   uint32 cpu;
   cpu = get_pcpu_id ();
 #endif
+
+  /* if backspace key */
+  if(ch == 127) {
+    if(x) {
+      --x;
+#ifdef USE_VMX
+      if (shm_screen_initialized) {
+        if (shm->virtual_display.cur_screen == cpu) {
+          pchVideo[y * 160 + x * 2] = ' ';
+          pchVideo[y * 160 + x * 2 + 1] = attribute;
+          /* Move cursor */
+          move_cursor(x, y);
+        }
+        shm_screen[y * 160 + x * 2] = ' ';
+        shm_screen[y * 160 + x * 2 + 1] = attribute;
+        
+        shm->virtual_display.cursor[cpu].x = x;
+        shm->virtual_display.cursor[cpu].y = y;
+      } else {
+        pchVideo[y * 160 + x * 2] = ' ';
+        pchVideo[y * 160 + x * 2 + 1] = attribute;
+        /* Move cursor */
+        move_cursor(x, y);
+      }
+#else
+      pchVideo[y * 160 + x * 2] = ' ';
+      pchVideo[y * 160 + x * 2 + 1] = attribute;
+      /* Move cursor */
+      move_cursor(x, y);
+#endif
+    }
+    return ch;
+  }
 
   if (ch == '\n') {
     x = 0;
@@ -340,24 +380,15 @@ user_putchar (int ch, int attribute)
   if (shm_screen_initialized) {
     if (shm->virtual_display.cur_screen == cpu) {
       /* Move cursor */
-      outb (0x0E, 0x3D4);           /* CRTC Cursor location high index */
-      outb ((y * 80 + x) >> 8, 0x3D5);      /* CRTC Cursor location high data */
-      outb (0x0F, 0x3D4);           /* CRTC Cursor location low index */
-      outb ((y * 80 + x) & 0xFF, 0x3D5);    /* CRTC Cursor location low data */
+      move_cursor(x, y);
     }
   } else {
     /* Move cursor */
-    outb (0x0E, 0x3D4);           /* CRTC Cursor location high index */
-    outb ((y * 80 + x) >> 8, 0x3D5);      /* CRTC Cursor location high data */
-    outb (0x0F, 0x3D4);           /* CRTC Cursor location low index */
-    outb ((y * 80 + x) & 0xFF, 0x3D5);    /* CRTC Cursor location low data */
+    move_cursor(x, y);
   }
 #else
   /* Move cursor */
-  outb (0x0E, 0x3D4);           /* CRTC Cursor location high index */
-  outb ((y * 80 + x) >> 8, 0x3D5);      /* CRTC Cursor location high data */
-  outb (0x0F, 0x3D4);           /* CRTC Cursor location low index */
-  outb ((y * 80 + x) & 0xFF, 0x3D5);    /* CRTC Cursor location low data */
+  move_cursor(x, y);
 #endif
 
   return (int) (unsigned char) ch;

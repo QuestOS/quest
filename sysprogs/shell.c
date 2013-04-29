@@ -37,9 +37,19 @@ scanline (char *line)
       continue;
     }
 #endif
-    *line++ = c;
-    count++;
-    putchar (c);
+    /* if backspace key */
+    if(c == 127) {
+      if(count) {
+        *line-- = 0;
+        count--;
+        putchar (c);
+      }
+    }
+    else {
+      *line++ = c;
+      count++;
+      putchar (c);
+    }
   }
 
   *line = '\0';
