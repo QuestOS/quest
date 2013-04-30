@@ -571,12 +571,8 @@ static int syscall_vcpu_destroy(u32 eax, vcpu_id_t vcpu_index, u32 force, u32 ed
   if( (!v) || (v->type != MAIN_VCPU) ) {
     return -1;
   }
-  
-  if(tssp) {
-    if(tssp->cpu == vcpu_index) return -1;
-  }
 
-  if(v->runqueue) return -1;
+  if(v->runqueue || v->running) return -1;
 
   vcpu_destroy(vcpu_index);
     
