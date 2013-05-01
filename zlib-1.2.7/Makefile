@@ -16,7 +16,14 @@
 # To install in $HOME instead of /usr/local, use:
 #    make install prefix=$HOME
 
-CC=gcc
+include ../config.mk
+ifndef INSTALL_DIR
+INSTALL_DIR=/tftp/boot
+endif
+
+PROG_LIBS= -lc -lm -lz $(LIB_DEST)/crt0.o
+
+CC=i586-pc-quest-gcc
 
 CFLAGS=-O3  -D_LARGEFILE64_SOURCE=1 -DHAVE_HIDDEN
 #CFLAGS=-O -DMAX_WBITS=14 -DMAX_MEM_LEVEL=7
@@ -25,10 +32,11 @@ CFLAGS=-O3  -D_LARGEFILE64_SOURCE=1 -DHAVE_HIDDEN
 #           -Wstrict-prototypes -Wmissing-prototypes
 
 SFLAGS=-O3  -fPIC -D_LARGEFILE64_SOURCE=1 -DHAVE_HIDDEN
+LD=i586-pc-quest-ld
 LDFLAGS= 
 TEST_LDFLAGS=-L. libz.a
 LDSHARED=gcc -shared -Wl,-soname,libz.so.1,--version-script,zlib.map
-CPP=gcc -E
+CPP=i586-pc-quest-gcc -E
 
 STATICLIB=libz.a
 SHAREDLIB=libz.so
@@ -36,14 +44,16 @@ SHAREDLIBV=libz.so.1.2.7
 SHAREDLIBM=libz.so.1
 LIBS=$(STATICLIB) $(SHAREDLIBV)
 
-AR=ar
+AR=i586-pc-quest-ar
 ARFLAGS=rc
-RANLIB=ranlib
+RANLIB=i586-pc-quest-ranlib
 LDCONFIG=ldconfig
 LDSHAREDLIBC=-lc
 TAR=tar
 SHELL=/bin/sh
 EXE=
+
+PROGS = example$(EXE) minigzip$(EXE)
 
 prefix =/usr/local
 exec_prefix =${prefix}
@@ -70,9 +80,9 @@ OBJS = $(OBJC) $(OBJA)
 
 PIC_OBJS = $(PIC_OBJC) $(PIC_OBJA)
 
-all: static shared all64
+#all: static shared all64
 
-static: example$(EXE) minigzip$(EXE)
+all: $(PROGS)
 
 shared: examplesh$(EXE) minigzipsh$(EXE)
 
@@ -124,9 +134,13 @@ cover: infcover
 	./infcover
 	gcov inf*.c
 
+$(LIB_DEST)/libz.a: libz.a
+	cp libz.a $(LIB_DEST)
+
 libz.a: $(OBJS)
 	$(AR) $(ARFLAGS) $@ $(OBJS)
 	-@ ($(RANLIB) $@ || true) >/dev/null 2>&1
+
 
 match.o: match.S
 	$(CPP) match.S > _match.s
@@ -139,6 +153,7 @@ match.lo: match.S
 	$(CC) -c -fPIC _match.s
 	mv _match.o match.lo
 	rm -f _match.s
+
 
 example.o: test/example.c zlib.h zconf.h
 	$(CC) $(CFLAGS) -I. -c -o $@ test/example.c
@@ -166,11 +181,13 @@ placebo $(SHAREDLIBV): $(PIC_OBJS) libz.a
 	ln -s $@ $(SHAREDLIBM)
 	-@rmdir objs
 
-example$(EXE): example.o $(STATICLIB)
-	$(CC) $(CFLAGS) -o $@ example.o $(TEST_LDFLAGS)
+example$(EXE): example.o $(LIB_DEST)/libz.a
+	$(LD) -o $@ $^ $(PROG_LIBS)
+#	$(CC) $(CFLAGS) -o $@ example.o $(TEST_LDFLAGS)
 
-minigzip$(EXE): minigzip.o $(STATICLIB)
-	$(CC) $(CFLAGS) -o $@ minigzip.o $(TEST_LDFLAGS)
+minigzip$(EXE): minigzip.o $(LIB_DEST)/libz.a
+	$(LD) -o $@ $^ $(PROG_LIBS)
+#	$(CC) $(CFLAGS) -o $@ minigzip.o $(TEST_LDFLAGS)
 
 examplesh$(EXE): example.o $(SHAREDLIBV)
 	$(CC) $(CFLAGS) -o $@ example.o -L. $(SHAREDLIBV)
@@ -210,10 +227,13 @@ install-libs: $(LIBS)
 # The ranlib in install is needed on NeXTSTEP which checks file times
 # ldconfig is for Linux
 
-install: install-libs
-	-@if [ ! -d $(DESTDIR)$(includedir)   ]; then mkdir -p $(DESTDIR)$(includedir); fi
-	cp zlib.h zconf.h $(DESTDIR)$(includedir)
-	chmod 644 $(DESTDIR)$(includedir)/zlib.h $(DESTDIR)$(includedir)/zconf.h
+install: $(PROGS)
+	$(INSTALL_CMD) $(PROGS) $(INSTALL_DIR)
+
+# install: install-libs
+# 	-@if [ ! -d $(DESTDIR)$(includedir)   ]; then mkdir -p $(DESTDIR)$(includedir); fi
+# 	cp zlib.h zconf.h $(DESTDIR)$(includedir)
+# 	chmod 644 $(DESTDIR)$(includedir)/zlib.h $(DESTDIR)$(includedir)/zconf.h
 
 uninstall:
 	cd $(DESTDIR)$(includedir); rm -f zlib.h zconf.h
@@ -250,6 +270,7 @@ clean:
 	rm -rf objs
 	rm -f *.gcda *.gcno *.gcov
 	rm -f contrib/infback9/*.gcda contrib/infback9/*.gcno contrib/infback9/*.gcov
+	rm -f $(LIB_DEST)/libz.a
 
 maintainer-clean: distclean
 distclean: clean zconf zconf.h.cmakein docs
