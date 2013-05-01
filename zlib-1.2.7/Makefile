@@ -82,7 +82,7 @@ PIC_OBJS = $(PIC_OBJC) $(PIC_OBJA)
 
 #all: static shared all64
 
-all: $(PROGS)
+all: $(PROGS) $(LIB_DEST)/libz.a
 
 shared: examplesh$(EXE) minigzipsh$(EXE)
 
