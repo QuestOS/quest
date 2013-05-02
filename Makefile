@@ -7,7 +7,7 @@ TAR = tar
 SYNC = sync
 
 
-QUEST_USER_PROGS_DIRS = canny netperf sysprogs tests torcs
+QUEST_USER_PROGS_DIRS = canny netperf sysprogs tests torcs malardalen
 QUEST_LIB_DIRS = libc
 DIRS = $(QUEST_USER_PROGS_DIRS) $(QUEST_LIB_DIRS) kernel
 
