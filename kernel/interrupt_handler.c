@@ -591,7 +591,7 @@ static int syscall_vcpu_getparams(u32 eax, struct sched_param* sched_param,
       memset(sched_param, 0, sizeof(struct sched_param));
       sched_param->C = v->_C;
       sched_param->T = v->_T;
-      sched_param->type = MAIN_VCPU;
+      sched_param->type = v->type;
       return 0;
     }
     else {
