@@ -40,9 +40,8 @@ build-tests:  build-libc
 build-netperf:  build-libc
 build-torcs:  build-libc
 build-zlib-1.2.7: build-libc
-build-sysprogs: build-kernel
 build-malardalen: build-libc
-build-zlib-1.2.7: build-libc
+build-sysprogs: build-kernel
 
 
 install: $(INSTALLDIRS)
