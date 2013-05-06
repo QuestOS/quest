@@ -786,8 +786,9 @@ vcpu_schedule (void)
            * Some more specific mechanisms must be devised for this
            * issue in the future.
            */
-          while ((waiter = queue_remove_head (&tss->waitqueue)))
+          while ((waiter = queue_remove_head (&tss->waitqueue))) {
             wakeup (waiter);
+          }
 
           if (ph_tss) {
             /* Request migration */
