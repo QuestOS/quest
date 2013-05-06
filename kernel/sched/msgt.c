@@ -432,8 +432,14 @@ msgt_bandwidth_init (void)
   sandbox = get_pcpu_id ();
 #endif
 
+  int vcpu_id = create_main_vcpu(20, 100, NULL);
+  if(vcpu_id < 0) {
+    DLOG("Failed to create ipc bandwidth vcpu");
+    return FALSE;
+  }
+
   create_kernel_thread_vcpu_args ((u32) msg_bandwidth_thread, (u32) &msgt_stack[1023],
-                                  "msg bandwidth", 4, TRUE, 0);
+                                  "msg bandwidth", vcpu_id, TRUE, 0);
 
   DLOG ("IPC Bandwidth Thread Created on Sandbox %d...\n", sandbox);
   return TRUE;
@@ -442,8 +448,14 @@ msgt_bandwidth_init (void)
 extern bool
 hog_thread_init (void)
 {
+  int vcpu_id = create_main_vcpu(20, 100, NULL);
+  if(vcpu_id < 0) {
+    DLOG("Failed to create ipc hog vcpu");
+    return FALSE;
+  }
+  
   create_kernel_thread_vcpu_args ((u32) hog_thread, (u32) &msgt_stack[1023],
-                                  "Hog thread", 4, TRUE, 0);
+                                  "Hog thread", vcpu_id, TRUE, 0);
 
   return TRUE;
 }
@@ -456,8 +468,14 @@ ipc_send_init (void)
   sandbox = get_pcpu_id ();
 #endif
 
+  int vcpu_id = create_main_vcpu(20, 100, NULL);
+  if(vcpu_id < 0) {
+    DLOG("Failed to create sender vcpu");
+    return FALSE;
+  }
+
   create_kernel_thread_vcpu_args ((u32) ipc_send_thread, (u32) &ipc_stack[1023],
-                                  "IPC send", 2, TRUE, 0);
+                                  "IPC send", vcpu_id, TRUE, 0);
 
   DLOG ("Sandbox %d: Sender created", sandboxd);
 
@@ -472,8 +490,14 @@ ipc_recv_init (void)
   sandbox = get_pcpu_id ();
 #endif
 
+  int vcpu_id = create_main_vcpu(20, 100, NULL);
+  if(vcpu_id < 0) {
+    DLOG("Failed to create ipc receiver vcpu");
+    return FALSE;
+  }
+
   create_kernel_thread_vcpu_args ((u32) ipc_recv_thread, (u32) &ipc_stack[1023],
-                                  "IPC recv", 4, TRUE, 0);
+                                  "IPC recv", vcpu_id, TRUE, 0);
 
   DLOG ("Sandbox %d: Receiver created", sandbox);
 

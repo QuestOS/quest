@@ -250,6 +250,13 @@ handle_interrupt (u32 edi, u32 esi, u32 ebp, u32 _esp, u32 ebx, u32 edx, u32 ecx
   send_eoi ();
 }
 
+static void move_cursor(int x, int y)
+{
+  outb (0x0E, 0x3D4);                /* CRTC Cursor location high index */
+  outb ((y * 80 + x) >> 8, 0x3D5);   /* CRTC Cursor location high data */
+  outb (0x0F, 0x3D4);                /* CRTC Cursor location low index */
+  outb ((y * 80 + x) & 0xFF, 0x3D5); /* CRTC Cursor location low data */
+}
 
 int
 user_putchar (int ch, int attribute)
@@ -260,6 +267,39 @@ user_putchar (int ch, int attribute)
   uint32 cpu;
   cpu = get_pcpu_id ();
 #endif
+
+  /* if backspace key */
+  if(ch == 127) {
+    if(x) {
+      --x;
+#ifdef USE_VMX
+      if (shm_screen_initialized) {
+        if (shm->virtual_display.cur_screen == cpu) {
+          pchVideo[y * 160 + x * 2] = ' ';
+          pchVideo[y * 160 + x * 2 + 1] = attribute;
+          /* Move cursor */
+          move_cursor(x, y);
+        }
+        shm_screen[y * 160 + x * 2] = ' ';
+        shm_screen[y * 160 + x * 2 + 1] = attribute;
+        
+        shm->virtual_display.cursor[cpu].x = x;
+        shm->virtual_display.cursor[cpu].y = y;
+      } else {
+        pchVideo[y * 160 + x * 2] = ' ';
+        pchVideo[y * 160 + x * 2 + 1] = attribute;
+        /* Move cursor */
+        move_cursor(x, y);
+      }
+#else
+      pchVideo[y * 160 + x * 2] = ' ';
+      pchVideo[y * 160 + x * 2 + 1] = attribute;
+      /* Move cursor */
+      move_cursor(x, y);
+#endif
+    }
+    return ch;
+  }
 
   if (ch == '\n') {
     x = 0;
@@ -340,24 +380,15 @@ user_putchar (int ch, int attribute)
   if (shm_screen_initialized) {
     if (shm->virtual_display.cur_screen == cpu) {
       /* Move cursor */
-      outb (0x0E, 0x3D4);           /* CRTC Cursor location high index */
-      outb ((y * 80 + x) >> 8, 0x3D5);      /* CRTC Cursor location high data */
-      outb (0x0F, 0x3D4);           /* CRTC Cursor location low index */
-      outb ((y * 80 + x) & 0xFF, 0x3D5);    /* CRTC Cursor location low data */
+      move_cursor(x, y);
     }
   } else {
     /* Move cursor */
-    outb (0x0E, 0x3D4);           /* CRTC Cursor location high index */
-    outb ((y * 80 + x) >> 8, 0x3D5);      /* CRTC Cursor location high data */
-    outb (0x0F, 0x3D4);           /* CRTC Cursor location low index */
-    outb ((y * 80 + x) & 0xFF, 0x3D5);    /* CRTC Cursor location low data */
+    move_cursor(x, y);
   }
 #else
   /* Move cursor */
-  outb (0x0E, 0x3D4);           /* CRTC Cursor location high index */
-  outb ((y * 80 + x) >> 8, 0x3D5);      /* CRTC Cursor location high data */
-  outb (0x0F, 0x3D4);           /* CRTC Cursor location low index */
-  outb ((y * 80 + x) & 0xFF, 0x3D5);    /* CRTC Cursor location low data */
+  move_cursor(x, y);
 #endif
 
   return (int) (unsigned char) ch;
@@ -495,6 +526,91 @@ syscall_usb (u32 eax, u32 ebx, u32 ecx, u32 edx, u32 esi)
   }
 }
 
+static int
+syscall_getpid (u32 eax, u32 ebx, u32 ecx, u32 edx, u32 esi)
+{
+  return str();
+}
+
+static vcpu_id_t syscall_vcpu_create(u32 eax, u32 ebx, u32 ecx, u32 edx, u32 esi)
+{
+  return create_vcpu((struct sched_param*)ebx, NULL);
+}
+
+static int syscall_vcpu_bind_task(u32 eax, vcpu_id_t new_vcpu_index, u32 ecx, u32 edx, u32 esi)
+{
+  task_id t_id = str();
+  quest_tss *tssp = lookup_TSS(t_id);
+  vcpu* new_vcpu;
+  
+  if(!tssp) return -1;
+  
+  new_vcpu = vcpu_lookup(new_vcpu_index);
+
+  if( (!new_vcpu)|| (new_vcpu->type != MAIN_VCPU) ) {
+    return -1;
+  }
+  
+  tssp->cpu = new_vcpu_index;
+    
+  return 0;
+}
+
+/* -- EM -- The force flag is currently ignored and the vcpu can only
+      be destroyed if it is empty */
+static int syscall_vcpu_destroy(u32 eax, vcpu_id_t vcpu_index, u32 force, u32 edx, u32 esi)
+{
+  task_id t_id = str();
+  quest_tss *tssp = lookup_TSS(t_id);
+  vcpu* v = vcpu_lookup(vcpu_index);
+
+  if(vcpu_index == BEST_EFFORT_VCPU) return -1;
+
+  v = vcpu_lookup(vcpu_index);
+
+  if( (!v) || (v->type != MAIN_VCPU) ) {
+    return -1;
+  }
+
+  if(v->runqueue || v->running) return -1;
+
+  vcpu_destroy(vcpu_index);
+    
+  return 0;
+}
+
+
+static int syscall_vcpu_getparams(u32 eax, struct sched_param* sched_param,
+                                  u32 ecx, u32 edx, u32 esi)
+{
+  quest_tss *tssp = lookup_TSS(str());
+  if(!sched_param) return -1;
+  if(tssp) {
+    vcpu* v = vcpu_lookup(tssp->cpu);
+    if(v) {
+      memset(sched_param, 0, sizeof(struct sched_param));
+      sched_param->C = v->_C;
+      sched_param->T = v->_T;
+      sched_param->type = v->type;
+      return 0;
+    }
+    else {
+      return -1;
+    }
+  }
+  else {
+    return -1;
+  }
+}
+
+/* -- EM -- Just return -1 for now */
+static int syscall_vcpu_setparams(u32 eax, vcpu_id_t vcpu_index, struct sched_param* sched_param,
+                                  u32 edx, u32 esi)
+{
+  return -1;
+}
+
+
 struct syscall {
   u32 (*func) (u32, u32, u32, u32, u32);
 };
@@ -502,6 +618,12 @@ struct syscall syscall_table[] = {
   { .func = syscall_putchar },
   { .func = syscall_usleep },
   { .func = syscall_usb },
+  { .func = syscall_getpid },
+  { .func = syscall_vcpu_create },
+  { .func = syscall_vcpu_bind_task },
+  { .func = syscall_vcpu_destroy },
+  { .func = syscall_vcpu_getparams },
+  { .func = syscall_vcpu_setparams },
 };
 #define NUM_SYSCALLS (sizeof (syscall_table) / sizeof (struct syscall))
 
@@ -525,7 +647,7 @@ handle_syscall0 (u32 eax, u32 ebx, u32 ecx, u32 edx, u32 esi)
  * registers inherited by child
  */
 task_id
-_fork (uint32 ebp, uint32 *esp)
+_fork (vcpu_id_t vcpu_id, uint32 ebp, uint32 *esp)
 {
 
   task_id child_tid;
@@ -533,15 +655,22 @@ _fork (uint32 ebp, uint32 *esp)
   uint32 *virt_addr;
   uint32 priority;
   uint32 eflags, eip, this_esp, this_ebp;
+  vcpu* v;
 
 #ifdef DEBUG_SYSCALL
   com1_printf ("_fork (%X, %p)\n", ebp, esp);
 #endif
+  
   lock_kernel ();
 
-  char* temp = kmalloc(20);
-  if(temp == NULL) panic("temp is null");
-  kfree(temp);
+  
+  v = vcpu_lookup(vcpu_id);
+  if( (!v)  || (v->type != MAIN_VCPU)) {
+    unlock_kernel();
+    return -1;
+  }
+
+  
   /* 
    * This ugly bit of assembly is designed to obtain the value of EIP
    * in the parent and return from the `call 1f' in the child.

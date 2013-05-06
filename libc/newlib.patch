@@ -1,5 +1,5 @@
 --- ../../newlib-1.18.0/config.sub	2009-11-20 05:10:09.000000000 -0500
-+++ config.sub	2010-04-03 15:47:27.000000000 -0400
++++ config.sub	2013-04-27 22:00:48.352649297 -0400
 @@ -1281,6 +1281,7 @@ case $os in
  	      | -kopensolaris* \
  	      | -amigaos* | -amigados* | -msdos* | -newsos* | -unicos* | -aof* \
@@ -8,8 +8,97 @@
  	      | -nindy* | -vxsim* | -vxworks* | -ebmon* | -hms* | -mvs* \
  	      | -clix* | -riscos* | -uniplus* | -iris* | -rtu* | -xenix* \
  	      | -hiux* | -386bsd* | -knetbsd* | -mirbsd* | -netbsd* \
+--- ../../newlib-1.18.0/newlib/configure.host	2009-12-10 12:12:11.000000000 -0500
++++ newlib/configure.host	2013-04-27 22:01:29.713922814 -0400
+@@ -346,6 +346,10 @@ esac
+ # THIS TABLE IS ALPHA SORTED.  KEEP IT THAT WAY.
+ 
+ case "${host}" in
++  *-*-quest*)
++        sys_dir=quest
++	posix_dir=posix
++	;;
+   *-*-cygwin*)
+ 	posix_dir=posix
+ 	stdio64_dir=stdio64
+--- ../../newlib-1.18.0/newlib/libc/posix/Makefile.in	2009-10-20 18:44:09.000000000 -0400
++++ newlib/libc/posix/Makefile.in	2013-04-27 22:02:06.291164694 -0400
+@@ -55,22 +55,12 @@ LIBRARIES = $(noinst_LIBRARIES)
+ ARFLAGS = cru
+ lib_a_AR = $(AR) $(ARFLAGS)
+ lib_a_LIBADD =
+-am__objects_1 = lib_a-closedir.$(OBJEXT) lib_a-collate.$(OBJEXT) \
+-	lib_a-collcmp.$(OBJEXT) lib_a-creat.$(OBJEXT) \
+-	lib_a-fnmatch.$(OBJEXT) lib_a-glob.$(OBJEXT) \
+-	lib_a-_isatty.$(OBJEXT) lib_a-isatty.$(OBJEXT) \
+-	lib_a-opendir.$(OBJEXT) lib_a-readdir.$(OBJEXT) \
+-	lib_a-readdir_r.$(OBJEXT) lib_a-regcomp.$(OBJEXT) \
+-	lib_a-regerror.$(OBJEXT) lib_a-regexec.$(OBJEXT) \
+-	lib_a-regfree.$(OBJEXT) lib_a-rewinddir.$(OBJEXT) \
+-	lib_a-sleep.$(OBJEXT) lib_a-usleep.$(OBJEXT) \
+-	lib_a-telldir.$(OBJEXT)
+-am__objects_2 = lib_a-scandir.$(OBJEXT) lib_a-seekdir.$(OBJEXT)
++am__objects_1 = 
++am__objects_2 = 
+ am__objects_3 = lib_a-execl.$(OBJEXT) lib_a-execle.$(OBJEXT) \
+ 	lib_a-execlp.$(OBJEXT) lib_a-execv.$(OBJEXT) \
+-	lib_a-execve.$(OBJEXT) lib_a-execvp.$(OBJEXT) \
+-	lib_a-wordexp.$(OBJEXT) lib_a-wordfree.$(OBJEXT)
+-am__objects_4 = lib_a-popen.$(OBJEXT)
++	lib_a-execve.$(OBJEXT) lib_a-execvp.$(OBJEXT)
++am__objects_4 = 
+ @ELIX_LEVEL_1_FALSE@@ELIX_LEVEL_2_FALSE@@ELIX_LEVEL_3_FALSE@am__objects_5 = $(am__objects_2) \
+ @ELIX_LEVEL_1_FALSE@@ELIX_LEVEL_2_FALSE@@ELIX_LEVEL_3_FALSE@	$(am__objects_3) \
+ @ELIX_LEVEL_1_FALSE@@ELIX_LEVEL_2_FALSE@@ELIX_LEVEL_3_FALSE@	$(am__objects_4)
+@@ -83,14 +73,11 @@ am__objects_4 = lib_a-popen.$(OBJEXT)
+ lib_a_OBJECTS = $(am_lib_a_OBJECTS)
+ LTLIBRARIES = $(noinst_LTLIBRARIES)
+ libposix_la_LIBADD =
+-am__objects_6 = closedir.lo collate.lo collcmp.lo creat.lo fnmatch.lo \
+-	glob.lo _isatty.lo isatty.lo opendir.lo readdir.lo \
+-	readdir_r.lo regcomp.lo regerror.lo regexec.lo regfree.lo \
+-	rewinddir.lo sleep.lo usleep.lo telldir.lo
+-am__objects_7 = scandir.lo seekdir.lo
++am__objects_6 = 
++am__objects_7 = 
+ am__objects_8 = execl.lo execle.lo execlp.lo execv.lo execve.lo \
+-	execvp.lo wordexp.lo wordfree.lo
+-am__objects_9 = popen.lo
++	execvp.lo 
++am__objects_9 = 
+ @ELIX_LEVEL_1_FALSE@@ELIX_LEVEL_2_FALSE@@ELIX_LEVEL_3_FALSE@am__objects_10 = $(am__objects_7) \
+ @ELIX_LEVEL_1_FALSE@@ELIX_LEVEL_2_FALSE@@ELIX_LEVEL_3_FALSE@	$(am__objects_8) \
+ @ELIX_LEVEL_1_FALSE@@ELIX_LEVEL_2_FALSE@@ELIX_LEVEL_3_FALSE@	$(am__objects_9)
+@@ -263,23 +250,15 @@ top_builddir = @top_builddir@
+ top_srcdir = @top_srcdir@
+ AUTOMAKE_OPTIONS = cygnus
+ INCLUDES = $(NEWLIB_CFLAGS) $(CROSS_CFLAGS) $(TARGET_CFLAGS)
+-GENERAL_SOURCES = \
+-	closedir.c collate.c collcmp.c creat.c \
+-	fnmatch.c glob.c _isatty.c isatty.c \
+-	opendir.c readdir.c readdir_r.c \
+-	regcomp.c regerror.c regexec.c regfree.c \
+-	rewinddir.c sleep.c usleep.c \
+-	telldir.c
++GENERAL_SOURCES = 
+ 
+-ELIX_2_SOURCES = \
+-        scandir.c seekdir.c
++ELIX_2_SOURCES = 
+ 
+ ELIX_3_SOURCES = \
+ 	execl.c execle.c execlp.c execv.c \
+-	execve.c execvp.c wordexp.c wordfree.c
++	execve.c execvp.c
+ 
+-ELIX_4_SOURCES = \
+-	popen.c 
++ELIX_4_SOURCES = 
+ 
+ @ELIX_LEVEL_1_FALSE@@ELIX_LEVEL_2_FALSE@@ELIX_LEVEL_3_FALSE@ELIX_SOURCES = $(ELIX_2_SOURCES) $(ELIX_3_SOURCES) $(ELIX_4_SOURCES)
+ @ELIX_LEVEL_1_FALSE@@ELIX_LEVEL_2_FALSE@@ELIX_LEVEL_3_TRUE@ELIX_SOURCES = $(ELIX_2_SOURCES) $(ELIX_3_SOURCES)
 --- ../../newlib-1.18.0/newlib/libc/sys/configure.in	2007-05-24 13:33:37.000000000 -0400
-+++ newlib/libc/sys/configure.in	2010-04-03 15:55:26.000000000 -0400
++++ newlib/libc/sys/configure.in	2013-04-27 22:00:48.353649304 -0400
 @@ -44,6 +44,7 @@ if test -n "${sys_dir}"; then
  	sysvnecv70) AC_CONFIG_SUBDIRS(sysvnecv70) ;;
  	tic80) AC_CONFIG_SUBDIRS(tic80) ;;
@@ -18,15 +107,3 @@
  	z8ksim) AC_CONFIG_SUBDIRS(z8ksim) ;;
    esac;
  fi
---- ../../newlib-1.18.0/newlib/configure.host	2009-12-10 12:12:11.000000000 -0500
-+++ newlib/configure.host	2010-04-03 15:57:57.000000000 -0400
-@@ -346,6 +346,9 @@
- # THIS TABLE IS ALPHA SORTED.  KEEP IT THAT WAY.
- 
- case "${host}" in
-+  *-*-quest*)
-+        sys_dir=quest
-+	;;
-   *-*-cygwin*)
- 	posix_dir=posix
- 	stdio64_dir=stdio64
