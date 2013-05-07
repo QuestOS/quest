@@ -170,7 +170,8 @@ ssize_t recvmsg(int sockfd, struct msghdr *msg, int flags)
 
 int fcntl(int fd, int cmd, ... /* arg */ )
 {
-  unimplemented_funcion_called();
+  //unimplemented_funcion_called();
+  printf("fcntl stub called\n");
   return 0;
 }
 
