@@ -179,7 +179,7 @@
 #define HAVE_FAST_64BIT 0
 #define HAVE_FAST_CLZ 1
 #define HAVE_FAST_CMOV 0
-#define HAVE_FCNTL 1
+#define HAVE_FCNTL 0 
 #define HAVE_FORK 1
 #define HAVE_GETADDRINFO 1
 #define HAVE_GETHRTIME 0
