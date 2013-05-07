@@ -68,6 +68,8 @@
 #include <dlfcn.h>
 #endif
 
+#include <sys/socket.h> // include correct socket header -GFRY
+
 #include "cmdutils.h"
 
 const char program_name[] = "ffserver";
