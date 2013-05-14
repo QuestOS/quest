@@ -284,6 +284,12 @@ fd_table_file_entry_t* alloc_fd_table_file_entry(char* pathname)
   return res;
 }
 
+void free_fd_table_file_entry(fd_table_file_entry_t* entry)
+{
+  kfree(entry->pathname);
+  kfree(entry);
+}
+
 /*
  * Local Variables:
  * indent-tabs-mode: nil

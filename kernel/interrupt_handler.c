@@ -1173,9 +1173,8 @@ _open (char *pathname, int flags)
   task_id cur;
   int fd;
   fd_table_entry_t* fd_table_entry;
+  int res;
 
-  com1_printf("In open\n!");
-  
   lock_kernel ();
   
   cur = percpu_read (current_task);
@@ -1195,7 +1194,7 @@ _open (char *pathname, int flags)
   }
   
   //com1_printf ("_open (\"%s\", 0x%x)\n", pathname, flags);
-  int res = vfs_dir (pathname);
+  res = vfs_dir (pathname);
   
   /* File exists lets assign it a descriptor if a free one is available */
   if(res >= 0) {
@@ -1215,7 +1214,11 @@ _open (char *pathname, int flags)
     }
 
     fd_table_entry->type = FD_TYPE_FILE;
-    
+    res = fd;
+  }
+  else {
+    unlock_kernel();
+    return -1;
   }
   unlock_kernel ();
   return res;

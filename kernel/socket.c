@@ -225,25 +225,29 @@ sys_call_close (int filedes)
   if(filedes < 3) {
     return 0;
   }
-
+  
   switch (tss->fd_table[filedes].type) {
-    case FD_TYPE_UDP :
-      DLOG ("close UDP socket %d", filedes);
-      udp_remove ((struct udp_pcb *) tss->fd_table[filedes].entry);
-      tss->fd_table[filedes].entry = NULL;
-      break;
-    case FD_TYPE_TCP :
-      DLOG ("close TCP socket %d", filedes);
-      if ((err = tcp_close ((struct tcp_pcb *) tss->fd_table[filedes].entry)) != ERR_OK) {
-        DLOG ("TCP PCB close failed: %d", err);
-        return -1;
-      }
-      tss->fd_table[filedes].entry = NULL;
-      break;
-    default :
-      logger_printf ("Socket or file type %d not supported in close\n",
-                     tss->fd_table[filedes].type);
+  case FD_TYPE_UDP :
+    DLOG ("close UDP socket %d", filedes);
+    udp_remove ((struct udp_pcb *) tss->fd_table[filedes].entry);
+    tss->fd_table[filedes].entry = NULL;
+    break;
+  case FD_TYPE_TCP :
+    DLOG ("close TCP socket %d", filedes);
+    if ((err = tcp_close ((struct tcp_pcb *) tss->fd_table[filedes].entry)) != ERR_OK) {
+      DLOG ("TCP PCB close failed: %d", err);
       return -1;
+    }
+    tss->fd_table[filedes].entry = NULL;
+    break;
+  case FD_TYPE_FILE:
+    free_fd_table_file_entry(tss->fd_table[filedes].entry);
+    tss->fd_table[filedes].entry = NULL;
+    break;
+  default :
+    logger_printf ("Socket or file type %d not supported in close\n",
+                   tss->fd_table[filedes].type);
+    return -1;
   }
  
   return 0;

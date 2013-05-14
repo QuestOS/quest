@@ -5,6 +5,8 @@
 #include <netinet/in.h>
 #include <arpa/inet.h>
 
+#define QUEST // Comment out this line for the webserver to run on Linux
+
 #define BUFSIZE 8096
 
 #define WPORT   8080
@@ -54,14 +56,20 @@ cache_request (char * fname)
   /* Read File */
 
   /* Stub for Linux */
-  //int file_fd;
-  //if((file_fd = open(fname,O_RDONLY)) == -1) /* open the file for reading */
-  //  printf("failed to open file\n");
-  //sbuf[k].len = read(file_fd, sbuf[k].payload, SERVER_BUFFER_SIZE);
-  //close (file_fd);
+  int file_fd;
+#ifdef QUEST
+  if((file_fd = open(tftp_file_name)) == -1) { /* open the file for reading */
+#else
+  if((file_fd = open(fname,O_RDONLY)) == -1) { /* open the file for reading */
+#endif
+    printf("failed to open file\n");
+    return -1;
+  }
+  sbuf[k].len = read(file_fd, sbuf[k].payload, SERVER_BUFFER_SIZE);
+  close (file_fd);
   /* Stub for Linux */
 
-  sbuf[k].len = read (tftp_file_name, sbuf[k].payload, SERVER_BUFFER_SIZE);
+  //sbuf[k].len = read (tftp_file_name, sbuf[k].payload, SERVER_BUFFER_SIZE);
 
   strcpy (sbuf[k].file_name, tftp_file_name);
  
@@ -118,7 +126,9 @@ void process_http (int fd, int hit)
   sprintf (buffer,"HTTP/1.0 200 OK\r\nContent-Type: %s\r\n\r\n", fstr);
   send (fd,buffer,strlen(buffer), 0);
 
-  send (fd, sbuf[cache_index].payload, sbuf[cache_index].len, 0);
+  if(cache_index >= 0) {
+    send (fd, sbuf[cache_index].payload, sbuf[cache_index].len, 0);
+  }
   close (fd);
 }
 
