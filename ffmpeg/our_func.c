@@ -6,6 +6,8 @@
 #include <sys/select.h>
 #include <netinet/in.h>
 #include <arpa/inet.h>
+#include <stdarg.h>
+#include <sys/fcntl.h>
 
 //char *optarg;
 //int optind = 1, opterr = 1, optopt;
