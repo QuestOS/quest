@@ -68,6 +68,8 @@
 #include <dlfcn.h>
 #endif
 
+#include <sys/socket.h> // include correct socket header -GFRY
+
 #include "cmdutils.h"
 
 const char program_name[] = "ffserver";
@@ -4077,11 +4079,11 @@ static int parse_ffconfig(const char *filename)
     AVCodecContext audio_enc, video_enc;
     enum AVCodecID audio_id, video_id;
 
-    f = fopen(filename, "r");
-    if (!f) {
-        perror(filename);
-        return -1;
-    }
+//    f = fopen(filename, "r");
+//    if (!f) {
+//        perror(filename);
+//        return -1;
+//    }
 
     errors = 0;
     line_num = 0;
@@ -4097,7 +4099,8 @@ static int parse_ffconfig(const char *filename)
 
 #define ERROR(...) report_config_error(filename, line_num, &errors, __VA_ARGS__)
     for(;;) {
-        if (fgets(line, sizeof(line), f) == NULL)
+//        if (fgets(line, sizeof(line), f) == NULL)
+	if (ffconfig_getline(line, sizeof(line)) == NULL)
             break;
         line_num++;
         p = line;
@@ -4649,7 +4652,7 @@ static int parse_ffconfig(const char *filename)
     }
 #undef ERROR
 
-    fclose(f);
+//    fclose(f);
     if (errors)
         return -1;
     else
@@ -4722,17 +4725,23 @@ int main(int argc, char **argv)
 
     unsetenv("http_proxy");             /* Kill the http_proxy */
 
-    av_lfg_init(&random_state, av_get_random_seed());
+    av_lfg_init(&random_state, 0/*, av_get_random_seed()*/);
+
+    printf("ffserver 1-4\n");
 
     sigact.sa_handler = handle_child_exit;
     sigact.sa_flags = SA_NOCLDSTOP | SA_RESTART;
-    sigaction(SIGCHLD, &sigact, 0);
+    //sigaction(SIGCHLD, &sigact, 0);
+
+    printf("ffserver 5\n");
 
     if (parse_ffconfig(config_filename) < 0) {
         fprintf(stderr, "Incorrect config file - exiting.\n");
         exit(1);
     }
     av_freep(&config_filename);
+
+    printf("ffserver 6\n");
 
     /* open log file if needed */
     if (logfilename[0] != '\0') {
@@ -4743,19 +4752,27 @@ int main(int argc, char **argv)
         av_log_set_callback(http_av_log);
     }
 
+    printf("ffserver 7\n");
+
     build_file_streams();
 
     build_feed_streams();
 
     compute_bandwidth();
 
+    printf("ffserver 8\n");
+
     /* signal init */
     signal(SIGPIPE, SIG_IGN);
+
+    printf("ffserver 9\n");
 
     if (http_server() < 0) {
         http_log("Could not start server\n");
         exit(1);
     }
+    
+    printf("ffserver 10\n");
 
     return 0;
 }

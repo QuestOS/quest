@@ -549,7 +549,7 @@ sys_call_write (int filedes, const void *buf, int nbytes)
   /* HACK for STDOUT and STDERR */
   if ((filedes == 1) || (filedes == 2)) {
     int i;
-    char* char_buf = buf;
+    const char* char_buf = buf;
     for(i = 0; i < nbytes; ++i) {
       user_putchar (char_buf[i], 7);
     }
@@ -858,6 +858,7 @@ sys_call_select (int maxfdp1, fd_set * readfds, fd_set * writefds,
 
 #ifdef DEBUG_SOCKET
   /* Debug info */
+  DLOG("maxfdp1 = %d", maxfdp1);
   DLOG ("Select called on readfds:");
   logger_printf ("  ");
   for (i = 0; i < MAX_FD; i++) {
@@ -879,11 +880,11 @@ check_readfds:
           case FD_TYPE_UDP :
             if (udpb.buf) {
               ready = TRUE;
-              read_ready[i] = 1;
+              FD_SET(i, &read_ready);
               count++;
             } else if (circular_remove_nowait (&udp_recv_buf_circ, &udpb) != -1) {
               ready = TRUE;
-              read_ready[i] = 1;
+              FD_SET(i, &read_ready);
               count++;
             } else {
               continue;
@@ -892,19 +893,20 @@ check_readfds:
           case FD_TYPE_TCP :
             if (tcpb.buf) {
               ready = TRUE;
-              read_ready[i] = 1;
+              FD_SET(i, &read_ready);
               count++;
             } else if (circular_remove_nowait (&tcp_recv_buf_circ, &tcpb) != -1) {
               ready = TRUE;
-              read_ready[i] = 1;
+              FD_SET(i, &read_ready);
               count++;
             } else {
               continue;
             }
             break;
           default:
-            DLOG ("File descriptor type unsupported in select");
-            goto finish;
+            DLOG ("File descriptor type unsupported in select, fd = %d, type = %d\n",
+                  i, tss->fd_table[i].type);
+            return -1;
         }
       }
     }
@@ -931,7 +933,7 @@ check_readfds:
 skip_waiting:
   /* Now, some read fds are ready. We can return since we ignore write fds for now. */
   /* Replace old readfds with read_ready set */
-  memcpy (*readfds, read_ready, sizeof (read_ready));
+  memcpy (readfds, &read_ready, sizeof (read_ready));
 
 #else
 

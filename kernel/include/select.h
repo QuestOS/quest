@@ -20,28 +20,34 @@
 
 #include <sched/proc.h>
 
-#define FD_SETSIZE  128
 
-typedef unsigned char fd_set[MAX_FD];
+#define	FD_SETSIZE	64
 
-#define FD_ZERO(set)                        \
-  do {                                      \
-    int __i;                                \
-    for (__i = 0; __i < MAX_FD; __i++)      \
-      (*(set))[__i] = 0;                    \
-  } while(0)
+#  define	NBBY	8		/* number of bits in a byte */
 
-#define FD_SET(fd, set)                     \
-  do {                                      \
-    (*(set))[(fd)] = 1;                     \
-  } while(0)
+typedef	long	fd_mask;
+#  define	NFDBITS	(sizeof (fd_mask) * NBBY)	/* bits per mask */
+#  ifndef	howmany
+#	define	howmany(x,y)	(((x)+((y)-1))/(y))
+#  endif
 
-#define FD_CLR(fd, set)                     \
-  do {                                      \
-    (*(set))[(fd)] = 0;                     \
-  } while(0)
+/* We use a macro for fd_set so that including Sockets.h afterwards
+   can work.  */
+typedef	struct _types_fd_set {
+  fd_mask fds_bits[howmany(FD_SETSIZE, NFDBITS)];
+} _types_fd_set;
 
-#define FD_ISSET(fd, set)  ((int) ((*(set))[(fd)]))
+#define fd_set _types_fd_set
+
+#  define	FD_SET(n, p)	((p)->fds_bits[(n)/NFDBITS] |= (1L << ((n) % NFDBITS)))
+#  define	FD_CLR(n, p)	((p)->fds_bits[(n)/NFDBITS] &= ~(1L << ((n) % NFDBITS)))
+#  define	FD_ISSET(n, p)	((p)->fds_bits[(n)/NFDBITS] & (1L << ((n) % NFDBITS)))
+#  define	FD_ZERO(p)	(__extension__ (void)({ \
+     size_t __i; \
+     char *__tmp = (char *)p; \
+     for (__i = 0; __i < sizeof (*(p)); ++__i) \
+       *__tmp++ = 0; \
+}))
 
 struct timeval {
   long int tv_sec;    /* Seconds */

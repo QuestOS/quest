@@ -1,9 +1,13 @@
 #include "our_func.h"
+#include <ffserver_conf.h>
+#include <libavutil/avstring.h>
 #include "stdio.h"
 #include <sys/socket.h>
 #include <sys/select.h>
 #include <netinet/in.h>
 #include <arpa/inet.h>
+#include <stdarg.h>
+#include <sys/fcntl.h>
 
 //char *optarg;
 //int optind = 1, opterr = 1, optopt;
@@ -28,11 +32,11 @@ int ftruncate(int a, int b)
   return 0;
 }
 
-double atof(const char * s)
-{
-  unimplemented_funcion_called();
-  return 0;
-}
+//double atof(const char * s)
+//{
+//  unimplemented_funcion_called();
+//  return 0;
+//}
 
 //int fflush(FILE *stream)
 //{
@@ -148,11 +152,11 @@ int nftw(const char *dirpath,
   return 0;
 }
 
-int fgetc(FILE *stream);char *fgets(char *s, int size, FILE *stream)
-{
-  unimplemented_funcion_called();
-  return 0;
-}
+//int fgetc(FILE *stream);char *fgets(char *s, int size, FILE *stream)
+//{
+//  unimplemented_funcion_called();
+//  return 0;
+//}
 
 double rint(double x)
 {
@@ -168,7 +172,8 @@ ssize_t recvmsg(int sockfd, struct msghdr *msg, int flags)
 
 int fcntl(int fd, int cmd, ... /* arg */ )
 {
-  unimplemented_funcion_called();
+  //unimplemented_funcion_called();
+  printf("fcntl stub called\n");
   return 0;
 }
 
@@ -286,11 +291,11 @@ int getopt(int argc, char **argv, char *ostr)
 }
 #endif
 
-int isdigit(int c)
-{
-  unimplemented_funcion_called();
-  return 0;
-}
+//int isdigit(int c)
+//{
+//  unimplemented_funcion_called();
+//  return 0;
+//}
 
 //double strtod(const char *nptr, char **endptr)
 //{
@@ -298,11 +303,11 @@ int isdigit(int c)
 //  return 0;
 //}
 
-int sscanf(const char *str, const char *format, ...)
-{
-  unimplemented_funcion_called();
-  return 0;
-}
+//int sscanf(const char *str, const char *format, ...)
+//{
+//  unimplemented_funcion_called();
+//  return 0;
+//}
 
 long sysconf(int name)
 {
@@ -475,3 +480,35 @@ sendmsg (int sockfd, const struct msghdr *msg, int flags)
   return 0;
 }
 
+// SMAROTTA & GFRY - SUPPORT FFCONFIG PSEUDO-FILE-OPERATIONS
+
+#define false 0
+#define true 1
+typedef int bool;
+
+char *ffconfig_getline(char* s, int len)
+{
+   static char* saveptr;
+   static bool FIRST_CALL = true;
+
+
+   char* line;
+   if (FIRST_CALL == true)
+      line = av_strtok(FFSERVER_CONF, "\n", &saveptr);
+   else
+      line = av_strtok(NULL, "\n", &saveptr);
+
+   FIRST_CALL = false;
+
+   if (NULL != line)
+   {
+      strcpy(s, line);
+      printf("config: \"%s\", returning: \"%s\"\n", line, s);
+      return s;
+   }
+   else
+   {
+      printf("config_getline returning NULL\n");
+      return NULL;
+   }   
+}
