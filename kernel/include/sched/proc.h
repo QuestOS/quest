@@ -42,6 +42,7 @@ CASSERT (sizeof (task_id) == sizeof (uint32), task_id);
 
 typedef struct _fd_table_entry {
   uint8 type;
+  uint32 flags;
   void * entry;
 } fd_table_entry_t;
 
@@ -124,8 +125,10 @@ find_fd (quest_tss *tss)
   int i;
 
   for (i = 3; i < MAX_FD; i++) {
-    if (tss->fd_table[i].entry == NULL)
+    if (tss->fd_table[i].entry == NULL) {
+      tss->fd_table[i].flags = 0; /* Reset flags for new fd */
       return i;
+    }
   }
 
   return -1;

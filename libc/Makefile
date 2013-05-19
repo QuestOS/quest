@@ -38,7 +38,10 @@ $(LIB_DEST)/libc.a: $(LIBC_BUILD_DIR)/Makefile $(ARCH_INDEPENDENT_QUEST_LIBC_FIL
 		-exec cp {} $(INC_DEST)/{} \;
 
 
-$(LIBC_BUILD_DIR)/Makefile: newlib.patch
+$(LIBC_BUILD_DIR)/Makefile: newlib.patch \
+                            $(ARCH_INDEPENDENT_QUEST_FILES)/Makefile.am \
+                            $(ARCH_INDEPENDENT_QUEST_FILES)/Makefile.in \
+                            $(ARCH_INDEPENDENT_QUEST_FILES)/configure.in
 	$(MAKE) clean
 	$(MAKE) uninstall
 	wget -c $(LIBC_WEB_LOCATION)

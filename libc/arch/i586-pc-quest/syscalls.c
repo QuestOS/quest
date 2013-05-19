@@ -541,6 +541,19 @@ socket_recovery (int arg)
   return ret;
 }
 
+
+inline int syscall_fcntl(int fd, int cmd, void* extra_arg)
+{
+  int ret;
+
+  asm volatile ("int $0x3D\n"
+                :"=a" (ret)
+                :"a" (14), "b" (fd), "c" (cmd), "d" (extra_arg)
+                :"memory", "cc");
+
+  return ret;
+}
+
 inline int
 switch_screen (int dir)
 {
