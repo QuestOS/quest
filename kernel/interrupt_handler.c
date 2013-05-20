@@ -41,6 +41,7 @@
 #include "lwip/pbuf.h"
 #include "lwip/tcp.h"
 #include "lwip/udp.h"
+#include "drivers/video/vga.h"
 #ifdef USE_VMX
 #include "vm/shm.h"
 #include "vm/spow2.h"
@@ -250,154 +251,10 @@ handle_interrupt (u32 edi, u32 esi, u32 ebp, u32 _esp, u32 ebx, u32 edx, u32 ecx
   send_eoi ();
 }
 
-static void move_cursor(int x, int y)
-{
-  outb (0x0E, 0x3D4);                /* CRTC Cursor location high index */
-  outb ((y * 80 + x) >> 8, 0x3D5);   /* CRTC Cursor location high data */
-  outb (0x0F, 0x3D4);                /* CRTC Cursor location low index */
-  outb ((y * 80 + x) & 0xFF, 0x3D5); /* CRTC Cursor location low data */
-}
-
-int
-user_putchar (int ch, int attribute)
-{
-  static int x, y;
-
-#ifdef USE_VMX
-  uint32 cpu;
-  cpu = get_pcpu_id ();
-#endif
-
-  /* if backspace key */
-  if(ch == 127) {
-    if(x) {
-      --x;
-#ifdef USE_VMX
-      if (shm_screen_initialized) {
-        if (shm->virtual_display.cur_screen == cpu) {
-          pchVideo[y * 160 + x * 2] = ' ';
-          pchVideo[y * 160 + x * 2 + 1] = attribute;
-          /* Move cursor */
-          move_cursor(x, y);
-        }
-        shm_screen[y * 160 + x * 2] = ' ';
-        shm_screen[y * 160 + x * 2 + 1] = attribute;
-        
-        shm->virtual_display.cursor[cpu].x = x;
-        shm->virtual_display.cursor[cpu].y = y;
-      } else {
-        pchVideo[y * 160 + x * 2] = ' ';
-        pchVideo[y * 160 + x * 2 + 1] = attribute;
-        /* Move cursor */
-        move_cursor(x, y);
-      }
-#else
-      pchVideo[y * 160 + x * 2] = ' ';
-      pchVideo[y * 160 + x * 2 + 1] = attribute;
-      /* Move cursor */
-      move_cursor(x, y);
-#endif
-    }
-    return ch;
-  }
-
-  if (ch == '\n') {
-    x = 0;
-    y++;
-
-    if (y > 24) {
-#ifdef USE_VMX
-      if (shm_screen_initialized) {
-        if (shm->virtual_display.cur_screen == cpu) {
-          memcpy (pchVideo, pchVideo + 160, 24 * 160);
-          memset (pchVideo + (24 * 160), 0, 160);
-        }
-        memcpy (shm_screen, shm_screen + 160, 24 * 160);
-        memset (shm_screen + (24 * 160), 0, 160);
-        y = 24;
-        shm->virtual_display.cursor[cpu].x = x;
-        shm->virtual_display.cursor[cpu].y = y;
-      } else {
-        memcpy (pchVideo, pchVideo + 160, 24 * 160);
-        memset (pchVideo + (24 * 160), 0, 160);
-        y = 24;
-      }
-#else
-      memcpy (pchVideo, pchVideo + 160, 24 * 160);
-      memset (pchVideo + (24 * 160), 0, 160);
-      y = 24;
-#endif
-    }
-    return (int) (unsigned char) ch;
-  }
-
-  if (y * 160 + x * 2 >= 0x1000) return ch;
-
-#ifdef USE_VMX
-  if (shm_screen_initialized) {
-    if (shm->virtual_display.cur_screen == cpu) {
-      pchVideo[y * 160 + x * 2] = ch;
-      pchVideo[y * 160 + x * 2 + 1] = attribute;
-    }
-    shm_screen[y * 160 + x * 2] = ch;
-    shm_screen[y * 160 + x * 2 + 1] = attribute;
-    x++;
-    shm->virtual_display.cursor[cpu].x = x;
-    shm->virtual_display.cursor[cpu].y = y;
-  } else {
-    pchVideo[y * 160 + x * 2] = ch;
-    pchVideo[y * 160 + x * 2 + 1] = attribute;
-    x++;
-  }
-#else
-  pchVideo[y * 160 + x * 2] = ch;
-  pchVideo[y * 160 + x * 2 + 1] = attribute;
-  x++;
-#endif
-
-  if (y * 160 + x * 2 >= 0x1000) return ch;
-
-#ifdef USE_VMX
-  if (shm_screen_initialized) {
-    if (shm->virtual_display.cur_screen == cpu) {
-      pchVideo[y * 160 + x * 2] = ' ';
-      pchVideo[y * 160 + x * 2 + 1] = attribute;
-      shm_screen[y * 160 + x * 2] = ' ';
-      shm_screen[y * 160 + x * 2 + 1] = attribute;
-    }
-    shm->virtual_display.cursor[cpu].x = x;
-    shm->virtual_display.cursor[cpu].y = y;
-  } else {
-    pchVideo[y * 160 + x * 2] = ' ';
-    pchVideo[y * 160 + x * 2 + 1] = attribute;
-  }
-#else
-  pchVideo[y * 160 + x * 2] = ' ';
-  pchVideo[y * 160 + x * 2 + 1] = attribute;
-#endif
-
-#ifdef USE_VMX
-  if (shm_screen_initialized) {
-    if (shm->virtual_display.cur_screen == cpu) {
-      /* Move cursor */
-      move_cursor(x, y);
-    }
-  } else {
-    /* Move cursor */
-    move_cursor(x, y);
-  }
-#else
-  /* Move cursor */
-  move_cursor(x, y);
-#endif
-
-  return (int) (unsigned char) ch;
-}
-
 static void
 _user_putchar_attr_4 (char c)
 {
-  user_putchar (c, 4);
+  putchar_with_attributes (c, 4);
 }
 
 void
@@ -411,6 +268,11 @@ splash_screen (void)
   u32 free = _meminfo (0, 0);
 #endif
   char vers[80];
+  int old_x, old_y;
+  screen_cursor_t* cursor = get_screen_cursor();
+  old_x = cursor->x;
+  old_y = cursor->y;
+  screen_cursor_set_pos(0, 0);
 
   _uname (vers);
 
@@ -447,13 +309,15 @@ splash_screen (void)
               "   \\\\__\\_  \\\\_/ \\\\__ \\\\__/   || \n",
               free);
 #endif
+
+  screen_cursor_set_pos(old_x, old_y);
 }
 
 /* Syscalls */
 static u32
 syscall_putchar (u32 eax, u32 ebx, u32 ecx, u32 edx, u32 esi)
 {
-  user_putchar (ebx, 7);
+  putchar(ebx);
   return 0;
 }
 
@@ -610,6 +474,83 @@ static int syscall_vcpu_setparams(u32 eax, vcpu_id_t vcpu_index, struct sched_pa
   return -1;
 }
 
+static int syscall_enable_video(u32 eax, int enable, char** video_memory)
+{
+  static bool video_enabled = FALSE;
+  static void* current_video_memory = NULL;
+  extern unsigned char g_320x200x256[];
+
+  com1_printf("enable = %d current_video_memory = 0x%p\n", enable, current_video_memory);
+  
+  if(!video_memory && enable) return -1;
+
+  if(video_enabled) {
+    if(enable) {
+      /* Can't enable it if it is already enabled */
+      return -1;
+    }
+    else {
+      /* Disable video mode */
+      //set_text_mode(0, current_video_memory);
+      logger_printf("disabling video mode not supported yet\n");
+      return -1;
+    }
+  }
+  else {
+    if(enable) {
+      int i, j;
+      int res = -1;
+      uint32 * plPageDirectory = map_virtual_page ((uint32) get_pdbr () | 3);
+      int free_dir_entry = -1;
+
+      /* Find free directory entry  */
+      for(i = 0; i < 1024; ++i) {
+        if(!plPageDirectory[i]) {
+          free_dir_entry = i;
+          break;
+        }
+      }
+
+      if(free_dir_entry >= 0) {
+        
+        uint32* plPageTable;
+        plPageDirectory[i] = alloc_phys_frame() | 7;
+
+        if(plPageDirectory[i] == 0xFFFFFFFF) goto video_enable_end;
+        
+        plPageTable = map_virtual_page(plPageDirectory[i]);
+        if(!plPageTable) goto video_enable_end;
+
+        for (j = 0; j < 16; j++) plPageTable[j] = 0xA0000 | (j << 12) | 7;
+        
+
+        com1_printf("About to call init_graph_vga\n");
+        //if(init_graph_vga(width, height, 1)) {
+        write_regs(g_320x200x256);
+        video_enabled = TRUE;
+        res = 0;
+        current_video_memory = *video_memory = i * 0x400000;
+        
+        unmap_virtual_page(plPageTable);
+      }
+
+    video_enable_end:
+      
+      unmap_virtual_page(plPageDirectory);
+      
+      return res;
+    }
+    else {
+      /* Can't disable it if it is not enabled */
+      return -1;
+    }
+  }
+
+  
+  /* Should never reach here */
+  return -1;
+}
+
 
 struct syscall {
   u32 (*func) (u32, u32, u32, u32, u32);
@@ -624,6 +565,7 @@ struct syscall syscall_table[] = {
   { .func = syscall_vcpu_destroy },
   { .func = syscall_vcpu_getparams },
   { .func = syscall_vcpu_setparams },
+  { .func = syscall_enable_video },
 };
 #define NUM_SYSCALLS (sizeof (syscall_table) / sizeof (struct syscall))
 

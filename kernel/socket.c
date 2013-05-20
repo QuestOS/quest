@@ -522,12 +522,12 @@ sys_call_write (int filedes, const void *buf, int nbytes)
   if (shm_screen_initialized) {
     if ((shm->virtual_display.cursor[cpu].x == -1) &&
         (shm->virtual_display.cursor[cpu].y == -1)) {
-      splash_screen ();
       shm->virtual_display.cursor[cpu].x = 0;
       shm->virtual_display.cursor[cpu].y = 0;
-      first = FALSE;
+      
     }
-  } else if (first) {
+  } 
+  if (first) {
     splash_screen ();
     first = FALSE;
   }
@@ -549,11 +549,7 @@ sys_call_write (int filedes, const void *buf, int nbytes)
 
   /* HACK for STDOUT and STDERR */
   if ((filedes == 1) || (filedes == 2)) {
-    int i;
-    const char* char_buf = buf;
-    for(i = 0; i < nbytes; ++i) {
-      user_putchar (char_buf[i], 7);
-    }
+    print_buffer((char*)buf, nbytes);
     return nbytes;
   }
 

@@ -45,6 +45,7 @@ OBJS =  boot/boot.o boot/init.o kernel.o module/loader.o \
 	drivers/net/bnx2.o \
 	drivers/net/mac80211.o drivers/net/netsetup.o \
 	drivers/serial/mcs9922.o \
+	drivers/video/vga.o \
 	fs/fsys.o \
 	fs/ext2/fsys_ext2fs.o \
 	fs/iso9660/fsys_iso9660.o \

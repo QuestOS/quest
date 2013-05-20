@@ -292,6 +292,15 @@ usb_syscall(int device_id, int operation, void* buf, int data_len)
 }
 
 inline int
+enable_video(int enable, char** video_memory)
+{
+  int res;
+  asm volatile ("int $0x30\n":"=a"(res):"a" (9L), "b"(enable), "c"(video_memory): CLOBBERS5);
+  return res;
+
+}
+
+inline int
 get_time (void *tp)
 {
   int ret;

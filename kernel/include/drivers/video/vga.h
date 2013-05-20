@@ -15,30 +15,18 @@
  *  along with this program.  If not, see <http://www.gnu.org/licenses/>.
  */
 
-#ifndef _SCREEN_H_
-#define _SCREEN_H_
 
-extern char *pchVideo;
-extern int putchar (int ch);
-extern int print (char *pch);
-extern void putx (uint32 l);
-extern int putchar_with_attributes(int ch, int attribute);
-/* unlocked: */
-extern int _putchar (int ch);
-extern int _print (char *pch);
-extern void _putx (uint32 l);
+#ifndef _VGA_H_
+#define _VGA_H_
+
+int _putchar_with_attributes (int ch, int attribute);
+
+void write_regs(unsigned char *regs);
 
 
-typedef struct screen_cursor {
-  int x;
-  int y;
-} screen_cursor_t;
 
-screen_cursor_t* get_screen_cursor();
-void screen_cursor_set_pos(int x, int y);
+#endif // _VGA_H_
 
-
-#endif
 
 /* 
  * Local Variables:
