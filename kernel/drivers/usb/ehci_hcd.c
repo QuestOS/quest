@@ -2233,7 +2233,7 @@ bool ehci_init(void)
    
    
   if(device_index == ~0) {
-    while (pci_find_device (0x8086, 0x1c26, 0x0C, 0x03, i, &i)) { 
+    while (pci_find_device (0x8086, 0x1C2D, 0x0C, 0x03, i, &i)) {
       if (pci_get_device (i, &ehci_device)) { 
         if (ehci_device.progIF == 0x20) {
           device_index = i;
@@ -2246,7 +2246,7 @@ bool ehci_init(void)
   }
    
   if(device_index == ~0) {
-    while (pci_find_device (0x8086, 0x1C2D, 0x0C, 0x03, i, &i)) {
+    while (pci_find_device (0x8086, 0x1c26, 0x0C, 0x03, i, &i)) { 
       if (pci_get_device (i, &ehci_device)) { 
         if (ehci_device.progIF == 0x20) {
           device_index = i;
@@ -4316,7 +4316,7 @@ static const struct module_ops mod_ops = {
   .init = ehci_init
 };
 
-//DEF_MODULE (usb___ehci, "EHCI driver", &mod_ops, {"usb", "pci"});
+DEF_MODULE (usb___ehci, "EHCI driver", &mod_ops, {"usb", "pci"});
 
 /*
  * Local Variables:
