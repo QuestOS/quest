@@ -1370,8 +1370,6 @@ int _putchar_with_attributes (int ch, int attribute)
   cpu = get_pcpu_id ();
 #endif
 
-  com1_printf("%c", (char)ch);
-
   /* if backspace key */
   if(ch == 127) {
     if(cursor->x) {
