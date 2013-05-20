@@ -640,6 +640,8 @@ static int http_server(void)
     struct pollfd *poll_table, *poll_entry;
     HTTPContext *c, *c_next;
 
+    printf("http_server()\n");
+
     if(!(poll_table = av_mallocz((nb_max_http_connections + 2)*sizeof(*poll_table)))) {
         http_log("Impossible to allocate a poll table handling %d connections.\n", nb_max_http_connections);
         return -1;
@@ -734,6 +736,7 @@ static int http_server(void)
         /* wait for an event on one connection. We poll at least every
            second to handle timeouts */
         do {
+            printf("http_server(): calling poll()\n");
             ret = poll(poll_table, poll_entry - poll_table, delay);
             if (ret < 0 && ff_neterrno() != AVERROR(EAGAIN) &&
                 ff_neterrno() != AVERROR(EINTR))
@@ -811,6 +814,8 @@ static void new_connection(int server_fd, int is_rtsp)
     int fd;
     HTTPContext *c = NULL;
 
+    printf("new_connection()\n");
+
     len = sizeof(from_addr);
     fd = accept(server_fd, (struct sockaddr *)&from_addr,
                 &len);
@@ -861,6 +866,8 @@ static void close_connection(HTTPContext *c)
     AVFormatContext *ctx;
     URLContext *h;
     AVStream *st;
+
+    printf("close_connection()\n");
 
     /* remove connection from list */
     cp = &first_http_ctx;
@@ -946,6 +953,8 @@ static void close_connection(HTTPContext *c)
 static int handle_connection(HTTPContext *c)
 {
     int len, ret;
+
+    printf("handle_connection()\n");
 
     switch(c->state) {
     case HTTPSTATE_WAIT_REQUEST:
@@ -1507,6 +1516,8 @@ static int http_parse_request(HTTPContext *c)
     char ratebuf[32];
     const char *useragent = 0;
 
+    printf("http_parse_request()\n");
+ 
     p = c->buffer;
     get_word(cmd, sizeof(cmd), &p);
     av_strlcpy(c->method, cmd, sizeof(c->method));
@@ -2491,6 +2502,8 @@ static int http_send_data(HTTPContext *c)
 {
     int len, ret;
 
+    printf("http_send_data()\n");
+
     for(;;) {
         if (c->buffer_ptr >= c->buffer_end) {
             ret = http_prepare_data(c);
@@ -2610,6 +2623,8 @@ static int http_start_receive_data(HTTPContext *c)
 {
     int fd;
 
+    printf("http_start_receive_data()\n");
+
     if (c->stream->feed_opened)
         return -1;
 
@@ -2656,6 +2671,8 @@ static int http_receive_data(HTTPContext *c)
 {
     HTTPContext *c1;
     int len, loop_run = 0;
+
+    printf("http_receive_data()\n");
 
     while (c->chunked_encoding && !c->chunk_size &&
            c->buffer_end > c->buffer_ptr) {
