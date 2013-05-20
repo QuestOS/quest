@@ -985,8 +985,8 @@ void write_regs(unsigned char *regs)
   unsigned i;
 
   
-  read_regs(static_reg_dump);
-  dump_regs(static_reg_dump);
+  //read_regs(static_reg_dump);
+  //dump_regs(static_reg_dump);
 
   /* write MISCELLANEOUS reg */
   outportb(VGA_MISC_WRITE, *regs);
