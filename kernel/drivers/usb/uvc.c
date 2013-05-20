@@ -51,11 +51,11 @@
 
 #define dev_to_uvc_dev(dev) ( (uvc_device_info_t*)dev->device_priv )
 
-#define MAX_UVC_DEVICES 0
+#define MAX_UVC_DEVICES 1
 static int current_uvc_dev_count = 0;
 static uvc_device_info_t uvc_devices[MAX_UVC_DEVICES];
 
-#define IMAGE_WIDTH 640
+#define IMAGE_WIDTH 320
 
 #define BUF_SIZE        (907200)
 #define START_SENDING_COUNT 5
@@ -310,6 +310,7 @@ static int uvc_open(USB_DEVICE_INFO* device, int dev_num)
   }
   buf = kmalloc(num_packets * dev_to_uvc_dev(device)->transaction_size);
   if(buf == NULL) {
+    DLOG("Failed to allocate buffer for urb, buf size = %d", num_packets * dev_to_uvc_dev(device)->transaction_size);
     return -1;
   }
   usb_fill_rt_iso_urb(uvc_dev->urb, device, pipe, buf, NULL, NULL,
@@ -637,12 +638,13 @@ uvc_probe (USB_DEVICE_INFO *dev, USB_CFG_DESC *cfg, USB_IF_DESC *ifd)
    * collections. This is ugly. But let's make Logitech Webcam Pro
    * 9000 work first.
    */
+  
   if(!(dev->devd.bDeviceClass == 0xEF) ||
      !(dev->devd.bDeviceSubClass == 0x02) ||
      !(dev->devd.bDeviceProtocol == 0x01)) {
     return FALSE;
   }
-
+  
   if(dev->device_priv == NULL) {
     if(current_uvc_dev_count == MAX_UVC_DEVICES) {
       DLOG("Too many uvc devices");
