@@ -43,7 +43,7 @@ build-zlib-1.2.7: build-libc
 build-malardalen: build-libc
 build-sysprogs: build-kernel
 build-libjpeg: build-libc
-build-qcv/lib: build-libc
+build-qcv/lib: build-libc build-libjpeg
 build-qcv/progs: build-libc build-qcv/lib
 
 
