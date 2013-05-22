@@ -1,5 +1,3 @@
-include ../config.mk
-
 # Makefile for Independent JPEG Group's software
 
 # This makefile is suitable for Unix-like systems with non-ANSI compilers.
@@ -8,8 +6,7 @@ include ../config.mk
 # Read installation instructions before saying "make" !!
 
 # The name of your C compiler:
-CC= $(TARGET)-cc
-HOST_CC=gcc
+CC= cc
 
 # You may need to adjust these cc options:
 CFLAGS= -O
@@ -22,7 +19,7 @@ ANSI2KNRFLAGS=
 LDFLAGS= 
 
 # To link any special libraries, add the necessary -l commands here.
-LDLIBS= $(LIB_DEST)/crt0.o -lc
+LDLIBS= 
 
 # Put here the object file name for the correct system-dependent memory
 # manager file.  For Unix this is usually jmemnobs.o, but you may want
@@ -31,15 +28,15 @@ SYSDEPMEM= jmemnobs.o
 
 # miscellaneous OS-dependent stuff
 # linker
-LN= $(TARGET)-ld
+LN= $(CC)
 # file deletion command
 RM= rm -f
 # file rename command
 MV= mv
 # library (.a) file creation command
-AR= $(TARGET)-ar rc
+AR= ar rc
 # second step in .a creation (use "touch" if not needed)
-AR2= $(TARGET)-ranlib
+AR2= ranlib
 
 # End of configurable options.
 
@@ -108,17 +105,8 @@ DOBJECTS= djpeg.o wrppm.o wrgif.o wrtarga.o wrrle.o wrbmp.o rdcolmap.o \
         cdjpeg.o
 TROBJECTS= jpegtran.o rdswitch.o cdjpeg.o transupp.o
 
-HEADER_FILES=$(shell find . -name "*.[h]" -type f)
-INC_DIR_NAME=libjpeg
 
-all: ansi2knr libjpeg.a cjpeg djpeg jpegtran rdjpgcom wrjpgcom $(LIB_DEST)/libjpeg.a
-
-$(LIB_DEST)/libjpeg.a: libjpeg.a $(HEADER_FILES)
-	$(RM) -rf $(INC_DEST)/$(INC_DIR_NAME)
-	mkdir -p $(INC_DEST)/$(INC_DIR_NAME)
-	cp libjpeg.a $(LIB_DEST)
-	find . -type f -name "*.[h]" \
-		-exec cp {} $(INC_DEST)/$(INC_DIR_NAME)/{} \;
+all: ansi2knr libjpeg.a cjpeg djpeg jpegtran rdjpgcom wrjpgcom
 
 # This rule causes ansi2knr to be invoked.
 .c.o:
@@ -128,7 +116,7 @@ $(LIB_DEST)/libjpeg.a: libjpeg.a $(HEADER_FILES)
 	$(MV) T$*.o $*.o
 
 ansi2knr: ansi2knr.c
-	$(HOST_CC) $(ANSI2KNRFLAGS) -o ansi2knr ansi2knr.c
+	$(CC) $(CFLAGS) $(ANSI2KNRFLAGS) -o ansi2knr ansi2knr.c
 
 libjpeg.a: ansi2knr $(LIBOBJECTS)
 	$(RM) libjpeg.a
@@ -150,19 +138,14 @@ rdjpgcom: rdjpgcom.o
 wrjpgcom: wrjpgcom.o
 	$(LN) $(LDFLAGS) -o wrjpgcom wrjpgcom.o $(LDLIBS)
 
-#jconfig.h: jconfig.txt
-#	echo You must prepare a system-dependent jconfig.h file.
-#	echo Please read the installation directions in install.txt.
-#	exit 1
+jconfig.h: jconfig.txt
+	echo You must prepare a system-dependent jconfig.h file.
+	echo Please read the installation directions in install.txt.
+	exit 1
 
 clean:
 	$(RM) *.o cjpeg djpeg jpegtran libjpeg.a rdjpgcom wrjpgcom
 	$(RM) ansi2knr core testout*
-	$(RM) -rf $(INC_DEST)/$(INC_DIR_NAME)
-	$(RM) $(LIB_DEST)/libjpeg.a
-
-install:
-	@echo "libjpeg.a is installed via make all"
 
 test: cjpeg djpeg jpegtran
 	$(RM) testout*
@@ -179,7 +162,7 @@ test: cjpeg djpeg jpegtran
 	cmp testimgp.jpg testoutp.jpg
 	cmp testorig.jpg testoutt.jpg
 
-$(SOURCES): ansi2knr
+
 jaricom.o: jaricom.c jinclude.h jconfig.h jpeglib.h jmorecfg.h jpegint.h jerror.h
 jcapimin.o: jcapimin.c jinclude.h jconfig.h jpeglib.h jmorecfg.h jpegint.h jerror.h
 jcapistd.o: jcapistd.c jinclude.h jconfig.h jpeglib.h jmorecfg.h jpegint.h jerror.h
