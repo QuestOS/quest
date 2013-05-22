@@ -1,0 +1,39 @@
+This README is meant to describe the changes made to libjpeg in order
+to have it build for Quest, mostly so that future versions of libjpeg
+can be ported easily.
+
+libjpeg provides a makefile.unix we is an appropriate for Quest after a
+few modifications.  The modifications to the Makefile are the following:
+
+Add an include ../config.mk at the top
+
+Change CC to $(TARGET)-cc
+
+Added a HOST_CC variable and set it to gcc (needed later)
+
+Set LDLIBS=$(LIB_DEST)/crt0.o -lc
+
+Set LN=$(TARGET)-ld
+
+Set AR=$(TARGET)-ar rc
+
+Set AR2= $(TARGET)-ranlib
+
+Change to rule for ansi2knr to:
+ ansi2knr: ansi2knr.c
+       $(HOST_CC) $(ANSI2KNRFLAGS) -o ansi2knr ansi2knr.c
+
+Comment out the rule for jconfig.h (to avoid the failure message from
+printing we will configure jconfig.h soon)
+
+Add the dependency:
+
+$(SOURCES): ansi2knr
+
+Somewhere (it originally is placed at the bottom before all the .o
+dependencies). This is necessary for parallel builds to ensure that
+asni2knr is built first
+
+
+For jconfig.h I ran the original configure script on a 32 bit Linux
+machine and then copied that over as the jconfig.h for Quest. 
