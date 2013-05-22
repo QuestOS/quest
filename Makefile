@@ -44,7 +44,7 @@ build-malardalen: build-libc
 build-sysprogs: build-kernel
 build-libjpeg: build-libc
 build-qcv/lib: build-libc
-build-qcv/prog: build-libc build-qcv/lib
+build-qcv/progs: build-libc build-qcv/lib
 
 
 install: $(INSTALLDIRS)
