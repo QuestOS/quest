@@ -3,14 +3,14 @@
 
 char* FFSERVER_CONF = "Port 8090\n\
 BindAddress 192.168.2.11\n\
-\MaxHTTPConnections 2000\n\
+MaxHTTPConnections 2000\n\
 MaxClients 1000\n\
 MaxBandwidth 1000\n\
 CustomLog -\n\
 #<Feed feed1.ffm>\n\
 #File /tmp/feed1.ffm\n\
 #FileMaxSize 200K\n\
-#ACL allow 192.168.2.1 \n\
+#ACL allow 192.168.2.1\n\
 #</Feed>\n\
 #<Stream test1.ffm>\n\
 #Feed feed1.ffm\n\
