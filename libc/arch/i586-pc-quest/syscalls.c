@@ -7,6 +7,7 @@
 #include <sys/time.h>
 #include <stdio.h>
 #include <stdint.h>
+#include <vcpu.h>
 
 #define CLOBBERS1 "memory","cc","%ebx","%ecx","%edx","%esi","%edi"
 #define CLOBBERS2 "memory","cc","%ecx","%edx","%esi","%edi"
@@ -41,17 +42,27 @@ int execve(char *name, char **argv, char **env)
   asm volatile ("int $0x33\n"::"a" (name), "b" (argv):CLOBBERS2);
 }
 
+int _execve(char *name, char **argv, char **env)
+{
+  execve(name, argv, env);
+}
+
 int exec(char *name, char **argv)
 {
-  asm volatile ("int $0x33\n"::"a" (name), "b" (argv):CLOBBERS2);
+  execve(name, argv, NULL);
 }
 
 
 int fork()
 {
-  unsigned int retval;
-  asm volatile ("int $0x31\n":"=a" (retval)::CLOBBERS1);
-  return (int) retval;
+  return vcpu_fork(BEST_EFFORT_VCPU);
+}
+
+int vcpu_fork(vcpu_id_t vcpu_id)
+{
+  int retval;
+  asm volatile ("int $0x31\n":"=a" (retval):"a"(vcpu_id):CLOBBERS1);
+  return retval;
 }
 
 
@@ -135,13 +146,45 @@ int fstat(int file, struct stat *st)
 
 int getpid()
 {
-  write(1, "In getpid which is a no op\n", sizeof("In getpid which is a no op\n"));
-  while(1);
-  errno = ENOSYS;
-  return -1;
+  int pid;
+  asm volatile ("int $0x30\n":"=a"(pid):"a" (3L):CLOBBERS1);
+  return pid;
 }
 
+vcpu_id_t vcpu_create(struct sched_param* sched_param)
+{
+  vcpu_id_t res;
+  asm volatile ("int $0x30\n":"=a"(res):"a" (4L), "b"(sched_param):CLOBBERS2);
+  return res;
+}
 
+int vcpu_bind_task(vcpu_id_t vcpu_id)
+{
+  int res;
+  asm volatile ("int $0x30\n":"=a"(res):"a" (5L), "b"(vcpu_id):CLOBBERS2);
+  return res;
+}
+
+int vcpu_destroy(vcpu_id_t vcpu_id, uint force)
+{
+  int res;
+  asm volatile ("int $0x30\n":"=a"(res):"a" (6L), "b"(vcpu_id), "c"(force):CLOBBERS5);
+  return res;
+}
+
+int vcpu_getparams(struct sched_param* sched_param)
+{
+  int res;
+  asm volatile ("int $0x30\n":"=a"(res):"a" (7L), "b"(sched_param):CLOBBERS2);
+  return res;
+}
+
+int vcpu_setparams(vcpu_id_t vcpu_id, struct sched_param* sched_param)
+{
+  int res;
+  asm volatile ("int $0x30\n":"=a"(res):"a" (8L), "b"(vcpu_id), "c"(sched_param):CLOBBERS5);
+  return res;
+}
 
 int kill(int pid, int sig)
 {
@@ -493,6 +536,19 @@ socket_recovery (int arg)
   asm volatile ("int $0x3D\n"
                 :"=a" (ret)
                 :"a" (13), "b" (arg), "c" (0), "d" (0), "S" (0), "D" (0)
+                :"memory", "cc");
+
+  return ret;
+}
+
+
+inline int syscall_fcntl(int fd, int cmd, void* extra_arg)
+{
+  int ret;
+
+  asm volatile ("int $0x3D\n"
+                :"=a" (ret)
+                :"a" (14), "b" (fd), "c" (cmd), "d" (extra_arg)
                 :"memory", "cc");
 
   return ret;

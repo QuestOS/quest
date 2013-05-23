@@ -74,23 +74,8 @@
 #define USER_STACK_START 0x40000000
 #define USER_STACK_SIZE 16
 
-/* If sched_param is changed it must also be changed in libc's vcpu.h */
+#define BEST_EFFORT_VCPU 0
 
-struct sched_param
-{
-  int sched_priority;
-
-  /* Below are paramters used for window-constrained scheduling */
-  int C;                        /* service quantum */
-  int T;                        /* period */
-  int m;                        /* mandatory instance count in a window */
-  int k;                        /* window of requests  */
-  int affinity;                 /* CPU (or Quest-V sandbox affinity) */
-  int machine_affinity;         /* -- EM -- Machine affinity hack
-                                   right now is a just a bool to
-                                   indicate stay (0) or move to other
-                                   machine (1) */
-};
 
 void map_user_level_stack(uint32_t* plPageDirectory, void* start_addr, int num_frames,
                           uint32_t* frames, bool invalidate_pages);
@@ -131,7 +116,7 @@ task_id create_kernel_thread_vcpu_args (uint eip, uint esp, const char * name,
                                         u16 vcpu, bool run, uint n, ...);
 
 #define create_kernel_thread_args(eip, esp, name, run, n, ...)    \
-        create_kernel_thread_vcpu_args(eip, esp, name, 0xFFFF, run, n, ##__VA_ARGS__)
+        create_kernel_thread_vcpu_args(eip, esp, name, BEST_EFFORT_VCPU, run, n, ##__VA_ARGS__)
 
 void exit_kernel_thread (void);
 
@@ -182,6 +167,7 @@ checksum (uint8 * ptr, int length)
     sum += *ptr++;
   return sum;
 }
+
 
 extern uint get_pcpu_id (void);
 

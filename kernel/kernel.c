@@ -256,6 +256,11 @@ create_kernel_thread_vcpu_args (uint eip, uint esp, const char * name,
   uint *stack, i, c;
   va_list args;
 
+  if(!vcpu_lookup(vcpu) && (vcpu != BEST_EFFORT_VCPU)) {
+    logger_printf("Failed to create kernel thread\n");
+    return 0;
+  }
+
   asm volatile ("pushfl\n" "pop %0\n":"=r" (eflags):);
 
   stack = (uint *) (esp - sizeof (void *) * (n + 1));

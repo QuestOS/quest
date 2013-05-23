@@ -17,20 +17,9 @@
 
 #include <stdio.h>
 #include <stdlib.h>
+#include <vcpu.h>
 
-void
-putx (unsigned long l)
-{
-
-  int i, li;
-
-  for (i = 7; i >= 0; i--)
-    if ((li = (l >> (i << 2)) & 0x0F) > 9)
-      putchar ('A' + li - 0x0A);
-    else
-      putchar ('0' + li);
-}
-
+ 
 static int
 scanline (char *line)
 {
@@ -48,9 +37,19 @@ scanline (char *line)
       continue;
     }
 #endif
-    *line++ = c;
-    count++;
-    putchar (c);
+    /* if backspace key */
+    if(c == 127) {
+      if(count) {
+        *line-- = 0;
+        count--;
+        putchar (c);
+      }
+    }
+    else {
+      *line++ = c;
+      count++;
+      putchar (c);
+    }
   }
 
   *line = '\0';
@@ -68,7 +67,12 @@ main ()
   char line[80];
   char *command_line_args = line;
   char *p;
-  unsigned child_pid;
+  int child_pid;
+  int vcpu_index;
+  
+  if(setenv("PATH","/boot/", 0)) {
+    fprintf(stderr, "Failed add path to environment\n");
+  }
 
   while (1) {
 
@@ -85,8 +89,23 @@ main ()
       if (*line == '\0')
         continue;
 
+      vcpu_index = vcpu_create_main(20, 100);
+
+      if(vcpu_index < 0) {
+        fprintf(stderr, "Failed to create vcpu with (C=20,T=100)\n"
+                "Going to create child on best effort vcpu\n");
+        child_pid = fork();
+      }
+      else {
+        child_pid = vcpu_fork(vcpu_index);
+      }
+
+      if(child_pid < 0) {
+        fprintf(stderr, "fork failed: pid = %d\n", child_pid);
+      }
+
       /* Fork new process */
-      if ((child_pid = fork ())) {      /* Parent */
+      if (child_pid) {      /* Parent */
 
 #if DEBUG
         for (p = "parent!\n"; *p; p++)
@@ -94,19 +113,25 @@ main ()
 #endif
         /* switch_to( child_pid ); */
         waitpid (child_pid);
+        
+        if(vcpu_index >= 0) {
+          if(vcpu_destroy(vcpu_index, 0) < 0) {
+            fprintf(stderr, "Failed to destroy VCPU %d\n", vcpu_index);
+          }
+        }
       } else {                  /* Child */
 
 #if DEBUG
         for (p = "child!\n"; *p; p++)
           putchar (*p);
 #endif
-        exec (line, &command_line_args);
+        execvp (line, &command_line_args);
 
         /* Got here due to exec failing on an ext2fs_dir call  */
         for (p = "Error: file not found\n"; *p; p++)
           putchar (*p);
 
-        _exit (1);
+        exit (1);
       }
     }
   }

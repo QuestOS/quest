@@ -36,6 +36,7 @@
 #include "select.h"
 #include "arch/i386-div64.h"
 #include "interrupt_handler.h"
+#include "fcntl.h"
 
 #ifdef USE_VMX
 #include "vm/shm.h"
@@ -225,25 +226,29 @@ sys_call_close (int filedes)
   if(filedes < 3) {
     return 0;
   }
-
+  
   switch (tss->fd_table[filedes].type) {
-    case FD_TYPE_UDP :
-      DLOG ("close UDP socket %d", filedes);
-      udp_remove ((struct udp_pcb *) tss->fd_table[filedes].entry);
-      tss->fd_table[filedes].entry = NULL;
-      break;
-    case FD_TYPE_TCP :
-      DLOG ("close TCP socket %d", filedes);
-      if ((err = tcp_close ((struct tcp_pcb *) tss->fd_table[filedes].entry)) != ERR_OK) {
-        DLOG ("TCP PCB close failed: %d", err);
-        return -1;
-      }
-      tss->fd_table[filedes].entry = NULL;
-      break;
-    default :
-      logger_printf ("Socket or file type %d not supported in close\n",
-                     tss->fd_table[filedes].type);
+  case FD_TYPE_UDP :
+    DLOG ("close UDP socket %d", filedes);
+    udp_remove ((struct udp_pcb *) tss->fd_table[filedes].entry);
+    tss->fd_table[filedes].entry = NULL;
+    break;
+  case FD_TYPE_TCP :
+    DLOG ("close TCP socket %d", filedes);
+    if ((err = tcp_close ((struct tcp_pcb *) tss->fd_table[filedes].entry)) != ERR_OK) {
+      DLOG ("TCP PCB close failed: %d", err);
       return -1;
+    }
+    tss->fd_table[filedes].entry = NULL;
+    break;
+  case FD_TYPE_FILE:
+    free_fd_table_file_entry(tss->fd_table[filedes].entry);
+    tss->fd_table[filedes].entry = NULL;
+    break;
+  default :
+    logger_printf ("Socket or file type %d not supported in close\n",
+                   tss->fd_table[filedes].type);
+    return -1;
   }
  
   return 0;
@@ -545,7 +550,7 @@ sys_call_write (int filedes, const void *buf, int nbytes)
   /* HACK for STDOUT and STDERR */
   if ((filedes == 1) || (filedes == 2)) {
     int i;
-    char* char_buf = buf;
+    const char* char_buf = buf;
     for(i = 0; i < nbytes; ++i) {
       user_putchar (char_buf[i], 7);
     }
@@ -702,12 +707,26 @@ sys_call_recv (int sockfd, void *buf, int nbytes, void *addr, void *len)
 
   fd_ent = tss->fd_table[sockfd];
 
+  if(!fd_ent.entry) {
+    return -1;
+  }
+
   switch (fd_ent.type) {
     case FD_TYPE_UDP :
       DLOG ("sys_call_recv: Receiving UDP data from socket %d", sockfd);
       if (udpb.buf == NULL) {
         lock_kernel ();
-        circular_remove (&udp_recv_buf_circ, &udpb);
+        if(fd_ent.flags & O_NONBLOCK) {
+          circular_remove_nowait (&udp_recv_buf_circ, &udpb);
+          if(udpb.buf == NULL) {
+            unlock_kernel();
+            return 0;
+          }
+        }
+        else {
+          circular_remove (&udp_recv_buf_circ, &udpb);
+        }
+        
         unlock_kernel ();
       }
 
@@ -756,7 +775,19 @@ sys_call_recv (int sockfd, void *buf, int nbytes, void *addr, void *len)
       DLOG ("sys_call_recv: Receiving TCP data from socket %d", sockfd);
       if (tcpb.buf == NULL) {
         lock_kernel ();
-        circular_remove (&tcp_recv_buf_circ, &tcpb);
+        if(fd_ent.flags & O_NONBLOCK) {
+          logger_printf("tcp remove no wait called\n");
+          circular_remove_nowait (&tcp_recv_buf_circ, &tcpb);
+          if(tcpb.buf == NULL) {
+            unlock_kernel();
+            return 0;
+          }
+        }
+        else {
+          logger_printf("tcp remove called\n");
+          circular_remove (&tcp_recv_buf_circ, &tcpb);
+        }
+        
         unlock_kernel ();
       }
 
@@ -854,6 +885,7 @@ sys_call_select (int maxfdp1, fd_set * readfds, fd_set * writefds,
 
 #ifdef DEBUG_SOCKET
   /* Debug info */
+  DLOG("maxfdp1 = %d", maxfdp1);
   DLOG ("Select called on readfds:");
   logger_printf ("  ");
   for (i = 0; i < MAX_FD; i++) {
@@ -875,11 +907,11 @@ check_readfds:
           case FD_TYPE_UDP :
             if (udpb.buf) {
               ready = TRUE;
-              read_ready[i] = 1;
+              FD_SET(i, &read_ready);
               count++;
             } else if (circular_remove_nowait (&udp_recv_buf_circ, &udpb) != -1) {
               ready = TRUE;
-              read_ready[i] = 1;
+              FD_SET(i, &read_ready);
               count++;
             } else {
               continue;
@@ -888,19 +920,20 @@ check_readfds:
           case FD_TYPE_TCP :
             if (tcpb.buf) {
               ready = TRUE;
-              read_ready[i] = 1;
+              FD_SET(i, &read_ready);
               count++;
             } else if (circular_remove_nowait (&tcp_recv_buf_circ, &tcpb) != -1) {
               ready = TRUE;
-              read_ready[i] = 1;
+              FD_SET(i, &read_ready);
               count++;
             } else {
               continue;
             }
             break;
           default:
-            DLOG ("File descriptor type unsupported in select");
-            goto finish;
+            DLOG ("File descriptor type unsupported in select, fd = %d, type = %d\n",
+                  i, tss->fd_table[i].type);
+            return -1;
         }
       }
     }
@@ -927,7 +960,7 @@ check_readfds:
 skip_waiting:
   /* Now, some read fds are ready. We can return since we ignore write fds for now. */
   /* Replace old readfds with read_ready set */
-  memcpy (*readfds, read_ready, sizeof (read_ready));
+  memcpy (readfds, &read_ready, sizeof (read_ready));
 
 #else
 
@@ -1132,6 +1165,56 @@ sys_call_recovery (int arg)
   return 0;
 }
 
+int sys_call_fcntl(int fd, int cmd, void* extra_arg)
+{
+  quest_tss * tss;
+  task_id cur;
+  int res;
+  
+  lock_kernel();
+
+  cur = percpu_read (current_task);
+
+  if (!cur) {
+    logger_printf ("No current task\n");
+    unlock_kernel();
+    return -1;
+  }
+
+  tss = lookup_TSS (cur);
+
+  if (tss == NULL) {
+    logger_printf ("Task 0x%x does not exist\n", cur);
+    unlock_kernel();
+    return -1;
+  }
+  if(!tss->fd_table[fd].entry) {
+    unlock_kernel();
+    return -1;
+  }
+  
+  switch(cmd) {
+  case F_SETFL:
+    tss->fd_table[fd].flags = *((int*)extra_arg);
+    unlock_kernel();
+    return 0;
+    
+  case F_GETFL:
+    res = tss->fd_table[fd].flags;
+    unlock_kernel();
+    return res;
+    
+  default:
+    DLOG("Unknown command sent to fcntl");
+    unlock_kernel();
+    return -1;
+  }
+
+  DLOG("Reached end of %s unexpectedly", __FUNCTION__);
+  unlock_kernel();
+  return -1;
+}
+
 sys_call_ptr_t _socket_syscall_table [] ALIGNED (0x1000) = {
   (sys_call_ptr_t) sys_call_open_socket,    /* 00 */
   (sys_call_ptr_t) sys_call_close,          /* 01 */
@@ -1147,7 +1230,7 @@ sys_call_ptr_t _socket_syscall_table [] ALIGNED (0x1000) = {
   (sys_call_ptr_t) sys_call_get_sb_id,      /* 11 */
   (sys_call_ptr_t) sys_call_getsockname,    /* 12 */
   (sys_call_ptr_t) sys_call_recovery,       /* 13 */
-  (sys_call_ptr_t) NULL,                    /* 14 */
+  (sys_call_ptr_t) sys_call_fcntl,          /* 14 */
   (sys_call_ptr_t) NULL                     /* 15 */
 };
 

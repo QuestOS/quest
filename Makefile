@@ -6,8 +6,8 @@ ISO_DIR = $(PWD)/iso/boot
 TAR = tar
 SYNC = sync
 
-
-QUEST_USER_PROGS_DIRS = canny netperf sysprogs tests torcs
+QUEST_USER_PROGS_DIRS = canny netperf sysprogs tests torcs malardalen \
+			zlib-1.2.7
 QUEST_LIB_DIRS = libc
 DIRS = $(QUEST_USER_PROGS_DIRS) $(QUEST_LIB_DIRS) kernel
 
@@ -39,6 +39,8 @@ build-sysprogs:  build-libc
 build-tests:  build-libc
 build-netperf:  build-libc
 build-torcs:  build-libc
+build-zlib-1.2.7: build-libc
+build-malardalen: build-libc
 build-sysprogs: build-kernel
 
 

@@ -219,6 +219,17 @@ detach_task (task_id tid, bool phys_addr)
        */
       if (!sleepqueue_detach (tid)) tss->time = 0;
       goto success;
+    } else {
+      if (v->runqueue == 0) {
+        v->runnable = FALSE;
+      }
+      /* Detach the task from local sleep queue if necessary. If task is not
+       * in the sleep queue, we set the sleep time to 0 so that the destination
+       * sandbox knows it won't need to put it to its sleep queue.
+       */
+      if (!sleepqueue_detach (tid)) tss->time = 0;
+
+      goto success;
     }
   } else {
     /* Remove migrating quest_tss from its VCPU run queue */
@@ -247,17 +258,11 @@ success:
   }
 }
 
-
-
-
 #ifdef USE_VMX
 
 static task_id migration_thread_id = 0;
 static u32 migration_stack[1024] ALIGNED (0x1000);
 static bool mig_working_flag = FALSE;
-
-
-
 
 quest_tss *
 pull_quest_tss (void * phy_tss)
@@ -300,7 +305,6 @@ abort:
   unmap_virtual_page (target_tss);
   return NULL;
 }
-
 
 pgdir_t
 remote_clone_page_directory (pgdir_t dir, u64 deadline)
@@ -477,6 +481,12 @@ receive_migration_request (uint8 vector)
 #ifndef USE_MIGRATION_THREAD
   quest_tss * new_tss = NULL;
   uint64 cur_tsc = 0, prev_tsc = 0;
+#  ifdef QUESTV_NO_VMX
+  int i;
+  extern task_id shell_tss;
+  quest_tss * stss = NULL;
+  pgdir_t dir = {-1, 0}, shell_dir = {-1, 0};
+#  endif
 #endif
   int cpu = 0;
   uint64 now;
@@ -519,7 +529,46 @@ receive_migration_request (uint8 vector)
     DLOG ("Process quest_tss to be migrated: 0x%X", (uint32) shm->migration_queue[cpu]);
     RDTSC (prev_tsc);
     /* Trap to monitor now for convenience */
+
+#ifdef QUESTV_NO_VMX
+    new_tss = pull_quest_tss(shm->migration_queue[cpu]);
+    if (new_tss) {
+      stss = lookup_TSS (shell_tss);
+      if (stss) {
+        shell_dir.dir_pa = stss->CR3;
+        shell_dir.dir_va = map_virtual_page (shell_dir.dir_pa | 3);
+        
+        dir.dir_pa = new_tss->CR3;
+        dir.dir_va = map_virtual_page (dir.dir_pa | 3);
+        if (!dir.dir_va) {
+          logger_printf ("map_virtual_page failed in migration!\n");
+          free_quest_tss (new_tss);
+          panic ("map_virtual_page failed in migration");
+        }
+        
+        for(i = 0; i < 1024; ++i) {
+          if (dir.dir_va[i].flags.present) {
+            if (i >= PGDIR_KERNEL_BEGIN && i != PGDIR_KERNEL_STACK) {
+              /* Replace kernel mappings with destination sandbox kernel */
+              /* To make things easier, let's use local shell's kernel mappings directly. */
+              /* This is what fork does anyway:-) */
+              dir.dir_va[i].raw = shell_dir.dir_va[i].raw;
+            }
+          }
+        }
+      }
+      else {
+        DLOG("Failed to get shell tss");
+        panic("Failed to get shell tss");
+      }
+    }
+    else {
+      DLOG("Failed to pull tss");
+      panic("Failed to pull tss");
+    }
+#else
     new_tss = trap_and_migrate (shm->migration_queue[cpu], 0);
+#endif
     if (new_tss) {
       DLOG ("New quest_tss:");
       DLOG ("  name: %s, task_id: 0x%X, affinity: %d, CR3: 0x%X",
@@ -560,9 +609,12 @@ bool migration_thread_ready = FALSE;
 static void
 migration_thread (void)
 {
-  quest_tss * mtss = NULL;
-  quest_tss * tmp_tss = NULL;
+  quest_tss * ret_tss = NULL;
+  pgdir_t shell_dir = {-1, 0}, dir = {-1, 0};
+  extern task_id shell_tss;
+  quest_tss * stss = NULL;
   int cpu = 0;
+  int i;
 
   cpu = get_pcpu_id ();
   migration_thread_ready = TRUE;
@@ -573,12 +625,49 @@ migration_thread (void)
       sched_usleep (1000000);
     } else {
       DLOG ("Start migration in sandbox %d!", cpu);
-      tmp_tss = (quest_tss *) map_virtual_page (((uint32) shm->migration_queue[cpu]) | 3);
-      mtss = lookup_TSS (tmp_tss->tid);
-      unmap_virtual_page (tmp_tss);
-      if (!attach_task (mtss, shm->remote_tsc_diff[cpu], shm->remote_tsc[cpu])) {
+      ret_tss = pull_quest_tss (shm->migration_queue[cpu]);
+
+      if (ret_tss) {
+        stss = lookup_TSS (shell_tss);
+        if (stss) {
+          shell_dir.dir_pa = stss->CR3;
+          shell_dir.dir_va = map_virtual_page (shell_dir.dir_pa | 3);
+          
+          dir.dir_pa = ret_tss->CR3;
+          dir.dir_va = map_virtual_page (dir.dir_pa | 3);
+          if (!dir.dir_va) {
+            logger_printf ("map_virtual_page failed in migration!\n");
+            free_quest_tss (ret_tss);
+            panic ("map_virtual_page failed in migration");
+          }
+          
+          for(i = 0; i < 1024; ++i) {
+            if (dir.dir_va[i].flags.present) {
+              if (i >= PGDIR_KERNEL_BEGIN && i != PGDIR_KERNEL_STACK) {
+                /* Replace kernel mappings with destination sandbox kernel */
+                /* To make things easier, let's use local shell's kernel mappings directly. */
+                /* This is what fork does anyway:-) */
+                dir.dir_va[i].raw = shell_dir.dir_va[i].raw;
+              }
+            }
+          }
+        }
+        else {
+          DLOG("Failed to get shell tss");
+          panic("Failed to get shell tss");
+        }
+      }
+      else {
+        DLOG("Failed to pull tss");
+        panic("Failed to pull tss");
+      }
+      
+      if (!attach_task (ret_tss, shm->remote_tsc_diff[cpu], shm->remote_tsc[cpu])) {
         DLOG ("Attaching task failed!");
       }
+
+      
+
       shm->migration_queue[cpu] = 0;
       mig_working_flag = FALSE;
     }
@@ -817,6 +906,12 @@ migration_init (void)
 #ifdef DEBUG_MIGRATION
   int cpu = get_pcpu_id ();
 #endif
+  int vcpu_id = create_main_vcpu(10, 50, NULL);
+  
+  if(vcpu_id < 0) {
+    DLOG("Failed to create migration thread");
+    return FALSE;
+  }
 
   if (vector_used (MIGRATION_RECV_REQ_VECTOR)) {
     DLOG ("Interrupt vector %d has been used in sandbox %d. IPI handler registration failed!",
@@ -832,10 +927,9 @@ migration_init (void)
     set_vector_handler (MIGRATION_CLEANUP_VECTOR, &receive_cleanup_request);
   }
 
-  /* --YL-- Put migration thread on VCPU 1 for now */
   migration_thread_id =
     create_kernel_thread_vcpu_args ((u32) migration_thread, (u32) &migration_stack[1023],
-                                    "Migration Thread", 1, TRUE, 0);
+                                    "Migration Thread", vcpu_id, TRUE, 0);
   DLOG ("Migration thread 0x%X created in sandbox %d", migration_thread_id, cpu);
 
   DLOG ("Migration subsystem initialized in sandbox kernel %d", cpu);

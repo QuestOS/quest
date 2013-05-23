@@ -22,7 +22,7 @@
 #include "util/debug.h"
 #include "arch/i386.h"
 
-#define DEBUG_MODULE
+//#define DEBUG_MODULE
 
 #ifdef DEBUG_MODULE
 #define DLOG(fmt,...) DLOG_PREFIX("module",fmt,##__VA_ARGS__)

@@ -6,6 +6,8 @@
 #include <sys/select.h>
 #include <netinet/in.h>
 #include <arpa/inet.h>
+#include <stdarg.h>
+#include <sys/fcntl.h>
 
 //char *optarg;
 //int optind = 1, opterr = 1, optopt;
@@ -165,13 +167,6 @@ double rint(double x)
 ssize_t recvmsg(int sockfd, struct msghdr *msg, int flags)
 {
   unimplemented_funcion_called();
-  return 0;
-}
-
-int fcntl(int fd, int cmd, ... /* arg */ )
-{
-  //unimplemented_funcion_called();
-  printf("fcntl stub called\n");
   return 0;
 }
 

@@ -66,6 +66,8 @@ typedef uint32 u32, __le32, __be32, dma_addr_t, frame_t, framenum_t, phys_addr_t
 typedef uint64 u64, __le64;
 typedef void *addr_t;
 
+typedef int vcpu_id_t;
+
 typedef int gfp_t;
 typedef uint32 task_id;
 

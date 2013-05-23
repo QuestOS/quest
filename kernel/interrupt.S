@@ -344,8 +344,9 @@ syscall1:
         
 
         pushl %ebp  /* Also needed to populate child TSS */
+        pushl %eax  /* VCPU id */
         call _fork
-        addl $8, %esp
+        addl $12, %esp
         
         SREGS_RESTORE
 

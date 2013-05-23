@@ -24,6 +24,13 @@
 
 #define VCPU_ALIGNMENT (LOCK_ALIGNMENT<<3)
 
+/* If BEST_EFFORT_VCPU, sched_param, vcpu_type or iovcpu_class are
+   changed they must also be changed in libc's vcpu.h */
+
+/* Moving BEST_EFFORT_VCPU to kernel.h */
+//#define BEST_EFFORT_VCPU 0
+
+
 typedef enum {
   MAIN_VCPU = 0, IO_VCPU
 } vcpu_type;
@@ -36,6 +43,26 @@ typedef enum {
   IOVCPU_CLASS_DISK = (1<<3),
   IOVCPU_CLASS_CDROM = (1<<4),
 } iovcpu_class;
+
+
+struct sched_param
+{
+  int sched_priority;
+
+  vcpu_type type;
+  iovcpu_class io_class;
+
+  /* Below are paramters used for window-constrained scheduling */
+  int C;                        /* service quantum */
+  int T;                        /* period */
+  int m;                        /* mandatory instance count in a window */
+  int k;                        /* window of requests  */
+  int affinity;                 /* CPU (or Quest-V sandbox affinity) */
+  int machine_affinity;         /* -- EM -- Machine affinity hack
+                                   right now is a just a bool to
+                                   indicate stay (0) or move to other
+                                   machine (1) */
+};
 
 #ifndef _SCHED_VCPU_REPL_
 #define _SCHED_VCPU_REPL_
@@ -79,8 +106,10 @@ typedef struct _vcpu
       u64 next_schedule;        /* when to trigger internal schedule */
       u64 prev_tsc;             /* when started running */
       u64 virtual_tsc;          /* virtual timestamp counter */
+      vcpu_id_t index;
 
       u64 C, T, b, usage;       /* common scheduling parameters */
+      u32 _C, _T;               /* Original C and T before frequency computation */
 
       /* type-specific parameters */
       union {
@@ -130,10 +159,13 @@ extern void iovcpu_job_wakeup (task_id job, u64 T);
 extern void iovcpu_job_wakeup_for_me (task_id job);
 extern void iovcpu_job_completion (void);
 
-extern uint lowest_priority_vcpu (void);
+extern vcpu_id_t create_vcpu(struct sched_param* params, vcpu** vcpu_p);
+extern vcpu_id_t create_main_vcpu(int C, int T, vcpu** vcpu_p);
+
+extern vcpu_id_t lowest_priority_vcpu (void);
 extern uint select_iovcpu (iovcpu_class);
 extern void set_iovcpu (task_id, iovcpu_class);
-extern vcpu * vcpu_lookup (int);
+extern vcpu * vcpu_lookup (vcpu_id_t);
 extern bool vcpu_in_runqueue (vcpu *, task_id);
 extern void vcpu_remove_from_runqueue (vcpu *, task_id);
 extern bool vcpu_fix_replenishment (quest_tss*, vcpu*, replenishment[], bool remote_tsc_diff,
