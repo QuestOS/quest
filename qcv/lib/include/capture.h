@@ -15,6 +15,9 @@
  *  along with this program.  If not, see <http://www.gnu.org/licenses/>.
  */
 
+#ifndef _QCV_CAPTURE_H_
+#define _QCV_CAPTURE_H_
+
 #include "frame.h"
 
 typedef enum {
@@ -24,19 +27,19 @@ typedef enum {
 typedef struct {
   int camera_fd;
   capture_source_t source;
-  char* uncompressed_frame;
+  unsigned char* uncompressed_frame;
   size_t uncompressed_frame_buf_len;
   size_t uncompressed_frame_len;
 } qcv_capture_t;
 
 #define CAMERA_UNCOMPRSSED_FRAME_BUF_LEN ((size_t)40960)
 
-int qcv_capture_from_camera(int index, qcv_capture_t* capture);
+int qcv_capture_from_camera(qcv_capture_t* capture, int index);
 int qcv_grab_frame(qcv_capture_t* capture);
 int qcv_retrieve_frame(qcv_capture_t* capture, qcv_frame_t* frame);
 int qcv_query_frame(qcv_capture_t* capture, qcv_frame_t* frame);
 
-
+#endif // _QCV_CAPTURE_H_
 
 
 /*

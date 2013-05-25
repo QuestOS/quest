@@ -18,6 +18,7 @@
 #include <string.h>
 #include <stdlib.h>
 #include "capture.h"
+#include "mjpeg.h"
 #include <usb.h>
 
 static void init_capture(qcv_capture_t* capture, capture_source_t source)
@@ -26,7 +27,7 @@ static void init_capture(qcv_capture_t* capture, capture_source_t source)
   capture->source = source;
 }
 
-int qcv_capture_from_camera(int index, qcv_capture_t* capture)
+int qcv_capture_from_camera(qcv_capture_t* capture, int index)
 {
   char cam_name[20];
   int res;
@@ -76,8 +77,8 @@ int qcv_retrieve_frame(qcv_capture_t* capture, qcv_frame_t* frame)
 
     if(!capture->uncompressed_frame_len) return -1;
 
-    
-    return 0;
+    return mjpeg_to_rgb(capture->uncompressed_frame, capture->uncompressed_frame_len,
+                        frame);
     
   default:
     return -1;

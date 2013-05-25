@@ -15,9 +15,15 @@
  *  along with this program.  If not, see <http://www.gnu.org/licenses/>.
  */
 
+
+#ifndef _QCV_QCV_H_
+#define _QCV_QCV_H_
+
 #include "qcv/capture.h"
+#include "qcv/frame.h"
+#include "qcv/mjpeg.h"
 
-
+#endif // _QCV_QCV_H_
 
 /*
  * Local Variables:

@@ -15,15 +15,30 @@
  *  along with this program.  If not, see <http://www.gnu.org/licenses/>.
  */
 
-#ifndef _QCV_MJPEG_H_
-#define _QCV_MJPEG_H_
-
 #include "frame.h"
+#include <stdlib.h>
 
-int mjpeg_to_rgb(unsigned char* mjpeg_buf, size_t mjpeg_size, qcv_frame_t* frame);
+int qcv_display_frame(qcv_frame_t* frame, unsigned char* video_memory)
+{
+  int x, y;
+  printf("height = %d, width = %d\n", frame->height, frame->width);
+  for(y = 0; y < 200; ++y) {
+    //printf("y = %d\n", y);
+    for(x = 0; x < frame->width; ++x) {
+      video_memory[x + y * frame->width] = frame->img_buf[(x + y * frame->width) * 3] / 16;
+    }
+  }
+  return 0;
+}
 
+void qcv_release_frame(qcv_frame_t* frame)
+{
+  if(frame->img_buf) {
+    free(frame->img_buf);
+    frame->img_buf = NULL;
+  }
+}
 
-#endif // _QCV_MJPEG_H_
 
 /*
  * Local Variables:

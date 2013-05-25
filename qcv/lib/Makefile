@@ -1,7 +1,7 @@
 include ../../config.mk
 
 CFLAGS = -g -I./include -MMD -Wall
-OBJS   = src/capture.o src/mjpeg.o
+OBJS   = src/capture.o src/mjpeg.o src/frame.o
 
 AR_FILE = libqcv.a
 INC_DIR_NAME=qcv

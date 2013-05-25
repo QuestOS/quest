@@ -4,13 +4,13 @@ ifndef INSTALL_DIR
 INSTALL_DIR=/tftp/boot
 endif
 
-LIBS   = $(LIB_DEST)/crt0.o -lc -lqcv
+LIBS   = $(LIB_DEST)/crt0.o -lqcv -ljpeg -lc
 INCS   = 
 CFLAGS = -g
 
 
 
-PROGS = camera
+PROGS = camera img_mjpeg_dec
 
 #usb_test usb_test_rtt
 
@@ -18,13 +18,14 @@ PROGS = camera
 
 all: $(PROGS)
 
-%: %.o
+%: %.o $(LIB_DEST)/libqcv.a
 	$(LD)  -o $@ $< $(LIBS) -Map $@.map
 
-%: %.c
+%: %.c 
 
 clean:
 	rm -f *.o *.d *.map *~ $(PROGS)
 
 install: $(PROGS)
 	$(INSTALL_CMD) $(PROGS) $(INSTALL_DIR)
+	$(INSTALL_CMD) test.jpg $(INSTALL_DIR)
