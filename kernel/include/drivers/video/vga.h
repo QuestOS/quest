@@ -22,6 +22,7 @@
 int _putchar_with_attributes (int ch, int attribute);
 
 void write_regs(unsigned char *regs);
+void set_color_pallete(void);
 
 
 

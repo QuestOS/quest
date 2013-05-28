@@ -4,7 +4,7 @@ ifndef INSTALL_DIR
 INSTALL_DIR=/tftp/boot
 endif
 
-LIBS   = $(LIB_DEST)/crt0.o -lqcv -ljpeg -lc
+LIBS   = $(LIB_DEST)/crt0.o -lqcv -ljpeg -lm -lc
 INCS   = 
 CFLAGS = -g
 

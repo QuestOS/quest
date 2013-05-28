@@ -527,6 +527,7 @@ static int syscall_enable_video(u32 eax, int enable, char** video_memory)
         com1_printf("About to call init_graph_vga\n");
         //if(init_graph_vga(width, height, 1)) {
         write_regs(g_320x200x256);
+        set_color_pallete();
         video_enabled = TRUE;
         res = 0;
         current_video_memory = *video_memory = i * 0x400000;

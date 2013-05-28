@@ -26,7 +26,7 @@ char camera_buffer[CAM_BUF_SIZE];
 
 void main()
 {
-  char* video_memory;
+  qcv_window_t window;
   qcv_capture_t camera_capture;
   int camera_fd;
   qcv_frame_t frame;
@@ -36,9 +36,9 @@ void main()
     exit(EXIT_FAILURE);
   }
 
-  printf("About to enable video mode\n");
-  if(enable_video(1, &video_memory) < 0) {
-    printf("Failed to enable video mode\n");
+  printf("About to create the window\n");
+  if(qcv_create_window(&window) < 0) {
+    printf("Failed to create window\n");
     exit(EXIT_FAILURE);
   }
 
@@ -48,7 +48,7 @@ void main()
       exit(EXIT_FAILURE);
     }
     
-    qcv_display_frame(&frame, video_memory);
+    qcv_window_display_frame(&window, &frame);
     qcv_release_frame(&frame);
   }
 

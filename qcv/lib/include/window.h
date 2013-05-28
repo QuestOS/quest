@@ -15,26 +15,28 @@
  *  along with this program.  If not, see <http://www.gnu.org/licenses/>.
  */
 
-#ifndef _QCV_FRAME_H_
-#define _QCV_FRAME_H_
+#ifndef _QCV_WINDOW_H_
+#define _QCV_WINDOW_H_
 
-#include <stdlib.h>
+#include "frame.h"
+
 
 typedef struct {
-  size_t width;
   size_t height;
-  size_t pixel_size;
-  size_t row_stride;
+  size_t width;
+  unsigned char* video_memory;
+} qcv_window_t;
 
-  size_t img_size;
-  unsigned char* img_buf;
-  
-} qcv_frame_t;
+int qcv_create_window(qcv_window_t* window);
 
-void qcv_release_frame(qcv_frame_t* frame);
+int qcv_window_display_frame(qcv_window_t* window, qcv_frame_t* frame);
+
+int qcv_destroy_window(qcv_window_t* window);
 
 
-#endif // _QCV_FRAME_H_
+#endif // _QCV_WINDOW_H_
+
+
 
 /*
  * Local Variables:

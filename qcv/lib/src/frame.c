@@ -18,18 +18,7 @@
 #include "frame.h"
 #include <stdlib.h>
 
-int qcv_display_frame(qcv_frame_t* frame, unsigned char* video_memory)
-{
-  int x, y;
-  printf("height = %d, width = %d\n", frame->height, frame->width);
-  for(y = 0; y < 200; ++y) {
-    //printf("y = %d\n", y);
-    for(x = 0; x < frame->width; ++x) {
-      video_memory[x + y * frame->width] = frame->img_buf[(x + y * frame->width) * 3] / 16;
-    }
-  }
-  return 0;
-}
+
 
 void qcv_release_frame(qcv_frame_t* frame)
 {

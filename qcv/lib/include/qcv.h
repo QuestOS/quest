@@ -22,6 +22,7 @@
 #include "qcv/capture.h"
 #include "qcv/frame.h"
 #include "qcv/mjpeg.h"
+#include "qcv/window.h"
 
 #endif // _QCV_QCV_H_
 

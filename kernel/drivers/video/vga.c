@@ -980,6 +980,31 @@ void read_regs(unsigned char *regs)
 
 static unsigned char static_reg_dump[1024];
 
+void set_color_pallete(void)
+{
+  int i;
+  unsigned char k = 0,l = 0,m = 0;
+  outb(0, VGA_DAC_WRITE_INDEX);
+  
+  for(i=0, k = 0, l = 0, m = 0;i<256;i++,k++) {
+    
+    if(k == 6) {k = 0; l++;}
+    if(l == 6) {l = 0; m++;}
+    
+    if(m < 6) {
+      /* Write the color palette entry */
+      outb(k == 5 ? 63 : k*13, VGA_DAC_DATA);
+      outb(l == 5 ? 63 : l*13, VGA_DAC_DATA);
+      outb(m == 5 ? 63 : m*13, VGA_DAC_DATA);
+    }
+    else {
+      outb(63, VGA_DAC_DATA);
+      outb(63, VGA_DAC_DATA);
+      outb(63, VGA_DAC_DATA);
+    }
+  }
+}
+
 void write_regs(unsigned char *regs)
 {
   unsigned i;
