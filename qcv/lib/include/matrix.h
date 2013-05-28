@@ -15,18 +15,26 @@
  *  along with this program.  If not, see <http://www.gnu.org/licenses/>.
  */
 
-#include "frame.h"
+#ifndef _QCV_MATRIX_H_
+#define _QCV_MATRIX_H_
+
+
 #include <stdlib.h>
 
+typedef struct {
+  
+  size_t width;
+  size_t height;
+  size_t element_size;
+  size_t row_stride;
+
+  size_t buf_size;
+  unsigned char* buf;
+  
+} qcv_matrix_t;
 
 
-void qcv_release_frame(qcv_frame_t* frame)
-{
-  if(frame->pixel_matrix.buf) {
-    free(frame->pixel_matrix.buf);
-    frame->pixel_matrix.buf = NULL;
-  }
-}
+#endif // _QCV_MATRIX_H_
 
 
 /*

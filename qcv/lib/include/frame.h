@@ -19,15 +19,11 @@
 #define _QCV_FRAME_H_
 
 #include <stdlib.h>
+#include "matrix.h"
 
 typedef struct {
-  size_t width;
-  size_t height;
-  size_t pixel_size;
-  size_t row_stride;
 
-  size_t img_size;
-  unsigned char* img_buf;
+  qcv_matrix_t pixel_matrix;
   
 } qcv_frame_t;
 

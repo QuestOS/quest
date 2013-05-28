@@ -39,11 +39,11 @@ int qcv_window_display_frame(qcv_window_t* window, qcv_frame_t* frame)
   unsigned char* double_buffer = malloc(window->height * window->width);
   for(y = 0; y < window->height; ++y) {
     for(x = 0; x < window->width; ++x) {
-      r = (unsigned int)round(frame->img_buf[(x + y * frame->width) * 3] / 51.0);
-      g = (unsigned int)round(frame->img_buf[(x + y * frame->width) * 3 + 1] / 51.0);
-      b = (unsigned int)round(frame->img_buf[(x + y * frame->width) * 3 + 2] / 51.0);
+      r = (unsigned int)round(frame->pixel_matrix.buf[(x + y * frame->pixel_matrix.width) * 3] / 51.0);
+      g = (unsigned int)round(frame->pixel_matrix.buf[(x + y * frame->pixel_matrix.width) * 3 + 1] / 51.0);
+      b = (unsigned int)round(frame->pixel_matrix.buf[(x + y * frame->pixel_matrix.width) * 3 + 2] / 51.0);
       
-      double_buffer[x + y * frame->width] = r + 6*g + 36*b;
+      double_buffer[x + y * frame->pixel_matrix.width] = r + 6*g + 36*b;
     }
   }
 
