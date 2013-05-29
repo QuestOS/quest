@@ -76,7 +76,7 @@ int qcv_retrieve_frame(qcv_capture_t* capture, qcv_frame_t* frame)
   case CAPTURE_SOURCE_CAMERA:
 
     if(!capture->uncompressed_frame_len) return -1;
-    return mjpeg_to_rgb(capture->uncompressed_frame, capture->uncompressed_frame_len,
+    return qcv_jpeg_to_rgb(capture->uncompressed_frame, capture->uncompressed_frame_len,
                         frame);
     
   default:

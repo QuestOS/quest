@@ -145,7 +145,7 @@ void std_huff_tables (j_decompress_ptr dinfo) {
 
 
 
-int mjpeg_to_rgb(unsigned char* mjpeg_buf, size_t mjpeg_size, qcv_frame_t* frame)
+int qcv_jpeg_to_rgb(unsigned char* mjpeg_buf, size_t mjpeg_size, qcv_frame_t* frame)
 {
   int rc;
   struct jpeg_decompress_struct cinfo;

@@ -16,7 +16,9 @@
  */
 
 #include "frame.h"
-#include <stdlib.h>
+#include <unistd.h>
+#include <fcntl.h>
+#include "jpeg.h"
 
 
 
@@ -55,6 +57,30 @@ int qcv_create_frame(qcv_frame_t* frame, size_t width, size_t height, qcv_frame_
   if(!qcv_frame_buf(frame)) return -1;
   
   return 0;
+}
+
+int qcv_frame_from_file(qcv_frame_t* frame, char* file)
+{
+#define MAX_IMG_SIZE (0x10000)
+  static unsigned char img_buffer[MAX_IMG_SIZE];
+  int img_fd;
+  int bytes_read;
+  
+  if((img_fd = open(file, O_RDONLY)) < 0) {
+    return img_fd;
+  }
+  
+  if((bytes_read = read(img_fd, img_buffer, MAX_IMG_SIZE)) < 0) {
+    return bytes_read;
+  }
+  
+  if(bytes_read == MAX_IMG_SIZE) {
+    /* The call to read filled up the entire buffer, most likely
+       didn't get the entire image */
+    return -1;
+  }
+  
+  return qcv_jpeg_to_rgb(img_buffer, bytes_read, frame);
 }
 
 

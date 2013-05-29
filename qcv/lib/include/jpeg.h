@@ -20,7 +20,7 @@
 
 #include "frame.h"
 
-int mjpeg_to_rgb(unsigned char* mjpeg_buf, size_t mjpeg_size, qcv_frame_t* frame);
+int qcv_jpeg_to_rgb(unsigned char* mjpeg_buf, size_t mjpeg_size, qcv_frame_t* frame);
 
 
 #endif // _QCV_MJPEG_H_

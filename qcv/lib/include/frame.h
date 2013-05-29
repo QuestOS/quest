@@ -42,6 +42,7 @@ typedef struct {
 
 void qcv_release_frame(qcv_frame_t* frame);
 int qcv_create_frame(qcv_frame_t* frame, size_t width, size_t height, qcv_frame_type_t type);
+int qcv_frame_from_file(qcv_frame_t* frame, char* file);
 
 
 #endif // _QCV_FRAME_H_
