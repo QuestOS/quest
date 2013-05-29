@@ -114,7 +114,8 @@ static int qcv_canny_init_arrays(qcv_frame_t* frame,
   
   internal_params->yGradient = malloc(qcv_frame_buf_size(frame) * sizeof(float));
   if(!internal_params->yGradient) goto cleanup_5;
-  
+
+  internal_params->data_len = qcv_frame_buf_size(frame);
   internal_params->yG_len = qcv_frame_buf_size(frame);
   internal_params->mag_len = qcv_frame_buf_size(frame);
   internal_params->xG_len = qcv_frame_buf_size(frame);
@@ -159,6 +160,7 @@ int qcv_canny_read_luminance(qcv_frame_t* frame,
       g = pixels[offset++] & 0xff;
       b = pixels[offset++] & 0xff; 
       internal_params->data[i] = luminance(r, g, b);
+      //printf("rl:%d=%d(%d,%d,%d)\n", i, internal_params->data[i],r,g,b);
     }
     return 0;
   default:
@@ -354,8 +356,9 @@ static void canny_follow(qcv_frame_t* frame,
   int x2 = x1 == qcv_frame_width(frame) - 1 ? x1 : x1 + 1;
   int y0 = y1 == 0 ? y1 : y1 - 1;
   int y2 = y1 == qcv_frame_height(frame) - 1 ? y1 : y1 + 1;
-
+  
   internal_params->data[i1] = internal_params->magnitude[i1];
+  //printf("cf:%d=%d\n", i1, internal_params->data[i1]);
   int x, y, i2;
   for(x = x0; x <= x2; x++){
     for(y = y0; y <= y2; y++){
@@ -374,11 +377,15 @@ static void qcv_canny_perform_hysteresis(qcv_frame_t* frame,
                                          int low, int high)
 {
   memset(internal_params->data, 0, internal_params->data_len * sizeof(int));
-
+  //printf("internal_params->data_len = %d\n", internal_params->data_len);
+  //printf("high = %d\n", high);
   int offset = 0, y, x;
   for(y = 0; y < qcv_frame_height(frame); y++){
     for(x = 0; x < qcv_frame_width(frame); x++){
-      if(internal_params->data[offset] == 0 && internal_params->magnitude[offset] >= high){
+      //printf("ph: internal_params->data[%d] = %d\n    internal_params->magnitude[%d] = %d\n",
+      //       offset, internal_params->data[offset], offset, internal_params->magnitude[offset]);
+      if(internal_params->data[offset] == 0 && internal_params->magnitude[offset] >= high) {
+        
         canny_follow(frame, internal_params, x, y, offset, low);
       }
       offset++;
@@ -390,8 +397,10 @@ static void qcv_canny_write_edges(qcv_canny_internal_params_t* internal_params,
                                   qcv_frame_t* out_frame)
 {
   int i;
-  for(i = 0; i < internal_params->picsize; i++)
+  for(i = 0; i < internal_params->picsize; i++) {
     qcv_frame_buf(out_frame)[i] = internal_params->data[i] > 0 ? 255 : 0;
+    //printf("we:%d=%d\n", i, internal_params->data[i]);
+  }
 }
 
 

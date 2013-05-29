@@ -10,7 +10,7 @@ CFLAGS = -g
 
 
 
-PROGS = camera img_mjpeg_dec camera_canny
+PROGS = camera img_mjpeg_dec camera_canny img_canny
 
 #usb_test usb_test_rtt
 
@@ -28,4 +28,4 @@ clean:
 
 install: $(PROGS)
 	$(INSTALL_CMD) $(PROGS) $(INSTALL_DIR)
-	$(INSTALL_CMD) test.jpg $(INSTALL_DIR)
+	$(INSTALL_CMD) test.jpg white.jpg black.jpg half.jpg $(INSTALL_DIR)
