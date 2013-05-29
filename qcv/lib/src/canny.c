@@ -82,7 +82,7 @@ int qcv_canny_frame(qcv_frame_t* frame, qcv_canny_params_t* params, qcv_frame_t*
   int low = lroundf(params->low_threshold * MAGNITUDE_SCALE);
   int high = lroundf(params->high_threshold * MAGNITUDE_SCALE);
   qcv_canny_perform_hysteresis(frame, &internal_params, low, high);
-  if((res = qcv_create_frame(out_frame, frame->pixel_matrix.width, frame->pixel_matrix.height,
+  if((res = qcv_create_frame(out_frame, qcv_frame_width(frame), qcv_frame_height(frame),
                              QCV_FRAME_TYPE_1BYTE_GREY)) < 0) goto cleanup;
   qcv_canny_write_edges(&internal_params, out_frame);
   
@@ -97,32 +97,32 @@ int qcv_canny_frame(qcv_frame_t* frame, qcv_canny_params_t* params, qcv_frame_t*
 static int qcv_canny_init_arrays(qcv_frame_t* frame,
                                  qcv_canny_internal_params_t* internal_params)
 {
-  internal_params->data = malloc(frame->pixel_matrix.buf_size * sizeof(int));
+  internal_params->data = malloc(qcv_frame_buf_size(frame) * sizeof(int));
   if(!internal_params->data) goto cleanup_0;
   
-  internal_params->magnitude = malloc(frame->pixel_matrix.buf_size * sizeof(int));
+  internal_params->magnitude = malloc(qcv_frame_buf_size(frame) * sizeof(int));
   if(!internal_params->magnitude) goto cleanup_1;
     
-  internal_params->xConv = malloc(frame->pixel_matrix.buf_size * sizeof(float));
+  internal_params->xConv = malloc(qcv_frame_buf_size(frame) * sizeof(float));
   if(!internal_params->xConv) goto cleanup_2;
   
-  internal_params->yConv = malloc(frame->pixel_matrix.buf_size * sizeof(float));
+  internal_params->yConv = malloc(qcv_frame_buf_size(frame) * sizeof(float));
   if(!internal_params->yConv) goto cleanup_3;
   
-  internal_params->xGradient = malloc(frame->pixel_matrix.buf_size * sizeof(float));
+  internal_params->xGradient = malloc(qcv_frame_buf_size(frame) * sizeof(float));
   if(!internal_params->xGradient) goto cleanup_4;
   
-  internal_params->yGradient = malloc(frame->pixel_matrix.buf_size * sizeof(float));
+  internal_params->yGradient = malloc(qcv_frame_buf_size(frame) * sizeof(float));
   if(!internal_params->yGradient) goto cleanup_5;
   
-  internal_params->yG_len = frame->pixel_matrix.buf_size;
-  internal_params->mag_len = frame->pixel_matrix.buf_size;
-  internal_params->xG_len = frame->pixel_matrix.buf_size;
-  internal_params->yC_len = frame->pixel_matrix.buf_size;
-  internal_params->xC_len = frame->pixel_matrix.buf_size;
-  internal_params->width = frame->pixel_matrix.width;
-  internal_params->height = frame->pixel_matrix.height;
-  internal_params->picsize = frame->pixel_matrix.width * frame->pixel_matrix.height;
+  internal_params->yG_len = qcv_frame_buf_size(frame);
+  internal_params->mag_len = qcv_frame_buf_size(frame);
+  internal_params->xG_len = qcv_frame_buf_size(frame);
+  internal_params->yC_len = qcv_frame_buf_size(frame);
+  internal_params->xC_len = qcv_frame_buf_size(frame);
+  internal_params->width = qcv_frame_width(frame);
+  internal_params->height = qcv_frame_height(frame);
+  internal_params->picsize = qcv_frame_width(frame) * qcv_frame_height(frame);
   
   return 0;
 
@@ -147,14 +147,14 @@ int qcv_canny_read_luminance(qcv_frame_t* frame,
   int r, g, b, i;
   unsigned char *pixels;
   int offset;
-  switch(frame->type) {
+  switch(qcv_frame_type(frame)) {
   case QCV_FRAME_TYPE_3BYTE_RGB:
     
-    pixels = (unsigned char *)frame->pixel_matrix.buf;
+    pixels = (unsigned char *)qcv_frame_buf(frame);
     offset = 0;
     /* -- EM -- Assuming that there is no padding after a row,
           should fix later*/
-    for(i = 0; i < frame->pixel_matrix.buf_size; i++) {
+    for(i = 0; i < qcv_frame_buf_size(frame); i++) {
       r = pixels[offset++] & 0xff;
       g = pixels[offset++] & 0xff;
       b = pixels[offset++] & 0xff; 
@@ -180,7 +180,7 @@ static void qcv_canny_normalize_contrast(qcv_frame_t* frame,
   int sum = 0, j = 0, target, k;
   for(i = 0; i < 256; i++){
     sum += histogram[i];
-    target = sum * 255 / frame->pixel_matrix.buf_size;
+    target = sum * 255 / qcv_frame_buf_size(frame);
     for(k = j + 1; k <= target; k++)
       remap[k] = i;
     j = target;
@@ -229,24 +229,24 @@ static int qcv_canny_compute_gradients(qcv_frame_t* frame,
   }
 
   int initX = kwidth - 1;
-  int maxX = frame->pixel_matrix.width - (kwidth - 1);
-  int initY = frame->pixel_matrix.width * (kwidth - 1);
-  int maxY = frame->pixel_matrix.width * (frame->pixel_matrix.height - (kwidth - 1));
+  int maxX = qcv_frame_width(frame) - (kwidth - 1);
+  int initY = qcv_frame_width(frame) * (kwidth - 1);
+  int maxY = qcv_frame_width(frame) * (qcv_frame_height(frame) - (kwidth - 1));
 
   int x, y, index;
   float sumX, sumY;
   int xOffset, yOffset;
   for(x = initX; x < maxX; x++){
-    for(y = initY; y < maxY; y += frame->pixel_matrix.width){
+    for(y = initY; y < maxY; y += qcv_frame_width(frame)){
       index = x + y;
       sumX = internal_params->data[index] * kernel[0];
       sumY = sumX;
       xOffset = 1;
-      yOffset = frame->pixel_matrix.width;
+      yOffset = qcv_frame_width(frame);
       for( ; xOffset < kwidth; ){
         sumY += kernel[xOffset] * (internal_params->data[index - yOffset] + internal_params->data[index + yOffset]);
         sumX += kernel[xOffset] * (internal_params->data[index - xOffset] + internal_params->data[index + xOffset]);
-        yOffset += frame->pixel_matrix.width;
+        yOffset += qcv_frame_width(frame);
         xOffset++;
 
       }
@@ -260,7 +260,7 @@ static int qcv_canny_compute_gradients(qcv_frame_t* frame,
   float sum;
   int i;
   for(x = initX; x < maxX; x++){
-    for(y = initY; y < maxY; y += frame->pixel_matrix.width){
+    for(y = initY; y < maxY; y += qcv_frame_width(frame)){
       sum = 0;
       index = x + y;
       for(i = 1; i < kwidth; i++)
@@ -270,14 +270,14 @@ static int qcv_canny_compute_gradients(qcv_frame_t* frame,
     }
   }
 
-  for(x = kwidth; x < frame->pixel_matrix.width - kwidth; x++){
-    for(y = initY; y < maxY; y += frame->pixel_matrix.width){
+  for(x = kwidth; x < qcv_frame_width(frame) - kwidth; x++){
+    for(y = initY; y < maxY; y += qcv_frame_width(frame)){
       sum = 0;
       index = x + y;
-      yOffset = frame->pixel_matrix.width;
+      yOffset = qcv_frame_width(frame);
       for(i = 1; i < kwidth; i++){
         sum += diffKernel[i] * (internal_params->xConv[index - yOffset] - internal_params->xConv[index + yOffset]);
-        yOffset += frame->pixel_matrix.width;
+        yOffset += qcv_frame_width(frame);
       }
 
       internal_params->yGradient[index] = sum;
@@ -285,17 +285,17 @@ static int qcv_canny_compute_gradients(qcv_frame_t* frame,
   }
 
   initX = kwidth;
-  maxX = frame->pixel_matrix.width - kwidth;
-  initY = frame->pixel_matrix.width * kwidth;
-  maxY = frame->pixel_matrix.width * (frame->pixel_matrix.height - kwidth);
+  maxX = qcv_frame_width(frame) - kwidth;
+  initY = qcv_frame_width(frame) * kwidth;
+  maxY = qcv_frame_width(frame) * (qcv_frame_height(frame) - kwidth);
   int indexN, indexS, indexW, indexE, indexNW, indexNE, indexSW, indexSE;
   float xGrad, yGrad, gradMag;
   float nMag, sMag, wMag, eMag, neMag, seMag, swMag, nwMag, tmp;
   for(x = initX; x < maxX; x++){
-    for(y = initY; y < maxY; y += frame->pixel_matrix.width){
+    for(y = initY; y < maxY; y += qcv_frame_width(frame)){
       index = x + y;
-      indexN = index - frame->pixel_matrix.width;
-      indexS = index + frame->pixel_matrix.width;
+      indexN = index - qcv_frame_width(frame);
+      indexS = index + qcv_frame_width(frame);
       indexW = index - 1;
       indexE = index + 1;
       indexNW = indexN - 1;
@@ -351,15 +351,15 @@ static void canny_follow(qcv_frame_t* frame,
                          int x1, int y1, int i1, int threshold)
 {
   int x0 = x1 == 0 ? x1 : x1 - 1;
-  int x2 = x1 == frame->pixel_matrix.width - 1 ? x1 : x1 + 1;
+  int x2 = x1 == qcv_frame_width(frame) - 1 ? x1 : x1 + 1;
   int y0 = y1 == 0 ? y1 : y1 - 1;
-  int y2 = y1 == frame->pixel_matrix.height - 1 ? y1 : y1 + 1;
+  int y2 = y1 == qcv_frame_height(frame) - 1 ? y1 : y1 + 1;
 
   internal_params->data[i1] = internal_params->magnitude[i1];
   int x, y, i2;
   for(x = x0; x <= x2; x++){
     for(y = y0; y <= y2; y++){
-      i2 = x + y * frame->pixel_matrix.width;
+      i2 = x + y * qcv_frame_width(frame);
       if((y != y1 || x != x1) && internal_params->data[i2] == 0
         && internal_params->magnitude[i2] >= threshold){
         canny_follow(frame, internal_params, x, y, i2, threshold);
@@ -376,8 +376,8 @@ static void qcv_canny_perform_hysteresis(qcv_frame_t* frame,
   memset(internal_params->data, 0, internal_params->data_len * sizeof(int));
 
   int offset = 0, y, x;
-  for(y = 0; y < frame->pixel_matrix.height; y++){
-    for(x = 0; x < frame->pixel_matrix.width; x++){
+  for(y = 0; y < qcv_frame_height(frame); y++){
+    for(x = 0; x < qcv_frame_width(frame); x++){
       if(internal_params->data[offset] == 0 && internal_params->magnitude[offset] >= high){
         canny_follow(frame, internal_params, x, y, offset, low);
       }
@@ -391,7 +391,7 @@ static void qcv_canny_write_edges(qcv_canny_internal_params_t* internal_params,
 {
   int i;
   for(i = 0; i < internal_params->picsize; i++)
-    out_frame->pixel_matrix.buf[i] = internal_params->data[i] > 0 ? 255 : 0;
+    qcv_frame_buf(out_frame)[i] = internal_params->data[i] > 0 ? 255 : 0;
 }
 
 

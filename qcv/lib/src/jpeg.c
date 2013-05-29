@@ -169,22 +169,17 @@ int mjpeg_to_rgb(unsigned char* mjpeg_buf, size_t mjpeg_size, qcv_frame_t* frame
   }
   jpeg_start_decompress(&cinfo);
 
-  
-  frame->type = QCV_FRAME_TYPE_3BYTE_RGB;
-  frame->pixel_matrix.width = cinfo.output_width;
-  frame->pixel_matrix.height = cinfo.output_height;
-  frame->pixel_matrix.element_size = cinfo.output_components;
- 
-  frame->pixel_matrix.buf_size =
-    (frame->pixel_matrix.width) * (frame->pixel_matrix.height) * (frame->pixel_matrix.element_size);
-  frame->pixel_matrix.buf = (unsigned char*) malloc(frame->pixel_matrix.buf_size);
- 
-  frame->pixel_matrix.row_stride = (frame->pixel_matrix.width) * (frame->pixel_matrix.element_size);
- 
+  if((rc = qcv_create_frame(frame, cinfo.output_width,
+                            cinfo.output_height, QCV_FRAME_TYPE_3BYTE_RGB)) < 0) {
+    jpeg_finish_decompress(&cinfo);
+    jpeg_destroy_decompress(&cinfo);
+    return rc;
+  }
+
   while (cinfo.output_scanline < cinfo.output_height) {
     unsigned char *buffer_array[1];
-    buffer_array[0] = (frame->pixel_matrix.buf) +
-      (cinfo.output_scanline) * (frame->pixel_matrix.row_stride);
+    buffer_array[0] = (qcv_frame_buf(frame)) +
+      (cinfo.output_scanline) * (qcv_frame_row_stride(frame));
  
     jpeg_read_scanlines(&cinfo, buffer_array, 1);
  

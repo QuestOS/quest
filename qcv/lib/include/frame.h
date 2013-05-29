@@ -32,6 +32,14 @@ typedef struct {
   qcv_frame_type_t type;
 } qcv_frame_t;
 
+#define qcv_frame_width(f) ((f)->pixel_matrix.width)
+#define qcv_frame_height(f) ((f)->pixel_matrix.height)
+#define qcv_frame_row_stride(f) ((f)->pixel_matrix.row_stride)
+#define qcv_frame_element_size(f) ((f)->pixel_matrix.element_size)
+#define qcv_frame_buf_size(f) ((f)->pixel_matrix.buf_size)
+#define qcv_frame_buf(f) ((f)->pixel_matrix.buf)
+#define qcv_frame_type(f) ((f)->type)
+
 void qcv_release_frame(qcv_frame_t* frame);
 int qcv_create_frame(qcv_frame_t* frame, size_t width, size_t height, qcv_frame_type_t type);
 

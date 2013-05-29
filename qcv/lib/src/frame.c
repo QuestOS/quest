@@ -30,31 +30,29 @@ void qcv_release_frame(qcv_frame_t* frame)
 
 int qcv_create_frame(qcv_frame_t* frame, size_t width, size_t height, qcv_frame_type_t type)
 {
-  frame->pixel_matrix.width = width;
-  frame->pixel_matrix.height = height;
-  frame->pixel_matrix.row_stride = height;
+  qcv_frame_width(frame) = width;
+  qcv_frame_height(frame) = height;
 
-  frame->type = type;
+  qcv_frame_type(frame) = type;
   
   switch(type) {
   case QCV_FRAME_TYPE_3BYTE_RGB:
-    frame->pixel_matrix.element_size = 3;
+    qcv_frame_element_size(frame) = 3;
     break;
   case QCV_FRAME_TYPE_1BYTE_GREY:
-    frame->pixel_matrix.element_size = 1;
+    qcv_frame_element_size(frame) = 1;
     break;
   default:
     return -1;
   }
   
-  frame->pixel_matrix.row_stride = (frame->pixel_matrix.width) * (frame->pixel_matrix.element_size);
+  qcv_frame_row_stride(frame) = width * qcv_frame_element_size(frame);
 
   
-  frame->pixel_matrix.buf_size =
-    (frame->pixel_matrix.width) * (frame->pixel_matrix.height) * (frame->pixel_matrix.element_size);
-  frame->pixel_matrix.buf = (unsigned char*) malloc(frame->pixel_matrix.buf_size);
+  qcv_frame_buf_size(frame) = width * height * qcv_frame_element_size(frame);
+  qcv_frame_buf(frame) = (unsigned char*) malloc(qcv_frame_buf_size(frame));
 
-  if(!frame->pixel_matrix.buf) return -1;
+  if(!qcv_frame_buf(frame)) return -1;
   
   return 0;
 }
