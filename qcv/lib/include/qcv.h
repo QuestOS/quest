@@ -19,10 +19,12 @@
 #ifndef _QCV_QCV_H_
 #define _QCV_QCV_H_
 
-#include "qcv/capture.h"
-#include "qcv/frame.h"
-#include "qcv/mjpeg.h"
-#include "qcv/window.h"
+#include <qcv/capture.h>
+#include <qcv/matrix.h>
+#include <qcv/frame.h>
+#include <qcv/jpeg.h>
+#include <qcv/window.h>
+#include <qcv/canny.h>
 
 #endif // _QCV_QCV_H_
 

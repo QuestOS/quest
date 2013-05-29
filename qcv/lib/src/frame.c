@@ -28,6 +28,37 @@ void qcv_release_frame(qcv_frame_t* frame)
   }
 }
 
+int qcv_create_frame(qcv_frame_t* frame, size_t width, size_t height, qcv_frame_type_t type)
+{
+  frame->pixel_matrix.width = width;
+  frame->pixel_matrix.height = height;
+  frame->pixel_matrix.row_stride = height;
+
+  frame->type = type;
+  
+  switch(type) {
+  case QCV_FRAME_TYPE_3BYTE_RGB:
+    frame->pixel_matrix.element_size = 3;
+    break;
+  case QCV_FRAME_TYPE_1BYTE_GREY:
+    frame->pixel_matrix.element_size = 1;
+    break;
+  default:
+    return -1;
+  }
+  
+  frame->pixel_matrix.row_stride = (frame->pixel_matrix.width) * (frame->pixel_matrix.element_size);
+
+  
+  frame->pixel_matrix.buf_size =
+    (frame->pixel_matrix.width) * (frame->pixel_matrix.height) * (frame->pixel_matrix.element_size);
+  frame->pixel_matrix.buf = (unsigned char*) malloc(frame->pixel_matrix.buf_size);
+
+  if(!frame->pixel_matrix.buf) return -1;
+  
+  return 0;
+}
+
 
 /*
  * Local Variables:

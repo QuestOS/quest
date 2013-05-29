@@ -26,7 +26,8 @@ void main()
   qcv_window_t window;
   qcv_capture_t camera_capture;
   int camera_fd;
-  qcv_frame_t frame;
+  qcv_frame_t frame, canny_frame;
+  qcv_canny_params_t canny_params = QCV_DEFAULT_CANNY_PARAMS;
   
   if(qcv_capture_from_camera(&camera_capture, 0) < 0) {
     printf("Failed to initialise camera capture \n");
@@ -44,9 +45,14 @@ void main()
       printf("Failed to pull frame\n");
       exit(EXIT_FAILURE);
     }
+
+    if(qcv_canny_frame(&frame, &canny_params, &canny_frame) < 0) {
+      printf("canny failed\n");
+    }
     
-    qcv_window_display_frame(&window, &frame);
+    qcv_window_display_frame(&window, &canny_frame);
     qcv_release_frame(&frame);
+    qcv_release_frame(&canny_frame);
   }
 
   printf("At end of camera\n");

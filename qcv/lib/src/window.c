@@ -37,16 +37,29 @@ int qcv_window_display_frame(qcv_window_t* window, qcv_frame_t* frame)
   int x, y;
   unsigned int r, g, b;
   unsigned char* double_buffer = malloc(window->height * window->width);
-  for(y = 0; y < window->height; ++y) {
-    for(x = 0; x < window->width; ++x) {
-      r = (unsigned int)round(frame->pixel_matrix.buf[(x + y * frame->pixel_matrix.width) * 3] / 51.0);
-      g = (unsigned int)round(frame->pixel_matrix.buf[(x + y * frame->pixel_matrix.width) * 3 + 1] / 51.0);
-      b = (unsigned int)round(frame->pixel_matrix.buf[(x + y * frame->pixel_matrix.width) * 3 + 2] / 51.0);
-      
-      double_buffer[x + y * frame->pixel_matrix.width] = r + 6*g + 36*b;
-    }
-  }
 
+  switch(frame->type) {
+  case QCV_FRAME_TYPE_3BYTE_RGB:
+    for(y = 0; y < window->height; ++y) {
+      for(x = 0; x < window->width; ++x) {
+        r = (unsigned int)round(frame->pixel_matrix.buf[(x + y * frame->pixel_matrix.width) * 3] / 51.0);
+        g = (unsigned int)round(frame->pixel_matrix.buf[(x + y * frame->pixel_matrix.width) * 3 + 1] / 51.0);
+        b = (unsigned int)round(frame->pixel_matrix.buf[(x + y * frame->pixel_matrix.width) * 3 + 2] / 51.0);
+        
+        double_buffer[x + y * frame->pixel_matrix.width] = r + 6*g + 36*b;
+      }
+    }
+    break;
+
+  case QCV_FRAME_TYPE_1BYTE_GREY:
+    for(y = 0; y < window->height; ++y) {
+      for(x = 0; x < window->width; ++x) {
+        r = (unsigned int)round(frame->pixel_matrix.buf[(x + y * frame->pixel_matrix.width)] / 51.0);
+        double_buffer[x + y * frame->pixel_matrix.width] = r + 6*r + 36*r;
+      }
+    }
+    break;
+  }
   memcpy(window->video_memory, double_buffer, window->height * window->width);
   free(double_buffer);
   return 0;

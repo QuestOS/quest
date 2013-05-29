@@ -15,28 +15,29 @@
  *  along with this program.  If not, see <http://www.gnu.org/licenses/>.
  */
 
-#ifndef _QCV_FRAME_H_
-#define _QCV_FRAME_H_
+#ifndef _QCV_CANNY_H_
+#define _QCV_CANNY_H_
 
-#include <stdlib.h>
-#include "matrix.h"
-
-typedef enum {
-  QCV_FRAME_TYPE_3BYTE_RGB,
-  QCV_FRAME_TYPE_1BYTE_GREY,
-} qcv_frame_type_t;
+#include "frame.h"
 
 typedef struct {
+  float gaussian_kernel_radius;
+  float low_threshold, high_threshold;
+  int gaussian_kernel_width;
+  int contrast_normalized;
+} qcv_canny_params_t;
 
-  qcv_matrix_t pixel_matrix;
-  qcv_frame_type_t type;
-} qcv_frame_t;
+#define QCV_DEFAULT_CANNY_PARAMS {                        \
+    .gaussian_kernel_radius = 2.0,                        \
+      .low_threshold = 2.5, .high_threshold = 7.5,        \
+      .gaussian_kernel_width = 16,                        \
+      .contrast_normalized = 0 }
 
-void qcv_release_frame(qcv_frame_t* frame);
-int qcv_create_frame(qcv_frame_t* frame, size_t width, size_t height, qcv_frame_type_t type);
+int qcv_canny_frame(qcv_frame_t* frame, qcv_canny_params_t* params, qcv_frame_t* out_frame);
 
 
-#endif // _QCV_FRAME_H_
+#endif // _QCV_CANNY_H_
+
 
 /*
  * Local Variables:

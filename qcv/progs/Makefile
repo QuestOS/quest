@@ -10,7 +10,7 @@ CFLAGS = -g
 
 
 
-PROGS = camera img_mjpeg_dec
+PROGS = camera img_mjpeg_dec camera_canny
 
 #usb_test usb_test_rtt
 
