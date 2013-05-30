@@ -22,12 +22,12 @@
 #include "string.h"
 #include <qcv/qcv.h>
 
-#define IMG_NAME "/boot/test.jpg"
+#define IMG_NAME "/boot/half.jpg"
 
 
 void main()
 {
-  qcv_frame_t frame, canny_frame;
+  qcv_frame_t frame, canny_frame, grey_frame;
   qcv_window_t window;
   qcv_canny_params_t canny_params = QCV_DEFAULT_CANNY_PARAMS;
 
@@ -43,11 +43,16 @@ void main()
     exit(EXIT_FAILURE);
   }
 
-  if(qcv_canny_frame(&frame, &canny_params, &canny_frame) < 0) {
-    printf("Canny failed\n");
+  if(qcv_frame_convert_to(&frame, &grey_frame, QCV_FRAME_TYPE_1BYTE_GREY) < 0) {
+    printf("Failed to convert frame to grey scale\n");
     exit(EXIT_FAILURE);
   }
 
+  if(qcv_canny(&grey_frame, &canny_params, &canny_frame) < 0) {
+    printf("Canny failed\n");
+    exit(EXIT_FAILURE);
+  }
+  
   if(qcv_window_display_frame(&window, &canny_frame) < 0) {
     printf("Failed to display image\n");
     exit(EXIT_FAILURE);

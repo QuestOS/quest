@@ -48,10 +48,13 @@ int qcv_window_display_frame(qcv_window_t* window, qcv_frame_t* frame)
   case QCV_FRAME_TYPE_3BYTE_RGB:
     for(y = 0; y < height; ++y) {
       for(x = 0; x < width; ++x) {
-        r = (unsigned int)round(frame->pixel_matrix.buf[(x + y * frame->pixel_matrix.width) * 3] / 51.0);
-        g = (unsigned int)round(frame->pixel_matrix.buf[(x + y * frame->pixel_matrix.width) * 3 + 1] / 51.0);
-        b = (unsigned int)round(frame->pixel_matrix.buf[(x + y * frame->pixel_matrix.width) * 3 + 2] / 51.0);
         
+        r = (unsigned int)round(qcv_frame_element(frame, unsigned char,
+                                                  (x + y * frame->pixel_matrix.width), 0) / 51.0);
+        g = (unsigned int)round(qcv_frame_element(frame, unsigned char,
+                                                  (x + y * frame->pixel_matrix.width), 1) / 51.0);
+        b = (unsigned int)round(qcv_frame_element(frame, unsigned char,
+                                                  (x + y * frame->pixel_matrix.width), 2) / 51.0);
         double_buffer[x + y * window->width] = r + 6*g + 36*b;
       }
     }
@@ -60,7 +63,8 @@ int qcv_window_display_frame(qcv_window_t* window, qcv_frame_t* frame)
   case QCV_FRAME_TYPE_1BYTE_GREY:
     for(y = 0; y < height; ++y) {
       for(x = 0; x < width; ++x) {
-        r = (unsigned int)round(frame->pixel_matrix.buf[(x + y * frame->pixel_matrix.width)] / 51.0);
+        r = (unsigned int)round(qcv_frame_element(frame, unsigned int,
+                                                  (x + y * frame->pixel_matrix.width), 0) / 51.0);
         double_buffer[x + y * window->width] = r + 6*r + 36*r;
       }
     }

@@ -19,6 +19,8 @@
 #include <unistd.h>
 #include <fcntl.h>
 #include "jpeg.h"
+#include "qcv_error.h"
+#include <math.h>
 
 
 
@@ -30,33 +32,28 @@ void qcv_release_frame(qcv_frame_t* frame)
   }
 }
 
-int qcv_create_frame(qcv_frame_t* frame, size_t width, size_t height, qcv_frame_type_t type)
+qcv_matrix_type_t qcv_matrix_type_for_frame_type(qcv_frame_type_t frame_type)
 {
-  qcv_frame_width(frame) = width;
-  qcv_frame_height(frame) = height;
-
-  qcv_frame_type(frame) = type;
-  
-  switch(type) {
+  switch(frame_type) {
   case QCV_FRAME_TYPE_3BYTE_RGB:
-    qcv_frame_element_size(frame) = 3;
-    break;
+    return QCV_8UC3;
   case QCV_FRAME_TYPE_1BYTE_GREY:
-    qcv_frame_element_size(frame) = 1;
-    break;
+    return QCV_8UC1;
   default:
     return -1;
   }
-  
-  qcv_frame_row_stride(frame) = width * qcv_frame_element_size(frame);
+}
 
-  
-  qcv_frame_buf_size(frame) = width * height * qcv_frame_element_size(frame);
-  qcv_frame_buf(frame) = (unsigned char*) malloc(qcv_frame_buf_size(frame));
+int qcv_create_frame(qcv_frame_t* frame, size_t width, size_t height, qcv_frame_type_t type)
+{
+  qcv_matrix_type_t matrix_type;
 
-  if(!qcv_frame_buf(frame)) return -1;
+  qcv_frame_type(frame) = type;
   
-  return 0;
+  matrix_type = qcv_matrix_type_for_frame_type(type);
+  if(matrix_type < 0) return matrix_type;
+  
+  return qcv_create_matrix(qcv_frame_matrix(frame), width, height, matrix_type);
 }
 
 int qcv_frame_from_file(qcv_frame_t* frame, char* file)
@@ -81,6 +78,60 @@ int qcv_frame_from_file(qcv_frame_t* frame, char* file)
   }
   
   return qcv_jpeg_to_rgb(img_buffer, bytes_read, frame);
+}
+
+#define luminance(r, g,  b)                                             \
+  lroundf(0.299f * r + 0.587f * g + 0.114f * b);
+
+
+int qcv_frame_luminance(qcv_frame_t* frame, int x, int y)
+{
+  switch(qcv_frame_type(frame)) {
+  case QCV_FRAME_TYPE_3BYTE_RGB:
+    return luminance(qcv_frame_element(frame, unsigned char, x + y * frame->pixel_matrix.width, 0),
+                     qcv_frame_element(frame, unsigned char, x + y * frame->pixel_matrix.width, 1),
+                     qcv_frame_element(frame, unsigned char, x + y * frame->pixel_matrix.width, 2));
+  case QCV_FRAME_TYPE_1BYTE_GREY:
+    return qcv_frame_element(frame, unsigned char, x + y * frame->pixel_matrix.width, 0);
+
+  default:
+    qcv_error("Known frame type passed to qcv_frame_luminance");
+  }
+}
+
+
+int qcv_frame_convert_to(qcv_frame_t* src_frame, qcv_frame_t* target_frame,
+                         qcv_frame_type_t target_type)
+{
+  size_t x,y;
+  size_t width = qcv_frame_width(src_frame);
+  size_t height = qcv_frame_width(src_frame);
+  if(qcv_create_frame(target_frame, qcv_frame_width(src_frame), qcv_frame_height(src_frame),
+                      target_type) < 0) return -1;
+  
+  switch(target_type) {
+  case QCV_FRAME_TYPE_3BYTE_RGB:
+    switch(qcv_frame_type(src_frame)) {
+    case QCV_FRAME_TYPE_3BYTE_RGB:
+      
+    case QCV_FRAME_TYPE_1BYTE_GREY:
+      
+    default:
+      qcv_release_frame(target_frame);
+      return -1;
+    }
+  case QCV_FRAME_TYPE_1BYTE_GREY:
+    for(x = 0; x < width; ++x) {
+      for(y = 0; y < height; ++y) {
+        qcv_frame_element_coord(target_frame, unsigned char, x, y, 0) = qcv_frame_luminance(src_frame, x, y);
+      }
+    }
+    return 0;
+    
+  default:
+    qcv_release_frame(target_frame);
+    return -1;
+  }
 }
 
 

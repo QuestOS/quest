@@ -15,27 +15,50 @@
  *  along with this program.  If not, see <http://www.gnu.org/licenses/>.
  */
 
-#ifndef _QCV_CANNY_H_
-#define _QCV_CANNY_H_
+#include "matrix.h"
+#include "qcv_types.h"
 
-#include "frame.h"
+int qcv_create_matrix(qcv_matrix_t* matrix, size_t width, size_t height, qcv_matrix_type_t type)
+{
+  matrix->width = width;
+  matrix->height = height;
+  matrix->type = type;
+  matrix->channels = QCV_MAT_CN(type);
+  switch(QCV_MAT_DEPTH(type)) {
+  case QCV_8U:
+  case QCV_8S:
+    matrix->element_size = 1;
+    break;
+    
+  case QCV_16U:
+  case QCV_16S:
+    matrix->element_size = 2;
+    break;
 
-typedef struct {
-  float low_threshold, high_threshold;
-  int aperture_size;
-} qcv_canny_params_t;
+  case QCV_32S:
+  case QCV_32F:
+    matrix->element_size = 4;
+    break;
 
-#define BORDER_REPLICATE 0
+  case QCV_64F:
+    matrix->element_size = 8;
+    
+  default:
+    return -1;
+  }
+  
+  matrix->row_stride = matrix->element_size * width * matrix->channels;
+  matrix->buf_size = matrix->row_stride * height;
 
-#define QCV_DEFAULT_CANNY_PARAMS {                        \
-    .low_threshold = 2.5, .high_threshold = 7.5,          \
-      .aperture_size = 16}
+  matrix->buf = malloc(matrix->buf_size);
 
-int qcv_canny(qcv_frame_t * img_in, qcv_canny_params_t* params, qcv_frame_t * img_out);
+  return matrix->buf ? 0 : -1;
+}
 
-
-#endif // _QCV_CANNY_H_
-
+void qcv_free_matrix(qcv_matrix_t* matrix)
+{
+  if(matrix->buf) { free(matrix->buf); matrix->buf = NULL;}
+}
 
 /*
  * Local Variables:

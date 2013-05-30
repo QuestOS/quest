@@ -18,8 +18,10 @@
 #ifndef _QCV_FRAME_H_
 #define _QCV_FRAME_H_
 
+#include "qcv_types.h"
 #include <stdlib.h>
 #include "matrix.h"
+
 
 typedef enum {
   QCV_FRAME_TYPE_3BYTE_RGB,
@@ -32,17 +34,25 @@ typedef struct {
   qcv_frame_type_t type;
 } qcv_frame_t;
 
-#define qcv_frame_width(f) ((f)->pixel_matrix.width)
-#define qcv_frame_height(f) ((f)->pixel_matrix.height)
-#define qcv_frame_row_stride(f) ((f)->pixel_matrix.row_stride)
-#define qcv_frame_element_size(f) ((f)->pixel_matrix.element_size)
-#define qcv_frame_buf_size(f) ((f)->pixel_matrix.buf_size)
-#define qcv_frame_buf(f) ((f)->pixel_matrix.buf)
+#define qcv_frame_matrix(f) (&((f)->pixel_matrix))
+#define qcv_frame_width(f) (qcv_matrix_width(qcv_frame_matrix(f)))
+#define qcv_frame_height(f) (qcv_matrix_height(qcv_frame_matrix(f)))
+#define qcv_frame_row_stride(f) (qcv_matrix_row_stride(qcv_frame_matrix(f)))
+#define qcv_frame_element_size(f) (qcv_matrix_element_size(qcv_frame_matrix(f)))
+#define qcv_frame_buf_size(f) (qcv_matrix_buf_size(qcv_frame_matrix(f)))
+#define qcv_frame_buf(f) (qcv_matrix_buf(qcv_frame_matrix(f)))
 #define qcv_frame_type(f) ((f)->type)
+#define qcv_frame_element(f, t, i, c) qcv_matrix_element(qcv_frame_matrix(f), t, i, c)
+#define qcv_frame_element_coord(f, t, x, y, c)          \
+  qcv_matrix_element(qcv_frame_matrix(f), t, (x) + (y) * qcv_frame_width(f), c)
 
 void qcv_release_frame(qcv_frame_t* frame);
 int qcv_create_frame(qcv_frame_t* frame, size_t width, size_t height, qcv_frame_type_t type);
 int qcv_frame_from_file(qcv_frame_t* frame, char* file);
+int qcv_frame_luminance(qcv_frame_t* frame, int x, int y);
+int qcv_frame_convert_to(qcv_frame_t* src_frame, qcv_frame_t* target_frame,
+                         qcv_frame_type_t target_type);
+qcv_matrix_type_t qcv_matrix_type_for_frame_type(qcv_frame_type_t frame_type);
 
 
 #endif // _QCV_FRAME_H_

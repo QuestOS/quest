@@ -15,27 +15,18 @@
  *  along with this program.  If not, see <http://www.gnu.org/licenses/>.
  */
 
-#ifndef _QCV_CANNY_H_
-#define _QCV_CANNY_H_
+#ifndef _QCV_QCV_ASSERT_H_
+#define _QCV_QCV_ASSERT_H_
 
-#include "frame.h"
+#include <stdio.h>
 
-typedef struct {
-  float low_threshold, high_threshold;
-  int aperture_size;
-} qcv_canny_params_t;
-
-#define BORDER_REPLICATE 0
-
-#define QCV_DEFAULT_CANNY_PARAMS {                        \
-    .low_threshold = 2.5, .high_threshold = 7.5,          \
-      .aperture_size = 16}
-
-int qcv_canny(qcv_frame_t * img_in, qcv_canny_params_t* params, qcv_frame_t * img_out);
+#define qcv_assert(cond)                                                \
+  if(!(cond)) { printf("qcv_assert ("#cond") failed at line "           \
+                       "%d function %s file %s\n",                      \
+                       __LINE__, __FUNCTION__, __FILE__); exit(EXIT_FAILURE); }
 
 
-#endif // _QCV_CANNY_H_
-
+#endif // _QCV_QCV_ASSERT_H_
 
 /*
  * Local Variables:

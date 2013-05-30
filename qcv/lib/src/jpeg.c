@@ -15,14 +15,13 @@
  *  along with this program.  If not, see <http://www.gnu.org/licenses/>.
  */
 
+#include "qcv_types.h"          /* Must occur before including libjpeg/jpeglib.h */
+#include "frame.h"
+#include "jpeg.h"
 #include <stdlib.h>
 #include <stdio.h>
 #include <string.h>
-#include "jpeg.h"
-#include "frame.h"
 #include <libjpeg/jpeglib.h>
-
-
 
 
 /* add_huff_table and std_huff_table were take from

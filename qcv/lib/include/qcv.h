@@ -25,6 +25,8 @@
 #include <qcv/jpeg.h>
 #include <qcv/window.h>
 #include <qcv/canny.h>
+#include <qcv/qcv_assert.h>
+#include <qcv/qcv_types.h>
 
 #endif // _QCV_QCV_H_
 

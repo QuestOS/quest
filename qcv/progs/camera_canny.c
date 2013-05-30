@@ -46,7 +46,7 @@ void main()
       exit(EXIT_FAILURE);
     }
 
-    if(qcv_canny_frame(&frame, &canny_params, &canny_frame) < 0) {
+    if(qcv_canny(&frame, &canny_params, &canny_frame) < 0) {
       printf("canny failed\n");
     }
     
