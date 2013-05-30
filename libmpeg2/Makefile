@@ -3,10 +3,13 @@ include ../config.mk
 LIBMPEG2_VERSION=0.5.1
 LIBMPEG2=libmpeg2-$(LIBMPEG2_VERSION)
 
+LIBMPEG2_FILES = $(shell find $(LIBMPEG2) -type f | grep -v $(LIBMPEG2)/Makefile)
+
 all: make_guard
 
+$(LIBMPEG2_FILES): $(LIBMPEG2)/Makefile
 
-make_guard: $(LIBMPEG2)/Makefile
+make_guard: $(LIBMPEG2)/Makefile $(LIBMPEG2_FILES)
 	$(MAKE) -C $(LIBMPEG2)
 	$(MAKE) -C $(LIBMPEG2) install 
 	touch $@
