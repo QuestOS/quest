@@ -1,0 +1,12 @@
+libmpeg2 is created by extracting and then patching the configuration
+files as necessary, running ./configure specifying the $(TARGET) as
+the host and other necessary configure script parameters (see the
+Makefile for all of them).  This is all done via a call to make all.
+Because make all will run the libmpeg2-$(VERSION) make and make
+install to keep the build process fast and since libmpeg2-$(VERSION)
+should never be changed a file called make_guard is created once the 
+archive files have been installed.  If this file exists make all
+will not invoke the libmpeg2-$(VERSION) make.  Doing a make clean or
+make cleanall will remove this file.  Also if the libmpeg2.patch file
+is modified in any way the archive files are removed and the build is
+remade from scratch.

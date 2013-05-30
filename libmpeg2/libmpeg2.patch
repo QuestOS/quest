@@ -1,0 +1,23 @@
+diff -ur libmpeg2-0.5.1/.auto/config.sub libmpeg2-0.5.1_quest/.auto/config.sub
+--- libmpeg2-0.5.1/.auto/config.sub	2013-05-30 16:08:26.675022441 -0400
++++ libmpeg2-0.5.1_quest/.auto/config.sub	2013-05-30 16:02:24.696547317 -0400
+@@ -4,7 +4,7 @@
+ #   2000, 2001, 2002, 2003, 2004, 2005, 2006, 2007, 2008
+ #   Free Software Foundation, Inc.
+ 
+-timestamp='2008-01-16'
++timestamp='2013-05-30'
+ 
+ # This file is (in principle) common to ALL GNU software.
+ # The presence of a machine in this file suggests that SOME GNU software
+@@ -1385,6 +1385,9 @@
+ 	-kaos*)
+ 		os=-kaos
+ 		;;
++        -quest)
++	        os=-quest
++		;;
+ 	-zvmoe)
+ 		os=-zvmoe
+ 		;;
+Only in libmpeg2-0.5.1_quest/: patch
