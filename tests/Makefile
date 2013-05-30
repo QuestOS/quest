@@ -21,10 +21,8 @@ PROGS = exec migtest race test1 test2 test3 test4 test5 \
 
 all: $(PROGS)
 
-%: %.o
-	$(LD)  -o $@ $< $(LIBS) -Map $@.map
-
 %: %.c
+
 
 clean:
 	rm -f *.o *.d *.map *~ $(PROGS)
