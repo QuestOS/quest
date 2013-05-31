@@ -50,9 +50,11 @@ typedef struct _fd_table_file_entry
 {
   char* pathname;
   int current_pos;
+  unsigned char* file_buffer;
+  size_t file_length;
 } fd_table_file_entry_t;
 
-fd_table_file_entry_t* alloc_fd_table_file_entry(char* pathname);
+fd_table_file_entry_t* alloc_fd_table_file_entry(char* pathname, size_t file_length);
 void free_fd_table_file_entry(fd_table_file_entry_t* entry);
 
 /* --YL-- We have a cyclic include in kernel.h involves proc.h and vcpu.h */

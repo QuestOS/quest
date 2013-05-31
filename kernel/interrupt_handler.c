@@ -1147,8 +1147,9 @@ _open (char *pathname, int flags)
       unlock_kernel ();
       return -1;
     }
+    
     fd_table_entry = &tss->fd_table[fd];
-    fd_table_entry->entry = alloc_fd_table_file_entry(pathname);
+    fd_table_entry->entry = alloc_fd_table_file_entry(pathname, (size_t)res);
     
     if(!fd_table_entry->entry) {
       com1_printf("alloc for fd_table_entry->entry failed\n");
@@ -1156,6 +1157,14 @@ _open (char *pathname, int flags)
       return -1;
     }
 
+#ifdef ONE_FILE_READ
+    if(vfs_read(pathname, ((fd_table_file_entry_t*)(fd_table_entry->entry))->file_buffer, res) != res) {
+      kfree(fd_table_entry->entry);
+      unlock_kernel();
+      return -1;
+    }
+    
+#endif
     fd_table_entry->type = FD_TYPE_FILE;
     res = fd;
   }
@@ -1244,6 +1253,13 @@ _read (int fd, char *buf, int count)
   case FD_TYPE_FILE:
 
     file_entry = (fd_table_file_entry_t*)fd_table_entry->entry;
+
+#ifdef ONE_FILE_READ
+
+    act_len = file_entry->file_length;
+    temp_buf = file_entry->file_buffer;
+
+#else
     
     act_len = vfs_dir(file_entry->pathname);
     temp_buf = kmalloc(act_len);
@@ -1265,6 +1281,8 @@ _read (int fd, char *buf, int count)
       return res;
     }
 
+#endif
+
     res = act_len - file_entry->current_pos;
 
     if(count < res) {
@@ -1273,8 +1291,10 @@ _read (int fd, char *buf, int count)
 
     memcpy(buf, &temp_buf[file_entry->current_pos], res);
     file_entry->current_pos += res;
-    
+
+#ifndef ONE_FILE_READ
     kfree(temp_buf);
+#endif
 
     break;
     
