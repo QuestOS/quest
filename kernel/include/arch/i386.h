@@ -165,21 +165,39 @@ set_cr0(uint32 cr)
   asm volatile ("movl %0, %%cr0"::"r" (cr));
 }
 
-static inline void save_fpu_state(void* mem)
-{
-  asm volatile("fsave (%0)\n" :: "r"(mem));
-}
-
-static inline void initialise_fpu(void)
+static inline uint32
+get_cr4(void)
 {
   uint32 cr;
-  asm volatile ("fninit");
+  asm volatile ("movl %%cr4, %0":"=r" (cr));
+  return cr;
+}
+
+static inline void
+set_cr4(uint32 cr)
+{
+  asm volatile ("movl %0, %%cr4"::"r" (cr));
+}
+
+static inline void save_fpu_and_mmx_state(void* mem)
+{
+  asm volatile("fxsave (%0)\n" :: "r"(mem));
+}
+
+static inline void initialise_fpu_and_mmx(void)
+{
+  uint32 cr;
+  asm volatile ("fninit");      /* -- EM -- Not sure if mmx needs to
+                                   be initialised like FPU, if it does
+                                   place it here */
   cr = get_cr0();
   
   /* MP (bit 1) = 1
      EM (bit 2) = 0
      NE (bit 5) = 0 */
   set_cr0((cr & ~(0x24)) | 0x2);
+  cr = get_cr4();
+  set_cr4(cr | 0x600);
 }
 
 #if 0
