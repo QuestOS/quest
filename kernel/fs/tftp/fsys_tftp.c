@@ -224,7 +224,7 @@ free_cache (void)
 
 char* search_for_option(char* buf, int buf_len, char* option, int opt_len) {
   int i;
-  for(i = 0; i < buf_len; ++i) {
+  for(i = 0; i < buf_len - opt_len; ++i) {
     if(memcmp(&buf[i], option, opt_len) == 0) {
       return &buf[i + opt_len];
     }
