@@ -566,6 +566,7 @@ usb_maxpacket(struct usb_device *udev, int pipe)
 void print_all_descriptors(void* descriptor_start, uint total_length);
 void* get_next_desc(uint desc_type, void* descriptor_start, uint remaining_length);
 void print_ept_desc_info(USB_EPT_DESC* ept_desc);
+void print_if_desc_info(USB_IF_DESC *ifd);
 
 
 #define IS_USB_ENDPOINT_TOGGLED(dev_info, endpoint, is_input)           \

@@ -358,25 +358,26 @@ int usb_isochronous_msg(struct usb_device *dev, unsigned int pipe,
    * -- EM -- It should be okay to put these on the stack because this
    * function won't complete until the callback is called
    */
-  DLOG("num_packets = %d", num_packets);
-  struct urb* urb;
-  bool done = FALSE;
+  
+  struct urb* urb = usb_alloc_urb(num_packets, 0);
+  bool *done = kmalloc(sizeof(*done));
 
   int i;
   int ret;
   usb_complete_t complete_callback;
   struct usb_host_endpoint *ep;
 
-  ep = usb_pipe_endpoint(dev, pipe);
-  urb = usb_alloc_urb(num_packets, 0);
-  
-  memset(actual_lens, 0, sizeof(*actual_lens) * num_packets);
-  memset(statuses,    0, sizeof(*statuses)    * num_packets);
-  
-  if(urb == NULL) {
+  if(!urb || !done) {
+    if(urb) usb_free_urb(urb);
+    if(done) kfree(done);
     return -1;
   }
   
+  ep = usb_pipe_endpoint(dev, pipe);
+  
+  memset(actual_lens, 0, sizeof(*actual_lens) * num_packets);
+  memset(statuses,    0, sizeof(*statuses)    * num_packets);
+    
   if(mp_enabled) {
     complete_callback = usb_core_blocking_completion;
   }
@@ -385,7 +386,7 @@ int usb_isochronous_msg(struct usb_device *dev, unsigned int pipe,
     urb->timeout = timeout;
   }
   
-  usb_fill_iso_urb(urb, dev, pipe, data, complete_callback, &done,
+  usb_fill_iso_urb(urb, dev, pipe, data, complete_callback, done,
                    ep->desc.bInterval, num_packets, packet_size);
   
   ret = usb_submit_urb(urb, 0);
@@ -410,11 +411,11 @@ int usb_isochronous_msg(struct usb_device *dev, unsigned int pipe,
     
     /* add one for integer rounding*/
     
-    for(i = 0; (!done) && (i < (timeout / USB_MSG_SLEEP_INTERVAL) + 1 ); ++i) {
+    for(i = 0; (!(*done)) && (i < (timeout / USB_MSG_SLEEP_INTERVAL) + 1 ); ++i) {
       sched_usleep(4000 * USB_MSG_SLEEP_INTERVAL);
     }
     
-    ret = done ? 0 : -1;
+    ret = (*done) ? 0 : -1;
   }
 
  usb_isochronous_msg_out:
@@ -424,6 +425,7 @@ int usb_isochronous_msg(struct usb_device *dev, unsigned int pipe,
     statuses[i] = urb->iso_frame_desc[i].status;
   }
   usb_free_urb(urb);
+  kfree(done);
   return ret;
 }
 
@@ -436,14 +438,19 @@ int usb_interrupt_msg(struct usb_device *usb_dev, unsigned int pipe,
    * function won't complete until the callback is called
    */
 
-  struct urb urb;
-  bool done = FALSE;
+  struct urb* urb = usb_alloc_urb(0, 0);
+  bool *done = kmalloc(sizeof(*done));
   int i;
   int ret;
   usb_complete_t complete_callback;
   struct usb_host_endpoint *ep;
+  if(!urb || !done) {
+    if(urb) usb_free_urb(urb);
+    if(done) kfree(done);
+    return -1;
+  }
 
-  usb_init_urb(&urb);
+  
   ep = usb_pipe_endpoint(usb_dev, pipe);
 
   if(mp_enabled) {
@@ -451,14 +458,14 @@ int usb_interrupt_msg(struct usb_device *usb_dev, unsigned int pipe,
   }
   else {
     complete_callback  = NULL;
-    urb.timeout = timeout;
+    urb->timeout = timeout;
   }
 
-  usb_fill_int_urb(&urb, usb_dev, pipe, data, len, complete_callback, &done,
+  usb_fill_int_urb(urb, usb_dev, pipe, data, len, complete_callback, done,
                    ep->desc.bInterval);
-  urb.actual_length = 0;
+  urb->actual_length = 0;
 
-  ret = usb_submit_urb(&urb, 0);
+  ret = usb_submit_urb(urb, 0);
 
   if(ret < 0) goto usb_interrupt_msg_out;
   
@@ -480,22 +487,22 @@ int usb_interrupt_msg(struct usb_device *usb_dev, unsigned int pipe,
 
     /* add one for integer rounding*/
     
-    for(i = 0; (!done) && (i < (timeout / USB_MSG_SLEEP_INTERVAL) + 1 ); ++i) {
+    for(i = 0; (!(*done)) && (i < (timeout / USB_MSG_SLEEP_INTERVAL) + 1 ); ++i) {
       sched_usleep(4000 * USB_MSG_SLEEP_INTERVAL);
       
     }
 
-    ret = done ? 0 : -1;
+    ret = (*done) ? 0 : -1;
 
   }
   
  usb_interrupt_msg_out:
 
-  *actual_length = urb.actual_length;
+  *actual_length = urb->actual_length;
   /* Must free hcpriv since we are not allocating the urb via
      usb_alloc_urb */
-  if(urb.hcpriv) kfree(urb.hcpriv); 
-  
+  usb_free_urb(urb);
+  kfree(done);
   return ret;
 
 }
@@ -508,25 +515,32 @@ int usb_bulk_msg(struct usb_device *usb_dev, unsigned int pipe,
    * -- EM -- It should be okay to put these on the stack because this
    * function won't complete until the callback is called
    */
-  struct urb urb;
-  bool done = FALSE;
+  struct urb* urb = usb_alloc_urb(0, 0);
+  bool *done = kmalloc(sizeof(*done));
   int i;
   int ret;
   usb_complete_t complete_callback;
+  if(!urb || !done) {
+    if(urb) usb_free_urb(urb);
+    if(done) kfree(done);
+    return -1;
+  }
 
-  usb_init_urb(&urb);
+  *done = FALSE;
+
+  
   if(mp_enabled) {
     complete_callback = usb_core_blocking_completion;
   }
   else {
     complete_callback  = NULL;
-    urb.timeout = timeout;
+    urb->timeout = timeout;
   }
 
-  usb_fill_bulk_urb(&urb, usb_dev, pipe, data, len, complete_callback, &done);
-  urb.actual_length = 0;
+  usb_fill_bulk_urb(urb, usb_dev, pipe, data, len, complete_callback, done);
+  urb->actual_length = 0;
 
-  ret = usb_submit_urb(&urb, 0);
+  ret = usb_submit_urb(urb, 0);
 
   if(ret < 0) goto usb_bulk_msg_out;
   
@@ -548,22 +562,22 @@ int usb_bulk_msg(struct usb_device *usb_dev, unsigned int pipe,
     
     /* add one for integer rounding*/
     
-    for(i = 0; (!done) && (i < (timeout / USB_MSG_SLEEP_INTERVAL) + 1 ); ++i) {
+    for(i = 0; (!(*done)) && (i < (timeout / USB_MSG_SLEEP_INTERVAL) + 1 ); ++i) {
       sched_usleep(4000 * USB_MSG_SLEEP_INTERVAL);
       
     }
 
-    ret = done ? 0 : -1;
+    ret = (*done) ? 0 : -1;
 
   }
   
  usb_bulk_msg_out:
 
-  *actual_length = urb.actual_length;
+  *actual_length = urb->actual_length;
   /* Must free hcpriv since we are not allocating the urb via
      usb_alloc_urb */
-  if(urb.hcpriv) kfree(urb.hcpriv); 
-  
+  usb_free_urb(urb); 
+  kfree(done);
   return ret;
 }
 
@@ -579,17 +593,21 @@ int usb_control_msg(struct usb_device *dev, unsigned int pipe,
    */
   /* -- EM -- not true if it fails! */
   
-  struct urb urb;
-  bool done = FALSE;
+  struct urb* urb = usb_alloc_urb(0, 0);
+  bool* done = kmalloc(sizeof(*done));
   int i;
   USB_DEV_REQ cmd;
   int ret;
   usb_complete_t complete_callback;
-  //DLOG("Address of done = 0x%p", &done);
+  if(!urb || !done) {
+    if(urb) usb_free_urb(urb);
+    if(done) kfree(done);
+    return -1;
+  }
 
-  
+  *done = FALSE;
 
-  usb_init_urb(&urb);
+  usb_init_urb(urb);
   cmd.bmRequestType = requesttype;
   cmd.bRequest = request;
   cmd.wValue = cpu_to_le16(value);
@@ -601,13 +619,13 @@ int usb_control_msg(struct usb_device *dev, unsigned int pipe,
   }
   else {
     complete_callback = NULL;
-    urb.timeout = timeout;
+    urb->timeout = timeout;
   }
   
-  usb_fill_control_urb(&urb, dev, pipe, (unsigned char *)&cmd, data,
-                       size, complete_callback, &done);
-
-  ret = usb_submit_urb(&urb, 0);
+  usb_fill_control_urb(urb, dev, pipe, (unsigned char *)&cmd, data,
+                       size, complete_callback, done);
+  
+  ret = usb_submit_urb(urb, 0);
 
   if(ret < 0) goto usb_control_msg_out;
 
@@ -629,22 +647,21 @@ int usb_control_msg(struct usb_device *dev, unsigned int pipe,
     
     /* add one for integer rounding*/
     
-    for(i = 0; (!done) && (i < (timeout / USB_MSG_SLEEP_INTERVAL) + 1 ); ++i) {
+    for(i = 0; (!(*done)) && (i < (timeout / USB_MSG_SLEEP_INTERVAL) + 1 ); ++i) {
       sched_usleep(4000 * USB_MSG_SLEEP_INTERVAL);
     }
-    if(!done) {
+    if(!(*done)) {
       DLOG("Failed to complete callback for control msg");
       int* temp = 0;
       *temp = 1;
       panic("Failed to complete callback for control msg");
     }
-    ret = done ? 0 : -1;
+    ret = *done ? 0 : -1;
   }
   
  usb_control_msg_out:
-  /* Must free hcpriv since we are not allocating the urb via
-     usb_alloc_urb */
-  if(urb.hcpriv) kfree(urb.hcpriv); 
+  usb_free_urb(urb);
+  kfree(done);
   return ret;  
 }
 
@@ -887,6 +904,23 @@ void print_ept_desc_info(USB_EPT_DESC* ept_desc)
   DLOG("Attributes = 0x%X", ept_desc->bmAttributes);
   DLOG("wMaxPacketSize = 0x%X", ept_desc->wMaxPacketSize);
   DLOG("Interval = 0x%X", ept_desc->bInterval);
+}
+
+void print_if_desc_info(USB_IF_DESC *ifd)
+{
+#define PRINT_IF_DESC_ELEMENT(e) DLOG("ifd->"#e" = 0x%X", ifd->e);
+  DLOG("Interface descriptor information");
+  PRINT_IF_DESC_ELEMENT(bLength);
+  PRINT_IF_DESC_ELEMENT(bDescriptorType);
+  PRINT_IF_DESC_ELEMENT(bInterfaceNumber);
+  PRINT_IF_DESC_ELEMENT(bAlternateSetting);
+  PRINT_IF_DESC_ELEMENT(bNumEndpoints);
+  PRINT_IF_DESC_ELEMENT(bInterfaceClass);
+  PRINT_IF_DESC_ELEMENT(bInterfaceSubClass);
+  PRINT_IF_DESC_ELEMENT(bInterfaceProtocol);
+  PRINT_IF_DESC_ELEMENT(iInterface);
+
+#undef PRINT_IF_DESC_ELEMENT
 }
 
 /* figures out what device is attached as address 0 */

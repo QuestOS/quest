@@ -1266,6 +1266,7 @@ static bool handle_non_rt_urb_completion(ehci_hcd_t* ehci_hcd,
     }
     else {
       ehci_qh_urb_priv_t* qh_urb_priv = ehci_get_qh_urb_priv(urb);
+      urb->actual_length = urb->transfer_buffer_length;
       free_qtds(ehci_hcd, qh_urb_priv->qtds, qh_urb_priv->num_qtds);
     }
     return TRUE;
@@ -2221,15 +2222,15 @@ bool ehci_init(void)
      be best to add all EHCI chips to an array that is iterated, and
      each time one is found it is pushed to the usb core */
 
-  while (pci_find_device (0x8086, 0x24CD, 0x0C, 0x03, i, &i)) { 
-    if (pci_get_device (i, &ehci_device)) { 
-      if (ehci_device.progIF == 0x20) {
-        device_index = i;
-        break;
-      }
-      i++;
-    } else break;
-  }
+   while (pci_find_device (0x8086, 0x1C2D, 0x0C, 0x03, i, &i)) {
+      if (pci_get_device (i, &ehci_device)) { 
+        if (ehci_device.progIF == 0x20) {
+          device_index = i;
+          break;
+        }
+        i++;
+      } else break;
+    }
    
    
   if(device_index == ~0) {
@@ -2246,7 +2247,8 @@ bool ehci_init(void)
   }
    
   if(device_index == ~0) {
-    while (pci_find_device (0x8086, 0x1C2D, 0x0C, 0x03, i, &i)) {
+   
+    while (pci_find_device (0x8086, 0x24CD, 0x0C, 0x03, i, &i)) { 
       if (pci_get_device (i, &ehci_device)) { 
         if (ehci_device.progIF == 0x20) {
           device_index = i;
@@ -2744,7 +2746,7 @@ static void qh_append_qtds(ehci_hcd_t* ehci_hcd, struct urb* urb,
       break;
       
     case PIPE_CONTROL:
-    qh_urb_priv = &(get_ctrl_urb_priv(urb))->qh_urb_priv;
+      qh_urb_priv = &(get_ctrl_urb_priv(urb))->qh_urb_priv;
     break;
     }
     
@@ -2758,8 +2760,8 @@ static void qh_append_qtds(ehci_hcd_t* ehci_hcd, struct urb* urb,
         break;
         }
       }
-    
-    
+      
+      
       if(urb_swap_index < 0) {
         DLOG("urb_swap_index = %d in %s this should never happen",
              urb_swap_index, __FUNCTION__);
@@ -2844,6 +2846,7 @@ static sint32 spin_for_transfer_completion(ehci_hcd_t* ehci_hcd,
                                            int timeout)
 {
   int i;
+  int bytes_not_transfered = 0;
   qtd_t* last_qtd;
   qtd_t* temp_qtd;
   qtd_t* qtd_to_remove;
@@ -2880,8 +2883,8 @@ static sint32 spin_for_transfer_completion(ehci_hcd_t* ehci_hcd,
 
   /* Step 1 */
   if( (pipe_type != PIPE_INTERRUPT) && EHCI_INTR_ENABLED(ehci_hcd, USBINTR_IAA) ) {
-    if(EHCI_INTR_ENABLED(ehci_hcd, USBINTR_IAA)) { DLOG("EHCI_INTR_ENABLED(ehci_hcd, USBINTR_IAA) is true"); }
-    DLOG("AT %d", __LINE__);
+    //if(EHCI_INTR_ENABLED(ehci_hcd, USBINTR_IAA)) { DLOG("EHCI_INTR_ENABLED(ehci_hcd, USBINTR_IAA) is true"); }
+    //DLOG("AT %d", __LINE__);
     //return -1;
   }
 
@@ -2922,13 +2925,27 @@ static sint32 spin_for_transfer_completion(ehci_hcd_t* ehci_hcd,
 
   list_for_each_entry(temp_qtd, &qh->qtd_list, chain_list) {
     if(temp_qtd->total_bytes_to_transfer != 0) {
-      
-      DLOG("Failed to transfer everything");
-      DLOG("%d bytes left", temp_qtd->total_bytes_to_transfer);
-      panic("Failed to transfer everything");
+      bytes_not_transfered += temp_qtd->total_bytes_to_transfer;
     }
   }
 
+  
+
+  if(bytes_not_transfered) {
+    int spin_counter = 0;
+    EHCI_DISABLE_ASYNC_DOORBELL(ehci_hcd);
+    EHCI_ACK_INTERRUPTS(ehci_hcd, USBINTR_IAA);
+    unlink_async_queue_head(ehci_hcd, qh);
+    EHCI_ENABLE_ASYNC_DOORBELL(ehci_hcd);
+    while(!EHCI_ASYNC_DOORBELL_RUNG(ehci_hcd)) {
+      sched_usleep(100);
+      if(spin_counter++ > 1000) {
+        com1_printf("Spun waiting forever for EHCI chip to ring doorbell\n");
+        panic("EHCI never rang doorbell");
+      }
+    }
+    qh->state = QH_STATE_NOT_LINKED;
+  }
 
   
   list_for_each_entry_safe(qtd_to_remove, qtd_tmp, &qh->qtd_list, chain_list) {
@@ -2945,7 +2962,7 @@ static sint32 spin_for_transfer_completion(ehci_hcd_t* ehci_hcd,
      * -- EM -- ALL QTDS REMOVED this can happen because a silicon
      * quirk with some ehci host controllers moving the dummy qtd as
      * the active one, I have not tested the functionally (since I
-     * haven't found a chip that does this) when this occurs so all
+     * haven't found a chip that does this) so when this occurs all
      * bets are off
      */
     DLOG("ALL QTDS REMOVED see comment at file %s line %d", __FILE__, __LINE__);
@@ -2958,15 +2975,8 @@ static sint32 spin_for_transfer_completion(ehci_hcd_t* ehci_hcd,
     DLOG("EHCI PCI master abort: function %s line %d", __FUNCTION__, __LINE__);
     panic("PCI master abort");
   }
-
-  /*
-   * -- EM -- Right now for the spin for completion transfers the
-   * transfer is only successful if it completely finishes, otherwise
-   * it fails.  When this is fixed and the panic is removed we will
-   * have to read how many bytes where left in the tds, until now just
-   * doing this so calling devices drivers work correctly
-   */
-  urb->actual_length = urb->transfer_buffer_length;
+  
+  urb->actual_length = urb->transfer_buffer_length - bytes_not_transfered;
   
   return 0;
 }
@@ -2988,10 +2998,16 @@ static int submit_async_qtd_chain(ehci_hcd_t* ehci_hcd, struct urb* urb, qh_t** 
   
   
   EHCI_SET_DEVICE_QH(ehci_hcd, device_addr, is_input, endpoint, *qh);
-  
-  if(get_bulk_urb_priv(urb)) {
-    get_bulk_urb_priv(urb)->qh_urb_priv.qh = *qh;
 
+  if(pipe_type == PIPE_BULK) {
+    if(get_bulk_urb_priv(urb)) {
+      get_bulk_urb_priv(urb)->qh_urb_priv.qh = *qh;
+    }
+  }
+  else {
+    if(get_ctrl_urb_priv(urb)) {
+      get_ctrl_urb_priv(urb)->qh_urb_priv.qh = *qh;
+    }
   }
   qh_append_qtds(ehci_hcd, urb, *qh, qtd_list);
   if((*qh)->state == QH_STATE_NOT_LINKED) {
@@ -3327,13 +3343,6 @@ ehci_async_transfer(ehci_hcd_t* ehci_hcd, struct urb* urb)
   
   INIT_LIST_HEAD(&qtd_list);
 
-  if(mp_enabled && usb_pipetype(pipe) == PIPE_BULK && !urb->realtime) {
-    //  if(usb_pipetype(pipe) != PIPE_BULK &&
-    //     mp_enabled && !urb->realtime) {
-    DLOG("Can only do control transactions or real time bulk transactions");
-    panic("Can only do control transactions or real time bulk transactions");
-  }
-
   /*
    * -- EM -- high jack function if it is bulk and realtime urb
    */
@@ -3462,18 +3471,25 @@ ehci_async_transfer(ehci_hcd_t* ehci_hcd, struct urb* urb)
     int i;
     int num_qtds = 0;
     qtd_t* temp_qtd;
-    ehci_ctrl_urb_priv_t* ctrl_urb_priv;
+    ehci_qh_urb_priv_t* qh_urb_priv;
     list_for_each_entry(temp_qtd, &qtd_list, chain_list) {
       ++num_qtds;
     }
 
-    ctrl_urb_priv = ehci_alloc_ctrl_urb_priv(num_qtds);
-    
-    urb->hcpriv = ctrl_urb_priv;
+    if(pipe_type == PIPE_CONTROL) {
+      ehci_ctrl_urb_priv_t* ctrl_urb_priv = ehci_alloc_ctrl_urb_priv(num_qtds);
+      urb->hcpriv = ctrl_urb_priv;
+      qh_urb_priv = &ctrl_urb_priv->qh_urb_priv;
+    }
+    else { /* pipe_type == BULK */
+      ehci_bulk_urb_priv_t* bulk_urb_priv = ehci_alloc_bulk_urb_priv(num_qtds);
+      urb->hcpriv = bulk_urb_priv;
+      qh_urb_priv = &bulk_urb_priv->qh_urb_priv;
+    }
     
     i = 0;
     list_for_each_entry(temp_qtd, &qtd_list, chain_list) {
-      ctrl_urb_priv->qh_urb_priv.qtds[i++] = temp_qtd;
+      qh_urb_priv->qtds[i++] = temp_qtd;
     }
     completion_element->urb = urb;
     completion_element->pipe_type = pipe_type;
@@ -4316,7 +4332,7 @@ static const struct module_ops mod_ops = {
   .init = ehci_init
 };
 
-//DEF_MODULE (usb___ehci, "EHCI driver", &mod_ops, {"usb", "pci"});
+DEF_MODULE (usb___ehci, "EHCI driver", &mod_ops, {"usb", "pci"});
 
 /*
  * Local Variables:

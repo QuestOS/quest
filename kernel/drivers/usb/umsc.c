@@ -27,7 +27,7 @@
 #define USB_MASS_STORAGE_CLASS 0x8
 #define UMSC_PROTOCOL 0x50
 
-#define DEBUG_UMSC
+//#define DEBUG_UMSC
 
 #ifdef DEBUG_UMSC
 #define DLOG(fmt,...) DLOG_PREFIX("umsc",fmt,##__VA_ARGS__)
@@ -104,9 +104,13 @@ umsc_bulk_scsi (USB_DEVICE_INFO* info, uint ep_out, uint ep_in,
   memcpy (cbw.CBWCB, cmd, 16);
   status = usb_bulk_msg(info, usb_sndbulkpipe(info, ep_out), &cbw, 0x1F,
                         &act_len, USB_DEFAULT_CONTROL_MSG_TIMEOUT);
-  
 
-  DLOG ("status=%d", status);
+
+  DLOG("%d:status=%d, data_len=%d, act_len=%d", __LINE__, status, 0x1F, act_len);
+
+  
+  if(status < 0) return status;
+  
 
   if (data_len > 0) {
     if (dir) {
@@ -118,9 +122,9 @@ umsc_bulk_scsi (USB_DEVICE_INFO* info, uint ep_out, uint ep_in,
                                  USB_DEFAULT_BULK_MSG_TIMEOUT);
     }
 
-    DLOG ("status=%d", status);
+    DLOG("%d:status=%d, data_len=%d, act_len=%d", __LINE__, status, data_len, act_len);
 
-    if (status != 0) return status;
+    if (status < 0) return status;
 
     DLOG ("data=%.02X %.02X %.02X %.02X", data[0], data[1], data[2], data[3]);
 
@@ -129,9 +133,9 @@ umsc_bulk_scsi (USB_DEVICE_INFO* info, uint ep_out, uint ep_in,
                         USB_DEFAULT_CONTROL_MSG_TIMEOUT);
 
 
-  DLOG ("status=%d", status);
+  DLOG("%d:status=%d, data_len=%d, act_len=%d", __LINE__, status, 0x0d, act_len);
 
-  if (status != 0) return status;
+  if (status < 0) return status;
 
   DLOG ("csw sig=%p tag=%p res=%d status=%d",
         csw.dCSWSignature, csw.dCSWTag, csw.dCSWDataResidue, csw.bCSWStatus);
@@ -152,10 +156,10 @@ _umsc_read_sector (uint dev_index, uint32 lba, uint8 *sector, uint len)
   if (dev_index >= num_umsc_devs) return 0;
   umsc = &umsc_devs[dev_index];
   if (len < umsc->sector_size) return 0;
-
+  DLOG("In %s", __FUNCTION__);
   if (umsc_bulk_scsi (umsc->devinfo,
                       umsc->ep_out, umsc->ep_in, cmd, 1, sector,
-                      umsc->sector_size, umsc->maxpkt) != 0)
+                      umsc->sector_size, umsc->maxpkt) < 0)
     return 0;
   return umsc->sector_size;
 }
@@ -229,16 +233,18 @@ umsc_tmr_test (void)
   USB_DEVICE_INFO* info = testinfo;
   uint  ep_out = testepout, ep_in = testepin, maxpkt=512;
   uint last_lba, sector_size;
-  
+  static int counter = 0;
   {
-    uint8 cmd[16] = {0x25,0,0,0,0,0,0,0,0,0,0,0};
-    DLOG ("SENDING READ CAPACITY");
-    umsc_bulk_scsi (info, ep_out, ep_in, cmd, 1, conf, 0x8, maxpkt);
-    last_lba = conf[3] | conf[2] << 8 | conf[1] << 16 | conf[0] << 24;
-    sector_size = conf[7] | conf[6] << 8 | conf[5] << 16 | conf[4] << 24;
-    DLOG ("sector_size=0x%x last_lba=0x%x total_size=%d bytes",
+    if(counter++ < 5) {
+      uint8 cmd[16] = {0x25,0,0,0,0,0,0,0,0,0,0,0};
+      DLOG ("SENDING READ CAPACITY");
+      DLOG("testinfo = 0x%p", testinfo);
+      umsc_bulk_scsi (info, ep_out, ep_in, cmd, 1, conf, 0x8, maxpkt);
+      last_lba = conf[3] | conf[2] << 8 | conf[1] << 16 | conf[0] << 24;
+      sector_size = conf[7] | conf[6] << 8 | conf[5] << 16 | conf[4] << 24;
+      DLOG ("sector_size=0x%x last_lba=0x%x total_size=%d bytes",
             sector_size, last_lba, sector_size * (last_lba + 1));
-    
+    }
   }
   #endif
 }
@@ -281,15 +287,17 @@ umsc_probe (USB_DEVICE_INFO *info, USB_CFG_DESC *cfgd, USB_IF_DESC *ifd)
       ifd->bInterfaceProtocol != UMSC_PROTOCOL)
     return FALSE;
 
-
   ep = (USB_EPT_DESC *)(&ifd[1]);
 
 
-  if (ep[0].wMaxPacketSize != ep[1].wMaxPacketSize) {
-    DLOG ("endpoint packet sizes don't match!");
+  if( (ep[0].wMaxPacketSize != ep[1].wMaxPacketSize) ||
+      (ep[0].bDescriptorType != USB_TYPE_EPT_DESC) ||
+      (ep[1].bDescriptorType != USB_TYPE_EPT_DESC) ) {
+    DLOG ("endpoint packet sizes don't match! or descriptors aren't endpoint descriptors");
     return FALSE;
   }
 
+  
   usb_register_device(info, &umsc_driver, "umsc");
   
   DLOG("endpoint packet size = %d", ep[0].wMaxPacketSize);
@@ -325,42 +333,42 @@ umsc_probe (USB_DEVICE_INFO *info, USB_CFG_DESC *cfgd, USB_IF_DESC *ifd)
   {
     uint8 cmd[16] = {0x12,0,0,0,0x24,0,0,0,0,0,0,0};
     DLOG ("SENDING INQUIRY");
-    if (umsc_bulk_scsi (info, ep_out, ep_in, cmd, 1, conf, 0x24, maxpkt) != 0)
+    if (umsc_bulk_scsi (info, ep_out, ep_in, cmd, 1, conf, 0x24, maxpkt) < 0)
       return FALSE;
   }
 
   {
     uint8 cmd[16] = {0,0,0,0,0,0,0,0,0,0,0,0};
     DLOG ("SENDING TEST UNIT READY");
-    if (umsc_bulk_scsi (info, ep_out, ep_in, cmd, 1, conf, 0, maxpkt) != 0)
+    if (umsc_bulk_scsi (info, ep_out, ep_in, cmd, 1, conf, 0, maxpkt) < 0)
       return FALSE;
   }
 
   {
     uint8 cmd[16] = {0x03,0,0,0,0x24,0,0,0,0,0,0,0};
     DLOG ("SENDING REQUEST SENSE");
-    if (umsc_bulk_scsi (info, ep_out, ep_in, cmd, 1, conf, 0x24, maxpkt) != 0)
+    if (umsc_bulk_scsi (info, ep_out, ep_in, cmd, 1, conf, 28, maxpkt) < 0)
       return FALSE;
   }
 
   {
     uint8 cmd[16] = {0,0,0,0,0,0,0,0,0,0,0,0};
     DLOG ("SENDING TEST UNIT READY");
-    if (umsc_bulk_scsi (info, ep_out, ep_in, cmd, 1, conf, 0, maxpkt) != 0)
+    if (umsc_bulk_scsi (info, ep_out, ep_in, cmd, 1, conf, 0, maxpkt) < 0)
       return FALSE;
   }
 
   {
     uint8 cmd[16] = {0x03,0,0,0,0x24,0,0,0,0,0,0,0};
     DLOG ("SENDING REQUEST SENSE");
-    if (umsc_bulk_scsi (info, ep_out, ep_in, cmd, 1, conf, 0x24, maxpkt) != 0)
+    if (umsc_bulk_scsi (info, ep_out, ep_in, cmd, 1, conf, 28, maxpkt) < 0)
       return FALSE;
   }
 
   {
     uint8 cmd[16] = {0x25,0,0,0,0,0,0,0,0,0,0,0};
     DLOG ("SENDING READ CAPACITY");
-    if (umsc_bulk_scsi (info, ep_out, ep_in, cmd, 1, conf, 0x8, maxpkt) != 0)
+    if (umsc_bulk_scsi (info, ep_out, ep_in, cmd, 1, conf, 0x8, maxpkt) < 0)
       return FALSE;
     last_lba = conf[3] | conf[2] << 8 | conf[1] << 16 | conf[0] << 24;
     sector_size = conf[7] | conf[6] << 8 | conf[5] << 16 | conf[4] << 24;
@@ -372,7 +380,7 @@ umsc_probe (USB_DEVICE_INFO *info, USB_CFG_DESC *cfgd, USB_IF_DESC *ifd)
   {
     uint8 cmd[16] = { [0] = 0x28, [8] = 1 };
     DLOG ("SENDING READ (10)");
-    if (umsc_bulk_scsi (info, ep_out, ep_in, cmd, 1, conf, 512, maxpkt) != 0)
+    if (umsc_bulk_scsi (info, ep_out, ep_in, cmd, 1, conf, 512, maxpkt) < 0)
       return FALSE;
     DLOG ("read from sector 0: %.02X %.02X %.02X %.02X",
           conf[0], conf[1], conf[2], conf[3]);
@@ -392,14 +400,15 @@ umsc_probe (USB_DEVICE_INFO *info, USB_CFG_DESC *cfgd, USB_IF_DESC *ifd)
 
   num_umsc_devs++;
 
-  umsc_thread_id =
-    start_kernel_thread ((u32) umsc_thread, (u32) &umsc_stack[1023], "USB Mass Storage");
-  set_iovcpu (umsc_thread_id, IOVCPU_CLASS_USB | IOVCPU_CLASS_DISK);
+  umsc_thread_id = 0;
+  /* Turn thread back on later */
+  //  start_kernel_thread ((u32) umsc_thread, (u32) &umsc_stack[1023], "USB Mass Storage");
+  //set_iovcpu (umsc_thread_id, IOVCPU_CLASS_USB | IOVCPU_CLASS_DISK);
 
   {
     uint8 cmd[16] = {0x25,0,0,0,0,0,0,0,0,0,0,0};
     DLOG ("SENDING READ CAPACITY");
-    if (umsc_bulk_scsi (info, ep_out, ep_in, cmd, 1, conf, 0x8, maxpkt) != 0)
+    if (umsc_bulk_scsi (info, ep_out, ep_in, cmd, 1, conf, 0x8, maxpkt) < 0)
       return FALSE;
     last_lba = conf[3] | conf[2] << 8 | conf[1] << 16 | conf[0] << 24;
     sector_size = conf[7] | conf[6] << 8 | conf[5] << 16 | conf[4] << 24;
@@ -408,11 +417,6 @@ umsc_probe (USB_DEVICE_INFO *info, USB_CFG_DESC *cfgd, USB_IF_DESC *ifd)
   }
   
   umsc_tmr_test();
-
-
-  
-  DLOG("DONE WITH UMSC PROBE");
-
   
   return TRUE;
 }
