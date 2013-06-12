@@ -172,29 +172,6 @@ bool get_usb_device_id(char* name)
   return -1;
 }
 
-/* Poor mans sprintf */
-static void int_to_ascii(char* buf, uint decimal)
-{
-  int i = 0;
-  char* p1;
-  char* p2;
-  do {
-    buf[i++] = (decimal % 10) + '0';
-    decimal = decimal / 10;
-  } while(decimal);
-  buf[i] = '\0';
-  
-  /* Reverse BUF. */
-  p1 = buf;
-  p2 = &buf[i-1];
-  while (p1 < p2) {
-    char tmp = *p1;
-    *p1 = *p2;
-    *p2 = tmp;
-    p1++;
-    p2--;
-  }
-}
 
 static char* get_next_usb_device_name(char* base_name)
 {

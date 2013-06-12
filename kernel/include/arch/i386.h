@@ -568,6 +568,57 @@ strncmp (const char *a, const char *b, int n)
   return i;
 }
 
+static inline int
+memcmp(const void * ptr1, const void * ptr2, int count)
+{
+  if(!count) return 0;
+
+  while(--count && *(u8*)ptr1 == *(u8*)ptr2 ) {
+    ptr1 = (u8*)ptr1 + 1;
+    ptr2 = (u8*)ptr2 + 1;
+  }
+  
+  return(*((u8*)ptr1) - *((u8*)ptr2));
+}
+
+static inline
+int atoi(char* s)
+{
+  int v = 0;
+  bool minus = (*s == '-');
+  if(minus) s++;
+  while(*s) v = v*10 + (*s++) - '0';
+  
+  return minus ? -v : v;
+}
+
+/* Poor mans sprintf */
+static inline int int_to_ascii(char* buf, uint decimal)
+{
+  int i = 0;
+  char* p1;
+  char* p2;
+  do {
+    buf[i++] = (decimal % 10) + '0';
+    decimal = decimal / 10;
+  } while(decimal);
+  buf[i] = '\0';
+  
+  /* Reverse BUF. */
+  p1 = buf;
+  p2 = &buf[i-1];
+  while (p1 < p2) {
+    char tmp = *p1;
+    *p1 = *p2;
+    *p2 = tmp;
+    p1++;
+    p2--;
+  }
+  return i;
+}
+
+
+
 static inline uint64
 rdmsr (uint32 ecx)
 {
