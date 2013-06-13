@@ -30,7 +30,7 @@
 //#define DEBUG_TFTP
 
 #define TFTP_PORT 69
-#define TFTP_MAX_BLOCK_SIZE 65464
+#define TFTP_MAX_BLOCK_SIZE 2048
 #define BLOCKS_PER_NODE 7       /* 7 * 512 + 8 < 4096 */
 #define TFTP_RING_LEN 4
 
