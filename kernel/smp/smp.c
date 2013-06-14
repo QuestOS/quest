@@ -390,7 +390,7 @@ ap_init (void)
       }
     }
   }
-  map_malloc_page_tables(pg_dir[mod_num], SANDBOX_KERN_OFFSET * phys_id);
+  map_malloc_paging_structures(pg_dir[mod_num], SANDBOX_KERN_OFFSET * phys_id);
   map_dma_page_tables(pg_dir[mod_num], SANDBOX_KERN_OFFSET * phys_id);
 
   

@@ -89,6 +89,37 @@ alloc_phys_frames (uint32 count)
   return -1;                    /* Error -- no free page? */
 }
 
+uint32
+alloc_phys_frames_aligned_on (uint32 count, uint32 alignment)
+{
+
+  int i, j;
+  int increment = alignment / 0x1000;
+  int rem = mm_begin % increment;
+  if(rem) {
+    i = mm_begin + (increment - rem);
+  }
+  else {
+    i = mm_begin;
+  }
+  for (; i < mm_limit - count + 1; i += increment) {
+    for (j = 0; j < count; j++) {
+      if (!BITMAP_TST (mm_table, i + j)) {      /* Is not free page? */
+        i = i + j;
+        goto keep_searching;
+      }
+    }
+    /* found window: */
+    for (j = 0; j < count; j++) {
+      BITMAP_CLR (mm_table, i + j);
+    }
+    return (i << 12);           /* physical byte address of free frames */
+  keep_searching:
+    ;
+  }
+  return -1;                    /* Error -- no free page? */
+}
+
 void
 free_phys_frame (uint32 frame)
 {
