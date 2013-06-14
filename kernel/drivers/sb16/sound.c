@@ -471,7 +471,7 @@ static const struct module_ops mod_ops = {
   .init = sb16_init
 };
 
-DEF_MODULE (sound___sb16, "Sound Blaster 16 driver", &mod_ops, {"vfs"});
+//DEF_MODULE (sound___sb16, "Sound Blaster 16 driver", &mod_ops, {"vfs"});
 
 /*
  * Local Variables:
