@@ -144,9 +144,13 @@ umsc_bulk_scsi (USB_DEVICE_INFO* info, uint ep_out, uint ep_in,
 }
 
 sint
-_umsc_read_sector (uint dev_index, uint32 lba, uint8 *sector, uint len)
+umsc_read_sector (uint dev_index, uint32 lba, uint8 *sector, uint len)
 {
   umsc_device_t *umsc;
+  
+  if (dev_index >= num_umsc_devs) return 0;
+  if (len < umsc_devs[dev_index].sector_size) return 0;
+  
   uint8 cmd[16] = { [0] = 0x28,
                     [2] = (lba >> 0x18) & 0xFF,
                     [3] = (lba >> 0x10) & 0xFF,
@@ -164,65 +168,39 @@ _umsc_read_sector (uint dev_index, uint32 lba, uint8 *sector, uint len)
   return umsc->sector_size;
 }
 
-
-/* bit of a hack here since we don't have IPC yet */
-static task_id umsc_cur_task = 0, umsc_waitq = 0, umsc_thread_id = 0;
-static u32 umsc_cur_dev_index, umsc_cur_lba, umsc_cur_len;
-static u8 umsc_cur_sector[512];
-static sint umsc_cur_res;
-static u32 umsc_stack[1024] ALIGNED (0x1000);
-
-static void
-umsc_thread (void)
+int
+umsc_read_sectors (uint dev_index, uint32 lba, uint8 * buf, uint16 snum)
 {
-  logger_printf ("umsc_thread: hello from 0x%x\n", str ());
-  for (;;) {
-    if (umsc_cur_task) {
-      DLOG ("thread: read_sector for 0x%x (%d, %d, %p, %d)", umsc_cur_task,
-            umsc_cur_dev_index, umsc_cur_lba, umsc_cur_sector,
-            umsc_cur_len);
-      umsc_cur_res = _umsc_read_sector (umsc_cur_dev_index, umsc_cur_lba,
-                                        umsc_cur_sector, umsc_cur_len);
-      wakeup (umsc_cur_task);
-      umsc_cur_task = 0;
-    }
-    iovcpu_job_completion ();
-  }
-}
-
-sint
-umsc_read_sector (uint dev_index, u32 lba, u8 *sector, uint len)
-{
-  sint res;
+  umsc_device_t * umsc;
+  uint8 * index = buf;
+  uint16 res = 0, sectors = 0;
+  uint32 total_sec = 0;
+  int rds = 0;
+  uint8 cmd[16] = { [0] = 0x28,
+                    [2] = (lba >> 0x18) & 0xFF,
+                    [3] = (lba >> 0x10) & 0xFF,
+                    [4] = (lba >> 0x08) & 0xFF,
+                    [5] = (lba >> 0x00) & 0xFF };
 
   if (dev_index >= num_umsc_devs) return 0;
-  if (len < umsc_devs[dev_index].sector_size) return 0;
+  umsc = &umsc_devs[dev_index];
 
-  if (!mp_enabled || !umsc_thread_id) {
-    return _umsc_read_sector (dev_index, lba, sector, len);
-  }
+  rds = snum / 0xFFFF;
+  res = snum % 0xFFFF;
 
-  while (umsc_cur_task) {
-    queue_append (&umsc_waitq, str ());
-    schedule ();
-  }
+  do {
+    sectors = (rds) ? 0xFFFF : res;
+    cmd[7] = (sectors >> 0x08) & 0xFF;  /* MSB of length */
+    cmd[8] = (sectors >> 0x00) & 0xFF;  /* LSB of length */
+    if (umsc_bulk_scsi (umsc->devinfo,
+                        umsc->ep_out, umsc->ep_in, cmd, 1,
+                        index + umsc->sector_size * total_sec,
+                        umsc->sector_size * sectors, umsc->maxpkt) < 0)
+      return total_sec;
+    total_sec += sectors;
+  } while ((--rds) >= 0);
 
-  umsc_cur_dev_index = dev_index;
-  umsc_cur_lba = lba;
-  umsc_cur_len = len;
-
-  umsc_cur_task = str ();
-
-  iovcpu_job_wakeup_for_me (umsc_thread_id);
-
-  schedule ();
-
-  memcpy (sector, umsc_cur_sector, sizeof (umsc_cur_sector));
-  res = umsc_cur_res;
-
-  wakeup_queue (&umsc_waitq);
-
-  return res;
+  return total_sec;
 }
 
 extern void
@@ -232,7 +210,9 @@ umsc_tmr_test (void)
   uint8 conf[16];
   USB_DEVICE_INFO* info = testinfo;
   uint  ep_out = testepout, ep_in = testepin, maxpkt=512;
+#ifdef DEBUG_UMSC
   uint last_lba, sector_size;
+#endif
   static int counter = 0;
   {
     if(counter++ < 5) {
@@ -240,8 +220,10 @@ umsc_tmr_test (void)
       DLOG ("SENDING READ CAPACITY");
       DLOG("testinfo = 0x%p", testinfo);
       umsc_bulk_scsi (info, ep_out, ep_in, cmd, 1, conf, 0x8, maxpkt);
+#ifdef DEBUG_UMSC
       last_lba = conf[3] | conf[2] << 8 | conf[1] << 16 | conf[0] << 24;
       sector_size = conf[7] | conf[6] << 8 | conf[5] << 16 | conf[4] << 24;
+#endif
       DLOG ("sector_size=0x%x last_lba=0x%x total_size=%d bytes",
             sector_size, last_lba, sector_size * (last_lba + 1));
     }
@@ -274,7 +256,10 @@ static USB_DRIVER umsc_driver = {
 static bool
 umsc_probe (USB_DEVICE_INFO *info, USB_CFG_DESC *cfgd, USB_IF_DESC *ifd)
 {
-  uint i, addr = info->address, ep_in=0, ep_out=0;
+  uint i, ep_in=0, ep_out=0;
+#ifdef DEBUG_UMSC
+  uint addr = info->address;
+#endif
   USB_EPT_DESC *ep;
   uint last_lba, sector_size, maxpkt=64;
   uint8 conf[512];
@@ -399,12 +384,7 @@ umsc_probe (USB_DEVICE_INFO *info, USB_CFG_DESC *cfgd, USB_IF_DESC *ifd)
   DLOG ("Registered UMSC device index=%d", num_umsc_devs);
 
   num_umsc_devs++;
-
-  umsc_thread_id = 0;
-  /* Turn thread back on later */
-  //  start_kernel_thread ((u32) umsc_thread, (u32) &umsc_stack[1023], "USB Mass Storage");
-  //set_iovcpu (umsc_thread_id, IOVCPU_CLASS_USB | IOVCPU_CLASS_DISK);
-
+  
   {
     uint8 cmd[16] = {0x25,0,0,0,0,0,0,0,0,0,0,0};
     DLOG ("SENDING READ CAPACITY");

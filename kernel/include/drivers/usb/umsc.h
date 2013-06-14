@@ -25,6 +25,9 @@ sint umsc_bulk_scsi (uint addr, uint ep_out, uint ep_in,
                      uint data_len, uint maxpkt);
 sint umsc_read_sector (uint dev_index, uint32 lba, uint8 *sector, uint len);
 
+
+int umsc_read_sectors (uint dev_index, uint32 lba, uint8 * buf, uint16 snum);
+
 #endif
 
 /*

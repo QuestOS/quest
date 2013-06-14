@@ -41,6 +41,7 @@
 #include "arch/i386.h"
 #include "util/printf.h"
 #include "types.h"
+#include "mem/mem.h"
 
 //#define DEBUG_VFAT
 #ifdef DEBUG_VFAT
@@ -52,6 +53,7 @@
 #define UMSC_DEVICE_INDEX 0
 #define VFAT_FIRST_PARTITION 63
 
+#if 0
 static int
 devread_vfat (int sector, int byte_offset, int byte_len, char *buf)
 {
@@ -76,6 +78,68 @@ devread_vfat (int sector, int byte_offset, int byte_len, char *buf)
   }
   return byte_len;
 }
+#endif
+
+#if 0
+#define NUM_SECTORS_PER_TRANSFER    16
+
+static int
+devread_vfat (int sector, int byte_offset, int byte_len, char *buf)
+{
+  int len = byte_len;
+  uint8 * s = (uint8 *) kmalloc (512 * NUM_SECTORS_PER_TRANSFER);
+  sector+=VFAT_FIRST_PARTITION; /* offset into the first partition */
+  com1_printf ("fsys_vfat: devread_vfat (%d, %d, %d, %p)\n",
+        sector, byte_offset, byte_len, buf);
+  while (len > 0) {
+    if (umsc_read_sectors (UMSC_DEVICE_INDEX, sector, s, NUM_SECTORS_PER_TRANSFER) !=
+        NUM_SECTORS_PER_TRANSFER) {
+      kfree (s);
+      return 0;
+    }
+    int seclen;
+    if (len > (512 * NUM_SECTORS_PER_TRANSFER) - byte_offset)
+      seclen = (512 * NUM_SECTORS_PER_TRANSFER) - byte_offset;
+    else
+      seclen = len;
+    memcpy (buf, &s[byte_offset], seclen);
+    len -= seclen;
+    buf += seclen;
+    sector += NUM_SECTORS_PER_TRANSFER;
+    byte_offset = 0;
+  }
+  kfree (s);
+  return byte_len;
+}
+#endif
+
+#if 1
+static int
+devread_vfat (int sector, int byte_offset, int byte_len, char *buf)
+{
+  uint8 * s = NULL;
+  sector+=VFAT_FIRST_PARTITION; /* offset into the first partition */
+  int snum = ((byte_len + byte_offset) / 512) + 1;
+  int buf_len = snum * 512;
+  DLOG ("fsys_vfat: devread_vfat (%d, %d, %d, %p)",
+        sector, byte_offset, byte_len, buf);
+
+  s = (uint8 *) kmalloc (buf_len);
+  if (!s) {
+    com1_printf ("kmalloc failed\n");
+    return 0;
+  }
+  if (umsc_read_sectors (UMSC_DEVICE_INDEX, sector, s, snum) != snum) {
+    com1_printf ("umsc_read_sectors failed: snum = %d\n", snum);
+    kfree (s);
+    return 0;
+  }
+  memcpy (buf, &s[byte_offset], byte_len);
+  kfree (s);
+
+  return byte_len;
+}
+#endif
 
 static int
 tolower (int c)
