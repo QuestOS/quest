@@ -4,6 +4,7 @@
 #include <sys/socket.h>
 #include <netinet/in.h>
 #include <arpa/inet.h>
+#include <fcntl.h>
 
 #define QUEST // Comment out this line for the webserver to run on Linux
 
@@ -58,7 +59,7 @@ cache_request (char * fname)
   /* Stub for Linux */
   int file_fd;
 #ifdef QUEST
-  if((file_fd = open(tftp_file_name)) == -1) { /* open the file for reading */
+  if((file_fd = open(tftp_file_name, O_RDONLY)) == -1) { /* open the file for reading */
 #else
   if((file_fd = open(fname,O_RDONLY)) == -1) { /* open the file for reading */
 #endif

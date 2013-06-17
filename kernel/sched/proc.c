@@ -187,7 +187,7 @@ duplicate_TSS (uint32 ebp,
   pTSS->ESP = child_esp;
   pTSS->EBP = child_ebp;
   pTSS->tid = new_task_id ();
-  save_fpu_state(pTSS->fpu_state);
+  save_fpu_and_mmx_state(pTSS->fpu_state);
   pTSS->sandbox_affinity = get_pcpu_id ();
   pTSS->machine_affinity = 0;
 
@@ -264,7 +264,7 @@ alloc_TSS (void *pPageDirectory, void *pEntry, int mod_num)
 /* -- EM -- This should probably be put someplace else but for now
       this is good enough */
 
-fd_table_file_entry_t* alloc_fd_table_file_entry(char* pathname)
+fd_table_file_entry_t* alloc_fd_table_file_entry(char* pathname, size_t file_length)
 {
   fd_table_file_entry_t* res;
   res = kmalloc(sizeof(fd_table_file_entry_t));
@@ -273,6 +273,7 @@ fd_table_file_entry_t* alloc_fd_table_file_entry(char* pathname)
     return NULL;
   }
 
+  res->file_length = file_length;
   res->pathname = kmalloc(strlen(pathname) + 1);
 
   if(!res->pathname) {
@@ -280,12 +281,25 @@ fd_table_file_entry_t* alloc_fd_table_file_entry(char* pathname)
     return NULL;
   }
 
+#ifdef ONE_FILE_READ
+  res->file_buffer = kmalloc(file_length);
+  if(!res->file_buffer) {
+    kfree(res->pathname);
+    kfree(res);
+    return NULL;
+  }
+#else
+  res->file_buffer = NULL;
+#endif
+  
+
   strcpy(res->pathname, pathname);
   return res;
 }
 
 void free_fd_table_file_entry(fd_table_file_entry_t* entry)
 {
+  if(entry->file_buffer) kfree(entry->file_buffer);
   kfree(entry->pathname);
   kfree(entry);
 }

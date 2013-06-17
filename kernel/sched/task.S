@@ -25,7 +25,7 @@
 #define EFLAGS 16
 #define ESP 0
 #define CR3 12
-#define FPU_STATE 20
+#define FPU_STATE 32
 
         /* Software task-switch */
         /* %esi: source TSS pointer
@@ -45,7 +45,7 @@ _sw_jmp_task:
         movl %ebx, EFLAGS(%esi)
 
         /* Safe FPU state */
-        fnsave FPU_STATE(%esi)
+        fxsave FPU_STATE(%esi)
         
         
         /* save stack */
@@ -82,7 +82,7 @@ skipCR3:
         movl ESP(%edi), %ebp
         movl %ebp, %esp
 
-        frstor FPU_STATE(%edi)
+        fxrstor FPU_STATE(%edi)
         
         /* restore EBP */
         movl EBP(%edi), %ebp

@@ -36,6 +36,7 @@
 #include "select.h"
 #include "arch/i386-div64.h"
 #include "interrupt_handler.h"
+#include "fcntl.h"
 
 #ifdef USE_VMX
 #include "vm/shm.h"
@@ -521,12 +522,12 @@ sys_call_write (int filedes, const void *buf, int nbytes)
   if (shm_screen_initialized) {
     if ((shm->virtual_display.cursor[cpu].x == -1) &&
         (shm->virtual_display.cursor[cpu].y == -1)) {
-      splash_screen ();
       shm->virtual_display.cursor[cpu].x = 0;
       shm->virtual_display.cursor[cpu].y = 0;
-      first = FALSE;
+      
     }
-  } else if (first) {
+  } 
+  if (first) {
     splash_screen ();
     first = FALSE;
   }
@@ -548,11 +549,7 @@ sys_call_write (int filedes, const void *buf, int nbytes)
 
   /* HACK for STDOUT and STDERR */
   if ((filedes == 1) || (filedes == 2)) {
-    int i;
-    const char* char_buf = buf;
-    for(i = 0; i < nbytes; ++i) {
-      user_putchar (char_buf[i], 7);
-    }
+    print_buffer((char*)buf, nbytes);
     return nbytes;
   }
 
@@ -706,12 +703,26 @@ sys_call_recv (int sockfd, void *buf, int nbytes, void *addr, void *len)
 
   fd_ent = tss->fd_table[sockfd];
 
+  if(!fd_ent.entry) {
+    return -1;
+  }
+
   switch (fd_ent.type) {
     case FD_TYPE_UDP :
       DLOG ("sys_call_recv: Receiving UDP data from socket %d", sockfd);
       if (udpb.buf == NULL) {
         lock_kernel ();
-        circular_remove (&udp_recv_buf_circ, &udpb);
+        if(fd_ent.flags & O_NONBLOCK) {
+          circular_remove_nowait (&udp_recv_buf_circ, &udpb);
+          if(udpb.buf == NULL) {
+            unlock_kernel();
+            return 0;
+          }
+        }
+        else {
+          circular_remove (&udp_recv_buf_circ, &udpb);
+        }
+        
         unlock_kernel ();
       }
 
@@ -760,7 +771,19 @@ sys_call_recv (int sockfd, void *buf, int nbytes, void *addr, void *len)
       DLOG ("sys_call_recv: Receiving TCP data from socket %d", sockfd);
       if (tcpb.buf == NULL) {
         lock_kernel ();
-        circular_remove (&tcp_recv_buf_circ, &tcpb);
+        if(fd_ent.flags & O_NONBLOCK) {
+          logger_printf("tcp remove no wait called\n");
+          circular_remove_nowait (&tcp_recv_buf_circ, &tcpb);
+          if(tcpb.buf == NULL) {
+            unlock_kernel();
+            return 0;
+          }
+        }
+        else {
+          logger_printf("tcp remove called\n");
+          circular_remove (&tcp_recv_buf_circ, &tcpb);
+        }
+        
         unlock_kernel ();
       }
 
@@ -1138,6 +1161,56 @@ sys_call_recovery (int arg)
   return 0;
 }
 
+int sys_call_fcntl(int fd, int cmd, void* extra_arg)
+{
+  quest_tss * tss;
+  task_id cur;
+  int res;
+  
+  lock_kernel();
+
+  cur = percpu_read (current_task);
+
+  if (!cur) {
+    logger_printf ("No current task\n");
+    unlock_kernel();
+    return -1;
+  }
+
+  tss = lookup_TSS (cur);
+
+  if (tss == NULL) {
+    logger_printf ("Task 0x%x does not exist\n", cur);
+    unlock_kernel();
+    return -1;
+  }
+  if(!tss->fd_table[fd].entry) {
+    unlock_kernel();
+    return -1;
+  }
+  
+  switch(cmd) {
+  case F_SETFL:
+    tss->fd_table[fd].flags = *((int*)extra_arg);
+    unlock_kernel();
+    return 0;
+    
+  case F_GETFL:
+    res = tss->fd_table[fd].flags;
+    unlock_kernel();
+    return res;
+    
+  default:
+    DLOG("Unknown command sent to fcntl");
+    unlock_kernel();
+    return -1;
+  }
+
+  DLOG("Reached end of %s unexpectedly", __FUNCTION__);
+  unlock_kernel();
+  return -1;
+}
+
 sys_call_ptr_t _socket_syscall_table [] ALIGNED (0x1000) = {
   (sys_call_ptr_t) sys_call_open_socket,    /* 00 */
   (sys_call_ptr_t) sys_call_close,          /* 01 */
@@ -1153,7 +1226,7 @@ sys_call_ptr_t _socket_syscall_table [] ALIGNED (0x1000) = {
   (sys_call_ptr_t) sys_call_get_sb_id,      /* 11 */
   (sys_call_ptr_t) sys_call_getsockname,    /* 12 */
   (sys_call_ptr_t) sys_call_recovery,       /* 13 */
-  (sys_call_ptr_t) NULL,                    /* 14 */
+  (sys_call_ptr_t) sys_call_fcntl,          /* 14 */
   (sys_call_ptr_t) NULL                     /* 15 */
 };
 

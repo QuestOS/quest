@@ -560,7 +560,7 @@ init (multiboot * pmb)
   }
 
   /* Initialise the floating-point unit (FPU) */
-  initialise_fpu();
+  initialise_fpu_and_mmx();
   
   /* Setup per-CPU area for bootstrap CPU */
   percpu_per_cpu_init ();

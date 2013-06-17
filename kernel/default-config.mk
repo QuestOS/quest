@@ -34,6 +34,11 @@ CFG += -DUSB_MIGRATION
 KMALLOC = tlsf
 #KMALLOC = pow2
 
+# Read the entire file into memory on the call to open, makes
+# subsequent read calls much faster but must store the entire file in
+# the kernel heap
+#CFG += -DONE_FILE_READ
+
 # Enable Linux sandbox
 # CFG += -DUSE_LINUX_SANDBOX
 

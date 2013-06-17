@@ -51,11 +51,11 @@
 
 #define dev_to_uvc_dev(dev) ( (uvc_device_info_t*)dev->device_priv )
 
-#define MAX_UVC_DEVICES 0
+#define MAX_UVC_DEVICES 1
 static int current_uvc_dev_count = 0;
 static uvc_device_info_t uvc_devices[MAX_UVC_DEVICES];
 
-#define IMAGE_WIDTH 640
+#define IMAGE_WIDTH 320
 
 #define BUF_SIZE        (907200)
 #define START_SENDING_COUNT 5
@@ -103,12 +103,7 @@ static int uvc_read(USB_DEVICE_INFO* device, int dev_num, char* buf, int data_le
   int header_len;
   bool new_frame;
   bool full_frame;
-  bool print_frame = FALSE;
   int last_packet_in_frame;
-
-  if(*buf == 1) {
-    print_frame = TRUE;
-  }
   
   if(urb) {
     int result = usb_rt_iso_update_packets(uvc_dev->urb, 8192);
@@ -143,22 +138,13 @@ static int uvc_read(USB_DEVICE_INFO* device, int dev_num, char* buf, int data_le
         new_frame = FALSE;
         frame_start_packet = latest_frame_start_packet;
         latest_frame_start_packet = packet_num;
-        if(print_frame) {
-          DLOG("packet_num = %d in new_frame", packet_num);
-          DLOG("frame_start_packet = %d in new frame", frame_start_packet);
-          DLOG("latest_frame_start_packet = %d in new frame", latest_frame_start_packet);
-        }
       }
       
       if(*(data + 1) &  0x02) {
         new_frame = TRUE;
-        if(print_frame) {
-          DLOG("packet_num in EOF check = %d", packet_num);
-        }
       }
       
     }
-
 
     if(frame_start_packet < 0) {
       return 0;
@@ -194,6 +180,8 @@ static int uvc_read(USB_DEVICE_INFO* device, int dev_num, char* buf, int data_le
       }
       
       if(buf_offset + packet->actual_length >= data_len) {
+        DLOG("Returning -1 because buf_offset(%d) + packet->actual_length(%d) >= data_len(%d)",
+             buf_offset, packet->actual_length, data_len);
         return -1;
       }
       if(packet->actual_length > header_len) {
@@ -218,28 +206,6 @@ static int uvc_read(USB_DEVICE_INFO* device, int dev_num, char* buf, int data_le
       return 0;
     }
 
-    if(print_frame) {
-    
-      DLOG("start_packet = %d", frame_start_packet);
-      DLOG("last_packet_in_frame = %d", last_packet_in_frame);
-      for(i = 0; i < packets_to_free; ++i) {
-        int packet_num = i + uvc_dev->next_packet_to_read;
-        usb_iso_packet_descriptor_t* packet;
-        
-        if(packet_num >= urb->number_of_packets) {
-          packet_num = packet_num - urb->number_of_packets;
-        }
-        
-        packet = &urb->iso_frame_desc[packet_num];
-        data = urb->transfer_buffer + packet->offset;
-        uint32_t *temp = data;
-        
-        int header_len_temp = *data;
-        uint8_t header_bitfield_temp = *(data + 1);
-        //DLOG("%d: header = 0x%X, header_len = %d, bitfield = 0x%X, actual_len = %d", packet_num, *temp, header_len_temp, header_bitfield_temp, packet->actual_length);
-      }
-    }
-
     uvc_dev->next_packet_to_read += packets_to_free;
     if(uvc_dev->next_packet_to_read >= urb->number_of_packets) {
       uvc_dev->next_packet_to_read =
@@ -252,29 +218,6 @@ static int uvc_read(USB_DEVICE_INFO* device, int dev_num, char* buf, int data_le
         DLOG("ERROR didnt free all the packets");
         panic("ERROR didnt free all the packets");
       }
-    }
-    if(print_frame) {
-      uint32_t* dump = buf;
-      for(i = 1; i <= (buf_offset / 4 + 1); i++) {
-        putx(*dump);
-        dump++;
-        if ((i % 6) == 0) putchar('\n');
-        if ((i % 96) == 0) putchar('\n');
-      }
-      putchar('\n');
-      putchar('\n');
-      putchar('\n');
-      putchar('\n');
-      putchar('\n');
-      putchar('\n');
-      putchar('\n');
-      putchar('\n');
-      putchar('\n');
-      putchar('\n');
-      putchar('\n');
-      putchar('\n');
-      putchar('\n');
-      putchar('\n');
     }
     return buf_offset;
   }
@@ -310,6 +253,7 @@ static int uvc_open(USB_DEVICE_INFO* device, int dev_num)
   }
   buf = kmalloc(num_packets * dev_to_uvc_dev(device)->transaction_size);
   if(buf == NULL) {
+    DLOG("Failed to allocate buffer for urb, buf size = %d", num_packets * dev_to_uvc_dev(device)->transaction_size);
     return -1;
   }
   usb_fill_rt_iso_urb(uvc_dev->urb, device, pipe, buf, NULL, NULL,
@@ -637,12 +581,13 @@ uvc_probe (USB_DEVICE_INFO *dev, USB_CFG_DESC *cfg, USB_IF_DESC *ifd)
    * collections. This is ugly. But let's make Logitech Webcam Pro
    * 9000 work first.
    */
+  
   if(!(dev->devd.bDeviceClass == 0xEF) ||
      !(dev->devd.bDeviceSubClass == 0x02) ||
      !(dev->devd.bDeviceProtocol == 0x01)) {
     return FALSE;
   }
-
+  
   if(dev->device_priv == NULL) {
     if(current_uvc_dev_count == MAX_UVC_DEVICES) {
       DLOG("Too many uvc devices");

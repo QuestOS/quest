@@ -292,6 +292,15 @@ usb_syscall(int device_id, int operation, void* buf, int data_len)
 }
 
 inline int
+enable_video(int enable, char** video_memory)
+{
+  int res;
+  asm volatile ("int $0x30\n":"=a"(res):"a" (9L), "b"(enable), "c"(video_memory): CLOBBERS5);
+  return res;
+
+}
+
+inline int
 get_time (void *tp)
 {
   int ret;
@@ -536,6 +545,19 @@ socket_recovery (int arg)
   asm volatile ("int $0x3D\n"
                 :"=a" (ret)
                 :"a" (13), "b" (arg), "c" (0), "d" (0), "S" (0), "D" (0)
+                :"memory", "cc");
+
+  return ret;
+}
+
+
+inline int syscall_fcntl(int fd, int cmd, void* extra_arg)
+{
+  int ret;
+
+  asm volatile ("int $0x3D\n"
+                :"=a" (ret)
+                :"a" (14), "b" (fd), "c" (cmd), "d" (extra_arg)
                 :"memory", "cc");
 
   return ret;

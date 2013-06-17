@@ -297,7 +297,7 @@ ap_init (void)
   //perfmon_init ();
 
   /* Initialise the floating-point unit (FPU) */
-  initialise_fpu();
+  initialise_fpu_and_mmx();
   
   /* Load the per-CPU TSS for this AP */
   hw_ltr (cpuTSS_selector[phys_id]);

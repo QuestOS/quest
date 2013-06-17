@@ -1,0 +1,67 @@
+This README is meant to describe the changes made to libjpeg in order
+to have it build for Quest, mostly so that future versions of libjpeg
+can be ported easily.
+
+libjpeg provides a makefile.unix we is an appropriate for Quest after
+a few modifications.  The original makefile.unix is included so you
+can diff it and Makefile.  The modifications to the Makefile are the
+following:
+
+Add an include ../config.mk at the top
+
+Change CC to $(TARGET)-cc
+
+Added a HOST_CC variable and set it to gcc (needed later)
+
+Set LDLIBS=$(LIB_DEST)/crt0.o -lc
+
+Set LN=$(TARGET)-ld
+
+Set AR=$(TARGET)-ar rc
+
+Set AR2= $(TARGET)-ranlib
+
+Create and set variable HEADER_FILES=$(shell find . -name "*.[h]" -type f)
+
+Create and set variable INC_DIR_NAME=libjpeg
+
+Add $(LIB_DEST)/libjpeg.a as a dependency of the all target
+
+Added rule for $(LIB_DEST)/libjpeg.a which is the following:
+$(LIB_DEST)/libjpeg.a: libjpeg.a $(HEADER_FILES)
+       $(RM) -rf $(INC_DEST)/$(INC_DIR_NAME)
+       mkdir -p $(INC_DEST)/$(INC_DIR_NAME)
+       cp libjpeg.a $(LIB_DEST)
+       find . -type f -name "*.[h]" \
+               -exec cp {} $(INC_DEST)/$(INC_DIR_NAME)/{} \;
+
+
+Change to rule for ansi2knr to:
+ ansi2knr: ansi2knr.c
+       $(HOST_CC) $(ANSI2KNRFLAGS) -o ansi2knr ansi2knr.c
+
+Comment out the rule for jconfig.h (to avoid the failure message from
+printing we will configure jconfig.h soon)
+
+Add the following to the clean target:
+       $(RM) -rf $(INC_DEST)/$(INC_DIR_NAME)
+       $(RM) $(LIB_DEST)/libjpeg.a
+
+Add the following install target:
+
+install:
+       @echo "libjpeg.a is installed via make all"
+
+Add the dependency:
+
+$(SOURCES): ansi2knr
+
+Somewhere (it originally is placed at the bottom before all the .o
+dependencies). This is necessary for parallel builds to ensure that
+asni2knr is built first
+
+
+
+
+For jconfig.h I ran the original configure script on a 32 bit Linux
+machine and then copied that over as the jconfig.h for Quest. 

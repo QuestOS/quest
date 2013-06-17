@@ -1210,7 +1210,7 @@ x86_64-*-darwin*)
 	;;
 i[3-7]86-*-quest*)
 	tm_file="${tm_file} i386/unix.h i386/att.h dbxelf.h elfos.h i386/i386elf.h quest.h"
-	tmake_file="i386/t-i386elf t-svr4 i386/t-crtstuff"
+	tmake_file="${tmake_file} i386/t-i386elf t-svr4 386/t-crtstuff"
 	use_fixproto=yes
 	;;
 arm-*-quest*)

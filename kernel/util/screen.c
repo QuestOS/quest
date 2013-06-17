@@ -24,53 +24,15 @@
 
 spinlock screen_lock = { 0 };
 
-int
-_putchar (int ch)
+
+static screen_cursor_t cursor = {.x = 0, .y = 0,};
+
+
+int _putchar(int ch)
 {
-
-  static int x, y;
-
-  if (ch == '\n') {
-    x = 0;
-    y++;
-
-    if (y > 24)
-      y = 0;
-
-    return (int) (uint8) ch;
-  }
-
-#ifdef USE_VMX
-  uint32 cpu;
-  
-  cpu = get_pcpu_id ();
-
-  if (shm_screen_first && (cpu != 0)) {
-    x = y = 0;
-    shm_screen_first = FALSE;
-  }
-
-  if (shm_screen_initialized) {
-    if (shm->virtual_display.cur_screen == cpu) {
-      pchVideo[y * 160 + x * 2] = ch;
-      pchVideo[y * 160 + x * 2 + 1] = 7;
-    }
-    shm_screen[y * 160 + x * 2] = ch;
-    shm_screen[y * 160 + x * 2 + 1] = 7;
-    x++;
-  } else {
-    pchVideo[y * 160 + x * 2] = ch;
-    pchVideo[y * 160 + x * 2 + 1] = 7;
-    x++;
-  }
-#else
-  pchVideo[y * 160 + x * 2] = ch;
-  pchVideo[y * 160 + x * 2 + 1] = 7;
-  x++;
-#endif
-
-  return (int) (uint8) ch;
+  return _putchar_with_attributes(ch, 7); /* Default to white */
 }
+
 
 int
 putchar (int ch)
@@ -78,6 +40,15 @@ putchar (int ch)
   int x;
   spinlock_lock (&screen_lock);
   x = _putchar (ch);
+  spinlock_unlock (&screen_lock);
+  return x;
+}
+
+int putchar_with_attributes(int ch, int attribute)
+{
+  int x;
+  spinlock_lock (&screen_lock);
+  x = _putchar_with_attributes (ch, attribute);
   spinlock_unlock (&screen_lock);
   return x;
 }
@@ -92,6 +63,15 @@ print (char *pch)
   return 0;
 }
 
+int print_buffer(char *pch, int length)
+{
+  spinlock_lock (&screen_lock);
+  while (length--) {
+    _putchar (*pch++);
+  }
+  spinlock_unlock (&screen_lock);
+  return 0;
+}
 
 void
 putx (uint32 l)
@@ -128,6 +108,18 @@ _putx (uint32 l)
       _putchar ('A' + li - 0x0A);
     else
       _putchar ('0' + li);
+}
+
+
+screen_cursor_t* get_screen_cursor()
+{
+  return &cursor;
+}
+
+void screen_cursor_set_pos(int x, int y)
+{
+  cursor.x = x;
+  cursor.y = y;
 }
 
 /* 
