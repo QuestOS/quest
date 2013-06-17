@@ -30,8 +30,9 @@ CFG += -DUSB_REALTIME_ASYNC
 # Use USB Migration for cross machine migration
 CFG += -DUSB_MIGRATION
 
-# Change to use different allocator (pow2 default for now)
-KMALLOC = pow2
+# Change to use different allocator (default: tlsf)
+KMALLOC = tlsf
+#KMALLOC = pow2
 
 # Enable Linux sandbox
 # CFG += -DUSE_LINUX_SANDBOX

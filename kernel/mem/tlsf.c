@@ -114,7 +114,11 @@ extern void *tlsf_calloc(size_t nelem, size_t elem_size);
 
 
 #if TLSF_USE_LOCKS
-/* -- EM -- Add locking mechanism here later */
+#define TLSF_MLOCK_T            spinlock
+#define TLSF_CREATE_LOCK(l)     do {spinlock_initialise(l);} while(0)
+#define TLSF_DESTROY_LOCK(_unused_)  do{}while(0)
+#define TLSF_ACQUIRE_LOCK(l)    spinlock_lock(l)
+#define TLSF_RELEASE_LOCK(l)    spinlock_unlock(l)
 #else
 #define TLSF_CREATE_LOCK(_unused_)   do{}while(0)
 #define TLSF_DESTROY_LOCK(_unused_)  do{}while(0) 
@@ -162,7 +166,7 @@ extern void *tlsf_calloc(size_t nelem, size_t elem_size);
 #define MAX_SLI		(1 << MAX_LOG2_SLI)     /* MAX_SLI = 2^MAX_LOG2_SLI */
 
 #define FLI_OFFSET	(6)     /* tlsf structure just will manage blocks bigger */
-/* than 128 bytes */
+                                /* than 128 bytes */
 #define SMALL_BLOCK	(128)
 #define REAL_FLI	(MAX_FLI - FLI_OFFSET)
 #define MIN_BLOCK_SIZE	(sizeof (free_ptr_t))
@@ -207,6 +211,9 @@ extern void *tlsf_calloc(size_t nelem, size_t elem_size);
 
 typedef unsigned int u32_t;     /* NOTE: Make sure that this type is 4 bytes long on your computer */
 typedef unsigned char u8_t;     /* NOTE: Make sure that this type is 1 byte on your computer */
+
+CASSERT(sizeof(u32_t) == 4, tlsf_u32_size)
+CASSERT(sizeof(u8_t) == 1, tlsf_u8_size)
 
 typedef struct free_ptr_struct {
   struct bhdr_struct *prev;
@@ -643,7 +650,9 @@ bool malloc_uses_page_tables() { return FALSE; }
 
 void* kmalloc(uint32 size)
 {
-  return tlsf_malloc(size);
+  void* ptr = tlsf_malloc(size);
+  if(ptr) memset(ptr, 0, size);
+  return ptr;
 }
 
 /******************************************************************/
