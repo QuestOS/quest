@@ -297,7 +297,7 @@ ap_init (void)
   //perfmon_init ();
 
   /* Initialise the floating-point unit (FPU) */
-  initialise_fpu();
+  initialise_fpu_and_mmx();
   
   /* Load the per-CPU TSS for this AP */
   hw_ltr (cpuTSS_selector[phys_id]);
@@ -390,7 +390,7 @@ ap_init (void)
       }
     }
   }
-  map_malloc_page_tables(pg_dir[mod_num], SANDBOX_KERN_OFFSET * phys_id);
+  map_malloc_paging_structures(pg_dir[mod_num], SANDBOX_KERN_OFFSET * phys_id);
   map_dma_page_tables(pg_dir[mod_num], SANDBOX_KERN_OFFSET * phys_id);
 
   

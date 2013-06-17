@@ -1139,6 +1139,8 @@ mep*-*-*)
 	extra_parts="crtbegin.o crtend.o"
 	;;
 i[3-7]86-*-quest*)
+	extra_parts="crtbegin.o crtend.o"
+	tmake_file="$tmake_file i386/t-crtstuff"
 	;;
 arm-*-quest*)
 	;;

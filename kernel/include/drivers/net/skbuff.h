@@ -25,6 +25,7 @@
 struct sk_buff {
   u8 *data;
   u32 len;
+  void* data_free_ptr;
 };
 typedef struct sk_buff sk_buff_t;
 

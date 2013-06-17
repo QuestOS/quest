@@ -50,9 +50,11 @@ typedef struct _fd_table_file_entry
 {
   char* pathname;
   int current_pos;
+  unsigned char* file_buffer;
+  size_t file_length;
 } fd_table_file_entry_t;
 
-fd_table_file_entry_t* alloc_fd_table_file_entry(char* pathname);
+fd_table_file_entry_t* alloc_fd_table_file_entry(char* pathname, size_t file_length);
 void free_fd_table_file_entry(fd_table_file_entry_t* entry);
 
 /* --YL-- We have a cyclic include in kernel.h involves proc.h and vcpu.h */
@@ -79,7 +81,8 @@ typedef struct _quest_tss
   u32 initial_EIP;
   u32 CR3;
   u32 EFLAGS;
-  u8 fpu_state[108];            /* Always assume FPU state is 108 bytes */
+  u8 padding[12];
+  u8 fpu_state[512];            /* 512 bytes for fpu and mmx state */
   struct _semaphore Msem;
   u32 M[NUM_M];
 
@@ -118,6 +121,8 @@ typedef struct _quest_tss
   /* common VCPU scheduling parameters backup */
   u64 C_bak, T_bak, b_bak, usage_bak;
 } PACKED quest_tss;
+
+CASSERT(sizeof(quest_tss) <= 0x1000, quest_tss_size);
 
 static inline int
 find_fd (quest_tss *tss)

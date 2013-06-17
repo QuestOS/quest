@@ -41,6 +41,7 @@
 #include "arch/i386.h"
 #include "util/printf.h"
 #include "types.h"
+#include "mem/mem.h"
 
 //#define DEBUG_VFAT
 #ifdef DEBUG_VFAT
@@ -52,6 +53,7 @@
 #define UMSC_DEVICE_INDEX 0
 #define VFAT_FIRST_PARTITION 63
 
+#if 0
 static int
 devread_vfat (int sector, int byte_offset, int byte_len, char *buf)
 {
@@ -76,6 +78,68 @@ devread_vfat (int sector, int byte_offset, int byte_len, char *buf)
   }
   return byte_len;
 }
+#endif
+
+#if 0
+#define NUM_SECTORS_PER_TRANSFER    16
+
+static int
+devread_vfat (int sector, int byte_offset, int byte_len, char *buf)
+{
+  int len = byte_len;
+  uint8 * s = (uint8 *) kmalloc (512 * NUM_SECTORS_PER_TRANSFER);
+  sector+=VFAT_FIRST_PARTITION; /* offset into the first partition */
+  com1_printf ("fsys_vfat: devread_vfat (%d, %d, %d, %p)\n",
+        sector, byte_offset, byte_len, buf);
+  while (len > 0) {
+    if (umsc_read_sectors (UMSC_DEVICE_INDEX, sector, s, NUM_SECTORS_PER_TRANSFER) !=
+        NUM_SECTORS_PER_TRANSFER) {
+      kfree (s);
+      return 0;
+    }
+    int seclen;
+    if (len > (512 * NUM_SECTORS_PER_TRANSFER) - byte_offset)
+      seclen = (512 * NUM_SECTORS_PER_TRANSFER) - byte_offset;
+    else
+      seclen = len;
+    memcpy (buf, &s[byte_offset], seclen);
+    len -= seclen;
+    buf += seclen;
+    sector += NUM_SECTORS_PER_TRANSFER;
+    byte_offset = 0;
+  }
+  kfree (s);
+  return byte_len;
+}
+#endif
+
+#if 1
+static int
+devread_vfat (int sector, int byte_offset, int byte_len, char *buf)
+{
+  uint8 * s = NULL;
+  sector+=VFAT_FIRST_PARTITION; /* offset into the first partition */
+  int snum = ((byte_len + byte_offset) / 512) + 1;
+  int buf_len = snum * 512;
+  DLOG ("fsys_vfat: devread_vfat (%d, %d, %d, %p)",
+        sector, byte_offset, byte_len, buf);
+
+  s = (uint8 *) kmalloc (buf_len);
+  if (!s) {
+    com1_printf ("kmalloc failed\n");
+    return 0;
+  }
+  if (umsc_read_sectors (UMSC_DEVICE_INDEX, sector, s, snum) != snum) {
+    com1_printf ("umsc_read_sectors failed: snum = %d\n", snum);
+    kfree (s);
+    return 0;
+  }
+  memcpy (buf, &s[byte_offset], byte_len);
+  kfree (s);
+
+  return byte_len;
+}
+#endif
 
 static int
 tolower (int c)
@@ -269,6 +333,38 @@ vfat_mount (void)
   /* Read bpb */
   if (! devread_vfat (0, 0, sizeof (bpb), (char *) &bpb))
     return 0;
+
+#if 0
+  DLOG("ignored[0]=%d, ignored[1]=%d, ignored[2]=%d", bpb.ignored[0], bpb.ignored[1], bpb.ignored[2]);
+  DLOG("system_id[0]=%d, system_id[1]=%d, system_id[2]=%d, system_id[3]=%d",
+       bpb.system_id[0], bpb.system_id[1], bpb.system_id[2], bpb.system_id[3]);
+  DLOG("system_id[4]=%d, system_id[5]=%d, system_id[6]=%d, system_id[7]=%d",
+       bpb.system_id[4], bpb.system_id[5], bpb.system_id[6], bpb.system_id[7]);
+  DLOG("bytes_per_sect[0]=%d, bytes_per_sect[1]=%d", bpb.bytes_per_sect[0], bpb.bytes_per_sect[1]);
+  DLOG("FAT_CVT_U16(bpb.bytes_per_sect)=%d", FAT_CVT_U16(bpb.bytes_per_sect));
+  DLOG("sects_per_clust = %d", bpb.sects_per_clust);
+  DLOG("reserved_sects[0]=%d, reserved_sects[1]=%d", bpb.reserved_sects[0], bpb.reserved_sects[1]);
+  DLOG("num_fats=%d", bpb.num_fats);
+  DLOG("dir_entries[0]=%d, dir_entries[1]=%d", bpb.dir_entries[0], bpb.dir_entries[1]);
+  DLOG("short_sectors[0]=%d, short_sectors[1]=%d", bpb.short_sectors[0], bpb.short_sectors[1]);
+  DLOG("media=%d", bpb.media);
+  DLOG("fat_length=%d", bpb.media);
+  DLOG("secs_track=%d", bpb.secs_track);
+  DLOG("heads=%d", bpb.heads);
+  DLOG("hidden=%d", bpb.hidden);
+  DLOG("long_sectors=%d", bpb.long_sectors);
+  DLOG("fat32_length=%d", bpb.fat32_length);
+  DLOG("flags=%d", bpb.flags);
+  DLOG("version[0]=%d, version[1]=%d", bpb.version[0], bpb.version[1]);
+  DLOG("root_cluster=%d", bpb.root_cluster);
+  DLOG("info_sector=%d", bpb.info_sector);
+  DLOG("backup_boot=%d", bpb.backup_boot);
+  DLOG("reserved2[0]=%d, reserved2[1]=%d, reserved2[2]=%d",
+       bpb.reserved2[0], bpb.reserved2[1], bpb.reserved2[2]);
+  DLOG("reserved2[3]=%d, reserved2[4]=%d, reserved2[5]=%d",
+       bpb.reserved2[3], bpb.reserved2[4], bpb.reserved2[5]);
+
+#endif
 
   /* Check if the number of sectors per cluster is zero here, to avoid
      zero division.  */
@@ -481,7 +577,12 @@ vfat_read (char *buf, int len)
 int
 vfat_dir (char *dirname)
 {
-  if (!mounted) vfat_mount ();
+  if (!mounted) {
+    if(!vfat_mount ()) {
+      DLOG("Failed to mount USB");
+      return -1;
+    }
+  }
   DLOG ("vfat_dir (\"%s\")", dirname);
   char *rest, ch, dir_buf[FAT_DIRENTRY_LENGTH];
   char *filename = (char *) NAME_BUF;

@@ -63,6 +63,16 @@ void shm_kmalloc_init (void);
 void* shm_kmalloc(uint32_t size);
 void shm_kfree(void* ptr);
 
+static inline void* shm_kmalloc_aligned(uint32 size, uint32 alignment, void** ptr_to_free)
+{
+  *ptr_to_free = shm_kmalloc(size + alignment - 1);
+  if(*ptr_to_free) {
+    void* temp = (void*)(((uint)((u8*)(*ptr_to_free)+alignment-1)) & ~((uint32)(alignment-1)));
+    return temp;
+  }
+  return NULL;
+}
+
 #endif /* __ASSEMBLER__ */
 
 #endif
