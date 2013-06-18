@@ -8,12 +8,12 @@ LIBS   = $(LIB_DEST)/crt0.o -lc
 INCS   = 
 CFLAGS = -g
 
-
+OTHER_FILES = sample.txt
 
 PROGS = exec migtest race test1 test2 test3 test4 test5 \
 	test6 test7  float_test \
 	usb_gadget_test joystick_test \
-	cl-param-test vcputest vga
+	cl-param-test vcputest vga seek
 
 #usb_test usb_test_rtt
 
@@ -28,4 +28,4 @@ clean:
 	rm -f *.o *.d *.map *~ $(PROGS)
 
 install: $(PROGS)
-	$(INSTALL_CMD) $(PROGS) $(INSTALL_DIR)
+	$(INSTALL_CMD) $(PROGS) $(OTHER_FILES) $(INSTALL_DIR)

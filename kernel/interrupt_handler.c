@@ -474,7 +474,7 @@ static int syscall_vcpu_setparams(u32 eax, vcpu_id_t vcpu_index, struct sched_pa
   return -1;
 }
 
-static int syscall_enable_video(u32 eax, int enable, char** video_memory)
+static int syscall_enable_video(u32 eax, int enable, char** video_memory, u32 edx, u32 esi)
 {
   static bool video_enabled = FALSE;
   static void* current_video_memory = NULL;
@@ -552,6 +552,42 @@ static int syscall_enable_video(u32 eax, int enable, char** video_memory)
   return -1;
 }
 
+/* -- EM -- Basic seek system call for files, right now we do not
+   support making holes (which couldn't really be made anyway since we
+   do not support writing) */
+int syscall_lseek(u32 eax, int file, int ptr, int dir, u32 esi)
+{
+#define SEEK_SET 0
+#define SEEK_CUR 1
+#define SEEK_END 2
+
+  fd_table_entry_t* fd_entry;
+  fd_table_file_entry_t* file_entry;
+  quest_tss *tssp = lookup_TSS(str());
+  if(!tssp) return -1;
+
+  if(file >= MAX_FD) return -1;
+
+  fd_entry = &tssp->fd_table[file];
+
+  if(( !fd_entry->entry) || (fd_entry->type != FD_TYPE_FILE) ) return -1;
+  file_entry = fd_entry->entry;
+  switch(dir) {
+  case SEEK_SET:
+    return file_entry->current_pos =
+      ptr > file_entry->file_length ? file_entry->file_length : (ptr < 0 ? 0 : ptr);
+  case SEEK_CUR:
+    ptr += file_entry->current_pos;
+    return file_entry->current_pos =
+      ptr > file_entry->file_length ? file_entry->file_length : (ptr < 0 ? 0 : ptr);
+  case SEEK_END:
+    ptr += ((int)file_entry->file_length);
+    return file_entry->current_pos =
+      ptr > file_entry->file_length ? file_entry->file_length : (ptr < 0 ? 0 : ptr);
+  default:
+    return -1;
+  }
+}
 
 struct syscall {
   u32 (*func) (u32, u32, u32, u32, u32);
@@ -567,6 +603,7 @@ struct syscall syscall_table[] = {
   { .func = syscall_vcpu_getparams },
   { .func = syscall_vcpu_setparams },
   { .func = syscall_enable_video },
+  { .func = syscall_lseek}
 };
 #define NUM_SYSCALLS (sizeof (syscall_table) / sizeof (struct syscall))
 

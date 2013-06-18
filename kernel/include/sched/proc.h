@@ -107,7 +107,7 @@ typedef struct _quest_tss
   struct _quest_tss * next_tss;
   struct _quest_tss * prev_tss;
   task_id tid;
-  char * name[32];              /* A simple description or the path of the process */
+  char name[32];              /* A simple description or the path of the process */
   uint sandbox_affinity;        /* Sandbox binding. Change this to migrate. */
 
   /* -- EM -- Machine affinity right now since we do not have a global
@@ -120,9 +120,11 @@ typedef struct _quest_tss
   replenishment vcpu_backup[MAX_REPL];
   /* common VCPU scheduling parameters backup */
   u64 C_bak, T_bak, b_bak, usage_bak;
+  u8 padding2[5];
 } PACKED quest_tss;
 
 CASSERT(sizeof(quest_tss) <= 0x1000, quest_tss_size);
+CASSERT((sizeof(quest_tss) % 32) == 0, quest_tss_alignment);
 
 static inline int
 find_fd (quest_tss *tss)

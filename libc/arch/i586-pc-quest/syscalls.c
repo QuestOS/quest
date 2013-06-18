@@ -204,10 +204,9 @@ int link(char *old, char *new)
 
 int lseek(int file, int ptr, int dir)
 {
-  write(1, "In lseek which is a no op\n", sizeof("In lseek which is a no op\n"));
-  while(1);
-  errno = ENOSYS;
-  return -1;
+  int res;
+  asm volatile ("int $0x30\n":"=a"(res):"a" (10L), "b"(file), "c"(ptr), "d"(dir):CLOBBERS6);
+  return res;
 }
 
 #define HEAPSIZE (0x100000)
