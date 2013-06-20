@@ -5,6 +5,7 @@ CC = $(TARGET)-gcc
 LD = $(TARGET)-ld
 AR = $(TARGET)-ar
 RANLIB = $(TARGET)-ranlib
+STRIP = $(TARGET)-strip
 TARGET_DEST = $(TOOLCHAIN_INSTALL_DIR)/$(TARGET)
 LIB_DEST = $(TARGET_DEST)/lib
 INC_DEST = $(TARGET_DEST)/include

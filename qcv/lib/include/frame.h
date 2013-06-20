@@ -22,6 +22,15 @@
 #include <stdlib.h>
 #include "matrix.h"
 
+#include <libavutil/opt.h>
+#include <libavcodec/avcodec.h>
+#include <libavutil/channel_layout.h>
+#include <libavutil/common.h>
+#include <libavutil/imgutils.h>
+#include <libavutil/mathematics.h>
+#include <libavutil/samplefmt.h>
+#include <libswscale/swscale.h>
+
 
 typedef enum {
   QCV_FRAME_TYPE_3BYTE_RGB,
@@ -53,6 +62,10 @@ int qcv_frame_luminance(qcv_frame_t* frame, int x, int y);
 int qcv_frame_convert_to(qcv_frame_t* src_frame, qcv_frame_t* target_frame,
                          qcv_frame_type_t target_type);
 qcv_matrix_type_t qcv_matrix_type_for_frame_type(qcv_frame_type_t frame_type);
+int qcv_create_frame_from_av_frame(qcv_frame_t* frame, size_t width,
+                                   size_t height, qcv_frame_type_t type,
+                                   AVFrame* av_frame,
+                                   enum PixelFormat av_frame_pxl_fmt);
 
 
 #endif // _QCV_FRAME_H_

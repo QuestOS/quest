@@ -134,6 +134,63 @@ int qcv_frame_convert_to(qcv_frame_t* src_frame, qcv_frame_t* target_frame,
   }
 }
 
+static enum PixelFormat qcv_av_pxl_fmt_from_frame_type(qcv_frame_type_t type) {
+  switch(type) {
+  case QCV_FRAME_TYPE_3BYTE_RGB:
+    return PIX_FMT_RGB24;
+  default:
+    qcv_error("Unsupport qcv type");
+  }
+}
+
+int qcv_create_frame_from_av_frame(qcv_frame_t* frame, size_t width,
+                                   size_t height, qcv_frame_type_t type,
+                                   AVFrame* av_frame,
+                                   enum PixelFormat av_frame_pxl_fmt)
+{
+  unsigned char* rgb_frame;
+  enum PixelFormat av_target_pxl_fmt = qcv_av_pxl_fmt_from_frame_type(type);
+  if(qcv_create_frame(frame, width, height, type) < 0) {
+    return -1;
+  }
+  
+  rgb_frame = av_malloc(avpicture_get_size(av_target_pxl_fmt, width, height));
+  if(!rgb_frame) {
+    qcv_release_frame(frame);
+    return -1;
+  }
+  
+  AVFrame *avFrameRGB = avcodec_alloc_frame();
+  if(!avFrameRGB) {
+    qcv_release_frame(frame);
+    av_free(rgb_frame);
+    return -1;
+  }
+  struct SwsContext *img_convert_ctx;
+  img_convert_ctx = sws_getContext(av_frame->width, av_frame->height, av_frame_pxl_fmt,
+				   width, height,
+				   av_target_pxl_fmt, SWS_BICUBIC, NULL, NULL, NULL);
+
+  
+  if(!img_convert_ctx) {
+    avcodec_free_frame(&avFrameRGB);
+    qcv_release_frame(frame);
+    av_free(rgb_frame);
+    return -1;
+  }
+  
+  avpicture_fill((AVPicture *)avFrameRGB, rgb_frame, PIX_FMT_RGB24, width, height);
+  sws_scale(img_convert_ctx, (const uint8_t * const*)av_frame->data, av_frame->linesize, 0,
+	    av_frame->height, avFrameRGB->data, avFrameRGB->linesize);
+  memcpy(qcv_frame_buf(frame), avFrameRGB->data[0], qcv_frame_buf_size(frame));
+
+
+  sws_freeContext(img_convert_ctx);
+  avcodec_free_frame(&avFrameRGB);
+  av_free(rgb_frame);
+  return 0;
+}
+
 
 /*
  * Local Variables:

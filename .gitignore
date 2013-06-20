@@ -8,3 +8,5 @@ tags
 *.a
 iso
 quest.iso
+*.rej
+*.orig
