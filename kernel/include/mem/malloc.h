@@ -25,13 +25,13 @@
 #include "kernel.h"
 
 
-#define MALLOC_POOL_NUM_PAGE_TABLES ((uint32)5)
+#define MALLOC_POOL_NUM_DIR_ENTRIES ((uint32)5)
 
 /* The malloc pool "grows" down, always ending at 1018 */
 
-#define MALLOC_POOL_LAST_PAGE_TABLE ((uint32)1018)
-#define MALLOC_POOL_START_PAGE_TABLE                                    \
-  ((uint32)(MALLOC_POOL_LAST_PAGE_TABLE - MALLOC_POOL_NUM_PAGE_TABLES + 1))
+#define MALLOC_POOL_LAST_DIR_ENTRY ((uint32)1018)
+#define MALLOC_POOL_START_DIR_ENTRY                                     \
+  ((uint32)(MALLOC_POOL_LAST_DIR_ENTRY - MALLOC_POOL_NUM_DIR_ENTRIES + 1))
 
 
 
@@ -39,7 +39,7 @@ void init_malloc (void);
 void* kmalloc(uint32 size);
 void kfree(void* ptr);
 
-bool init_malloc_pool_page_tables();
+bool init_malloc_pool_dir_entries();
 void map_malloc_paging_structures(pgdir_entry_t* pageDir, uint32 offset);
 bool malloc_uses_page_tables();
 

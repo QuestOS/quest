@@ -44,7 +44,7 @@
 /* The dma pool "grows" down, always ending right next to the malloc
    pool */
 
-#define DMA_POOL_LAST_PAGE_TABLE ((uint32)(MALLOC_POOL_START_PAGE_TABLE - 1))
+#define DMA_POOL_LAST_PAGE_TABLE ((uint32)(MALLOC_POOL_START_DIR_ENTRY - 1))
 #define DMA_POOL_START_PAGE_TABLE					\
   ((uint32)(DMA_POOL_LAST_PAGE_TABLE - DMA_POOL_NUM_PAGE_TABLES + 1))
 

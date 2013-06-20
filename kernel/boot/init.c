@@ -547,7 +547,7 @@ init (multiboot * pmb)
   init_pit ();
 
   /* initialize kmalloc page tables */
-  if(!init_malloc_pool_page_tables()) {
+  if(!init_malloc_pool_dir_entries()) {
     com1_printf("Failed to initialise malloc pool");
     panic("Failed to initialise malloc pool");
   }

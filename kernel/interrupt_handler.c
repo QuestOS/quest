@@ -835,11 +835,11 @@ _exec (char *filename, char *argv[], uint32 *curr_stack)
 #ifdef USE_VMX
     if (plPageDirectory[i] && (i < (PHY_SHARED_MEM_POOL_START >> 22) ||
         i >= ((PHY_SHARED_MEM_POOL_START + SHARED_MEM_POOL_SIZE) >> 22)) &&
-        (i < MALLOC_POOL_START_PAGE_TABLE || i > MALLOC_POOL_LAST_PAGE_TABLE) &&
+        (i < MALLOC_POOL_START_DIR_ENTRY || i > MALLOC_POOL_LAST_DIR_ENTRY) &&
         (i < DMA_POOL_START_PAGE_TABLE || i > DMA_POOL_LAST_PAGE_TABLE)) {
 #else
     if (plPageDirectory[i] &&
-        (i < MALLOC_POOL_START_PAGE_TABLE || i > MALLOC_POOL_LAST_PAGE_TABLE) &&
+        (i < MALLOC_POOL_START_DIR_ENTRY || i > MALLOC_POOL_LAST_DIR_ENTRY) &&
         (i < DMA_POOL_START_PAGE_TABLE || i > DMA_POOL_LAST_PAGE_TABLE)) {
 #endif
       /* Present in currrent address space */
