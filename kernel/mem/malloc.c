@@ -40,7 +40,7 @@ static uint32* page_table_virtual_addrs[MALLOC_POOL_NUM_DIR_ENTRIES];
 
 static bool using_page_tables = TRUE;
 
-bool init_malloc_pool_dir_entries()
+bool init_malloc_pool_dir_entries(void)
 {
   /* The page tables here won't be carried over to the first process
      but we need to map them anyway because the kmalloc init function

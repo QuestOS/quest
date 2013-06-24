@@ -645,7 +645,7 @@ void destroy_memory_pool(void *mem_pool)
 
 }
 
-bool malloc_uses_page_tables() { return FALSE; }
+bool malloc_uses_page_tables(void) { return FALSE; }
 
 
 void* kmalloc(uint32 size)
