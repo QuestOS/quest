@@ -3,13 +3,11 @@ include ../config.mk
 FFMPEG_VERSION=1.2.1
 FFMPEG=ffmpeg-$(FFMPEG_VERSION)
 
-FFMPEG_FILES = $(shell find $(FFMPEG) -type f 2> /dev/null | grep -v $(FFMPEG)/config.h)
-
 all: make_guard
 
 $(FFMPEG_FILES): $(FFMPEG)/config.h
 
-make_guard: $(FFMPEG)/config.h $(FFMPEG_FILES)
+make_guard: $(FFMPEG)/config.h
 	$(MAKE) -C $(FFMPEG)
 	$(MAKE) -C $(FFMPEG) install 
 	touch $@
