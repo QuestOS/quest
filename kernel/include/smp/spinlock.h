@@ -31,6 +31,11 @@ typedef struct _spinlock spinlock;
 
 extern volatile bool mp_enabled;
 
+static inline void spinlock_initialise(spinlock* sl)
+{
+  sl->lock = 0;
+}
+
 static inline void
 spinlock_lock (spinlock * lock)
 {

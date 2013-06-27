@@ -43,6 +43,7 @@
 #include "vm/vmx.h"
 
 #define kmalloc shm_kmalloc
+#define kmalloc_aligned shm_kmalloc_aligned
 #define kfree shm_kfree
 
 #endif
@@ -664,6 +665,8 @@ struct rtl8169_private {
   u32 saved_wolopts;
   u8 mac_addr[MAC_ADDR_LEN];
   ethernet_device ethdev[MAX_NUM_SHARE];
+  void* TxDescArray_free_ptr;
+  void* RxDescArray_free_ptr;
 };
 
 static void
@@ -3401,7 +3404,7 @@ alloc_skb (u32 size)
   skb = kmalloc(sizeof (struct sk_buff));
   if (!skb) return NULL;
   skb->len = size;
-  skb->data = kmalloc(size);
+  skb->data = kmalloc_aligned(size, 32, &skb->data_free_ptr);
   if (!skb->data) {
     kfree((u8 *) skb);
     return NULL;
@@ -3413,7 +3416,7 @@ alloc_skb (u32 size)
 static inline void
 free_skb (struct sk_buff *skb)
 {
-  kfree ((u8 *)skb->data);
+  kfree ((u8 *)skb->data_free_ptr);
   kfree ((u8 *)skb);
 }
 
@@ -3936,12 +3939,12 @@ r8169_init (void)
   uint max_frame = mtu + VLAN_ETH_HLEN + ETH_FCS_LEN;
   tp->rx_buf_sz = (max_frame > RX_BUF_SIZE) ? max_frame : RX_BUF_SIZE;
 
-  tp->RxDescArray = kmalloc(R8169_RX_RING_BYTES);
+  tp->RxDescArray = kmalloc_aligned(R8169_RX_RING_BYTES, 256, &tp->RxDescArray_free_ptr);
   if (!tp->RxDescArray)
     goto abort_tp;
   tp->RxPhyAddr = (uint) get_phys_addr (tp->RxDescArray);
 
-  tp->TxDescArray = kmalloc(R8169_TX_RING_BYTES);
+  tp->TxDescArray = kmalloc_aligned(R8169_TX_RING_BYTES, 256, &tp->TxDescArray_free_ptr);
   if (!tp->TxDescArray)
     goto abort_rxdesc;
   tp->TxPhyAddr = (uint) get_phys_addr (tp->TxDescArray);
@@ -3995,9 +3998,9 @@ r8169_init (void)
 
   return TRUE;
  abort_txdesc:
-  kfree ((u8 *) tp->TxDescArray);
+  kfree ((u8 *) tp->TxDescArray_free_ptr);
  abort_rxdesc:
-  kfree ((u8 *) tp->RxDescArray);
+  kfree ((u8 *) tp->RxDescArray_free_ptr);
  abort_tp:
   kfree ((u8 *) tp);
  abort_virt:
@@ -4067,8 +4070,8 @@ extern void
 r8169_free ()
 {
   unmap_virtual_page (tp->mmio_addr);
-  kfree ((u8 *) tp->TxDescArray);
-  kfree ((u8 *) tp->RxDescArray);
+  kfree ((u8 *) tp->TxDescArray_free_ptr);
+  kfree ((u8 *) tp->RxDescArray_free_ptr);
   kfree ((u8 *) tp);
 }
 

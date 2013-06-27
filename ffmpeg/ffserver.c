@@ -68,6 +68,8 @@
 #include <dlfcn.h>
 #endif
 
+#include <sys/socket.h> // include correct socket header -GFRY
+
 #include "cmdutils.h"
 
 const char program_name[] = "ffserver";
@@ -638,6 +640,8 @@ static int http_server(void)
     struct pollfd *poll_table, *poll_entry;
     HTTPContext *c, *c_next;
 
+    printf("http_server()\n");
+
     if(!(poll_table = av_mallocz((nb_max_http_connections + 2)*sizeof(*poll_table)))) {
         http_log("Impossible to allocate a poll table handling %d connections.\n", nb_max_http_connections);
         return -1;
@@ -732,6 +736,7 @@ static int http_server(void)
         /* wait for an event on one connection. We poll at least every
            second to handle timeouts */
         do {
+            printf("http_server(): calling poll()\n");
             ret = poll(poll_table, poll_entry - poll_table, delay);
             if (ret < 0 && ff_neterrno() != AVERROR(EAGAIN) &&
                 ff_neterrno() != AVERROR(EINTR))
@@ -809,6 +814,8 @@ static void new_connection(int server_fd, int is_rtsp)
     int fd;
     HTTPContext *c = NULL;
 
+    printf("new_connection()\n");
+
     len = sizeof(from_addr);
     fd = accept(server_fd, (struct sockaddr *)&from_addr,
                 &len);
@@ -859,6 +866,8 @@ static void close_connection(HTTPContext *c)
     AVFormatContext *ctx;
     URLContext *h;
     AVStream *st;
+
+    printf("close_connection()\n");
 
     /* remove connection from list */
     cp = &first_http_ctx;
@@ -944,6 +953,8 @@ static void close_connection(HTTPContext *c)
 static int handle_connection(HTTPContext *c)
 {
     int len, ret;
+
+    printf("handle_connection()\n");
 
     switch(c->state) {
     case HTTPSTATE_WAIT_REQUEST:
@@ -1505,6 +1516,8 @@ static int http_parse_request(HTTPContext *c)
     char ratebuf[32];
     const char *useragent = 0;
 
+    printf("http_parse_request()\n");
+ 
     p = c->buffer;
     get_word(cmd, sizeof(cmd), &p);
     av_strlcpy(c->method, cmd, sizeof(c->method));
@@ -2489,6 +2502,8 @@ static int http_send_data(HTTPContext *c)
 {
     int len, ret;
 
+    printf("http_send_data()\n");
+
     for(;;) {
         if (c->buffer_ptr >= c->buffer_end) {
             ret = http_prepare_data(c);
@@ -2608,6 +2623,8 @@ static int http_start_receive_data(HTTPContext *c)
 {
     int fd;
 
+    printf("http_start_receive_data()\n");
+
     if (c->stream->feed_opened)
         return -1;
 
@@ -2654,6 +2671,8 @@ static int http_receive_data(HTTPContext *c)
 {
     HTTPContext *c1;
     int len, loop_run = 0;
+
+    printf("http_receive_data()\n");
 
     while (c->chunked_encoding && !c->chunk_size &&
            c->buffer_end > c->buffer_ptr) {
@@ -4077,11 +4096,11 @@ static int parse_ffconfig(const char *filename)
     AVCodecContext audio_enc, video_enc;
     enum AVCodecID audio_id, video_id;
 
-    f = fopen(filename, "r");
-    if (!f) {
-        perror(filename);
-        return -1;
-    }
+//    f = fopen(filename, "r");
+//    if (!f) {
+//        perror(filename);
+//        return -1;
+//    }
 
     errors = 0;
     line_num = 0;
@@ -4097,7 +4116,8 @@ static int parse_ffconfig(const char *filename)
 
 #define ERROR(...) report_config_error(filename, line_num, &errors, __VA_ARGS__)
     for(;;) {
-        if (fgets(line, sizeof(line), f) == NULL)
+//        if (fgets(line, sizeof(line), f) == NULL)
+	if (ffconfig_getline(line, sizeof(line)) == NULL)
             break;
         line_num++;
         p = line;
@@ -4649,7 +4669,7 @@ static int parse_ffconfig(const char *filename)
     }
 #undef ERROR
 
-    fclose(f);
+//    fclose(f);
     if (errors)
         return -1;
     else
@@ -4722,17 +4742,23 @@ int main(int argc, char **argv)
 
     unsetenv("http_proxy");             /* Kill the http_proxy */
 
-    av_lfg_init(&random_state, av_get_random_seed());
+    av_lfg_init(&random_state, 0/*, av_get_random_seed()*/);
+
+    printf("ffserver 1-4\n");
 
     sigact.sa_handler = handle_child_exit;
     sigact.sa_flags = SA_NOCLDSTOP | SA_RESTART;
-    sigaction(SIGCHLD, &sigact, 0);
+    //sigaction(SIGCHLD, &sigact, 0);
+
+    printf("ffserver 5\n");
 
     if (parse_ffconfig(config_filename) < 0) {
         fprintf(stderr, "Incorrect config file - exiting.\n");
         exit(1);
     }
     av_freep(&config_filename);
+
+    printf("ffserver 6\n");
 
     /* open log file if needed */
     if (logfilename[0] != '\0') {
@@ -4743,19 +4769,27 @@ int main(int argc, char **argv)
         av_log_set_callback(http_av_log);
     }
 
+    printf("ffserver 7\n");
+
     build_file_streams();
 
     build_feed_streams();
 
     compute_bandwidth();
 
+    printf("ffserver 8\n");
+
     /* signal init */
     signal(SIGPIPE, SIG_IGN);
+
+    printf("ffserver 9\n");
 
     if (http_server() < 0) {
         http_log("Could not start server\n");
         exit(1);
     }
+    
+    printf("ffserver 10\n");
 
     return 0;
 }

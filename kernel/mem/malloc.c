@@ -35,9 +35,10 @@
 #define DLOGV(fmt, ...) ;
 #endif
 
-
-static uint32  page_table_phys_addrs   [MALLOC_POOL_NUM_PAGE_TABLES];
+static uint32  page_dir_entries[MALLOC_POOL_NUM_PAGE_TABLES];
 static uint32* page_table_virtual_addrs[MALLOC_POOL_NUM_PAGE_TABLES];
+
+static bool using_page_tables = TRUE;
 
 bool init_malloc_pool_page_tables()
 {
@@ -48,37 +49,52 @@ bool init_malloc_pool_page_tables()
   pgdir_entry_t* directory = map_virtual_page((cr3 & 0xFFFFF000) | 3);
   uint i;
 
+  using_page_tables = malloc_uses_page_tables();
+
   if(directory == NULL) {
     return FALSE;
   }
-
-  for(i = 0; i < MALLOC_POOL_NUM_PAGE_TABLES; ++i) {
-    uint32 phys_frame = alloc_phys_frame();
-    void* map_result;
-    if(phys_frame == 0xFFFFFFFF) {
-      return FALSE;
+  
+  if(using_page_tables) {
+    for(i = 0; i < MALLOC_POOL_NUM_PAGE_TABLES; ++i) {
+      uint32 phys_frame = alloc_phys_frame();
+      void* map_result;
+      if(phys_frame == 0xFFFFFFFF) {
+        return FALSE;
+      }
+      page_dir_entries[i] = directory[i + MALLOC_POOL_START_PAGE_TABLE].raw = phys_frame | 3;
+      page_table_virtual_addrs[i] = map_result = map_virtual_page(phys_frame | 3);
+      DLOG("page virt = 0x%p, phys_frame = 0x%X\n", map_result, phys_frame);
+      
+      if(map_result == NULL) {
+        return FALSE;
+      }
+      memset(map_result, 0, 0x1000);
     }
-    page_table_phys_addrs[i] = directory[i + MALLOC_POOL_START_PAGE_TABLE].raw = phys_frame | 3;
-    page_table_virtual_addrs[i] = map_result = map_virtual_page(phys_frame | 3);
-    DLOG("page virt = 0x%p, phys_frame = 0x%X\n", map_result, phys_frame);
-    
-    if(map_result == NULL) {
-      return FALSE;
+  }
+  else {
+    for(i = 0; i < MALLOC_POOL_NUM_PAGE_TABLES; ++i) {
+      uint32 phys_frame = alloc_phys_frames_aligned_on(1024, 0x400000);
+      if(phys_frame == 0xFFFFFFFF) {
+        return FALSE;
+      }
+      page_table_virtual_addrs[i] = NULL;
+      page_dir_entries[i] = directory[i + MALLOC_POOL_START_PAGE_TABLE].raw = phys_frame | 0x83;
+      
     }
-    memset(map_result, 0, 0x1000);
   }
 
   unmap_virtual_page(directory);
   return TRUE;
 }
 
-void map_malloc_page_tables(pgdir_entry_t* pageDir, uint32 offset)
+void map_malloc_paging_structures(pgdir_entry_t* pageDir, uint32 offset)
 {
   int i, j;
   for(i = 0; i < MALLOC_POOL_NUM_PAGE_TABLES; ++i) {
-    uint32 phys = (page_table_phys_addrs[i] + offset) | 3;
+    uint32 phys = (page_dir_entries[i] + offset) | 3;
     pageDir[i + MALLOC_POOL_START_PAGE_TABLE].raw = phys;
-    if(offset) {
+    if(offset && using_page_tables) {
       pgtbl_entry_t* page_table = map_virtual_page(phys);
       for(j = 0; j < 1024; ++j) {
         if(page_table[j].raw && page_table[j].raw < offset) {
@@ -86,43 +102,51 @@ void map_malloc_page_tables(pgdir_entry_t* pageDir, uint32 offset)
         }
       }
       unmap_virtual_page(page_table);
-    }
+     }
   }
 }
 
 void* map_malloc_pool_virtual_page (uint32 phys_frame)
 {
-  return map_pool_virtual_page(phys_frame, MALLOC_POOL_START_PAGE_TABLE,
-                               MALLOC_POOL_NUM_PAGE_TABLES,
-                               page_table_virtual_addrs);
+  return using_page_tables ?
+    map_pool_virtual_page(phys_frame, MALLOC_POOL_START_PAGE_TABLE,
+                          MALLOC_POOL_NUM_PAGE_TABLES,
+                          page_table_virtual_addrs)
+    : NULL;
 }
 
 void* map_malloc_pool_virtual_pages (uint32 * phys_frames, uint32 count)
 {
-  return map_pool_virtual_pages(phys_frames, count, MALLOC_POOL_START_PAGE_TABLE,
-                                MALLOC_POOL_NUM_PAGE_TABLES,
-                                page_table_virtual_addrs);
+  return using_page_tables ?
+    map_pool_virtual_pages(phys_frames, count, MALLOC_POOL_START_PAGE_TABLE,
+                           MALLOC_POOL_NUM_PAGE_TABLES,
+                           page_table_virtual_addrs)
+    : NULL;
 }
 
 void* map_contiguous_malloc_pool_virtual_pages (uint32 phys_frame, uint32 count)
 {
-  map_contiguous_pool_virtual_pages(phys_frame, count, MALLOC_POOL_START_PAGE_TABLE,
-                                    MALLOC_POOL_NUM_PAGE_TABLES,
-                                    page_table_virtual_addrs);
+  return using_page_tables ?
+    map_contiguous_pool_virtual_pages(phys_frame, count, MALLOC_POOL_START_PAGE_TABLE,
+                                      MALLOC_POOL_NUM_PAGE_TABLES,
+                                      page_table_virtual_addrs)
+    : NULL;
 }
 
 void unmap_malloc_pool_virtual_page (void *virt_addr)
 {
-  unmap_pool_virtual_page(virt_addr, MALLOC_POOL_START_PAGE_TABLE,
-                          MALLOC_POOL_NUM_PAGE_TABLES,
-                          page_table_virtual_addrs);
+  if(using_page_tables)
+    unmap_pool_virtual_page(virt_addr, MALLOC_POOL_START_PAGE_TABLE,
+                            MALLOC_POOL_NUM_PAGE_TABLES,
+                            page_table_virtual_addrs);
 }
 
 void unmap_malloc_pool_virtual_pages (void *virt_addr, uint32 count)
 {
-  unmap_pool_virtual_pages(virt_addr, count, MALLOC_POOL_START_PAGE_TABLE,
-                           MALLOC_POOL_NUM_PAGE_TABLES,
-                           page_table_virtual_addrs);
+  if(using_page_tables)
+    unmap_pool_virtual_pages(virt_addr, count, MALLOC_POOL_START_PAGE_TABLE,
+                             MALLOC_POOL_NUM_PAGE_TABLES,
+                             page_table_virtual_addrs);
 }
 
 

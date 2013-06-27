@@ -25,6 +25,7 @@ extern uint32 mm_begin;         /* Actual or sandbox low physical page limit */
 extern uint32 alloc_phys_frame (void);
 extern uint32 alloc_phys_frame_high (void);
 extern uint32 alloc_phys_frames (uint32);
+extern uint32 alloc_phys_frames_aligned_on (uint32 count, uint32 alignment);
 extern void free_phys_frame (uint32);
 extern void free_phys_frames (uint32, uint32);
 

@@ -54,7 +54,7 @@ uint32 kls_pg_table[NR_MODS][1024] ALIGNED (0x1000);
 uint32 uls_pg_table[NR_MODS][1024] ALIGNED(0x1000);
 
 /* Each CPU gets an IDLE task -- something to do when nothing else */
-quest_tss idleTSS[MAX_CPUS];
+quest_tss idleTSS[MAX_CPUS] ALIGNED(0x1000);
 task_id idleTSS_selector[MAX_CPUS];
 
 /* Each CPU gets a CPU TSS for sw task switching */

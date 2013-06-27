@@ -163,4 +163,7 @@ off_t lseek(int fd, off_t offset, int whence);
 ssize_t recvmsg(int sockfd, struct msghdr *msg, int flags);
 
 const char* gai_strerror(int ecode);
+
+// SMAROTTA & GFRY ADDITIONS TO SUPPORT FFCONFIG PSEUDO-FILE-OPERATIONS
+char *ffconfig_getline(char* s, int len);
 #endif

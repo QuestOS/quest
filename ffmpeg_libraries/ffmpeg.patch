@@ -1,0 +1,12 @@
+diff -rupN -xconfig.log -xversion.h ffmpeg-1.2.1/config.h ffmpeg-1.2.1_modified/config.h
+--- ffmpeg-1.2.1/config.h	2013-06-03 17:12:21.086079173 -0400
++++ ffmpeg-1.2.1_modified/config.h	2013-06-03 17:00:13.550153911 -0400
+@@ -239,7 +239,7 @@
+ #define HAVE_SNDIO_H 0
+ #define HAVE_SOCKLEN_T 1
+ #define HAVE_SOUNDCARD_H 0
+-#define HAVE_STRERROR_R 1
++#define HAVE_STRERROR_R 0
+ #define HAVE_STRUCT_ADDRINFO 1
+ #define HAVE_STRUCT_GROUP_SOURCE_REQ 0
+ #define HAVE_STRUCT_IP_MREQ_SOURCE 0

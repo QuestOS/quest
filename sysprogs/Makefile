@@ -7,7 +7,7 @@ endif
 
 LIBS   = $(LIB_DEST)/crt0.o -lc
 INCS   = 
-CFLAGS = $(CFG)
+CFLAGS = $(CFG) -g
 
 
 PROGS = shell iotest ipctest spinner tcpclient tcpserver  \

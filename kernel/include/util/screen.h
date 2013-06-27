@@ -22,10 +22,21 @@ extern char *pchVideo;
 extern int putchar (int ch);
 extern int print (char *pch);
 extern void putx (uint32 l);
+extern int putchar_with_attributes(int ch, int attribute);
 /* unlocked: */
 extern int _putchar (int ch);
 extern int _print (char *pch);
 extern void _putx (uint32 l);
+
+
+typedef struct screen_cursor {
+  int x;
+  int y;
+} screen_cursor_t;
+
+screen_cursor_t* get_screen_cursor();
+void screen_cursor_set_pos(int x, int y);
+
 
 #endif
 

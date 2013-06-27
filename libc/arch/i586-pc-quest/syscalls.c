@@ -204,10 +204,9 @@ int link(char *old, char *new)
 
 int lseek(int file, int ptr, int dir)
 {
-  write(1, "In lseek which is a no op\n", sizeof("In lseek which is a no op\n"));
-  while(1);
-  errno = ENOSYS;
-  return -1;
+  int res;
+  asm volatile ("int $0x30\n":"=a"(res):"a" (10L), "b"(file), "c"(ptr), "d"(dir):CLOBBERS6);
+  return res;
 }
 
 #define HEAPSIZE (0x100000)
@@ -289,6 +288,15 @@ usb_syscall(int device_id, int operation, void* buf, int data_len)
   asm volatile ("int $0x30\n":"=a" (ret) : "a" (2L), "b"(device_id), "c" (operation),
                 "d" (buf), "S" (data_len) : CLOBBERS7);
   return ret;
+}
+
+inline int
+enable_video(int enable, char** video_memory)
+{
+  int res;
+  asm volatile ("int $0x30\n":"=a"(res):"a" (9L), "b"(enable), "c"(video_memory): CLOBBERS5);
+  return res;
+
 }
 
 inline int
@@ -536,6 +544,19 @@ socket_recovery (int arg)
   asm volatile ("int $0x3D\n"
                 :"=a" (ret)
                 :"a" (13), "b" (arg), "c" (0), "d" (0), "S" (0), "D" (0)
+                :"memory", "cc");
+
+  return ret;
+}
+
+
+inline int syscall_fcntl(int fd, int cmd, void* extra_arg)
+{
+  int ret;
+
+  asm volatile ("int $0x3D\n"
+                :"=a" (ret)
+                :"a" (14), "b" (fd), "c" (cmd), "d" (extra_arg)
                 :"memory", "cc");
 
   return ret;

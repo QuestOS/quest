@@ -7,8 +7,8 @@ TAR = tar
 SYNC = sync
 
 QUEST_USER_PROGS_DIRS = canny netperf sysprogs tests torcs malardalen \
-			zlib-1.2.7
-QUEST_LIB_DIRS = libc
+			zlib-1.2.7 qcv/progs
+QUEST_LIB_DIRS = libc libjpeg qcv/lib
 DIRS = $(QUEST_USER_PROGS_DIRS) $(QUEST_LIB_DIRS) kernel
 
 # the sets of directories to do various things in
@@ -40,9 +40,12 @@ build-tests:  build-libc
 build-netperf:  build-libc
 build-torcs:  build-libc
 build-zlib-1.2.7: build-libc
-build-sysprogs: build-kernel
 build-malardalen: build-libc
-build-zlib-1.2.7: build-libc
+build-sysprogs: build-kernel
+build-libjpeg: build-libc
+build-qcv/lib: build-libc build-libjpeg
+build-qcv/progs: build-libc build-qcv/lib
+build-libmpeg2: build-libc
 
 
 install: $(INSTALLDIRS)

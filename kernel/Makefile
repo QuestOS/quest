@@ -45,6 +45,7 @@ OBJS =  boot/boot.o boot/init.o kernel.o module/loader.o \
 	drivers/net/bnx2.o \
 	drivers/net/mac80211.o drivers/net/netsetup.o \
 	drivers/serial/mcs9922.o \
+	drivers/video/vga.o \
 	fs/fsys.o \
 	fs/ext2/fsys_ext2fs.o \
 	fs/iso9660/fsys_iso9660.o \
@@ -174,12 +175,12 @@ endef
 
 $(foreach obj,$(ACPI_OBJS),$(eval $(call ACPI_template,$(obj))))
 
-netboot: quest.iso
+netboot: ../quest.iso
 	mkdir -p $(TFTPDIR)/boot/grub
-	cp quest sysprogs/shell $(TFTPDIR)/boot
+	cp quest ../sysprogs/shell $(TFTPDIR)/boot
 	cp netboot/grub.cfg $(TFTPDIR)/boot/grub
-	cp $(GRUB2)/grub2pxe $(TFTPDIR)
-	$(TAR) -C $(TFTPDIR)/boot/grub -jxf $(GRUB2)/mods.tar.bz2
+	cp ../grub2/grub2pxe $(TFTPDIR)
+	$(TAR) -C $(TFTPDIR)/boot/grub -jxf ../grub2/mods.tar.bz2
 
 ##################################################
 # LWIP

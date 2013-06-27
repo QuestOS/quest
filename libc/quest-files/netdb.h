@@ -36,6 +36,8 @@ extern int getaddrinfo (const char *host, const char *service,
                         const struct addrinfo *hint, struct addrinfo **res);
 extern void freeaddrinfo (struct addrinfo *ai);
 
+extern const char *gai_strerror(int ecode);
+
 #endif
 
 /*

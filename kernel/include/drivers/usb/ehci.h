@@ -73,7 +73,7 @@
  * declaration below
  */
 
-//#define EHCI_IOC_BUG
+#define EHCI_IOC_BUG
 
 #define EHCI_USE_IOVCPU
 
@@ -144,7 +144,7 @@ typedef struct
 #define EHCI_HALT(hcd) (hcd)->regs->command &= ~RUN
 #define EHCI_RESET(hcd) (hcd)->regs->command |= RESET
 #define EHCI_ASYNC_DOORBELL_ENABLED(hcd)                \
-  ((hcd)->regs->command | INT_ASYNC_ADV_DOORBELL)
+  ((hcd)->regs->command & INT_ASYNC_ADV_DOORBELL)
 #define EHCI_ENABLE_ASYNC_DOORBELL(hcd)                 \
   ((hcd)->regs->command |= INT_ASYNC_ADV_DOORBELL)
 #define EHCI_DISABLE_ASYNC_DOORBELL(hcd)                \

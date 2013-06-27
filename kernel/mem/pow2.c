@@ -32,7 +32,7 @@
  * in powers of 2, from 2^POW2_MIN_POW to 2^POW2_MAX_POW */
 
 #define POW2_MIN_POW 5
-#define POW2_MAX_POW 20
+#define POW2_MAX_POW 22
 /* NB: the value of POW2_MAX_POW has to be smaller than 2^POW2_MIN_POW
  * because it needs to be able to fit within the POW2_MASK_POW.  Also
  * keep in mind it needs to be able to find a contiguous virtual
@@ -271,6 +271,8 @@ void kfree(void* ptr)
 {
   pow2_free(ptr);
 }
+
+bool malloc_uses_page_tables() { return TRUE; }
 
 void
 init_malloc(void)

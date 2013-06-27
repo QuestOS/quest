@@ -28,6 +28,8 @@
 //#define DEBUG_USB_HUB
 //#define DEBUG_USB_HUB_VERBOSE
 
+//#define ENABLE_HOT_PLUG
+
 
 #ifdef DEBUG_USB_HUB
 #define DLOG(fmt,...) DLOG_PREFIX("usb-hub",fmt,##__VA_ARGS__)
@@ -345,7 +347,7 @@ static USB_DRIVER hub_driver = {
 extern bool
 usb_hub_driver_init (void)
 {
-#if 1
+#ifdef ENABLE_HOT_PLUG
   task_id t= start_kernel_thread((u32)hub_hot_plugable_thread,
                        (u32) &usb_hotplug_stack[HUB_HOTPLUG_STACK_SIZE - 1],
                        "USB Hotplug");

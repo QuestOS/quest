@@ -42,6 +42,7 @@ CASSERT (sizeof (task_id) == sizeof (uint32), task_id);
 
 typedef struct _fd_table_entry {
   uint8 type;
+  uint32 flags;
   void * entry;
 } fd_table_entry_t;
 
@@ -49,9 +50,12 @@ typedef struct _fd_table_file_entry
 {
   char* pathname;
   int current_pos;
+  unsigned char* file_buffer;
+  size_t file_length;
 } fd_table_file_entry_t;
 
-fd_table_file_entry_t* alloc_fd_table_file_entry(char* pathname);
+fd_table_file_entry_t* alloc_fd_table_file_entry(char* pathname, size_t file_length);
+void free_fd_table_file_entry(fd_table_file_entry_t* entry);
 
 /* --YL-- We have a cyclic include in kernel.h involves proc.h and vcpu.h */
 #ifndef _SCHED_VCPU_REPL_
@@ -77,7 +81,8 @@ typedef struct _quest_tss
   u32 initial_EIP;
   u32 CR3;
   u32 EFLAGS;
-  u8 fpu_state[108];            /* Always assume FPU state is 108 bytes */
+  u8 padding[12];
+  u8 fpu_state[512];            /* 512 bytes for fpu and mmx state */
   struct _semaphore Msem;
   u32 M[NUM_M];
 
@@ -102,7 +107,7 @@ typedef struct _quest_tss
   struct _quest_tss * next_tss;
   struct _quest_tss * prev_tss;
   task_id tid;
-  char * name[32];              /* A simple description or the path of the process */
+  char name[32];              /* A simple description or the path of the process */
   uint sandbox_affinity;        /* Sandbox binding. Change this to migrate. */
 
   /* -- EM -- Machine affinity right now since we do not have a global
@@ -115,7 +120,11 @@ typedef struct _quest_tss
   replenishment vcpu_backup[MAX_REPL];
   /* common VCPU scheduling parameters backup */
   u64 C_bak, T_bak, b_bak, usage_bak;
+  u8 padding2[5];
 } PACKED quest_tss;
+
+CASSERT(sizeof(quest_tss) <= 0x1000, quest_tss_size);
+CASSERT((sizeof(quest_tss) % 32) == 0, quest_tss_alignment);
 
 static inline int
 find_fd (quest_tss *tss)
@@ -123,8 +132,10 @@ find_fd (quest_tss *tss)
   int i;
 
   for (i = 3; i < MAX_FD; i++) {
-    if (tss->fd_table[i].entry == NULL)
+    if (tss->fd_table[i].entry == NULL) {
+      tss->fd_table[i].flags = 0; /* Reset flags for new fd */
       return i;
+    }
   }
 
   return -1;

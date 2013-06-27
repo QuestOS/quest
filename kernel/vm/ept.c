@@ -20,8 +20,7 @@
 #include "vm/shm.h"
 #include "vm/vm86.h"
 #include "kernel.h"
-#include "mem/physical.h"
-#include "mem/virtual.h"
+#include "mem/mem.h"
 #include "util/cpuid.h"
 #include "util/printf.h"
 #include "smp/apic.h"
@@ -283,8 +282,8 @@ vmx_init_mem (uint32 cpu)
     }
   }
 
-  map_malloc_page_tables(virt_pgd_new, physical_offset);
-  map_dma_page_tables(virt_pgd_new, physical_offset);
+  map_malloc_paging_structures((pgdir_entry_t*)virt_pgd_new, physical_offset);
+  map_dma_page_tables((pgdir_entry_t*)virt_pgd_new, physical_offset);
 
 #if 0
   for (i = 0; i < 0x400; i++) {
@@ -309,8 +308,8 @@ vmx_init_mem (uint32 cpu)
       virt_pgd[i] = 0;
     }
   }
-  map_malloc_page_tables(virt_pgd, 0);
-  map_dma_page_tables(virt_pgd, 0);
+  map_malloc_paging_structures((pgdir_entry_t*)virt_pgd, 0);
+  map_dma_page_tables((pgdir_entry_t*)virt_pgd, 0);
   flush_tlb_all ();
 
   DLOG ("Host Mapping Restored on cpu#%d", cpu);

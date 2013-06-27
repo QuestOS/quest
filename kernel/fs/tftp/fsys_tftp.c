@@ -21,16 +21,16 @@
 #include "lwip/netif.h"
 #include "lwip/udp.h"
 #include "fs/filesys.h"
-#include "mem/virtual.h"
-#include "mem/physical.h"
+#include "mem/mem.h"
 #include "kernel.h"
 #include "util/debug.h"
 #include "util/circular.h"
+#include "arch/i386.h"
 
 //#define DEBUG_TFTP
 
 #define TFTP_PORT 69
-#define TFTP_BLOCK_SIZE 512
+#define TFTP_MAX_BLOCK_SIZE 3072
 #define BLOCKS_PER_NODE 7       /* 7 * 512 + 8 < 4096 */
 #define TFTP_RING_LEN 4
 
@@ -48,7 +48,8 @@ enum {
   TFTP_OP_WRQ,
   TFTP_OP_DATA,
   TFTP_OP_ACK,
-  TFTP_OP_ERR
+  TFTP_OP_ERR,
+  TFTP_OP_OACK
 };
 
 /*
@@ -95,7 +96,7 @@ static circular incoming;
 struct _blocklist {
   struct _blocklist *next;
   uint32 len, start;
-  uint8 blocks[TFTP_BLOCK_SIZE * BLOCKS_PER_NODE];
+  uint8 blocks[0];
 };
 typedef struct _blocklist blocklist_t;
 
@@ -105,6 +106,8 @@ blocklist_t *curbuf, *curend;
 static int
 format_rrq (uint8 *buf, int len, const char *filename)
 {
+  char blksize_buf[20];
+  int blksize_buf_size = 0;
   int filename_len = strlen (filename);
   if (2+filename_len+1+6 > len)
     return 0;
@@ -113,7 +116,12 @@ format_rrq (uint8 *buf, int len, const char *filename)
   memcpy (buf+2, filename, filename_len);
   buf[2+filename_len] = 0;
   memcpy (buf+2+filename_len+1, "octet\0", 6); /* mode=octet */
-  return 2+filename_len+1+6;
+
+  memcpy(buf+2+filename_len+1+6, "blksize\0", 8);
+  blksize_buf_size = int_to_ascii(blksize_buf, TFTP_MAX_BLOCK_SIZE);
+  blksize_buf[blksize_buf_size] = '\0';
+  memcpy(buf+2+filename_len+1+6+8, blksize_buf, blksize_buf_size+1);
+  return 2+filename_len+1+6+8+blksize_buf_size+1;
 }
 
 static int
@@ -152,10 +160,13 @@ send (uint8 *buf, uint32 len)
   return len;
 }
 
+
+//#define NODE_CAPACITY (BLOCKS_PER_NODE * TFTP_BLOCK_SIZE)
+
 static blocklist_t *
-alloc_node (void)
+alloc_node (int buffer_size)
 {
-  return kmalloc(0x1000);
+  return kmalloc(sizeof(blocklist_t) + buffer_size);
 }
 
 static void
@@ -164,14 +175,13 @@ free_node (blocklist_t *bl)
   kfree(bl);
 }
 
-#define NODE_CAPACITY (BLOCKS_PER_NODE * TFTP_BLOCK_SIZE)
 static void
-cache (uint8 *buf, uint32 len)
+cache (uint8 *buf, uint32 len, uint node_capacity)
 {
   while (len > 0) {
-    if (curend && curend->len < NODE_CAPACITY) {
+    if (curend && curend->len < node_capacity) {
       /* can use existing node */
-      uint32 rem = NODE_CAPACITY - curend->len;
+      uint32 rem = node_capacity - curend->len;
       uint32 amount = len < rem ? len : rem;
 
       memcpy (&curend->blocks[curend->len], buf, amount);
@@ -180,10 +190,10 @@ cache (uint8 *buf, uint32 len)
       buf += amount;
     } else {
       /* need new node */
-      blocklist_t *n = alloc_node ();
+      blocklist_t *n = alloc_node(node_capacity);
       memset (n, 0, sizeof (blocklist_t));
       n->next = NULL;
-      n->len = len < NODE_CAPACITY ? len : NODE_CAPACITY;
+      n->len = len < node_capacity ? len : node_capacity;
       memcpy (n->blocks, buf, n->len);
       if (curend) {
         /* append to current end of list */
@@ -212,12 +222,27 @@ free_cache (void)
   curend = curbuf = NULL;
 }
 
+char* search_for_option(char* buf, int buf_len, char* option, int opt_len) {
+  int i;
+  for(i = 0; i < buf_len - opt_len; ++i) {
+    if(memcmp(&buf[i], option, opt_len) == 0) {
+      return &buf[i + opt_len];
+    }
+  }
+  return NULL;
+}
+
 int
 eztftp_dir (char *pathname)
 {
   struct pbuf *p, *q;
-  uint8 buf[TFTP_BLOCK_SIZE+4], *ins;
+  uint8 *buf, *ins;
   uint32 len, rem, filesize=0;
+  uint negotiated_block_size = TFTP_MAX_BLOCK_SIZE;
+
+  buf = kmalloc(TFTP_MAX_BLOCK_SIZE+4);
+
+  if(!buf) return -1;
 
   circular_init (&incoming, incoming_buf,
                  TFTP_RING_LEN, sizeof (struct pbuf *));
@@ -230,15 +255,16 @@ eztftp_dir (char *pathname)
   if (curbuf) free_cache ();
 
   /* format and send a read request */
-  len = format_rrq (buf, TFTP_BLOCK_SIZE+4, pathname);
+  len = format_rrq (buf, TFTP_MAX_BLOCK_SIZE+4, pathname);
   server_port = TFTP_PORT;
   if (send (buf, len) < 0) {
     DLOG ("failed to send request: %d %s", *((u16 *) buf), buf+2);
+    kfree(buf);
     return -1;
   }
 
   /* fetch file loop */
-  rem = TFTP_BLOCK_SIZE+4; len=0; ins=buf;
+  rem = negotiated_block_size+4; len=0; ins=buf;
   for (;;) {
     /* wait for incoming data */
     circular_remove (&incoming, &p);
@@ -271,18 +297,22 @@ eztftp_dir (char *pathname)
       buf[1] = TFTP_OP_ACK;
       send (buf, 4);
       /* now put the data on our cached pbuf chain */
-      /* -- EM -- Not caching the block because for larger files,
-         (specifically for larger binaries which is the problem right
-         now) this will use up all the page tables entries, the
-         solution is to use eztftp_bulk_read in place of eztftp_read
-         in vfs_read which will load the file only in the buffer, this
-         however causes the file to be read over tftp twice since it
-         is not buffered here */
-      cache (buf+4, len-4);
+      cache (buf+4, len-4, negotiated_block_size * BLOCKS_PER_NODE);
     } else if (buf[1] == TFTP_OP_ERR) {
       /* got error, probably file not found */
       DLOG ("error code=%d str=%s", (buf[2] << 8) | buf[3], &buf[4]);
+      kfree(buf);
       return -1;
+    } else if (buf[1] == TFTP_OP_OACK) {
+      char* blksize_opt = search_for_option((char*)buf, len, "blksize", sizeof("blksize"));
+      if(blksize_opt) {
+        negotiated_block_size = atoi(blksize_opt);
+      }
+      memset(buf, 0, 4);
+      buf[1] = TFTP_OP_ACK;
+      send(buf, 4);
+      rem = negotiated_block_size+4; len=0; ins=buf;
+      continue;
     } else {
       /* discard buffer */
       DLOG ("received unexpected packet opcode=%d", buf[1]);
@@ -290,15 +320,16 @@ eztftp_dir (char *pathname)
 
     filesize += len-4;
 
-    if (len - 4 < TFTP_BLOCK_SIZE)
+    if (len - 4 < negotiated_block_size)
       /* that was the last packet */
       break;
 
     /* reset buffer */
-    rem = TFTP_BLOCK_SIZE+4; len=0; ins=buf;
+    rem = negotiated_block_size+4; len=0; ins=buf;
   }
 
   DLOG ("opened file size=%d bytes", filesize);
+  kfree(buf);
   return filesize;
 }
 
@@ -313,8 +344,13 @@ int
 eztftp_bulk_read (char *pathname, uint32 * load_addr)
 {
   struct pbuf *p, *q;
-  uint8 buf[TFTP_BLOCK_SIZE+4], *ins;
+  uint8 *buf, *ins;
   uint32 len, rem, filesize=0;
+  int negotiated_block_size = TFTP_MAX_BLOCK_SIZE;
+
+  buf = kmalloc(TFTP_MAX_BLOCK_SIZE+4);
+
+  if(!buf) return -1;
 
   circular_init (&incoming, incoming_buf,
                  TFTP_RING_LEN, sizeof (struct pbuf *));
@@ -325,15 +361,16 @@ eztftp_bulk_read (char *pathname, uint32 * load_addr)
     pathname++;
 
   /* format and send a read request */
-  len = format_rrq (buf, TFTP_BLOCK_SIZE+4, pathname);
+  len = format_rrq (buf, TFTP_MAX_BLOCK_SIZE+4, pathname);
   server_port = TFTP_PORT;
   if (send (buf, len) < 0) {
     DLOG ("failed to send request: %d %s", *((u16 *) buf), buf+2);
+    kfree(buf);
     return -1;
   }
 
   /* fetch file loop */
-  rem = TFTP_BLOCK_SIZE+4; len=0; ins=buf;
+  rem = negotiated_block_size+4; len=0; ins=buf;
   for (;;) {
     /* wait for incoming data */
     circular_remove (&incoming, &p);
@@ -372,7 +409,18 @@ eztftp_bulk_read (char *pathname, uint32 * load_addr)
     } else if (buf[1] == TFTP_OP_ERR) {
       /* got error, probably file not found */
       DLOG ("error code=%d str=%s", (buf[2] << 8) | buf[3], &buf[4]);
+      kfree(buf);
       return -1;
+    } else if (buf[1] == TFTP_OP_OACK) {
+      char* blksize_opt = search_for_option((char*)buf, len, "blksize", sizeof("blksize"));
+      if(blksize_opt) {
+        negotiated_block_size = atoi(blksize_opt);
+      }
+      memset(buf, 0, 4);
+      buf[1] = TFTP_OP_ACK;
+      send(buf, 4);
+      rem = negotiated_block_size+4; len=0; ins=buf;
+      continue;
     } else {
       /* discard buffer */
       DLOG ("received unexpected packet opcode=%d", buf[1]);
@@ -380,15 +428,16 @@ eztftp_bulk_read (char *pathname, uint32 * load_addr)
 
     filesize += len-4;
 
-    if (len - 4 < TFTP_BLOCK_SIZE)
+    if (len - 4 < negotiated_block_size)
       /* that was the last packet */
       break;
 
     /* reset buffer */
-    rem = TFTP_BLOCK_SIZE+4; len=0; ins=buf;
+    rem = negotiated_block_size+4; len=0; ins=buf;
   }
 
   DLOG ("opened file size=%d bytes", filesize);
+  kfree(buf);
   return filesize;
 }
 

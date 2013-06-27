@@ -22,6 +22,7 @@
 #include "types.h"
 #include "arch/i386.h"
 #include "mem/mem.h"
+#include "kernel.h"
 
 
 #define MALLOC_POOL_NUM_PAGE_TABLES ((uint32)5)
@@ -39,7 +40,8 @@ void* kmalloc(uint32 size);
 void kfree(void* ptr);
 
 bool init_malloc_pool_page_tables();
-void map_malloc_page_tables(pgdir_entry_t* pageDir, uint32 offset);
+void map_malloc_paging_structures(pgdir_entry_t* pageDir, uint32 offset);
+bool malloc_uses_page_tables();
 
 void* map_malloc_pool_virtual_page (uint32 phys_frame);
 void* map_malloc_pool_virtual_pages (uint32 * phys_frames, uint32 count);
@@ -53,6 +55,16 @@ static inline void* kzalloc(uint32 size) {
     memset(temp, 0, size);
   }
   return temp;
+}
+
+static inline void* kmalloc_aligned(uint32 size, uint32 alignment, void** ptr_to_free)
+{
+  *ptr_to_free = kmalloc(size + alignment - 1);
+  if(*ptr_to_free) {
+    void* temp = (void*)(((uint)((u8*)(*ptr_to_free)+alignment-1)) & ~((uint32)(alignment-1)));
+    return temp;
+  }
+  return NULL;
 }
 
 #endif //_MALLOC_H_

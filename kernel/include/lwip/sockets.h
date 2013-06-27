@@ -264,7 +264,7 @@ typedef struct ip_mreq {
 
 /* Socket flags: */
 #ifndef O_NONBLOCK
-#define O_NONBLOCK    04000U
+#define O_NONBLOCK    0x4000
 #endif
 
 /* FD_SET used for lwip_select */
