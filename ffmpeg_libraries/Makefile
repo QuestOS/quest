@@ -7,14 +7,14 @@ FFMPEG_FILES = $(shell find $(FFMPEG) -type f 2> /dev/null | grep -v $(FFMPEG)/M
 
 all: make_guard
 
-$(FFMPEG_FILES): $(FFMPEG)/Makefile
+$(FFMPEG_FILES): $(FFMPEG)/config.h
 
-make_guard: $(FFMPEG)/Makefile $(FFMPEG_FILES)
+make_guard: $(FFMPEG)/config.h $(FFMPEG_FILES)
 	$(MAKE) -C $(FFMPEG)
 	$(MAKE) -C $(FFMPEG) install 
 	touch $@
 
-$(FFMPEG)/Makefile: $(FFMPEG).tar.gz ffmpeg.patch
+$(FFMPEG)/config.h: $(FFMPEG).tar.gz ffmpeg.patch
 	$(MAKE) clean
 	rm -rf $(FFMPEG) make_guard
 	tar xf $< 
