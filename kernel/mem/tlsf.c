@@ -645,7 +645,7 @@ void destroy_memory_pool(void *mem_pool)
 
 }
 
-bool malloc_uses_page_tables() { return FALSE; }
+bool malloc_uses_page_tables(void) { return FALSE; }
 
 
 void* kmalloc(uint32 size)
@@ -945,8 +945,8 @@ void *calloc_ex(size_t nelem, size_t elem_size, void *mem_pool)
 
 void init_malloc(void)
 {
-  init_memory_pool(MALLOC_POOL_NUM_PAGE_TABLES * 0x400000,
-		   (void*)(MALLOC_POOL_START_PAGE_TABLE * 0x400000));
+  init_memory_pool(MALLOC_POOL_NUM_DIR_ENTRIES * 0x400000,
+		   (void*)(MALLOC_POOL_START_DIR_ENTRY * 0x400000));
 }
 
 

@@ -272,7 +272,7 @@ void kfree(void* ptr)
   pow2_free(ptr);
 }
 
-bool malloc_uses_page_tables() { return TRUE; }
+bool malloc_uses_page_tables(void) { return TRUE; }
 
 void
 init_malloc(void)

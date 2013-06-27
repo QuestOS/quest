@@ -35,12 +35,12 @@
 #define DLOGV(fmt, ...) ;
 #endif
 
-static uint32  page_dir_entries[MALLOC_POOL_NUM_PAGE_TABLES];
-static uint32* page_table_virtual_addrs[MALLOC_POOL_NUM_PAGE_TABLES];
+static uint32  page_dir_entries[MALLOC_POOL_NUM_DIR_ENTRIES];
+static uint32* page_table_virtual_addrs[MALLOC_POOL_NUM_DIR_ENTRIES];
 
 static bool using_page_tables = TRUE;
 
-bool init_malloc_pool_page_tables()
+bool init_malloc_pool_dir_entries(void)
 {
   /* The page tables here won't be carried over to the first process
      but we need to map them anyway because the kmalloc init function
@@ -56,13 +56,13 @@ bool init_malloc_pool_page_tables()
   }
   
   if(using_page_tables) {
-    for(i = 0; i < MALLOC_POOL_NUM_PAGE_TABLES; ++i) {
+    for(i = 0; i < MALLOC_POOL_NUM_DIR_ENTRIES; ++i) {
       uint32 phys_frame = alloc_phys_frame();
       void* map_result;
       if(phys_frame == 0xFFFFFFFF) {
         return FALSE;
       }
-      page_dir_entries[i] = directory[i + MALLOC_POOL_START_PAGE_TABLE].raw = phys_frame | 3;
+      page_dir_entries[i] = directory[i + MALLOC_POOL_START_DIR_ENTRY].raw = phys_frame | 3;
       page_table_virtual_addrs[i] = map_result = map_virtual_page(phys_frame | 3);
       DLOG("page virt = 0x%p, phys_frame = 0x%X\n", map_result, phys_frame);
       
@@ -73,13 +73,13 @@ bool init_malloc_pool_page_tables()
     }
   }
   else {
-    for(i = 0; i < MALLOC_POOL_NUM_PAGE_TABLES; ++i) {
+    for(i = 0; i < MALLOC_POOL_NUM_DIR_ENTRIES; ++i) {
       uint32 phys_frame = alloc_phys_frames_aligned_on(1024, 0x400000);
       if(phys_frame == 0xFFFFFFFF) {
         return FALSE;
       }
       page_table_virtual_addrs[i] = NULL;
-      page_dir_entries[i] = directory[i + MALLOC_POOL_START_PAGE_TABLE].raw = phys_frame | 0x83;
+      page_dir_entries[i] = directory[i + MALLOC_POOL_START_DIR_ENTRY].raw = phys_frame | 0x83;
       
     }
   }
@@ -91,9 +91,9 @@ bool init_malloc_pool_page_tables()
 void map_malloc_paging_structures(pgdir_entry_t* pageDir, uint32 offset)
 {
   int i, j;
-  for(i = 0; i < MALLOC_POOL_NUM_PAGE_TABLES; ++i) {
+  for(i = 0; i < MALLOC_POOL_NUM_DIR_ENTRIES; ++i) {
     uint32 phys = (page_dir_entries[i] + offset) | 3;
-    pageDir[i + MALLOC_POOL_START_PAGE_TABLE].raw = phys;
+    pageDir[i + MALLOC_POOL_START_DIR_ENTRY].raw = phys;
     if(offset && using_page_tables) {
       pgtbl_entry_t* page_table = map_virtual_page(phys);
       for(j = 0; j < 1024; ++j) {
@@ -109,8 +109,8 @@ void map_malloc_paging_structures(pgdir_entry_t* pageDir, uint32 offset)
 void* map_malloc_pool_virtual_page (uint32 phys_frame)
 {
   return using_page_tables ?
-    map_pool_virtual_page(phys_frame, MALLOC_POOL_START_PAGE_TABLE,
-                          MALLOC_POOL_NUM_PAGE_TABLES,
+    map_pool_virtual_page(phys_frame, MALLOC_POOL_START_DIR_ENTRY,
+                          MALLOC_POOL_NUM_DIR_ENTRIES,
                           page_table_virtual_addrs)
     : NULL;
 }
@@ -118,8 +118,8 @@ void* map_malloc_pool_virtual_page (uint32 phys_frame)
 void* map_malloc_pool_virtual_pages (uint32 * phys_frames, uint32 count)
 {
   return using_page_tables ?
-    map_pool_virtual_pages(phys_frames, count, MALLOC_POOL_START_PAGE_TABLE,
-                           MALLOC_POOL_NUM_PAGE_TABLES,
+    map_pool_virtual_pages(phys_frames, count, MALLOC_POOL_START_DIR_ENTRY,
+                           MALLOC_POOL_NUM_DIR_ENTRIES,
                            page_table_virtual_addrs)
     : NULL;
 }
@@ -127,8 +127,8 @@ void* map_malloc_pool_virtual_pages (uint32 * phys_frames, uint32 count)
 void* map_contiguous_malloc_pool_virtual_pages (uint32 phys_frame, uint32 count)
 {
   return using_page_tables ?
-    map_contiguous_pool_virtual_pages(phys_frame, count, MALLOC_POOL_START_PAGE_TABLE,
-                                      MALLOC_POOL_NUM_PAGE_TABLES,
+    map_contiguous_pool_virtual_pages(phys_frame, count, MALLOC_POOL_START_DIR_ENTRY,
+                                      MALLOC_POOL_NUM_DIR_ENTRIES,
                                       page_table_virtual_addrs)
     : NULL;
 }
@@ -136,16 +136,16 @@ void* map_contiguous_malloc_pool_virtual_pages (uint32 phys_frame, uint32 count)
 void unmap_malloc_pool_virtual_page (void *virt_addr)
 {
   if(using_page_tables)
-    unmap_pool_virtual_page(virt_addr, MALLOC_POOL_START_PAGE_TABLE,
-                            MALLOC_POOL_NUM_PAGE_TABLES,
+    unmap_pool_virtual_page(virt_addr, MALLOC_POOL_START_DIR_ENTRY,
+                            MALLOC_POOL_NUM_DIR_ENTRIES,
                             page_table_virtual_addrs);
 }
 
 void unmap_malloc_pool_virtual_pages (void *virt_addr, uint32 count)
 {
   if(using_page_tables)
-    unmap_pool_virtual_pages(virt_addr, count, MALLOC_POOL_START_PAGE_TABLE,
-                             MALLOC_POOL_NUM_PAGE_TABLES,
+    unmap_pool_virtual_pages(virt_addr, count, MALLOC_POOL_START_DIR_ENTRY,
+                             MALLOC_POOL_NUM_DIR_ENTRIES,
                              page_table_virtual_addrs);
 }
 
