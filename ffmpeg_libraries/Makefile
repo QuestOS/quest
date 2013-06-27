@@ -3,7 +3,7 @@ include ../config.mk
 FFMPEG_VERSION=1.2.1
 FFMPEG=ffmpeg-$(FFMPEG_VERSION)
 
-FFMPEG_FILES = $(shell find $(FFMPEG) -type f 2> /dev/null | grep -v $(FFMPEG)/Makefile)
+FFMPEG_FILES = $(shell find $(FFMPEG) -type f 2> /dev/null | grep -v $(FFMPEG)/config.h)
 
 all: make_guard
 
