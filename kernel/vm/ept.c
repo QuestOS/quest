@@ -756,7 +756,19 @@ vmx_init_ept (uint32 cpu)
             }
           }
 
-          pt[k] = index | (memtype << 3) | EPT_ALL_ACCESS;
+          if ((index >= (PHYS_SHARED_MEM_HIGH - SHARED_MEM_SIZE)) &&
+              (index < (PHYS_SHARED_MEM_HIGH - ((1 + SHM_MAX_SCREEN) << 12)))) {
+            /* 
+             * For the allocatable part of shared memory (this is decided by
+             * PHYS_SHARED_MEM_HIGH, SHARED_MEM_SIZE and SHM_MAX_SCREEN, see shm.h and
+             * shm.c for detail), we give no access permission to any sandbox. Proper
+             * permission will be set up when they are allocated. This area does not
+             * include the shared memory info page. Hence the minus one.
+             */
+            pt[k] = index | (memtype << 3) | EPT_NO_ACCESS;
+          } else {
+            pt[k] = index | (memtype << 3) | EPT_ALL_ACCESS;
+          }
         }
         pd[j] = pt_frame | (0 << 7) | EPT_ALL_ACCESS;
         //pd[j] = ((i << 30) + (j << 21)) | (1 << 7) | (memtype << 3) | EPT_ALL_ACCESS;
@@ -779,6 +791,7 @@ vmx_init_ept (uint32 cpu)
   unmap_virtual_page (pml4);
   unmap_virtual_page (pdpt);
   free_phys_frame (var_regs_frame);
+  shm->ept_initialized[cpu] = TRUE;
 }
 
 /*
@@ -802,6 +815,24 @@ get_host_phys_addr (uint32 guest_phys_addr)
   unmap_virtual_page (pml4);
 
   return (uint32) phys;
+}
+
+void
+set_ept_page_permission (uint32 phys_frame, uint8 permission)
+{
+  uint32 pml4_frame = vmread (VMXENC_EPT_PTR);
+  uint64 * pml4 = map_virtual_page ((pml4_frame & 0xFFFFF000) | 3);
+  uint64 * pdpt = map_virtual_page ((pml4[0] & 0xFFFFF000) | 3);
+  uint64 * pd = map_virtual_page ((pdpt[(phys_frame >> 30) & 0x3] & 0xFFFFF000) | 3);
+  uint64 * pt = map_virtual_page ((pd[(phys_frame >> 21) & 0x1FF] & 0xFFFFF000) | 3);
+
+  pt[(phys_frame >> 12) & 0x1FF] &= 0xFFFFFFF8;
+  pt[(phys_frame >> 12) & 0x1FF] |= (permission & 0x7);
+
+  unmap_virtual_page (pt);
+  unmap_virtual_page (pd);
+  unmap_virtual_page (pdpt);
+  unmap_virtual_page (pml4);
 }
 
 #ifdef USE_LINUX_SANDBOX

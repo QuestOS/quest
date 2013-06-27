@@ -17,6 +17,7 @@
 
 #include "vm/shm.h"
 #include "vm/ept.h"
+#include "vm/vmx.h"
 #include "vm/spow2.h"
 #include "kernel.h"
 #include "mem/virtual.h"
@@ -59,7 +60,8 @@ shm_screen_init (uint32 cpu)
     return;
   }
 
-  shm->virtual_display.screen[cpu] = (char *) shm_alloc_phys_frame ();
+  /* Pre-allocated virtual screen page per cpu */
+  shm->virtual_display.screen[cpu] = (char *) (PHYS_SHARED_MEM_HIGH - 0x1000 * (cpu + 2));
   shm_screen = map_virtual_page ((uint32) (shm->virtual_display.screen[cpu]) | 3);
   memset (shm_screen, 0, 0x1000);
 
@@ -121,6 +123,10 @@ shm_init (uint32 cpu)
     }
     /* Mark the info page as occupied */
     SHM_BITMAP_CLR (shm->shm_table, SHARED_MEM_INFO_PAGE >> 12);
+    /* Mark all virtual screen page as occupied */
+    for (i = 0; i < SHM_MAX_SCREEN; i++) {
+      SHM_BITMAP_CLR (shm->shm_table, (SHARED_MEM_INFO_PAGE >> 12) - i -1);
+    }
     /* Set the magic to notify others that this area is initialized */
     shm->magic = SHM_MAGIC;
     shm->num_sandbox = 0;
@@ -195,13 +201,31 @@ shm_free_drv_lock (spinlock* lock)
   }
 }
 
+static struct _set_ept_param {
+  uint32 phys_frame;
+  uint32 count;
+  uint8 perm;
+} set_ept_param;
+
+void
+shm_set_ept_permission (uint32 phys_frame, uint32 count, uint8 perm)
+{
+  extern void * vm_exit_input_param;
+
+  set_ept_param.phys_frame = phys_frame;
+  set_ept_param.count = count;
+  set_ept_param.perm = perm;
+  vm_exit_input_param = (void *) &set_ept_param;
+  vm_exit (VM_EXIT_REASON_SET_EPT);
+}
+
 uint32
-shm_alloc_phys_frame (void)
+shm_alloc_phys_frame_perm (uint8 perm)
 {
   int i;
 
   if (!shm_initialized) {
-    logger_printf ("shm_alloc_phys_frame: Shared memory is not initialized!\n");
+    logger_printf ("shm_alloc_phys_frame_perm: Shared memory is not initialized!\n");
     return -1;
   } else {
     spinlock_lock (&(shm->shm_lock));
@@ -209,17 +233,20 @@ shm_alloc_phys_frame (void)
       if (SHM_BITMAP_TST (shm->shm_table, i)) {
         SHM_BITMAP_CLR (shm->shm_table, i);
         spinlock_unlock (&(shm->shm_lock));
+        if (shm->ept_initialized[get_pcpu_id ()]) {
+          shm_set_ept_permission (i << 12, 1, perm);
+        }
         return (i << 12);
       }
     spinlock_unlock (&(shm->shm_lock));
   }
 
-  DLOG ("shm_alloc_phys_frame failed!");
+  DLOG ("shm_alloc_phys_frame_perm failed!");
   return -1;
 }
 
 uint32
-shm_alloc_phys_frames (uint32 count)
+shm_alloc_phys_frames_perm (uint32 count, uint8 perm)
 {
   int i, j;
 
@@ -241,6 +268,9 @@ shm_alloc_phys_frames (uint32 count)
         SHM_BITMAP_CLR (shm->shm_table, i + j);
       }
       spinlock_unlock (&(shm->shm_lock));
+      if (shm->ept_initialized[get_pcpu_id ()]) {
+        shm_set_ept_permission (i << 12, count, perm);
+      }
       return (i << 12);           /* physical byte address of free frames */
       keep_searching:
       ;

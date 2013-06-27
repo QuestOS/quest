@@ -28,6 +28,7 @@
 /* Size of EPT paging structure, 10MB for each kernel. */
 #define EPT_DATA_SIZE        0x00A00000
 
+#define EPT_NO_ACCESS        0x0
 #define EPT_READ_ACCESS      0x1
 #define EPT_WRITE_ACCESS     0x2
 #define EPT_EXEC_ACCESS      0x4
@@ -38,6 +39,7 @@
 extern void vmx_init_mem (uint32);
 extern void vmx_init_ept (uint32);
 extern uint32 get_host_phys_addr (uint32);
+extern void set_ept_page_permission (uint32, uint8);
 #ifdef USE_LINUX_SANDBOX
 extern void mask_sandbox (uint32);
 #endif

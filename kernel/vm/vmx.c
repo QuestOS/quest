@@ -605,13 +605,30 @@ linux_vm_init (uint32 kernel_addr, int kernel_size)
 }
 #endif
 
+static void
+hyper_call_set_ept (vm_exit_param_t vm_exit_input_param)
+{
+  int i = 0;
+  struct _set_ept_param {
+    uint32 phys_frame;
+    uint32 count;
+    uint8 perm;
+  } * param = NULL;
+
+  param = (struct _set_ept_param *) vm_exit_input_param;
+
+  for (i = 0; i < param->count; i++) {
+    set_ept_page_permission ((param->phys_frame & 0xFFFFF000) + (i << 12), param->perm);
+  }
+}
+
 /* --YL-- We use two global variables for input and output of vm_exit routine. These
  * variables should be placed in sandbox kernel memory instead of monitor and some
  * more secure method should be prefered. For now, we just place them in monitor
  * for convenience.
  */
-void * vm_exit_input_param = NULL;
-void * vm_exit_return_val = NULL;
+vm_exit_param_t vm_exit_input_param = NULL;
+vm_exit_param_t vm_exit_return_val = NULL;
 
 /*
  * Processing intentional VM-Exit from Sandboxes.
@@ -702,6 +719,9 @@ abort:
 #ifdef USE_LINUX_SANDBOX
       mask_sandbox ((uint32) LINUX_SANDBOX);
 #endif
+      break;
+    case VM_EXIT_REASON_SET_EPT:
+      hyper_call_set_ept (vm_exit_input_param);
       break;
     default:
       logger_printf ("Unknow reason 0x%X caused VM-Exit in sandbox %d\n", status, cpu);

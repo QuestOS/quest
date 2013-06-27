@@ -50,6 +50,7 @@
 #define VM_EXIT_REASON_GET_HPA       0x0002  /* Get HPA for a given GPA */
 #define VM_EXIT_REASON_LINUX_BOOT    0x0003  /* Boot Linux sandbox */
 #define VM_EXIT_REASON_MASK_SB       0x0004  /* Remove EPT mapping of a sandbox */
+#define VM_EXIT_REASON_SET_EPT       0x0005  /* Set page permission in EPT (shared memory) */
 
 extern bool shared_driver_available;
 
@@ -66,6 +67,8 @@ typedef struct
   gp_registers guest_regs;
   uint32 launched, loaded, realmode;
 } virtual_machine;
+
+typedef void * vm_exit_param_t;
 
 #define VM_REG(n) ((((uint32 *) (&vm->guest_regs)))[7 - (n)])
 static const char gp_register_names[][4] = {

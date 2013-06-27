@@ -20,6 +20,7 @@
 
 #include <types.h>
 #include <kernel.h>
+#include <vm/ept.h>
 
 /* The number of allocatable locks for shared drivers */
 /* The number is counted in groups of 32 locks */
@@ -28,7 +29,7 @@
 #define NUM_DRV_LOCKS           (DRV_LOCK_INDEX << 5)
 /* Change this to 0xC0000000 if possible. */
 #define PHYS_SHARED_MEM_HIGH    0xA0000000
-#define SHARED_MEM_SIZE         0x00400000
+#define SHARED_MEM_SIZE         0x00800000
 /* SHARED_MEM_INDEX_MAX 32-bit integers bitmap for SHARED_MEM_SIZE of memory */
 #define SHARED_MEM_INDEX_MAX    (SHARED_MEM_SIZE >> 17)
 /* Last page in shared memory area reserved for meta info and locks, etc */
@@ -73,6 +74,8 @@ typedef struct _shm_info {
   uint64 remote_tsc[SHM_MAX_SANDBOX];
   /* If TRUE, local tsc is leading. If FALSE, local tsc is falling behind */
   bool remote_tsc_diff[SHM_MAX_SANDBOX];
+  /* If TRUE, local EPT tables have been setup. */
+  bool ept_initialized[SHM_MAX_SANDBOX];
   /* Used to muffle network output of a certain sandbox to implement "hot" backup */
   bool network_transmit_enabled[SHM_MAX_SANDBOX];
   bool bsp_booted;
@@ -93,16 +96,35 @@ typedef struct _shm_info {
     ((table)[((index) - ((PHYS_SHARED_MEM_HIGH - SHARED_MEM_SIZE) >> 12))>>5] &     \
     (1 << (((index) - ((PHYS_SHARED_MEM_HIGH - SHARED_MEM_SIZE) >> 12)) & 31)))
 
+#define shm_alloc_phys_frame() shm_alloc_phys_frame_perm (EPT_ALL_ACCESS)
+#define shm_alloc_phys_frames(c) shm_alloc_phys_frames_perm (c, EPT_ALL_ACCESS)
+
 extern shm_info *shm;
 extern bool shm_initialized;
 extern bool shm_screen_initialized;
 extern bool shm_screen_first;
 extern char * shm_screen;
 extern void shm_init (uint32);
-extern uint32 shm_alloc_phys_frame (void);
-extern uint32 shm_alloc_phys_frames (uint32);
+/*
+ * Allocate one frame of shared memory for calling sandbox. The permission of this
+ * frame (set in EPT) will be set according to the permission given for local sandbox.
+ * Allowed permissions are any combination of: EPT_NO_ACCESS, EPT_READ_ACCESS,
+ * EPT_WRITE_ACCESS and EPT_ALL_ACCESS.
+ */
+extern uint32 shm_alloc_phys_frame_perm (uint8);
+/*
+ * Same as shm_alloc_phys_frame_perm except this function allows the calling sandbox
+ * to allocate multiple contiguous frames.
+ */
+extern uint32 shm_alloc_phys_frames_perm (uint32, uint8);
 extern void shm_free_phys_frame (uint32);
 extern void shm_free_phys_frames (uint32, uint32);
+/*
+ * This function sets the permission of a given frame in shared memory. No allocation
+ * is done for the caller. Caller must use shm_alloc_phys_frame/frames_perm before
+ * changing permissions.
+ */
+extern void shm_set_ept_permission (uint32, uint32, uint8);
 extern spinlock * shm_alloc_drv_lock (void);
 extern void shm_free_drv_lock (spinlock *);
 
