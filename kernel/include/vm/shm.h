@@ -39,6 +39,20 @@
 #define SHM_MAX_SCREEN          0x08
 #define SHM_MAX_SANDBOX         0x08
 
+/* The start (high, grows down) physical address of private channels b/w sandboxes */
+#define PHYS_PRIV_CHANNEL_HIGH  (PHYS_SHARED_MEM_HIGH - ((1 + SHM_MAX_SCREEN) << 12))
+/* Number of total private channels needed */
+#define NUM_PRIV_CHANNELS       ((SHM_MAX_SANDBOX * (SHM_MAX_SANDBOX - 1)) >> 1)
+/* Index of channel between x and y (x and y cannot be equal!) */
+/* x and y starts from 0 (core id) and CHANNEL_INDEX start from *1* (not 0) */
+/* Given x < y, index = y + ((2n -3)x - x^2)/2 */
+#define CHANNEL_INDEX(x, y)                                         \
+  ((((x < y) ? (((SHM_MAX_SANDBOX << 1) - 3) * x - x * x) :         \
+               (((SHM_MAX_SANDBOX << 1) - 3) * y - y * y)) >> 1) +  \
+  ((x < y) ? y : x))
+/* Physical address of channel between x and y (x and y cannot be equal!) */
+#define CHANNEL_ADDR(x, y)  (PHYS_PRIV_CHANNEL_HIGH - (CHANNEL_INDEX(x, y) << 12))
+
 #ifndef __ASSEMBLER__
 
 typedef struct _cursor {

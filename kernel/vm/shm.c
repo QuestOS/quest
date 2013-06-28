@@ -127,6 +127,10 @@ shm_init (uint32 cpu)
     for (i = 0; i < SHM_MAX_SCREEN; i++) {
       SHM_BITMAP_CLR (shm->shm_table, (SHARED_MEM_INFO_PAGE >> 12) - i -1);
     }
+    /* Mark all private channel pages as occupied */
+    for (i = 0; i < NUM_PRIV_CHANNELS; i++) {
+      SHM_BITMAP_CLR (shm->shm_table, (PHYS_PRIV_CHANNEL_HIGH >> 12) - i - 1);
+    }
     /* Set the magic to notify others that this area is initialized */
     shm->magic = SHM_MAGIC;
     shm->num_sandbox = 0;
