@@ -18,6 +18,9 @@
 #ifndef _LINUX_SOCKET_H
 #define _LINUX_SOCKET_H
 
+#include "lwip/pbuf.h"
+#include "lwip/inet.h"
+
 typedef int socklen_t;
 
 /* Types of sockets.  */
@@ -246,6 +249,24 @@ struct sockaddr_in
     sizeof (in_port_t) -
     sizeof (struct in_addr)];
 };
+
+typedef struct {
+  struct pbuf *buf;
+  struct sockaddr_in addr;
+  unsigned int bytes_read;
+} udp_recv_buf_t;
+
+#define UDP_RECV_BUF_LEN  32
+
+typedef struct {
+  struct pbuf *buf;
+  struct sockaddr_in addr;
+  unsigned int bytes_read;
+} tcp_recv_buf_t;
+
+#define TCP_RECV_BUF_LEN  32
+
+#define TCP_ACCEPT_LEN  32
 
 #endif
 

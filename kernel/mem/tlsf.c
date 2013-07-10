@@ -209,8 +209,8 @@ extern void *tlsf_calloc(size_t nelem, size_t elem_size);
 # endif
 #endif
 
-typedef unsigned int u32_t;     /* NOTE: Make sure that this type is 4 bytes long on your computer */
-typedef unsigned char u8_t;     /* NOTE: Make sure that this type is 1 byte on your computer */
+typedef uint32 u32_t;     /* NOTE: Make sure that this type is 4 bytes long on your computer */
+typedef uint8 u8_t;     /* NOTE: Make sure that this type is 1 byte on your computer */
 
 CASSERT(sizeof(u32_t) == 4, tlsf_u32_size)
 CASSERT(sizeof(u8_t) == 1, tlsf_u8_size)

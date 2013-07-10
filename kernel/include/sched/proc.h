@@ -20,6 +20,8 @@
 
 #include "smp/semaphore.h"
 #include "util/cassert.h"
+#include "util/circular.h"
+#include "linux_socket.h"
 #include "types.h"
 
 typedef union
@@ -33,17 +35,26 @@ typedef union
 CASSERT (sizeof (task_id) == sizeof (uint32), task_id);
 
 #define NUM_M   32
-#define MAX_FD  128
+#define MAX_FD  32
 
 #define FD_TYPE_FILE    0
 #define FD_TYPE_UDP     1
 #define FD_TYPE_TCP     2
 #define FD_TYPE_USB_DEV 3
 
+struct _quest_tss;
+
 typedef struct _fd_table_entry {
   uint8 type;
   uint32 flags;
   void * entry;
+  udp_recv_buf_t * udp_recv_buf;
+  tcp_recv_buf_t * tcp_recv_buf;
+  int * tcp_accept_buf;
+  circular * udp_recv_buf_circ;
+  circular * tcp_recv_buf_circ;
+  circular * tcp_accept_circ;
+  struct _quest_tss * task;
 } fd_table_entry_t;
 
 typedef struct _fd_table_file_entry

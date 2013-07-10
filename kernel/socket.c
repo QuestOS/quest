@@ -52,29 +52,6 @@
 
 typedef void (*sys_call_ptr_t) (void);
 
-typedef struct {
-  struct pbuf *buf;
-  struct sockaddr_in addr;
-  unsigned int bytes_read;
-} udp_recv_buf_t;
-
-#define UDP_RECV_BUF_LEN  32
-
-udp_recv_buf_t udp_recv_buf[UDP_RECV_BUF_LEN];
-circular udp_recv_buf_circ;
-
-typedef struct {
-  struct pbuf *buf;
-  struct sockaddr_in addr;
-  unsigned int bytes_read;
-} tcp_recv_buf_t;
-
-#define TCP_RECV_BUF_LEN  32
-
-/* TODO: We should have a buffer for each socket here. */
-tcp_recv_buf_t tcp_recv_buf[TCP_RECV_BUF_LEN];
-circular tcp_recv_buf_circ;
-
 static void
 udp_recv_callback (void *arg, struct udp_pcb *upcb, struct pbuf *p,
                struct ip_addr *addr, uint16 port)
@@ -83,6 +60,7 @@ udp_recv_callback (void *arg, struct udp_pcb *upcb, struct pbuf *p,
         inet_ntoa (* ((struct in_addr *) addr)), port);
   DLOG ("Total length: %d", p->tot_len);
 
+  fd_table_entry_t * fd_ent = (fd_table_entry_t *) arg;
   udp_recv_buf_t b;
 
   if (p == NULL) {
@@ -95,7 +73,7 @@ udp_recv_callback (void *arg, struct udp_pcb *upcb, struct pbuf *p,
   b.addr.sin_port = htons (port);
   b.addr.sin_addr.s_addr = addr->addr;
   b.bytes_read = 0;
-  if (circular_insert_nowait (&udp_recv_buf_circ, &b) == -1) {
+  if (circular_insert_nowait (fd_ent->udp_recv_buf_circ, &b) == -1) {
     DLOG ("udp_recv_buf is full, packet dropped");
     pbuf_free (p);
   }
@@ -107,6 +85,7 @@ static err_t
 tcp_recv_callback (void *arg, struct tcp_pcb *tpcb, struct pbuf *p, err_t err)
 {
   udp_recv_buf_t b;
+  fd_table_entry_t * fd_ent = (fd_table_entry_t *) arg;
 
   if (err != ERR_OK) {
     DLOG ("TCP Callback error: %d", err);
@@ -123,7 +102,7 @@ tcp_recv_callback (void *arg, struct tcp_pcb *tpcb, struct pbuf *p, err_t err)
     b.addr.sin_port = htons (tpcb->remote_port);
     b.addr.sin_addr.s_addr = tpcb->remote_ip.addr;
     b.bytes_read = 0;
-    if (circular_insert_nowait (&tcp_recv_buf_circ, &b) == -1) {
+    if (circular_insert_nowait (fd_ent->tcp_recv_buf_circ, &b) == -1) {
       DLOG ("tcp_recv_buf is full, packet dropped");
       tcp_recved (tpcb, p->tot_len);
       pbuf_free (p);
@@ -176,9 +155,24 @@ sys_call_open_socket (int domain, int type, int protocol)
           DLOG ("Cannot allocate UDP PCB");
           return -1;
         }
+        tss->fd_table[sockfd].task = tss;
         tss->fd_table[sockfd].type = FD_TYPE_UDP;
         tss->fd_table[sockfd].entry = (void *) upcb;
-        udp_recv ((struct udp_pcb *) tss->fd_table[sockfd].entry, udp_recv_callback, NULL);
+        tss->fd_table[sockfd].udp_recv_buf_circ = kzalloc (sizeof (circular));
+        tss->fd_table[sockfd].udp_recv_buf = kzalloc (sizeof (udp_recv_buf_t) *
+                                                      UDP_RECV_BUF_LEN);
+        udp_recv ((struct udp_pcb *) tss->fd_table[sockfd].entry, udp_recv_callback,
+                  (void *) (&tss->fd_table[sockfd]));
+        if ((tss->fd_table[sockfd].udp_recv_buf_circ == 0) ||
+            (tss->fd_table[sockfd].udp_recv_buf == 0)) {
+          DLOG ("kzalloc failed!");
+          return -1;
+        }
+        circular_init (tss->fd_table[sockfd].udp_recv_buf_circ,
+                       (void *) tss->fd_table[sockfd].udp_recv_buf,
+                       UDP_RECV_BUF_LEN,
+                       sizeof (udp_recv_buf_t));
+        
         DLOG ("New UDP socket descriptor: %d", sockfd);
       }
       break;
@@ -191,8 +185,33 @@ sys_call_open_socket (int domain, int type, int protocol)
           DLOG ("Cannot allocate TCP PCB");
           return -1;
         }
+        tss->fd_table[sockfd].task = tss;
         tss->fd_table[sockfd].type = FD_TYPE_TCP;
         tss->fd_table[sockfd].entry = (void *) tpcb;
+        tss->fd_table[sockfd].tcp_recv_buf_circ = kzalloc (sizeof (circular));
+        tss->fd_table[sockfd].tcp_accept_circ = kzalloc (sizeof (circular));
+        tss->fd_table[sockfd].tcp_recv_buf = kzalloc (sizeof (tcp_recv_buf_t) *
+                                                      TCP_RECV_BUF_LEN);
+        tss->fd_table[sockfd].tcp_accept_buf = kzalloc (sizeof (int) *
+                                                        TCP_ACCEPT_LEN);
+        if ((tss->fd_table[sockfd].tcp_recv_buf_circ == 0) ||
+            (tss->fd_table[sockfd].tcp_recv_buf == 0) ||
+            (tss->fd_table[sockfd].tcp_accept_circ == 0) ||
+            (tss->fd_table[sockfd].tcp_accept_buf == 0)) {
+          DLOG ("kzalloc failed!");
+          return -1;
+        }
+        circular_init (tss->fd_table[sockfd].tcp_recv_buf_circ,
+                       (void *) tss->fd_table[sockfd].tcp_recv_buf,
+                       TCP_RECV_BUF_LEN,
+                       sizeof (tcp_recv_buf_t));
+        
+        circular_init (tss->fd_table[sockfd].tcp_accept_circ,
+                       (void *) tss->fd_table[sockfd].tcp_accept_buf,
+                       TCP_ACCEPT_LEN,
+                       sizeof (int));
+
+        tcp_arg (tpcb, (void *) (&tss->fd_table[sockfd]));
         DLOG ("New TCP socket descriptor: %d", sockfd);
       }
       break;
@@ -232,6 +251,8 @@ sys_call_close (int filedes)
     DLOG ("close UDP socket %d", filedes);
     udp_remove ((struct udp_pcb *) tss->fd_table[filedes].entry);
     tss->fd_table[filedes].entry = NULL;
+    kfree (tss->fd_table[filedes].udp_recv_buf);
+    kfree (tss->fd_table[filedes].udp_recv_buf_circ);
     break;
   case FD_TYPE_TCP :
     DLOG ("close TCP socket %d", filedes);
@@ -240,6 +261,10 @@ sys_call_close (int filedes)
       return -1;
     }
     tss->fd_table[filedes].entry = NULL;
+    kfree (tss->fd_table[filedes].tcp_recv_buf);
+    kfree (tss->fd_table[filedes].tcp_recv_buf_circ);
+    kfree (tss->fd_table[filedes].tcp_accept_buf);
+    kfree (tss->fd_table[filedes].tcp_accept_circ);
     break;
   case FD_TYPE_FILE:
     free_fd_table_file_entry(tss->fd_table[filedes].entry);
@@ -376,27 +401,61 @@ sys_call_connect (int sockfd, uint32_t addr, uint16_t port)
   return 0;
 }
 
-#define TCP_ACCEPT_LEN  32
-
-/* OK. Here, let's assume there can only be only one server doing accept. */
-struct tcp_pcb *tcp_accept_buf[TCP_ACCEPT_LEN];
-circular tcp_accept_circ;
-
 static err_t
-tcp_accept_callback (void *arg, struct tcp_pcb *new_pcb, err_t err)
+tcp_accept_callback (void *arg, struct tcp_pcb *new_tpcb, err_t err)
 {
+  fd_table_entry_t * fd_ent = (fd_table_entry_t *) arg;
+  quest_tss * tss = fd_ent->task;
+  int new_sockfd = 0;
+
   if (err != ERR_OK) {
     logger_printf ("Accept error returned by Lwip");
     return err;
   } else {
-    if (circular_insert_nowait (&tcp_accept_circ, &new_pcb) == -1) {
+    if ((new_sockfd = find_fd (tss)) == -1 ) {
+      DLOG ("Cannot allocate file descriptor");
+      return -1;
+    }
+
+    tss->fd_table[new_sockfd].task = tss;
+    tss->fd_table[new_sockfd].entry = (void *) new_tpcb;
+    tss->fd_table[new_sockfd].type = FD_TYPE_TCP;
+    tss->fd_table[new_sockfd].tcp_recv_buf_circ = kzalloc (sizeof (circular));
+    tss->fd_table[new_sockfd].tcp_accept_circ = kzalloc (sizeof (circular));
+    tss->fd_table[new_sockfd].tcp_recv_buf = kzalloc (sizeof (tcp_recv_buf_t) *
+                                                      TCP_RECV_BUF_LEN);
+    tss->fd_table[new_sockfd].tcp_accept_buf = kzalloc (sizeof (int) *
+                                                        TCP_ACCEPT_LEN);
+    if ((tss->fd_table[new_sockfd].tcp_recv_buf_circ == 0) ||
+        (tss->fd_table[new_sockfd].tcp_recv_buf == 0) ||
+        (tss->fd_table[new_sockfd].tcp_accept_circ == 0) ||
+        (tss->fd_table[new_sockfd].tcp_accept_buf == 0)) {
+      DLOG ("kzalloc failed!");
+      return -1;
+    }
+    circular_init (tss->fd_table[new_sockfd].tcp_recv_buf_circ,
+                   (void *) tss->fd_table[new_sockfd].tcp_recv_buf,
+                   TCP_RECV_BUF_LEN,
+                   sizeof (tcp_recv_buf_t));
+
+    circular_init (tss->fd_table[new_sockfd].tcp_accept_circ,
+                   (void *) tss->fd_table[new_sockfd].tcp_accept_buf,
+                   TCP_ACCEPT_LEN,
+                   sizeof (int));
+
+    tcp_arg (new_tpcb, (void *) (&tss->fd_table[new_sockfd]));
+    /* Register receive callback once connection is accepted */
+    tcp_recv (new_tpcb, tcp_recv_callback);
+
+    if (circular_insert_nowait (fd_ent->tcp_accept_circ, &new_sockfd) == -1) {
       DLOG ("TCP connection accept buffer is full");
       /* Which error code shall we return here? */
       return -1;
     }
 
+    DLOG ("New socket %d inserted to accept queue", new_sockfd);
     /* Register receive callback once connection is accepted */
-    tcp_recv (new_pcb, tcp_recv_callback);
+    //tcp_recv (new_pcb, tcp_recv_callback);
   }
 
   return err;
@@ -471,17 +530,17 @@ sys_call_accept (int sockfd, void *addr, void *len)
     case FD_TYPE_TCP :
       DLOG ("Socket %d waiting for connection...", sockfd);
 
-      if ((new_sockfd = find_fd (tss)) == -1 ) {
-        DLOG ("Cannot allocate file descriptor");
+      lock_kernel ();
+      circular_remove (fd_ent.tcp_accept_circ, &new_sockfd);
+      unlock_kernel ();
+
+      if (new_sockfd == -1) {
+        DLOG ("Could not find accepted socket!");
         return -1;
       }
 
-      lock_kernel ();
-      circular_remove (&tcp_accept_circ, &new_tpcb);
-      unlock_kernel ();
+      new_tpcb = tss->fd_table[new_sockfd].entry;
 
-      tss->fd_table[new_sockfd].entry = (void *) new_tpcb;
-      tss->fd_table[new_sockfd].type = FD_TYPE_TCP;
       if (addr) {
         ((struct sockaddr_in *) addr)->sin_family = AF_INET;
         ((struct sockaddr_in *) addr)->sin_port = htons (new_tpcb->remote_port);
@@ -515,6 +574,7 @@ sys_call_write (int filedes, const void *buf, int nbytes)
   uint16 sndbuf_len = 0;
   int nbytes_sent = nbytes;
   static bool first = TRUE;
+  extern int print_buffer(char *pch, int length);
 
 #ifdef USE_VMX
   uint32 cpu;
@@ -713,14 +773,14 @@ sys_call_recv (int sockfd, void *buf, int nbytes, void *addr, void *len)
       if (udpb.buf == NULL) {
         lock_kernel ();
         if(fd_ent.flags & O_NONBLOCK) {
-          circular_remove_nowait (&udp_recv_buf_circ, &udpb);
+          circular_remove_nowait (fd_ent.udp_recv_buf_circ, &udpb);
           if(udpb.buf == NULL) {
             unlock_kernel();
             return 0;
           }
         }
         else {
-          circular_remove (&udp_recv_buf_circ, &udpb);
+          circular_remove (fd_ent.udp_recv_buf_circ, &udpb);
         }
         
         unlock_kernel ();
@@ -773,7 +833,7 @@ sys_call_recv (int sockfd, void *buf, int nbytes, void *addr, void *len)
         lock_kernel ();
         if(fd_ent.flags & O_NONBLOCK) {
           logger_printf("tcp remove no wait called\n");
-          circular_remove_nowait (&tcp_recv_buf_circ, &tcpb);
+          circular_remove_nowait (fd_ent.tcp_recv_buf_circ, &tcpb);
           if(tcpb.buf == NULL) {
             unlock_kernel();
             return 0;
@@ -781,7 +841,7 @@ sys_call_recv (int sockfd, void *buf, int nbytes, void *addr, void *len)
         }
         else {
           logger_printf("tcp remove called\n");
-          circular_remove (&tcp_recv_buf_circ, &tcpb);
+          circular_remove (fd_ent.tcp_recv_buf_circ, &tcpb);
         }
         
         unlock_kernel ();
@@ -905,7 +965,8 @@ check_readfds:
               ready = TRUE;
               FD_SET(i, &read_ready);
               count++;
-            } else if (circular_remove_nowait (&udp_recv_buf_circ, &udpb) != -1) {
+            } else if (circular_remove_nowait (tss->fd_table[i].udp_recv_buf_circ,
+                                               &udpb) != -1) {
               ready = TRUE;
               FD_SET(i, &read_ready);
               count++;
@@ -918,7 +979,8 @@ check_readfds:
               ready = TRUE;
               FD_SET(i, &read_ready);
               count++;
-            } else if (circular_remove_nowait (&tcp_recv_buf_circ, &tcpb) != -1) {
+            } else if (circular_remove_nowait (tss->fd_table[i].tcp_recv_buf_circ,
+                                               &tcpb) != -1) {
               ready = TRUE;
               FD_SET(i, &read_ready);
               count++;
@@ -1237,21 +1299,6 @@ void
 socket_sys_call_init ()
 {
   if (!socket_sys_call_initialized) {
-    circular_init (&udp_recv_buf_circ,
-        (void *) udp_recv_buf,
-        UDP_RECV_BUF_LEN,
-        sizeof (udp_recv_buf_t));
-
-    circular_init (&tcp_recv_buf_circ,
-        (void *) tcp_recv_buf,
-        TCP_RECV_BUF_LEN,
-        sizeof (tcp_recv_buf_t));
-
-    circular_init (&tcp_accept_circ,
-        (void *) tcp_accept_buf,
-        TCP_ACCEPT_LEN,
-        sizeof (struct tcp_pcb *));
-
     DLOG ("socket buffers initialized on sandbox %d", get_pcpu_id ());
     socket_sys_call_initialized = TRUE;
   }
