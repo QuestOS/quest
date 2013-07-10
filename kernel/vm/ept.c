@@ -766,16 +766,18 @@ vmx_init_ept (uint32 cpu)
              * include the shared memory info page. Hence the minus one.
              */
             pt[k] = index | (memtype << 3) | EPT_NO_ACCESS;
-          } else if ((index >= (PHYS_PRIV_CHANNEL_HIGH - (NUM_PRIV_CHANNELS << 12))) &&
-                     (index < PHYS_PRIV_CHANNEL_HIGH)) {
-            for (m = 0; m < SHM_MAX_SANDBOX; m++) {
-              if (m == cpu) continue;
-              if (index == CHANNEL_ADDR(cpu, m)) {
-                pt[k] = index | (memtype << 3) | EPT_READ_ACCESS | EPT_WRITE_ACCESS;
-              } else {
-                pt[k] = index | (memtype << 3) | EPT_NO_ACCESS;
+
+            if ((index >= (PHYS_PRIV_CHANNEL_HIGH - (NUM_PRIV_CHANNELS << 12))) &&
+                (index < PHYS_PRIV_CHANNEL_HIGH)) {
+              for (m = 0; m < SHM_MAX_SANDBOX; m++) {
+                if (m == cpu) continue;
+                if (index == CHANNEL_ADDR(cpu, m)) {
+                  pt[k] = index | (memtype << 3) | EPT_READ_ACCESS | EPT_WRITE_ACCESS;
+                } else {
+                  pt[k] = index | (memtype << 3) | EPT_NO_ACCESS;
+                }
               }
-            }
+            } 
           } else {
             pt[k] = index | (memtype << 3) | EPT_ALL_ACCESS;
           }
