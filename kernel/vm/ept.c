@@ -773,9 +773,8 @@ vmx_init_ept (uint32 cpu)
                 if (m == cpu) continue;
                 if (index == CHANNEL_ADDR(cpu, m)) {
                   pt[k] = index | (memtype << 3) | EPT_READ_ACCESS | EPT_WRITE_ACCESS;
-                } else {
-                  pt[k] = index | (memtype << 3) | EPT_NO_ACCESS;
-                }
+		  break;
+		}
               }
             } 
           } else {
