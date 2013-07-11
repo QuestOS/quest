@@ -18,3 +18,4 @@ vcputest
 vga
 seek
 getpid
+vshm_test
