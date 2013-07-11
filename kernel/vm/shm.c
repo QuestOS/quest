@@ -244,15 +244,15 @@ void isbm_communcation_thread(void)
     for(i = 0; i < SHM_MAX_SANDBOX; ++i) {
       if(i != pcpu_id) {
         reading_arena = shm_comm.priv_read_regions[i];
-        com1_printf("About to read from arena\n");
+        
 	if(*reading_arena != ISBM_NO_MESSAGE) {
 	  cli();
 	  lock_kernel();
 	  process_isbm(reading_arena, i);
+          *reading_arena = ISBM_NO_MESSAGE;
 	  unlock_kernel();
 	  sti();
 	}
-        com1_printf("Finished reading from arena\n");
       }
     }
     cli();
@@ -272,23 +272,24 @@ void init_shared_memory_pools(void)
     DLOG("Failed to create ipc hog vcpu");
     return;
   }
+
+  
   
   memset(&shm_comm, 0, sizeof(shm_comm));
 
   for(i = 0; i < SHM_MAX_SANDBOX; ++i) {
     if(i != pcpu_id) {
-      com1_printf("Setting up channel between %d and %d\n", i, pcpu_id);
-      com1_printf("Phys addr = 0x%X\n", CHANNEL_ADDR(i, pcpu_id));
-      com1_printf("channel index = %d\n", CHANNEL_INDEX(i, pcpu_id));
+      DLOG("Setting up channel between %d and %d\n", i, pcpu_id);
+      DLOG("Phys addr = 0x%X\n", CHANNEL_ADDR(i, pcpu_id));
+      DLOG("channel index = %d\n", CHANNEL_INDEX(i, pcpu_id));
       void* arena = map_virtual_page(CHANNEL_ADDR(i, pcpu_id) | 3);
       if(!arena) {
         com1_printf("Failed to initialise shared memory communication channels\n");
         panic("Failed to initialise shared memory communication channels");
       }
       
-      com1_printf("About to memset arena page pcpu id = %d\n", pcpu_id );
       memset(arena, 0, 0x1000);
-      com1_printf("Done with first memset of arena page\n");
+      
       if(i < pcpu_id) {
         shm_comm.priv_write_regions[i] = arena;
         shm_comm.priv_read_regions[i] = ((char*)arena) + (0x1000 / 2);
@@ -480,11 +481,11 @@ bool send_intersandbox_msg(isb_msg_type_t msg_type, uint target_sandbox,
   if( (sender_sandbox == target_sandbox) ||
       (size + sizeof(isb_msg_type_t) > 0x1000 / 2) ) return FALSE;
   
-
   arena = shm_comm.priv_write_regions[target_sandbox];
-
+  
   while(attempt_count--) {
     if(*arena == ISBM_NO_MESSAGE) {
+      *arena = msg_type;
       memcpy(arena+1, msg, size);
       break;
     }
