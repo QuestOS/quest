@@ -515,6 +515,7 @@ fls(uint32 x)
   return r + 1;
 }
 
+#define DIV_ROUND_UP(n,d) (((n) + (d) - 1) / (d))
 
 #define RDTSC(var)                                              \
   {                                                             \
@@ -669,6 +670,13 @@ div_u64_u32_u32 (u64 a, u32 b)
                 :"r" (b), "a" (a_lo), "d" (a_hi));
 
   return c;
+}
+
+static inline uint popcount(uint32 v)
+{
+  v = v - ((v >> 1) & 0x55555555);                    // reuse input as temporary
+  v = (v & 0x33333333) + ((v >> 2) & 0x33333333);     // temp
+  return (((v + (v >> 4)) & 0xF0F0F0F) * 0x1010101) >> 24; // count
 }
 
 #define gccmb()    asm volatile ("" : : : "memory")

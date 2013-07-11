@@ -37,6 +37,7 @@ extern void *map_virtual_page (uint32 phys_frame);
 extern void unmap_virtual_page (void *virt_addr);
 extern void *map_virtual_pages (uint32 * phys_frames, uint32 count);
 extern void *map_contiguous_virtual_pages (uint32 phys_frame, uint32 count);
+extern bool map_virtual_page_to_addr(uint dir_entry_perm, uint32 phys_frame, addr_t virt_addr);
 extern void unmap_virtual_pages (void *virt_addr, uint32 count);
 
 void* map_pool_virtual_page (uint32 phys_frame, uint32 start_dir_entry, uint32 num_dir_entries,
@@ -53,6 +54,12 @@ void unmap_pool_virtual_pages (void *virt_addr, uint32 count, uint32 start_dir_e
                                uint32* page_table_virtual_addrs[]);
 
 extern void *get_phys_addr (void *virt_addr);
+
+
+/* Searches the current process address space to find a free region to
+   that can accommodate the request size, useful when you want to map
+   something to a process address space in an arbitrary location */
+extern void* find_free_virtual_region(size_t size);
 
 typedef union {
   u32 raw;

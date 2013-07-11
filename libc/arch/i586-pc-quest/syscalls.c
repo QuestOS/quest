@@ -571,3 +571,11 @@ switch_screen (int dir)
   
   return ret;
 }
+
+inline int vshm_map(uint size, uint sandboxes, uint permissions, void** addr, uint vshm_key)
+{
+  int res;
+  asm volatile ("int $0x3D\n":"=a"(res):"a" (15L), "b"(vshm_key), "c"(size),
+		"d"(sandboxes), "S"(permissions), "D"(addr) : "memory", "cc");
+  return res;
+}

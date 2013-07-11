@@ -323,6 +323,9 @@ ap_init (void)
   //{ extern bool vfs_init (void); vfs_init (); }
   //}
   { extern bool migration_init (void); migration_init (); }
+    /* Initialise shared memory pools and start any necessary
+       communication threads */
+  init_shared_memory_pools();
   { extern bool logger_init (void); logger_init (); }
 #ifdef USE_LINUX_SANDBOX
   if (phys_id == LINUX_SANDBOX)

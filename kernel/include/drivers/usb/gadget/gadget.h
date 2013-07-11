@@ -227,7 +227,6 @@ struct usb_gadget_ops {
   int     (*stop)(struct usb_gadget_driver *);
 };
 
-#define DIV_ROUND_UP(n,d) (((n) + (d) - 1) / (d))
 #define BITS_PER_BYTE           8
 #define DECLARE_BITMAP(name,bits) unsigned long name[BITS_TO_LONGS(bits)]
 #define BITS_TO_LONGS(nr)       DIV_ROUND_UP(nr, BITS_PER_BYTE * sizeof(long))

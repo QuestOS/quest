@@ -95,6 +95,60 @@ typedef struct _shm_info {
   bool bsp_booted;
 } shm_info;
 
+#define POOL_SIZE_IN_PAGES 10
+#define NUM_POOLS_PER_SANDBOX 4
+
+typedef struct {
+  bool new_pool;
+  uint vshm_key;
+  uint pool_id;
+  uint permissions;
+  phys_addr_t start_phys_addr;
+  uint bitmap;
+} new_shared_memory_arena_msg_t;
+
+CASSERT(POOL_SIZE_IN_PAGES <= (sizeof(uint) * 8), vshm_pool_size)
+
+typedef enum {
+  ISBM_NO_MESSAGE = 0,
+  ISBM_NEW_SHARED_MEMORY_ARENA,
+  ISBM_TEST
+} isb_msg_type_t;
+
+bool send_intersandbox_msg(isb_msg_type_t msg_type, uint target_sandbox,
+			   void* msg, size_t size);
+
+static inline void
+initialise_new_shared_memory_arena_msg(new_shared_memory_arena_msg_t* msg,
+				       bool new_pool, uint vshm_key,
+				       uint pool_id, uint permissions,
+				       phys_addr_t start_phys_addr,
+				       uint bitmap)
+{
+  msg->new_pool = new_pool;
+  msg->vshm_key = vshm_key;
+  msg->pool_id = pool_id;
+  msg->permissions = permissions;
+  msg->start_phys_addr = start_phys_addr;
+  msg->bitmap = bitmap;
+}
+
+typedef struct {
+  phys_addr_t start_addr;
+  uint permissions;
+  uint keys_map[POOL_SIZE_IN_PAGES];
+  uint used_pages;
+  bool created_locally;
+} shm_pool_t;
+
+typedef struct {
+  shm_pool_t pools[SHM_MAX_SANDBOX][NUM_POOLS_PER_SANDBOX];
+  void* priv_write_regions[SHM_MAX_SANDBOX];
+  void* priv_read_regions[SHM_MAX_SANDBOX];
+} shm_comm_t;
+
+extern shm_comm_t shm_comm;
+
 /*
  * Bitmap operations for physical shared memory bitmap.
  */
@@ -119,6 +173,10 @@ extern bool shm_screen_initialized;
 extern bool shm_screen_first;
 extern char * shm_screen;
 extern void shm_init (uint32);
+
+/* Initialise shared memory pools to be blank */
+void init_shared_memory_pools(void);
+
 /*
  * Allocate one frame of shared memory for calling sandbox. The permission of this
  * frame (set in EPT) will be set according to the permission given for local sandbox.

@@ -23,6 +23,8 @@
 #include "mem/virtual.h"
 #include "util/printf.h"
 #include "smp/apic.h"
+#include "sched/vcpu.h"
+#include "sched/sched.h"
 
 #define DEBUG_SHM    1
 #if DEBUG_SHM > 0
@@ -32,6 +34,8 @@
 #endif
 
 shm_info *shm = NULL;
+
+shm_comm_t shm_comm;
 
 /* Per-Sandbox shared memory initialization flag.
  * If this is true, the global lock can be used for
@@ -157,6 +161,150 @@ shm_init (uint32 cpu)
   if (cpu == 0) {
     shm_kmalloc_init ();
   }
+}
+
+
+void process_isbm(isb_msg_type_t* msg_start, uint src_sandbox)
+{
+  switch(*msg_start) {
+  case ISBM_NEW_SHARED_MEMORY_ARENA:
+    {
+      int i;
+      new_shared_memory_arena_msg_t* nsma_msg = (new_shared_memory_arena_msg_t*)(msg_start+1);
+      shm_pool_t *pool = &shm_comm.pools[src_sandbox][nsma_msg->pool_id];
+      int count = popcount(nsma_msg->bitmap);
+      if(nsma_msg->new_pool) {
+        if(pool->start_addr) {
+          /* -- EM -- The sending sandbox has tried to create a pool
+             that already exists, this could happen if two sandbox
+             tried to create pools to each other at the same time,
+             assuming it won't happen for now */
+          DLOG("Tried to create a new pool where one already exists");
+          return;
+        }
+        if(count > POOL_SIZE_IN_PAGES) {
+          /* -- EM -- Requested more pages that are available */
+          return;
+        }
+        pool->start_addr = nsma_msg->start_phys_addr;
+        pool->permissions = nsma_msg->permissions;
+        pool->created_locally = FALSE;
+        pool->used_pages = 0;
+      }
+      
+      if(pool->used_pages + count > POOL_SIZE_IN_PAGES) {
+        /* -- EM -- Requested more pages that are available */
+        return;
+      }
+
+      for(i = 0; i < POOL_SIZE_IN_PAGES; ++i) {
+        if( ((1 << i) & nsma_msg->bitmap) && pool->keys_map[i] ){
+          /* -- EM -- Requested a page labeled to another arena */
+          return;
+        }
+      }
+    
+      pool->used_pages += count;
+
+      for(i = 0; i < POOL_SIZE_IN_PAGES; ++i) {
+        if((1 << i) & nsma_msg->bitmap) {
+          pool->keys_map[i] = nsma_msg->vshm_key;
+        }
+      }
+    }
+    break;
+    
+  case ISBM_TEST:
+    {
+      char* msg = (char*)(msg_start+1);
+      msg[30] = 0;              /* Force the string to have an end */
+      logger_printf("Got msg from sandbox %u: %s\n", src_sandbox, msg);
+    }
+    break;
+    
+  case ISBM_NO_MESSAGE:
+    break;
+  }
+}
+
+int isbm_communcation_thread_stack[1024] ALIGNED(0x1000);
+
+void isbm_communcation_thread(void)
+{
+  #define ISBM_COMM_THREAD_SLEEP_INTERVAL 50000
+  int i;
+  uint pcpu_id = get_pcpu_id();
+  isb_msg_type_t* reading_arena;
+
+  unlock_kernel();
+  sti();
+  
+  while(1) {
+    
+    for(i = 0; i < SHM_MAX_SANDBOX; ++i) {
+      if(i != pcpu_id) {
+        reading_arena = shm_comm.priv_read_regions[i];
+        com1_printf("About to read from arena\n");
+	if(*reading_arena != ISBM_NO_MESSAGE) {
+	  cli();
+	  lock_kernel();
+	  process_isbm(reading_arena, i);
+	  unlock_kernel();
+	  sti();
+	}
+        com1_printf("Finished reading from arena\n");
+      }
+    }
+    cli();
+    lock_kernel();
+    sched_usleep(ISBM_COMM_THREAD_SLEEP_INTERVAL);
+    unlock_kernel();
+    sti();
+  }
+}
+
+void init_shared_memory_pools(void)
+{
+  int i;
+  uint pcpu_id = get_pcpu_id();
+  int vcpu_id = create_main_vcpu(10, 1000, NULL);
+  if(vcpu_id < 0) {
+    DLOG("Failed to create ipc hog vcpu");
+    return;
+  }
+  
+  memset(&shm_comm, 0, sizeof(shm_comm));
+
+  for(i = 0; i < SHM_MAX_SANDBOX; ++i) {
+    if(i != pcpu_id) {
+      com1_printf("Setting up channel between %d and %d\n", i, pcpu_id);
+      com1_printf("Phys addr = 0x%X\n", CHANNEL_ADDR(i, pcpu_id));
+      com1_printf("channel index = %d\n", CHANNEL_INDEX(i, pcpu_id));
+      void* arena = map_virtual_page(CHANNEL_ADDR(i, pcpu_id) | 3);
+      if(!arena) {
+        com1_printf("Failed to initialise shared memory communication channels\n");
+        panic("Failed to initialise shared memory communication channels");
+      }
+      
+      com1_printf("About to memset arena page pcpu id = %d\n", pcpu_id );
+      memset(arena, 0, 0x1000);
+      com1_printf("Done with first memset of arena page\n");
+      if(i < pcpu_id) {
+        shm_comm.priv_write_regions[i] = arena;
+        shm_comm.priv_read_regions[i] = ((char*)arena) + (0x1000 / 2);
+      }
+      else {
+        shm_comm.priv_read_regions[i] = arena;
+        shm_comm.priv_write_regions[i] = ((char*)arena) + (0x1000 / 2);
+      }
+    }
+  }
+
+  create_kernel_thread_vcpu_args ((u32) isbm_communcation_thread,
+				  (u32) &isbm_communcation_thread_stack[1023],
+                                  "ISBM Communication Thread", vcpu_id, TRUE, 0);
+
+  return;
 }
 
 spinlock*
@@ -317,5 +465,46 @@ shm_free_phys_frames (uint32 frame, uint32 count)
     spinlock_unlock (&(shm->shm_lock));
   }
 }
+
+//#define ISBM_USE_IPI
+
+bool send_intersandbox_msg(isb_msg_type_t msg_type, uint target_sandbox,
+			   void* msg, size_t size)
+{
+#ifdef ISBM_USE_IPI
+  return FALSE;
+#else
+  int attempt_count = 20;
+  uint sender_sandbox = get_pcpu_id();
+  isb_msg_type_t* arena;
+  if( (sender_sandbox == target_sandbox) ||
+      (size + sizeof(isb_msg_type_t) > 0x1000 / 2) ) return FALSE;
+  
+
+  arena = shm_comm.priv_write_regions[target_sandbox];
+
+  while(attempt_count--) {
+    if(*arena == ISBM_NO_MESSAGE) {
+      memcpy(arena+1, msg, size);
+      break;
+    }
+    else {
+      sched_usleep(1000 * 50);
+    }
+  }
+
+  return attempt_count >= 0;
+  
+#endif
+}
+
+/* 
+ * Local Variables:
+ * indent-tabs-mode: nil
+ * mode: C
+ * c-file-style: "gnu"
+ * c-basic-offset: 2
+ * End: 
+ */
 
 /* vi: set et sw=2 sts=2: */

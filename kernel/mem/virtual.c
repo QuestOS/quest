@@ -151,6 +151,38 @@ map_virtual_pages (uint32 * phys_frames, uint32 count)
 }
 
 
+bool map_virtual_page_to_addr(uint dir_entry_perm, uint32 phys_frame, addr_t virt_addr)
+{
+  int dir_entry = ((uint32)virt_addr) / 0x400000;
+  int tbl_entry = (((uint32)virt_addr) / 0x1000) & 0xFFF;
+  uint32* plPageDirectory = map_virtual_page ((uint32) get_pdbr () | 3);
+  uint32* plPageTable = NULL;
+
+  if(!plPageDirectory) return FALSE;
+
+  if(!plPageDirectory[dir_entry]) {
+    plPageDirectory[dir_entry] = alloc_phys_frame() | dir_entry_perm;
+    
+    if(plPageDirectory[dir_entry] == 0xFFFFFFFF) {
+      unmap_virtual_page(plPageDirectory);
+      return FALSE;
+    }
+  }
+  
+  plPageTable = map_virtual_page(plPageDirectory[dir_entry]);
+  if(!plPageTable) {
+    unmap_virtual_page(plPageDirectory);
+    return FALSE;
+  }
+  
+  plPageTable[tbl_entry] = phys_frame;
+    
+  unmap_virtual_page(plPageTable);
+  unmap_virtual_page(plPageDirectory);
+
+  return TRUE;
+}
+
 /*
  * Release previously mapped virtual page
  */
@@ -624,6 +656,37 @@ clone_page_directory (pgdir_t dir)
   new_dir.dir_va = NULL;
   new_dir.dir_pa = -1;
   return new_dir;
+}
+
+
+
+/* Searches the current process address space to find a free region to
+   that can accommodate the request size, useful when you want to map
+   something to a process address space in an arbitrary location */
+
+/* -- EM -- right now (since we have no sbrk) it just searches for a
+   free page directory entry and maps it there */
+
+void* find_free_virtual_region(size_t size) {
+  int i, j;
+  int res = -1;
+  uint32 * plPageDirectory;
+  int free_dir_entry = -1;
+  
+  
+  if(size > 0x400000) return NULL;
+  
+  plPageDirectory = map_virtual_page ((uint32) get_pdbr () | 3);
+  
+  /* Find free directory entry  */
+  for(i = 0; i < 1024; ++i) {
+    if(!plPageDirectory[i]) {
+      free_dir_entry = i;
+      break;
+    }
+  }
+
+  return i * 0x400000;
 }
 
 

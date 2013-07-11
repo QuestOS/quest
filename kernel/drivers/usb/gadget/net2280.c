@@ -499,12 +499,7 @@ static int net2280_write(USB_DEVICE_INFO* device, int dev_num, char* buf, int da
 #endif
 }
 
-static inline uint popcount(uint32 v)
-{
-  v = v - ((v >> 1) & 0x55555555);                    // reuse input as temporary
-  v = (v & 0x33333333) + ((v >> 2) & 0x33333333);     // temp
-  return (((v + (v >> 4)) & 0xF0F0F0F) * 0x1010101) >> 24; // count
-}
+
 
 static void print_table_bitmap(uint32* bitmap)
 {

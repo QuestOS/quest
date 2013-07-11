@@ -677,6 +677,9 @@ init (multiboot * pmb)
   { extern bool module_load_all (void); module_load_all (); }
 #ifdef USE_VMX
   { extern bool migration_init (void); migration_init (); }
+    /* Initialise shared memory pools and start any necessary
+       communication threads */
+  init_shared_memory_pools();
 #endif
   //{ extern bool msgt_bandwidth_init (void); msgt_bandwidth_init (); }
   //{ extern bool udp_bandwith_init (void); udp_bandwith_init (); }

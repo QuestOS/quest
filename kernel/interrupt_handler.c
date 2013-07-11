@@ -603,7 +603,7 @@ struct syscall syscall_table[] = {
   { .func = syscall_vcpu_getparams },
   { .func = syscall_vcpu_setparams },
   { .func = syscall_enable_video },
-  { .func = syscall_lseek}
+  { .func = syscall_lseek},
 };
 #define NUM_SYSCALLS (sizeof (syscall_table) / sizeof (struct syscall))
 
@@ -800,7 +800,6 @@ _exec (char *filename, char *argv[], uint32 *curr_stack)
     return -1;
   }
 
-#define DIV_ROUND_UP(n,d) (((n) + (d) - 1) / (d))
 
   num_frame_ptrs = DIV_ROUND_UP(filesize, 0x400000);
 
