@@ -53,6 +53,18 @@
 /* Physical address of channel between x and y (x and y cannot be equal!) */
 #define CHANNEL_ADDR(x, y)  (PHYS_PRIV_CHANNEL_HIGH - (CHANNEL_INDEX(x, y) << 12))
 
+/* These are the macro used by user space programs in the vshm_map
+   syscall.  These match with the EPT equivalents but that is just
+   because it works with x86, these should be separate for future
+   architectures that might have different bitmaps */
+#define VSHM_NO_ACCESS        0x0
+#define VSHM_READ_ACCESS      0x1
+#define VSHM_WRITE_ACCESS     0x2
+#define VSHM_EXEC_ACCESS      0x4
+#define VSHM_ALL_ACCESS       0x7
+
+#define VSHM_CREATE           0x80000000
+
 #ifndef __ASSEMBLER__
 
 typedef struct _cursor {
