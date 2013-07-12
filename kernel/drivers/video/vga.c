@@ -23,6 +23,7 @@
 #include "smp/spinlock.h"
 #include "util/screen.h"
 #include "util/debug.h"
+#include "mem/mem.h"
 #ifdef USE_VMX
 #include "vm/shm.h"
 #endif
@@ -978,7 +979,7 @@ void read_regs(unsigned char *regs)
 /*****************************************************************************
  *****************************************************************************/
 
-static unsigned char static_reg_dump[1024];
+//static unsigned char static_reg_dump[1024];
 
 void set_color_pallete(void)
 {
@@ -1111,20 +1112,20 @@ static void vmemwr(unsigned dst_off, unsigned char *src, unsigned count)
 }
 /*****************************************************************************
  *****************************************************************************/
-static void vpokeb(unsigned off, unsigned val)
-{
-  com1_printf("vpokeb called\n");
-  panic("vpokeb called\n");
-  pokeb(get_fb_seg(), off, val);
-}
+/* static void vpokeb(unsigned off, unsigned val) */
+/* { */
+/*   com1_printf("vpokeb called\n"); */
+/*   panic("vpokeb called\n"); */
+/*   pokeb(get_fb_seg(), off, val); */
+/* } */
 /*****************************************************************************
  *****************************************************************************/
-static unsigned vpeekb(unsigned off)
-{
-  com1_printf("vpeekb called\n");
-  panic("vpeekb called\n");
-  return peekb(get_fb_seg(), off);
-}
+/* static unsigned vpeekb(unsigned off) */
+/* { */
+/*   com1_printf("vpeekb called\n"); */
+/*   panic("vpeekb called\n"); */
+/*   return peekb(get_fb_seg(), off); */
+/* } */
 /*****************************************************************************
 write font to plane P4 (assuming planes are named P1, P2, P4, P8)
 *****************************************************************************/
@@ -1187,111 +1188,111 @@ static void write_font(unsigned char *buf, unsigned font_height)
 }
 /*****************************************************************************
  *****************************************************************************/
-static void (*g_write_pixel)(unsigned x, unsigned y, unsigned c);
-static unsigned g_wd, g_ht;
+/* static void (*g_write_pixel)(unsigned x, unsigned y, unsigned c); */
+/* static unsigned g_wd, g_ht; */
 
-static void write_pixel1(unsigned x, unsigned y, unsigned c)
-{
-  unsigned wd_in_bytes;
-  unsigned off, mask;
+/* static void write_pixel1(unsigned x, unsigned y, unsigned c) */
+/* { */
+/*   unsigned wd_in_bytes; */
+/*   unsigned off, mask; */
 
-  c = (c & 1) * 0xFF;
-  wd_in_bytes = g_wd / 8;
-  off = wd_in_bytes * y + x / 8;
-  x = (x & 7) * 1;
-  mask = 0x80 >> x;
-  vpokeb(off, (vpeekb(off) & ~mask) | (c & mask));
-}
-/*****************************************************************************
- *****************************************************************************/
-static void write_pixel2(unsigned x, unsigned y, unsigned c)
-{
-  unsigned wd_in_bytes, off, mask;
+/*   c = (c & 1) * 0xFF; */
+/*   wd_in_bytes = g_wd / 8; */
+/*   off = wd_in_bytes * y + x / 8; */
+/*   x = (x & 7) * 1; */
+/*   mask = 0x80 >> x; */
+/*   vpokeb(off, (vpeekb(off) & ~mask) | (c & mask)); */
+/* } */
+/* /\***************************************************************************** */
+/*  *****************************************************************************\/ */
+/* static void write_pixel2(unsigned x, unsigned y, unsigned c) */
+/* { */
+/*   unsigned wd_in_bytes, off, mask; */
 
-  c = (c & 3) * 0x55;
-  wd_in_bytes = g_wd / 4;
-  off = wd_in_bytes * y + x / 4;
-  x = (x & 3) * 2;
-  mask = 0xC0 >> x;
-  vpokeb(off, (vpeekb(off) & ~mask) | (c & mask));
-}
-/*****************************************************************************
- *****************************************************************************/
-static void write_pixel4p(unsigned x, unsigned y, unsigned c)
-{
-  unsigned wd_in_bytes, off, mask, p, pmask;
+/*   c = (c & 3) * 0x55; */
+/*   wd_in_bytes = g_wd / 4; */
+/*   off = wd_in_bytes * y + x / 4; */
+/*   x = (x & 3) * 2; */
+/*   mask = 0xC0 >> x; */
+/*   vpokeb(off, (vpeekb(off) & ~mask) | (c & mask)); */
+/* } */
+/* /\***************************************************************************** */
+/*  *****************************************************************************\/ */
+/* static void write_pixel4p(unsigned x, unsigned y, unsigned c) */
+/* { */
+/*   unsigned wd_in_bytes, off, mask, p, pmask; */
 
-  wd_in_bytes = g_wd / 8;
-  off = wd_in_bytes * y + x / 8;
-  x = (x & 7) * 1;
-  mask = 0x80 >> x;
-  pmask = 1;
-  for(p = 0; p < 4; p++)
-    {
-      set_plane(p);
-      if(pmask & c)
-        vpokeb(off, vpeekb(off) | mask);
-      else
-        vpokeb(off, vpeekb(off) & ~mask);
-      pmask <<= 1;
-    }
-}
-/*****************************************************************************
- *****************************************************************************/
-static void write_pixel8(unsigned x, unsigned y, unsigned c)
-{
-  unsigned wd_in_bytes;
-  unsigned off;
+/*   wd_in_bytes = g_wd / 8; */
+/*   off = wd_in_bytes * y + x / 8; */
+/*   x = (x & 7) * 1; */
+/*   mask = 0x80 >> x; */
+/*   pmask = 1; */
+/*   for(p = 0; p < 4; p++) */
+/*     { */
+/*       set_plane(p); */
+/*       if(pmask & c) */
+/*         vpokeb(off, vpeekb(off) | mask); */
+/*       else */
+/*         vpokeb(off, vpeekb(off) & ~mask); */
+/*       pmask <<= 1; */
+/*     } */
+/* } */
+/* /\***************************************************************************** */
+/*  *****************************************************************************\/ */
+/* static void write_pixel8(unsigned x, unsigned y, unsigned c) */
+/* { */
+/*   unsigned wd_in_bytes; */
+/*   unsigned off; */
 
-  wd_in_bytes = g_wd;
-  off = wd_in_bytes * y + x;
-  vpokeb(off, c);
-}
-/*****************************************************************************
- *****************************************************************************/
-static void write_pixel8x(unsigned x, unsigned y, unsigned c)
-{
-  unsigned wd_in_bytes;
-  unsigned off;
+/*   wd_in_bytes = g_wd; */
+/*   off = wd_in_bytes * y + x; */
+/*   vpokeb(off, c); */
+/* } */
+/* /\***************************************************************************** */
+/*  *****************************************************************************\/ */
+/* static void write_pixel8x(unsigned x, unsigned y, unsigned c) */
+/* { */
+/*   unsigned wd_in_bytes; */
+/*   unsigned off; */
 
-  wd_in_bytes = g_wd / 4;
-  off = wd_in_bytes * y + x / 4;
-  set_plane(x & 3);
-  vpokeb(off, c);
-}
+/*   wd_in_bytes = g_wd / 4; */
+/*   off = wd_in_bytes * y + x / 4; */
+/*   set_plane(x & 3); */
+/*   vpokeb(off, c); */
+/* } */
 
 
-/*****************************************************************************
- *****************************************************************************/
-static void draw_x(void)
-{
-  unsigned x, y;
+/* /\***************************************************************************** */
+/*  *****************************************************************************\/ */
+/* static void draw_x(void) */
+/* { */
+/*   unsigned x, y; */
   
-  /* clear screen */
-  for(y = 0; y < g_ht; y++)
-    for(x = 0; x < g_wd; x++)
-      g_write_pixel(x, y, 0);
-  /* draw 2-color X */
-  for(y = 0; y < g_ht; y++)
-    {
-      g_write_pixel((g_wd - g_ht) / 2 + y, y, 1);
-      g_write_pixel((g_ht + g_wd) / 2 - y, y, 2);
-    }
-  sched_usleep(1000000);
-}
+/*   /\* clear screen *\/ */
+/*   for(y = 0; y < g_ht; y++) */
+/*     for(x = 0; x < g_wd; x++) */
+/*       g_write_pixel(x, y, 0); */
+/*   /\* draw 2-color X *\/ */
+/*   for(y = 0; y < g_ht; y++) */
+/*     { */
+/*       g_write_pixel((g_wd - g_ht) / 2 + y, y, 1); */
+/*       g_write_pixel((g_ht + g_wd) / 2 - y, y, 2); */
+/*     } */
+/*   sched_usleep(1000000); */
+/* } */
 
 
-/*****************************************************************************
-READ AND DUMP VGA REGISTER VALUES FOR CURRENT VIDEO MODE
-This is where g_40x25_text[], g_80x50_text[], etc. came from :)
-*****************************************************************************/
-void dump_state(void)
-{
-  unsigned char state[VGA_NUM_REGS];
+/* /\***************************************************************************** */
+/* READ AND DUMP VGA REGISTER VALUES FOR CURRENT VIDEO MODE */
+/* This is where g_40x25_text[], g_80x50_text[], etc. came from :) */
+/* *****************************************************************************\/ */
+/* void dump_state(void) */
+/* { */
+/*   unsigned char state[VGA_NUM_REGS]; */
 
-  read_regs(state);
-  dump_regs(state);
-}
+/*   read_regs(state); */
+/*   dump_regs(state); */
+/* } */
 /*****************************************************************************
 SET TEXT MODES
 *****************************************************************************/
@@ -1301,9 +1302,9 @@ void set_text_mode(int hi_res, void* video_memory)
 
 
   if(!fb_seg_one) {
-    fb_seg_one = video_memory;//map_contiguous_virtual_pages(0xA003, 16);
-    fb_seg_two = video_memory;//map_contiguous_virtual_pages(0xB003, 16);
-    fb_seg_three = video_memory;//map_contiguous_virtual_pages(0xB803, 16);
+    fb_seg_one = (uint32)video_memory;//map_contiguous_virtual_pages(0xA003, 16);
+    fb_seg_two = (uint32)video_memory;//map_contiguous_virtual_pages(0xB003, 16);
+    fb_seg_three = (uint32)video_memory;//map_contiguous_virtual_pages(0xB803, 16);
   }
   
 
@@ -1328,7 +1329,7 @@ void set_text_mode(int hi_res, void* video_memory)
   else {
     write_font(g_8x8_font, 8);
   }
-  poke_offset = map_virtual_page(3);
+  poke_offset = (uint)map_virtual_page(3);
   com1_printf("poke_offset = 0x%p\n", poke_offset);
   /* tell the BIOS what we've done, so BIOS text output works OK */
   pokew(0x40, 0x4A, cols);	/* columns on screen */
@@ -1338,7 +1339,7 @@ void set_text_mode(int hi_res, void* video_memory)
   pokeb(0x40, 0x61, ht - 2);
   pokeb(0x40, 0x84, rows - 1);	/* rows on screen - 1 */
   pokeb(0x40, 0x85, ht);		/* char height */
-  unmap_virtual_page(poke_offset);
+  unmap_virtual_page((void*)poke_offset);
   /* set white-on-black attributes for all text */
   for(i = 0; i < cols * rows; i++) {
     //pchVideo[i * 2] = 0;
@@ -1350,28 +1351,28 @@ void set_text_mode(int hi_res, void* video_memory)
 
 /*****************************************************************************
  *****************************************************************************/
-static unsigned char reverse_bits(unsigned char arg)
-{
-  unsigned char ret_val = 0;
+/* static unsigned char reverse_bits(unsigned char arg) */
+/* { */
+/*   unsigned char ret_val = 0; */
 
-  if(arg & 0x01)
-    ret_val |= 0x80;
-  if(arg & 0x02)
-    ret_val |= 0x40;
-  if(arg & 0x04)
-    ret_val |= 0x20;
-  if(arg & 0x08)
-    ret_val |= 0x10;
-  if(arg & 0x10)
-    ret_val |= 0x08;
-  if(arg & 0x20)
-    ret_val |= 0x04;
-  if(arg & 0x40)
-    ret_val |= 0x02;
-  if(arg & 0x80)
-    ret_val |= 0x01;
-  return ret_val;
-}
+/*   if(arg & 0x01) */
+/*     ret_val |= 0x80; */
+/*   if(arg & 0x02) */
+/*     ret_val |= 0x40; */
+/*   if(arg & 0x04) */
+/*     ret_val |= 0x20; */
+/*   if(arg & 0x08) */
+/*     ret_val |= 0x10; */
+/*   if(arg & 0x10) */
+/*     ret_val |= 0x08; */
+/*   if(arg & 0x20) */
+/*     ret_val |= 0x04; */
+/*   if(arg & 0x40) */
+/*     ret_val |= 0x02; */
+/*   if(arg & 0x80) */
+/*     ret_val |= 0x01; */
+/*   return ret_val; */
+/* } */
 
 
 
