@@ -17,16 +17,38 @@
 
 #include <stdlib.h>
 #include <stdio.h>
+#include <vshm.h>
 
 
 int
 main ()
 {
-  uint sandbox = ((uint)getpid()) >> 16;
+  uint sandbox = socket_get_sb_id();
+  printf("In %s sandbox %u\n", __FILE__, sandbox);
   if(sandbox == 0) {
-    
+    unsigned int* addr;
+    int res = vshm_map(1234, 0x1000, 0x2, VSHM_CREATE | VSHM_ALL_ACCESS, (void**)&addr);
+    printf("%d: res = %d, addr = %p\n", sandbox, res, addr);
+    while(1) {
+      if((*addr) % 2) {
+        printf("%d, *addr = %u\n", sandbox, *addr);
+        (*addr)++;
+      }
+    }
+    exit(EXIT_SUCCESS);
   }
   else if(sandbox == 1) {
+    usleep(4000000);
+    unsigned int* addr;
+    int res = vshm_map(1234, 0x1000, 0x1, VSHM_ALL_ACCESS, (void**)&addr);
+    printf("%d: res = %d, addr = %p\n", sandbox, res, addr);
+    while(1) {
+      if(!((*addr) % 2)) {
+        printf("%d, *addr = %u\n", sandbox, *addr);
+        (*addr)++;
+      }
+    }
+    exit(EXIT_SUCCESS);
   }
   else exit(EXIT_FAILURE);
 }

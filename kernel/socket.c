@@ -1420,18 +1420,19 @@ int syscall_vshm_map(uint vshm_key, uint size, uint sandboxes, uint flags, void*
                                              bitmap);
       
     }
-    
+    memset(arena_addr, 0, pages_needed * 0x1000);
     if(!send_intersandbox_msg(ISBM_NEW_SHARED_MEMORY_ARENA, sandbox_num, &msg, sizeof(msg))) {
       com1_printf("Failed to send ism, for vshm_map\n");
       panic("Failed to send ism, for vshm_map\n");
     }
+    
     *addr = arena_addr;
   }
   else {
     int i, j;
     uint bitmap = 0;
     shm_pool_t* pool = NULL;
-    uint matching_pages_count;
+    uint matching_pages_count = 0;
     for(pool_index = 0; pool_index < NUM_POOLS_PER_SANDBOX; ++pool_index) {
       if((shm_comm.pools[sandbox_num][pool_index].permissions == permissions) &&
          shm_comm.pools[sandbox_num][pool_index].start_addr &&
@@ -1464,10 +1465,11 @@ int syscall_vshm_map(uint vshm_key, uint size, uint sandboxes, uint flags, void*
           com1_printf("Failed to map address that should not have failed\n");
           panic("Failed to map address that should not have failed");
           }
+        shm_set_ept_permission((i * 0x1000) + pool->start_addr, 1, permissions);
         ++j;
       }
     }
-    
+    *addr = arena_addr;
   }
   unlock_kernel();
   return 0;

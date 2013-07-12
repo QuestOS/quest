@@ -279,9 +279,9 @@ void init_shared_memory_pools(void)
 
   for(i = 0; i < SHM_MAX_SANDBOX; ++i) {
     if(i != pcpu_id) {
-      DLOG("Setting up channel between %d and %d\n", i, pcpu_id);
-      DLOG("Phys addr = 0x%X\n", CHANNEL_ADDR(i, pcpu_id));
-      DLOG("channel index = %d\n", CHANNEL_INDEX(i, pcpu_id));
+      DLOG("Setting up channel between %d and %d", i, pcpu_id);
+      DLOG("Phys addr = 0x%X", CHANNEL_ADDR(i, pcpu_id));
+      DLOG("channel index = %d", CHANNEL_INDEX(i, pcpu_id));
       void* arena = map_virtual_page(CHANNEL_ADDR(i, pcpu_id) | 3);
       if(!arena) {
         com1_printf("Failed to initialise shared memory communication channels\n");

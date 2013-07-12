@@ -154,7 +154,7 @@ map_virtual_pages (uint32 * phys_frames, uint32 count)
 bool map_virtual_page_to_addr(uint dir_entry_perm, uint32 phys_frame, addr_t virt_addr)
 {
   int dir_entry = ((uint32)virt_addr) / 0x400000;
-  int tbl_entry = (((uint32)virt_addr) / 0x1000) & 0xFFF;
+  int tbl_entry = (((uint32)virt_addr) / 0x1000) & 0x3FF;
   uint32* plPageDirectory = map_virtual_page ((uint32) get_pdbr () | 3);
   uint32* plPageTable = NULL;
 
@@ -169,7 +169,7 @@ bool map_virtual_page_to_addr(uint dir_entry_perm, uint32 phys_frame, addr_t vir
     }
   }
   
-  plPageTable = map_virtual_page(plPageDirectory[dir_entry]);
+  plPageTable = map_virtual_page((plPageDirectory[dir_entry] & 0xFFFFF000) | 3);
   if(!plPageTable) {
     unmap_virtual_page(plPageDirectory);
     return FALSE;
@@ -668,10 +668,8 @@ clone_page_directory (pgdir_t dir)
    free page directory entry and maps it there */
 
 void* find_free_virtual_region(size_t size) {
-  int i, j;
-  int res = -1;
+  int i;
   uint32 * plPageDirectory;
-  int free_dir_entry = -1;
   
   
   if(size > 0x400000) return NULL;
@@ -680,13 +678,11 @@ void* find_free_virtual_region(size_t size) {
   
   /* Find free directory entry  */
   for(i = 0; i < 1024; ++i) {
-    if(!plPageDirectory[i]) {
-      free_dir_entry = i;
-      break;
-    }
+    if(!plPageDirectory[i]) break;
   }
 
-  return i * 0x400000;
+  if(i == 1024) return NULL;
+  return (void*)(i * 0x400000);
 }
 
 
