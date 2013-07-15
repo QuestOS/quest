@@ -18,6 +18,8 @@
 #ifndef _VSHM_H_
 #define _VSHM_H_
 
+#include <stdlib.h>
+
 #define VSHM_NO_ACCESS        0x0
 #define VSHM_READ_ACCESS      0x1
 #define VSHM_WRITE_ACCESS     0x2
@@ -26,7 +28,57 @@
 
 #define VSHM_CREATE           0x80000000
 
-inline int vshm_map(uint vshm_key, uint size, uint sandboxes, uint flags, void** addr);
+/* Simpson's four slot asynchronous communication mechanism */
+typedef struct {
+  unsigned int latest, reading;
+  unsigned int slot[2];
+  char* data[];
+} four_slot_shared_t;
+
+typedef struct {
+  size_t element_size;
+} four_slot_private_t;
+
+typedef struct {
+  four_slot_shared_t* shared;
+  four_slot_private_t private;
+} vshm_async_channel_t;
+
+int mk_vshm_async_channel(vshm_async_channel_t* vac, unsigned int vshm_key,
+                          size_t element_size, unsigned int sandboxes, unsigned int flags);
+
+void vshm_async_channel_write(vshm_async_channel_t* vac, void* item);
+
+void vshm_async_channel_read(vshm_async_channel_t* vac, void* item);
+
+typedef struct
+{
+  unsigned int start;
+  unsigned int end;
+  char* data[];
+} vshm_circular_buffer_shared_t;
+
+typedef struct
+{
+  size_t buffer_size;
+  size_t element_size;
+} vshm_circular_buffer_private_t;
+
+typedef struct {
+  vshm_circular_buffer_shared_t* shared;
+  vshm_circular_buffer_private_t private;
+} vshm_circular_buffer_t;
+
+int mk_vshm_circular_buffer(vshm_circular_buffer_t* vcb, unsigned int vshm_key,
+                            size_t buffer_size, size_t element_size, unsigned int sandboxes,
+                            unsigned int flags);
+
+int vshm_circular_buffer_insert(vshm_circular_buffer_t* vcb, void* item);
+
+int vshm_circular_buffer_remove(vshm_circular_buffer_t* vcb, void* item);
+
+inline int vshm_map(unsigned int vshm_key, unsigned int size,
+                    unsigned int sandboxes, unsigned int flags, void** addr);
 
 
 #endif
