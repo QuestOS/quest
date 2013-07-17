@@ -16,6 +16,7 @@
  */
 
 #include <vshm.h>
+#include <string.h>
 
 int mk_vshm_async_channel(vshm_async_channel_t* vac, unsigned int vshm_key,
                           size_t element_size, unsigned int sandboxes, unsigned int flags)
@@ -69,25 +70,43 @@ int mk_vshm_circular_buffer(vshm_circular_buffer_t* vcb, unsigned int vshm_key,
 
 int vshm_circular_buffer_insert(vshm_circular_buffer_t* vcb, void* item)
 {
-  if(vcb->shared->end > vcb->shared->start) {
-    if(vcb->shared->end == vcb->private.buffer_size && vcb->shared->start == 0) return -1;
+  unsigned int start = vcb->shared->start;
+  unsigned int end   = vcb->shared->end;
+
+  if(end >= vcb->private.buffer_size || start >= vcb->private.buffer_size) return -2;
+  
+  if(end > start) {
+    if(end == (vcb->private.buffer_size-1) && start == 0) return -1;
   }
   else {
-    if(vcb->shared->end + 1 == vcb->shared->start) return -1;
+    if(end + 1 == start) return -1;
   }
-  memcpy(vcb_element_addr(vcb, vcb->shared->end), vcb->private.element_size);
-  vcb->shared->end++;
+  memcpy(vcb_element_addr(vcb, end), item, vcb->private.element_size);
+  end++;
+  if(end == vcb->private.buffer_size) {
+    end = 0;
+  }
+  vcb->shared->end = end;
   return 0;
 }
 
 int vshm_circular_buffer_remove(vshm_circular_buffer_t* vcb, void* item)
 {
-  if(vcb->shared->start == vcb->shared->end) {
+  unsigned int start = vcb->shared->start;
+  unsigned int end   = vcb->shared->end;
+
+  if(end >= vcb->private.buffer_size || start >= vcb->private.buffer_size) return -2;
+  
+  if(start == end) {
     /* buffer is empty */
     return -1;
   }
-  memcpy(item, vcb_element_addr(vcb, vcb->shared->start), vcb->private.element_size);
-  vcb->shared->start++;
+  memcpy(item, vcb_element_addr(vcb, start), vcb->private.element_size);
+  start++;
+  if(start == vcb->private.buffer_size) {
+    start = 0;
+  }
+  vcb->shared->start = start;
   return 0;
 }
 

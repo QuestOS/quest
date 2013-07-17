@@ -19,3 +19,5 @@ vga
 seek
 getpid
 vshm_test
+vshm_circ_buf
+vshm_async
