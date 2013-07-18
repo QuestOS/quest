@@ -107,7 +107,7 @@ typedef struct _shm_info {
   bool bsp_booted;
 } shm_info;
 
-#define POOL_SIZE_IN_PAGES 10
+#define POOL_SIZE_IN_PAGES 20
 #define NUM_POOLS_PER_SANDBOX 4
 
 typedef struct {
@@ -129,6 +129,9 @@ typedef enum {
 
 bool send_intersandbox_msg(isb_msg_type_t msg_type, uint target_sandbox,
 			   void* msg, size_t size);
+
+int virtual_shared_mem_map(uint vshm_key, uint size, uint sandboxes,
+                           uint flags, void** addr, bool user_space);
 
 static inline void
 initialise_new_shared_memory_arena_msg(new_shared_memory_arena_msg_t* msg,
@@ -211,6 +214,8 @@ extern void shm_free_phys_frames (uint32, uint32);
 extern void shm_set_ept_permission (uint32, uint32, uint8);
 extern spinlock * shm_alloc_drv_lock (void);
 extern void shm_free_drv_lock (spinlock *);
+
+int sys_call_get_sb_id ();
 
 #endif /* __ASSEMBLER__ */
 

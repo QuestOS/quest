@@ -503,6 +503,8 @@ static int syscall_enable_video(u32 eax, int enable, char** video_memory, u32 ed
       uint32 * plPageDirectory = map_virtual_page ((uint32) get_pdbr () | 3);
       int free_dir_entry = -1;
 
+      if(plPageDirectory == 0xFFFFFFFF) return -1;
+
       /* Find free directory entry  */
       for(i = 0; i < 1024; ++i) {
         if(!plPageDirectory[i]) {

@@ -40,6 +40,7 @@
 
 #ifdef USE_VMX
 #include "vm/shm.h"
+#include "vm/fault_detection.h"
 #endif
 
 //#define DEBUG_SOCKET
@@ -1096,7 +1097,7 @@ finish:
   return 0;
 }
 
-static int
+int
 sys_call_get_sb_id ()
 {
   return get_pcpu_id ();
@@ -1275,208 +1276,14 @@ int sys_call_fcntl(int fd, int cmd, void* extra_arg)
 
 int syscall_vshm_map(uint vshm_key, uint size, uint sandboxes, uint flags, void** addr)
 {
-#ifdef USE_VMX
-  new_shared_memory_arena_msg_t msg;
-  int pool_index;
-  uint sandbox_num = 0;
-  int pages_needed = DIV_ROUND_UP(size, 0x1000);
-  void* arena_addr;
-  uint permissions = flags & VSHM_ALL_ACCESS;
-
-  if(!addr) return -1;
-
-  if(vshm_key == 0) return -1;
-  
-  if(popcount(sandboxes) != 1) return -1;
-
-  if(size == 0) return -1;
-  
-  while(!((1 << sandbox_num) & sandboxes) && (sandbox_num < SHM_MAX_SANDBOX)) sandbox_num++;
-
-  if(sandbox_num >= SHM_MAX_SANDBOX || sandbox_num == get_pcpu_id()) return -1;
-
-  if(pages_needed > POOL_SIZE_IN_PAGES) return -1;
-
-  arena_addr = find_free_virtual_region(pages_needed * 0x1000);
-  if(!arena_addr) {
-    return -1;
-  }
-  
+  int res;
   lock_kernel();
-  
-  if(flags & VSHM_CREATE) {
-
-    for(pool_index = 0; pool_index < NUM_POOLS_PER_SANDBOX; ++pool_index) {
-      int i, j;
-      for(i = 0 ; i < SHM_MAX_SANDBOX; ++i) {
-        if(shm_comm.pools[i][pool_index].start_addr) {
-          for(j = 0; j < POOL_SIZE_IN_PAGES; ++j) {
-            if(shm_comm.pools[i][pool_index].keys_map[j] == vshm_key) {
-              /* key is already in use */
-              unlock_kernel();
-              return -1;
-            }
-          }
-        }
-      }
-    }
-        
-    for(pool_index = 0; pool_index < NUM_POOLS_PER_SANDBOX; ++pool_index) {
-      if((shm_comm.pools[sandbox_num][pool_index].permissions == permissions) &&
-         shm_comm.pools[sandbox_num][pool_index].start_addr &&
-         ((POOL_SIZE_IN_PAGES - shm_comm.pools[sandbox_num][pool_index].used_pages) >= pages_needed) &&
-         shm_comm.pools[sandbox_num][pool_index].created_locally) break;
-    }
-    
-    if(pool_index < NUM_POOLS_PER_SANDBOX) { /* If we found a suitable pool already created */
-      int i, j;
-      int pages_allocated = 0;
-      shm_pool_t* pool = &shm_comm.pools[sandbox_num][pool_index];
-      uint bitmap = 0;
-      
-      for(i = 0; (pages_allocated < pages_needed) && (i < POOL_SIZE_IN_PAGES); ++i) {
-        if(!pool->keys_map[i]) {
-          bitmap |= (1 << i);
-          pages_allocated++;
-        }
-      }
-      
-      if(i == POOL_SIZE_IN_PAGES) {
-        /* This should never happen since we know we have enough free
-           pages but just in case */
-        unlock_kernel();
-        return -1;
-      }
-      
-      for(i = 0; i < POOL_SIZE_IN_PAGES; ++i) {
-        if((1 << i) & bitmap) {
-          pool->keys_map[i] = vshm_key;
-        }
-      }
-      
-      for(i = 0, j = 0; j < pages_needed; ++i) {
-        if((1 << i) & bitmap) {
-          if(!map_virtual_page_to_addr(7, ((i * 0x1000) + pool->start_addr) | 7,
-                                       (j * 0x1000) + arena_addr)) {
-            /* -- EM -- Need to unmap the pages already mapped, right
-               now just panic */
-            com1_printf("Failed to map address that should not have failed\n");
-            panic("Failed to map address that should not have failed");
-          }
-          ++j;
-        }
-      }
-      
-      initialise_new_shared_memory_arena_msg(&msg, FALSE, vshm_key,
-                                             pool_index,
-                                             permissions, (phys_addr_t)NULL, bitmap);
-    }
-    else { /* Need to create a new pool */
-      int i;
-      shm_pool_t* pool = NULL;
-      uint bitmap = (1 << pages_needed) - 1;
-      for(pool_index = 0; pool_index < NUM_POOLS_PER_SANDBOX; ++pool_index) {
-        if(!shm_comm.pools[sandbox_num][pool_index].start_addr) {
-          /* Found free pool entry */
-          pool = &shm_comm.pools[sandbox_num][pool_index];
-          break;
-        }
-      }
-      
-      if(!pool) {
-        /* Failed to find a free pool */
-        unlock_kernel();
-        return -1;
-      }
-      
-      pool->created_locally = TRUE;
-      pool->start_addr = shm_alloc_phys_frames_perm(POOL_SIZE_IN_PAGES, permissions);
-      pool->permissions = permissions;
-      
-      if(pool->start_addr == 0xFFFFFFFF) {
-        /* Failed to allocate pool setting start_addr back to zero to
-           indicate that it is free */
-        pool->start_addr = 0;
-        unlock_kernel();
-        return -1;
-      }
-      
-      for(i = 0; i < pages_needed; ++i) {
-        pool->keys_map[i] = vshm_key;
-      }
-      
-      for(i = 0; i < pages_needed; ++i) {
-        if(!map_virtual_page_to_addr(7, ((i * 0x1000) + pool->start_addr) | 7,
-                                     (i * 0x1000) + arena_addr)) {
-          /* -- EM -- Need to unmap the pages already mapped, right now
-             just panic */
-          com1_printf("Failed to map address that should not have failed\n");
-          panic("Failed to map address that should not have failed");
-        }
-      }
-      
-      initialise_new_shared_memory_arena_msg(&msg, TRUE, vshm_key, pool_index,
-                                             permissions, pool->start_addr,
-                                             bitmap);
-      
-    }
-    memset(arena_addr, 0, pages_needed * 0x1000);
-    if(!send_intersandbox_msg(ISBM_NEW_SHARED_MEMORY_ARENA, sandbox_num, &msg, sizeof(msg))) {
-      com1_printf("Failed to send ism, for vshm_map\n");
-      panic("Failed to send ism, for vshm_map\n");
-    }
-    
-    *addr = arena_addr;
-  }
-  else {
-    int i, j;
-    uint bitmap = 0;
-    shm_pool_t* pool = NULL;
-    uint matching_pages_count = 0;
-    for(pool_index = 0; pool_index < NUM_POOLS_PER_SANDBOX; ++pool_index) {
-      if((shm_comm.pools[sandbox_num][pool_index].permissions == permissions) &&
-         shm_comm.pools[sandbox_num][pool_index].start_addr &&
-         (!shm_comm.pools[sandbox_num][pool_index].created_locally)) {
-        int i;
-        pool = &shm_comm.pools[sandbox_num][pool_index];
-        for(i = 0; i < POOL_SIZE_IN_PAGES; ++i) {
-          if(pool->keys_map[i] == vshm_key) {
-            bitmap |= 1 << i;
-            matching_pages_count++;
-          }
-        }
-        break;
-      }
-    }
-    
-    if(matching_pages_count != pages_needed) {
-      /* requested size does not match actual size, only care about
-         page level granularity */
-      unlock_kernel();
-      return -1;
-    }
-
-    for(i = 0, j = 0; j < pages_needed; ++i) {
-      if((1 << i) & bitmap) {
-        if(!map_virtual_page_to_addr(7, ((i * 0x1000) + pool->start_addr) | 7,
-                                     (j * 0x1000) + arena_addr)) {
-          /* -- EM -- Need to unmap the pages already mapped, right
-             now just panic */
-          com1_printf("Failed to map address that should not have failed\n");
-          panic("Failed to map address that should not have failed");
-          }
-        shm_set_ept_permission((i * 0x1000) + pool->start_addr, 1, permissions);
-        ++j;
-      }
-    }
-    *addr = arena_addr;
-  }
+  res = virtual_shared_mem_map(vshm_key, size, sandboxes, flags, addr, TRUE);
   unlock_kernel();
-  return 0;
-#else
-  return -1;
-#endif
+  return res;
 }
+
+
 
 sys_call_ptr_t _socket_syscall_table [] ALIGNED (0x1000) = {
   (sys_call_ptr_t) sys_call_open_socket,    /* 00 */
@@ -1494,7 +1301,8 @@ sys_call_ptr_t _socket_syscall_table [] ALIGNED (0x1000) = {
   (sys_call_ptr_t) sys_call_getsockname,    /* 12 */
   (sys_call_ptr_t) sys_call_recovery,       /* 13 */
   (sys_call_ptr_t) sys_call_fcntl,          /* 14 */
-  (sys_call_ptr_t) syscall_vshm_map         /* 15 */
+  (sys_call_ptr_t) syscall_vshm_map,        /* 15 */
+  (sys_call_ptr_t) syscall_fault_detection, /* 16 */
 };
 
 static bool socket_sys_call_initialized = FALSE;

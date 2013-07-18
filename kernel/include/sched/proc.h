@@ -78,6 +78,8 @@ typedef struct _replenishment {
 #define MAX_REPL 32
 #endif
 
+struct _fault_detection_info;
+
 /* A Quest TSS is a software-only construct, a.k.a Thread Control
  * Block (TCB). */
 typedef struct _quest_tss
@@ -131,7 +133,8 @@ typedef struct _quest_tss
   replenishment vcpu_backup[MAX_REPL];
   /* common VCPU scheduling parameters backup */
   u64 C_bak, T_bak, b_bak, usage_bak;
-  u8 padding2[5];
+  struct _fault_detection_info* fdi;
+  u8 padding2[1];
 } PACKED quest_tss;
 
 CASSERT(sizeof(quest_tss) <= 0x1000, quest_tss_size);

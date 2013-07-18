@@ -21,3 +21,4 @@ getpid
 vshm_test
 vshm_circ_buf
 vshm_async
+fault_detection
