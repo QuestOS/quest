@@ -20,6 +20,10 @@
 
 #include "vm/shm.h"
 
+
+/* The following is duplicated in libc's fault_detection.h and must be
+   the same as it is in there */
+
 typedef enum {
   FDA_REGISTER_PROG = 0,
   FDA_SYNC,
@@ -31,17 +35,21 @@ typedef enum {
 #define FAULT_DETECTION_HASH_SIZE (1)
 
 typedef struct {
-  uint32 virtual_page;
-  uint32 hash[FAULT_DETECTION_HASH_SIZE];
+  uint virtual_page;
+  uint hash[FAULT_DETECTION_HASH_SIZE];
 } fault_detection_hash_t;
 
+/* This must be the same as fault_detection_hash_dumps_t in libc's
+   fault_detection.h */
+
 typedef struct {
-  u64 count;
+  uint count;
   uint num_hashes;
+  uint checkpoint_passed;
   fault_detection_hash_t hashes[0];
 } fault_detection_hash_dumps_t;
 
-#define FAULT_DETECTION_HASH_COUNT                                      \
+#define FAULT_DETECTION_HASH_COUNT_MAX                                      \
   ((FAULT_DETECTION_POOL_SIZE - sizeof(fault_detection_hash_dumps_t)) / sizeof(fault_detection_hash_t))
 
 typedef struct _fault_detection_info {

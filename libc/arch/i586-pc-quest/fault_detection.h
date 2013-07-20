@@ -18,7 +18,51 @@
 #ifndef _FAULT_DETECTION_H_
 #define _FAULT_DETECTION_H_
 
-int fault_detection_register_program(unsigned int key, unsigned int sink_sandbox);
+
+#include <sys/types.h>
+
+
+/* The following is duplicated in include/vm/fault_detection.h and
+   must be the same as it is in there */
+
+typedef enum {
+  FDA_REGISTER_PROG = 0,
+  FDA_SYNC,
+} FAULT_DETECTION_ACTION;
+
+#define FAULT_DETECTION_POOL_SIZE (POOL_SIZE_IN_PAGES * 0x1000)
+
+//#define FAULT_DETECTION_HASH_SIZE (128/32)
+#define FAULT_DETECTION_HASH_SIZE (1)
+
+typedef struct {
+  uint virtual_page;
+  uint hash[FAULT_DETECTION_HASH_SIZE];
+} fault_detection_hash_t;
+
+/* This must be the same as fault_detection_hash_dumps_t in libc's
+   fault_detection.h */
+
+typedef struct {
+  uint count;
+  uint num_hashes;
+  uint checkpoint_passed;
+  fault_detection_hash_t hashes[0];
+} fault_detection_hash_dumps_t;
+
+#define FAULT_DETECTION_HASH_COUNT_MAX                                      \
+  ((FAULT_DETECTION_POOL_SIZE - sizeof(fault_detection_hash_dumps_t)) / sizeof(fault_detection_hash_t))
+
+typedef struct {
+  fault_detection_hash_dumps_t* hash_dumps;
+} fault_detection_prog_t;
+
+int fault_detection_register_arbitrator(uint key, uint arbitrated_sandbox,
+                                        fault_detection_prog_t* fdp);
+
+int syscall_fault_detection(uint action, uint key, uint arbitrator_sandbox);
+
+int fault_detection_register_program(uint key, uint arbitrator_sandbox);
 
 int fault_detection_sync();
 

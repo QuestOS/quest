@@ -22,3 +22,4 @@ vshm_test
 vshm_circ_buf
 vshm_async
 fault_detection
+fault_detection_sink

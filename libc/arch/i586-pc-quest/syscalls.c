@@ -579,3 +579,12 @@ inline int vshm_map(uint vshm_key, uint size, uint sandboxes, uint flags, void**
 		"d"(sandboxes), "S"(flags), "D"(addr) : "memory", "cc");
   return res;
 }
+
+
+int syscall_fault_detection(uint action, uint key, uint sink_sandbox)
+{
+  int res;
+  asm volatile ("int $0x3D\n":"=a"(res):"a" (16L), "b"(action),
+		"c"(key), "d"(sink_sandbox):CLOBBERS6);
+  return res;
+}

@@ -35,9 +35,9 @@ static void hash_page(fault_detection_hash_t* hash)
 {
   int i;
   uint32* page = (uint32*)hash->virtual_page;
-  DLOG("Creating hash of data at 0x%X", hash->virtual_page);
+  //DLOG("Creating hash of data at 0x%X", hash->virtual_page);
   hash->hash[0] = 0;
-  for(i = 0; i < 4906/sizeof(uint32); ++i) {
+  for(i = 0; i < 4096/sizeof(uint32); ++i) {
     hash->hash[0] ^= page[i];
   }
 }
@@ -58,15 +58,17 @@ static bool populate_hash_dump(fault_detection_hash_dumps_t* hash_dumps,
   }
   else {
     int i, j;
-    for(i = 0; (i < 1024) && (hash_dumps->num_hashes < FAULT_DETECTION_HASH_COUNT); ++i) {
+    for(i = 0; (i < 1024) && (hash_dumps->num_hashes < FAULT_DETECTION_HASH_COUNT_MAX); ++i) {
       if( (plPageDirectory[i] & 4) && ((plPageDirectory[i] & 0x08) == 0) ) {
         uint32* plPageTable = map_virtual_page((plPageDirectory[i] & 0xFFFFF000) | 3);
         if((uint32)plPageTable == 0xFFFFFFFF) {
           unmap_virtual_page(plPageDirectory);
           return FALSE;
         }
-        for(j = 0; (j < 1024) && (hash_dumps->num_hashes < FAULT_DETECTION_HASH_COUNT); ++j) {
+        for(j = 0; (j < 1024) && (hash_dumps->num_hashes < FAULT_DETECTION_HASH_COUNT_MAX); ++j) {
           if(plPageTable[j] & 4) {
+            //DLOG("plPageDirectory[%d] = 0x%X, plPageTable[%d] = 0x%X",
+            //     i, plPageDirectory[i], j, plPageTable[j]);
             hash_dumps->hashes[hash_dumps->num_hashes].virtual_page = i * 0x400000 + j * 0x1000;
             hash_page(&hash_dumps->hashes[hash_dumps->num_hashes++]);
           }
@@ -75,7 +77,7 @@ static bool populate_hash_dump(fault_detection_hash_dumps_t* hash_dumps,
       }
     }
   }
-
+  hash_dumps->checkpoint_passed = FALSE;
   hash_dumps->count++;
   return TRUE;
 }
@@ -99,11 +101,13 @@ static int _syscall_fault_detection(uint action, uint key, uint sink_sandbox)
 
       tss->fdi = kmalloc(sizeof(*tss->fdi));
       if(!tss->fdi) return -1;
-      tss->fdi->hash_dumps->count = 0;
+      
       res = virtual_shared_mem_map(key, FAULT_DETECTION_POOL_SIZE, 1 << sink_sandbox,
                                    VSHM_ALL_ACCESS | VSHM_CREATE,
                                    (void**)&tss->fdi->hash_dumps, FALSE);
       if(res < 0) return -1;
+
+      tss->fdi->hash_dumps->count = 0;
 
       populate_hash_dump(tss->fdi->hash_dumps, FALSE);
     }
@@ -111,10 +115,19 @@ static int _syscall_fault_detection(uint action, uint key, uint sink_sandbox)
     
   case FDA_SYNC:
     {
+      populate_hash_dump(tss->fdi->hash_dumps, FALSE);
     }
     break;
     
   }
+  
+  /* -- EM -- Really ugly polling hack would be much better to use an
+     IPI, don't want to create that interface yet since we most likely
+     will be changing the monitor soon */
+  while(!tss->fdi->hash_dumps->checkpoint_passed) {
+    sched_usleep(10000);
+  }
+  
   return 0;
 #else
   return -1;

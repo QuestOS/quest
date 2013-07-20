@@ -16,15 +16,9 @@
  */
 
 #include <fault_detection.h>
-#include <stdlib.h>
-#include <stdio.h>
 
 int main()
 {
-  if(socket_get_sb_id() != 0) return 0;
-  fault_detection_register_program(59713423, 0x2);
-  printf("Done with syscall call\n");
-  while(1);
 }
 
 

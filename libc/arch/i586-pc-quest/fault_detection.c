@@ -16,17 +16,22 @@
  */
 
 #include <fault_detection.h>
-#include <stdlib.h>
-#include <stdio.h>
 
-int main()
+int fault_detection_register_program(uint key, uint arbitrator_sandbox)
 {
-  if(socket_get_sb_id() != 0) return 0;
-  fault_detection_register_program(59713423, 0x2);
-  printf("Done with syscall call\n");
-  while(1);
+  syscall_fault_detection((unsigned int)FDA_REGISTER_PROG, key, arbitrator_sandbox);
 }
 
+int fault_detection_sync()
+{
+  syscall_fault_detection((unsigned int)FDA_SYNC, 0, 0);
+}
+
+int fault_detection_register_arbitrator(uint key, uint arbitrated_sandbox,
+                                        fault_detection_prog_t* fdp)
+{
+  
+}
 
 /*
  * Local Variables:

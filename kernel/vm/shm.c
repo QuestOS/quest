@@ -26,7 +26,7 @@
 #include "sched/vcpu.h"
 #include "sched/sched.h"
 
-#define DEBUG_SHM    1
+#define DEBUG_SHM    0
 #if DEBUG_SHM > 0
 #define DLOG(fmt,...) DLOG_PREFIX("shm",fmt,##__VA_ARGS__)
 #else
