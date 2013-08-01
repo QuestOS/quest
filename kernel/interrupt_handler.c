@@ -474,7 +474,8 @@ static int syscall_vcpu_setparams(u32 eax, vcpu_id_t vcpu_index, struct sched_pa
   return -1;
 }
 
-static int syscall_enable_video(u32 eax, int enable, char** video_memory, u32 edx, u32 esi)
+static int syscall_enable_video(u32 eax, int enable, unsigned char** video_memory,
+                                uint flags, u32 esi)
 {
   static bool video_enabled = FALSE;
   static void* current_video_memory = NULL;

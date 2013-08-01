@@ -7,7 +7,10 @@
 #include <sys/time.h>
 #include <stdio.h>
 #include <stdint.h>
+
+/* Quest specific headers */
 #include <vcpu.h>
+#include <video.h>
 
 #define CLOBBERS1 "memory","cc","%ebx","%ecx","%edx","%esi","%edi"
 #define CLOBBERS2 "memory","cc","%ecx","%edx","%esi","%edi"
@@ -291,10 +294,10 @@ usb_syscall(int device_id, int operation, void* buf, int data_len)
 }
 
 inline int
-enable_video(int enable, char** video_memory)
+enable_video(int enable, unsigned char** video_memory, unsigned int flags)
 {
   int res;
-  asm volatile ("int $0x30\n":"=a"(res):"a" (9L), "b"(enable), "c"(video_memory): CLOBBERS5);
+  asm volatile ("int $0x30\n":"=a"(res):"a" (9L), "b"(enable), "c"(video_memory), "d"(flags): CLOBBERS6);
   return res;
 
 }

@@ -20,11 +20,12 @@
 #include <stdlib.h>
 #include <math.h>
 #include <string.h>
+#include <video.h>
 
 int qcv_create_window(qcv_window_t* window)
 {
   int res;
-  if((res = enable_video(1, &window->video_memory)) < 0) {
+  if((res = enable_video(1, &window->video_memory, DISTRIBUTED_COLOR_PALLETE)) < 0) {
     return res;
   }
   window->height = 200;
@@ -82,7 +83,7 @@ int qcv_window_display_frame(qcv_window_t* window, qcv_frame_t* frame)
 int qcv_destroy_window(qcv_window_t* window)
 {
   int res;
-  if((res = enable_video(1, &window->video_memory)) < 0) {
+  if((res = enable_video(1, &window->video_memory, 0)) < 0) {
     return res;
   }
   window->video_memory = NULL;
