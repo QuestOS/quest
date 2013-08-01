@@ -276,36 +276,39 @@ initialize_serial_port (void)
   com1_puts ("COM1 initialized.\n");
 }
 
-int
-parse_root_type (char *cmdline)
+char* get_cmdline_arg(char* cmdline, char* key)
 {
-  char *p, *q;
-  for (p=cmdline; p[0] && p[1] && p[2] && p[3] && p[4]; p++) {
-    if (p[0] == 'r' && p[1] == 'o' && p[2] == 'o' &&
-        p[3] == 't' && p[4] == '=') {
-      p+=5;
-      for (q=p; *q && *q != ' '; q++);
-      *q = '\0';
-      if (q - p >= 4 &&
-          p[0] == '(' && p[1] == 'h' && p[2] == 'd' && p[3] == ')')
-        return VFS_FSYS_EZEXT2;
-      if (q - p >= 4 &&
-          p[0] == '(' && p[1] == 'c' && p[2] == 'd' && p[3] == ')')
-        return VFS_FSYS_EZISO;
-      if (q - p >= 6 &&
-          p[0] == '(' && p[1] == 't' && p[2] == 'f' &&
-          p[3] == 't' && p[4] == 'p' && p[5] == ')')
-        return VFS_FSYS_EZTFTP;
-      if (q - p >= 5 &&
-          p[0] == '(' && p[1] == 'u' && p[2] == 's' &&
-          p[3] == 'b' && p[4] == ')')
-        return VFS_FSYS_EZUSB;
+  char *p = cmdline;
+  uint i, cmdline_len, key_len;
+  cmdline_len = strlen(cmdline);
+  key_len = strlen(key);
+  if(!key_len) return NULL;
+  
+  for(i = 0; i < cmdline_len - key_len; ++i, ++p) {
+    if(!strncmp(p, key, key_len) && p[key_len] == '=') {
+      return &p[key_len+1];
     }
   }
   return VFS_FSYS_NONE;
 }
 
+int
+parse_root_type(char *cmdline)
+{
+  char* arg = get_cmdline_arg(cmdline, "root");
+  if(arg) {
+    if(!strncmp(arg, "(hd)", 4)) return VFS_FSYS_EZEXT2;
+    if(!strncmp(arg, "(cd)", 4)) return VFS_FSYS_EZISO;
+    if(!strncmp(arg, "(tftp)", 6)) return VFS_FSYS_EZTFTP;
+    if(!strncmp(arg, "(usb)", 5)) return VFS_FSYS_EZUSB;
+    if(!strncmp(arg, "(ram)", 5)) return VFS_FSYS_EZRAM;
+  }
+  return NULL;
+}
+
+
 u32 root_type, boot_device=0;
+int ramdisk_module_index;
 #ifdef USE_VMX
 task_id shell_tss = 0;
 #endif
@@ -441,6 +444,14 @@ init (multiboot * pmb)
   com1_printf ("cmdline: %s\n", pmb->cmdline);
   root_type = parse_root_type (pmb->cmdline);
   com1_printf ("root_type=%d\n", root_type);
+  if(root_type == VFS_FSYS_EZRAM) {
+    /* ramdisk_module_index = get_ramdisk_index(pmb->cmdline); */
+    /* if(ramdisk_module_index < 0) { */
+    /*   com1_printf("Failed to find ramdisk index\n"); */
+    /*   panic("Failed to find ramdisk index"); */
+    /* } */
+  }
+  
 
   if (pmb->flags & 0x2) {
     multiboot_drive *d;

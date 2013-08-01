@@ -90,6 +90,7 @@ int eztftp_read (char *buf, int len);
 #define VFS_FSYS_EZISO  2
 #define VFS_FSYS_EZUSB  3
 #define VFS_FSYS_EZTFTP 4
+#define VFS_FSYS_EZRAM  5
 
 void vfs_set_root (int type, ata_info * drive_info);
 int vfs_dir (char *);
