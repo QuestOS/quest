@@ -473,7 +473,10 @@ _atapi_drive_read_sector (uint32 bus, uint32 drive, uint32 lba, uint8 *buffer)
   /* 0xA8 is READ SECTORS command byte. */
   uint8 read_cmd[12] = { 0xA8, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0 };
   uint8 status;
-  int size, fake_size;
+  int size;
+#ifdef DEBUG_ATA
+  int fake_size;
+#endif
   task_id cpu = 0;
 
   ata_grab ();
@@ -573,6 +576,7 @@ _atapi_drive_read_sector (uint32 bus, uint32 drive, uint32 lba, uint8 *buffer)
   } else
     ata_poll_for_irq (bus);
 
+#ifdef DEBUG_ATA
   /* Read size of "fake" transfer (may be 0) */
   fake_size =
     (((int) inb (ATA_ADDRESS3 (bus))) << 8) |
@@ -580,6 +584,7 @@ _atapi_drive_read_sector (uint32 bus, uint32 drive, uint32 lba, uint8 *buffer)
 
   DLOG ("atapi_drive_read_sector(%X,%X,%X,%p): fake size = %X",
         bus, drive, lba, buffer, fake_size);
+#endif
 
   /* At this point we already have read all our data, but the hardware
    * may still report the same size value as before.  It is up to us

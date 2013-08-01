@@ -305,10 +305,10 @@ ap_init (void)
 #ifdef USE_VMX
 #ifdef QUESTV_NO_VMX
   /* VMX not enabled. Start VM fork without VM initilization. */
-  { void vmx_init_mem (uint32); vmx_init_mem (phys_id); }
+  { void vmx_vm_fork (uint32); vmx_vm_fork (phys_id); }
 #else
   /* Initialize virtual machine per-processor infrastructure */
-  { void vmx_processor_init (void); vmx_processor_init (); }
+  { extern bool vmx_init (void); vmx_init (); }
 #endif
   spinlock_lock (&(shm->global_lock));
 
@@ -337,6 +337,8 @@ ap_init (void)
   //{ extern bool msgt_init (void); msgt_init (); }
   //if (phys_id == 3)
   //{ extern bool stat_thread_init (void); stat_thread_init (); }
+  //if (phys_id == 1)
+  //{ extern bool beacon_thread_init (void); beacon_thread_init (); }
 
   /*
    * For SeQuest, each sandbox kernel will have a shell running
@@ -390,8 +392,8 @@ ap_init (void)
       }
     }
   }
-  map_malloc_paging_structures(pg_dir[mod_num], SANDBOX_KERN_OFFSET * phys_id);
-  map_dma_page_tables(pg_dir[mod_num], SANDBOX_KERN_OFFSET * phys_id);
+  map_malloc_paging_structures((pgdir_entry_t *) pg_dir[mod_num], SANDBOX_KERN_OFFSET * phys_id);
+  map_dma_page_tables((pgdir_entry_t *) pg_dir[mod_num], SANDBOX_KERN_OFFSET * phys_id);
 
   
   /* Shift stack page */

@@ -5,7 +5,6 @@ PHDRS {
   physical PT_LOAD FILEHDR PHDRS;
   virtualtext PT_LOAD;
   virtualdata PT_LOAD;
-  virtualtext16 PT_LOAD;
 }
 SECTIONS {
   /* Place per-CPU data in phantom segment, to be dynamically allocated */
@@ -89,19 +88,7 @@ SECTIONS {
   _readwrite_pages = ( _kernelend - _kernel_readwrite ) / 0x1000;
   _readonly_pages = ( _kernel_readwrite - _kernelstart ) / 0x1000;
 
-  /* .text16 contains real-mode code for use with vm86.  In this mode,
-   * the CPU can only deal with virtual addresses below the 1MB mark.
-   * Therefore, while the code is physically located after the .bss,
-   * it is linked with virtual addresses starting at 0x8000.  The kernel
-   * will setup the page-table mappings to support this. */
-  . = 0x8000; _code16start = .; 
-  _code16physicalstart = ( LOADADDR(.sdbss) + SIZEOF(.sdbss) + 0xFFF ) & 0xFFFFF000;
-  .text16 : AT ( _code16physicalstart ) 
-            { vm/code16.o (.text16) } : virtualtext16
-  _code16end = ALIGN(0x1000);
-  _code16_pages = ( _code16end - _code16start ) / 0x1000;
-
   . = ALIGN(0x1000);
-  .eh_frame (NOLOAD) : AT ( _code16end )
+  .eh_frame (NOLOAD) : AT ( _kernelend )
                        { *(.eh_frame) } : NONE
 }

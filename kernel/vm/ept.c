@@ -43,7 +43,7 @@
 
 /* Function should be called one logical processor at a time */
 void
-vmx_init_mem (uint32 cpu)
+vmx_vm_fork (uint32 cpu)
 {
   extern uint32 _physicalbootstrapstart;
   //extern uint32 _code16start, _code16_pages, _code16physicalstart;
@@ -215,10 +215,14 @@ vmx_init_mem (uint32 cpu)
    * The identity map should be fine because that part of the physical
    * memory is shared, but pages starting at 0x8000 should be re-mapped.
    * Look at vmx_global_init in vmx.c for detail.
+   *
+   * Update: vmx_global_init has been removed from vmx.c.
    */
-  //for (i=0; i<((uint32) &_code16_pages); i++)
-  //  vm86_pgt[((((uint32) &_code16start) >> 12) & 0x3FF) + i] =
-  //  ((uint32) &_code16physicalstart + physical_offset + (i << 12)) | 7;
+#if 0
+  for (i=0; i<((uint32) &_code16_pages); i++)
+    vm86_pgt[((((uint32) &_code16start) >> 12) & 0x3FF) + i] =
+    ((uint32) &_code16physicalstart + physical_offset + (i << 12)) | 7;
+#endif
 
   unmap_virtual_page (vm86_pgt);
 
@@ -375,7 +379,7 @@ vmx_init_mem (uint32 cpu)
 /*
  * vmx_init_ept should be called after the current sandbox kernel
  * switched to the new physical kernel image, namely, after calling
- * vmx_init_mem.
+ * vmx_vm_fork.
  */
 void
 vmx_init_ept (uint32 cpu)

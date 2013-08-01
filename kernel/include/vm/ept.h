@@ -36,7 +36,7 @@
 
 #ifndef __ASSEMBLER__
 
-extern void vmx_init_mem (uint32);
+extern void vmx_vm_fork (uint32);
 extern void vmx_init_ept (uint32);
 extern uint32 get_host_phys_addr (uint32);
 extern void set_ept_page_permission (uint32, uint8);

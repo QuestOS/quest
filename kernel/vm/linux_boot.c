@@ -198,12 +198,6 @@ static u32 boot_thread_stack[1024] ALIGNED (0x1000);
 static task_id boot_thread_id = 0;
 #endif
 
-/* Input parameter for VM-Exit */
-static struct _linux_boot_param {
-  uint32 kernel_addr;
-  int size;
-} exit_param;
-
 #if 0
 static void
 linux_sandbox_mem_check (void)
@@ -254,8 +248,8 @@ linux_boot_thread (void)
 #endif
   extern void * vm_exit_input_param;
   uint8_t * src = NULL, * dst = NULL;
-  uint32_t pa_dst = 0;
-  int i, prot_size, initrd_sz = 0;
+  uint32_t pa_dst = 0, kernel_addr = 0;
+  int i, prot_size, initrd_sz = 0, kernel_size = 0;
   linux_setup_header_t * header = NULL;
 
   DLOG ("Linux boot thread started in sandbox %d", cpu);
@@ -302,22 +296,21 @@ linux_boot_thread (void)
   memcpy ((void *)dst, (const void *)src, initrd_sz & 0xFFF);
   unmap_virtual_page (dst);
 
-  exit_param.size = load_linux_kernel ((uint32 *) LINUX_KERNEL_LOAD_VA, LINUX_BZIMAGE_PATH,
-                                       (uint32 *) INITRD_LOAD_PADDR, initrd_sz);
+  kernel_size = load_linux_kernel ((uint32 *) LINUX_KERNEL_LOAD_VA, LINUX_BZIMAGE_PATH,
+                                   (uint32 *) INITRD_LOAD_PADDR, initrd_sz);
 #else
-  exit_param.size = load_linux_kernel ((uint32 *) LINUX_KERNEL_LOAD_VA, LINUX_BZIMAGE_PATH,
-                                       NULL, initrd_sz);
+  kernel_size = load_linux_kernel ((uint32 *) LINUX_KERNEL_LOAD_VA, LINUX_BZIMAGE_PATH,
+                                   NULL, initrd_sz);
 #endif
 
-  if (exit_param.size == -1) {
+  if (kernel_size == -1) {
     DLOG ("Loading kernel failed.");
     goto finish;
   }
+  kernel_addr = LINUX_KERNEL_LOAD_VA;
   
   /* Now, trap into monitor and setup Linux VMCS */
-  exit_param.kernel_addr = LINUX_KERNEL_LOAD_VA;
-  vm_exit_input_param = (void *) &exit_param;
-  vm_exit (VM_EXIT_REASON_LINUX_BOOT);
+  hypercall_linux_boot (kernel_addr, kernel_size);
 
   header = (linux_setup_header_t *) (((uint8 *) LINUX_KERNEL_LOAD_VA) + LINUX_SETUP_HEADER_OFFSET);
   /* Linux protected mode code starts at (setup_sects + 1) * 512 into the bzImage */
@@ -325,7 +318,7 @@ linux_boot_thread (void)
   /* Copy protected mode Linux code to Guest physical starting from 1MB + sandbox offset */
   pa_dst = LINUX_PHYS_START;
   /* Copy one page at a time because of limited virtual memory space */
-  prot_size = exit_param.size - (header->setup_sects + 1) * 512;
+  prot_size = kernel_size - (header->setup_sects + 1) * 512;
   /* Number of 4KB pages */
   for (i = 0; i < (prot_size >> 12); i++) {
     dst = map_virtual_page (pa_dst | 0x3);

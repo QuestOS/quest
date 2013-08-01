@@ -279,6 +279,8 @@ entry16:
         movl %eax, %cr0
 
         /* Flush instruction stream to avoid mixed processor mode instructions */
+        /* data32 is used here because realmodestub is in code 32 */
+        /* This is probably not necessary since the arithmetic is done by preprocessor */
         data32 ljmp $0x0, $0x8000 + real - realmodestub
 real:
         /* Set up segment resgisters to the start of Linux real-mode kernel code */

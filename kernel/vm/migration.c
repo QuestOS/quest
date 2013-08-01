@@ -18,6 +18,7 @@
 #include "vm/vmx.h"
 #include "vm/ept.h"
 #include "vm/shm.h"
+#include "vm/hypercall.h"
 #include "kernel.h"
 #include "mem/physical.h"
 #include "mem/virtual.h"
@@ -469,7 +470,7 @@ trap_and_migrate (void * phy_tss, u64 deadline)
   tm_param.ptss = phy_tss;
   tm_param.dl = deadline;
   vm_exit_input_param = &tm_param;
-  vm_exit (VM_EXIT_REASON_MIGRATION);
+  hyper_call (VM_EXIT_REASON_MIGRATION);
   return (quest_tss *) vm_exit_return_val;
 }
 
