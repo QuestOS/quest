@@ -73,6 +73,7 @@ $(ISO_DIR)/grub/eltorito.img:  iso-grub.cfg
 	$(TAR) -C iso/boot/grub -jxf $(GRUB2)/mods.tar.bz2
 
 ramdisk.img: all
+	rm -rf $(RAMDISK) $@
 	mkdir -p $(RAMDISK)/boot
 	$(MAKE) $(INSTALLDIRS)
 	genromfs -f $@ -d $(RAMDISK)/ -V quest
