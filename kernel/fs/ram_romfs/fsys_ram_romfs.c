@@ -20,6 +20,11 @@
 #include "kernel.h"
 #include "util/printf.h"
 
+#ifdef USE_VMX
+#include "vm/shm.h"
+#include "vm/spow2.h"
+#endif
+
 #define DIV_ROUND_UP(n,d) (((n) + (d) - 1) / (d))
 
 uint32 ramdisk_phys = 0xFFFFFFFF;

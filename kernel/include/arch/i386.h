@@ -610,7 +610,7 @@ int atoi(char* s)
   return minus ? -v : v;
 }
 
-static uint32_t be32toh(uint32_t big_endian_32bits)
+static inline uint32_t be32toh(uint32_t big_endian_32bits)
 {
   return (big_endian_32bits << 24) |
     ((big_endian_32bits <<  8) & 0x00ff0000) |
