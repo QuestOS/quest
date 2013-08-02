@@ -51,6 +51,7 @@ OBJS =  boot/boot.o boot/init.o kernel.o module/loader.o \
 	fs/iso9660/fsys_iso9660.o \
 	fs/vfat/fsys_vfat.o \
 	fs/tftp/fsys_tftp.o \
+	fs/ram_romfs/fsys_ram_romfs.o \
 	drivers/sb16/sound.o \
 	drivers/acpi/quest-acpica.o \
 	drivers/eeprom/93cx6.o \

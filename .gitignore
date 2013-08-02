@@ -10,3 +10,5 @@ iso
 quest.iso
 *.rej
 *.orig
+ramdisk.img
+ramdisk

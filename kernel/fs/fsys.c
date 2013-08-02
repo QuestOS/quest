@@ -28,6 +28,7 @@ static vfs_table_t vfs_table[] = {
   { "cd",   VFS_FSYS_EZISO },
   { "tftp", VFS_FSYS_EZTFTP },
   { "usb",  VFS_FSYS_EZUSB },
+  { "ram",  VFS_FSYS_EZRAM },
 };
 #define NUM_VFS (sizeof (vfs_table) / sizeof (vfs_table_t))
 
@@ -77,7 +78,8 @@ vfs_dir (char *pathname)
     return vfat_dir (filepart);
   case VFS_FSYS_EZTFTP:
     return eztftp_dir (filepart);
-    //return eztftp_bulk_read (filepart, NULL);
+  case VFS_FSYS_EZRAM:
+    return ramdisk_dir(filepart);
   default:
     print ("Unknown vfs_type");
     return -1;
@@ -99,9 +101,9 @@ vfs_read (char *pathname, char *buf, int len)
   case VFS_FSYS_EZUSB:
     return vfat_read (buf, len);
   case VFS_FSYS_EZTFTP:
-    /* -- EM -- This is an ugly hack to allow larger binaries to load */
-    //return eztftp_bulk_read(pathname, buf);
     return eztftp_read (buf, len);
+  case VFS_FSYS_EZRAM:
+    return ramdisk_read(buf, len);
   default:
     print ("Unknown vfs_type");
     return -1;
@@ -151,6 +153,17 @@ vfs_init (void)
     if (!eztftp_mount ("en0"))
       panic ("TFTP mount failed");
     vfs_set_root (VFS_FSYS_EZTFTP, NULL);
+    break;
+
+  case VFS_FSYS_EZRAM:
+    {
+      printf("ROOT: RAMDISK\n");
+      if(!ramdisk_mount()) {
+        com1_printf("Ramdisk mount failed\n");
+        panic("Ramdisk mount failed");
+      }
+      vfs_set_root(VFS_FSYS_EZRAM, NULL);
+    }
     break;
   }
   return TRUE;
