@@ -27,18 +27,20 @@ romfs_file_header_t* cur_file_header = NULL;
 size_t cur_file_phys_offset = 0;
 romfs_t* romfs_header;
 
+
+
 bool copy_ramdisk_module(multiboot_module *pmm, int mod_num)
 {
   uint pages_needed = DIV_ROUND_UP( ((char*)pmm->mod_end) - ((char*)pmm->pe), 0x1000);
-  char* ramdisk_module_start = (char*)pmm->mod_end;
+  char* ramdisk_module_start = (char*)pmm->pe;
   int i;
   ramdisk_phys = alloc_phys_frames(pages_needed);
-
+  
   if(ramdisk_phys == 0xFFFFFFFF) {
     com1_printf("Failed to allocate physical memory for ramdisk copy\n");
     return FALSE;
   }
-
+  
   /* Map and copy one page at a time as the ramdisk might be very
      large */
   for(i = 0; i < pages_needed; ++i) { 
@@ -57,12 +59,17 @@ bool copy_ramdisk_module(multiboot_module *pmm, int mod_num)
 
 bool ramdisk_mount()
 {
+  if(ramdisk_phys == 0xFFFFFFFF) {
+    return FALSE;
+  }
+   
 #ifdef USE_VMX
   ramdisk_phys += SANDBOX_KERN_OFFSET * get_pcpu_id();
 #endif
+  
   romfs_header = map_virtual_page(ramdisk_phys | 0x3);
   if(!romfs_header) return FALSE;
-
+  
   if(strncmp(romfs_header->name, "-rom1fs-", 8)) {
     return FALSE;
   }
@@ -72,7 +79,7 @@ bool ramdisk_mount()
 static romfs_file_header_t* get_file_header(size_t offset)
 {
   static romfs_file_header_t* temp_file_header = NULL;
-
+  
   if(temp_file_header) {
     unmap_virtual_pages(temp_file_header, 2);
   }
@@ -82,8 +89,9 @@ static romfs_file_header_t* get_file_header(size_t offset)
   cur_file_phys_offset = offset;
   /* We map two virtual pages in case the file header cross a page
      boundary */
-  return temp_file_header =
-    map_contiguous_virtual_pages(((ramdisk_phys + offset) & 0xFFFFF000) | 0x3, 2);
+  
+  temp_file_header = map_contiguous_virtual_pages(((ramdisk_phys + offset) & 0xFFFFF000) | 0x3, 2);
+  return (romfs_file_header_t*)(((char*)temp_file_header) + (offset % 0x1000));
 }
 
 int ramdisk_dir (char *pathname)
@@ -96,7 +104,7 @@ int ramdisk_dir (char *pathname)
   if(!file_header) return -1;
 
   while(1) {
-    char cur_filename[16];
+    char cur_filename[17];
     int cur_filename_size = 0;
     bool directory;
     
@@ -111,28 +119,34 @@ int ramdisk_dir (char *pathname)
     if(cur_filename_size == 0) return -1;
 
     directory = *pathname == '/';
-
+    
     while(1) {
+      uint file_header_name_len = 0;
+      while(file_header_name_len < 16) {
+        if(!file_header->filename[file_header_name_len]) break;
+        file_header_name_len++;
+      }
       if( ((directory && (romfs_get_file_type(file_header) == ROMFS_DIRECTORY)) ||
            (!directory && (romfs_get_file_type(file_header) == ROMFS_REGULAR_FILE))) &&
-          (!strncmp(file_header->filename, cur_filename, cur_filename_size)) ) {
+          (!strncmp(file_header->filename, cur_filename, cur_filename_size) &&
+           cur_filename_size == file_header_name_len) ) {
         /* Found the match */
         if(directory) {
-          file_header = get_file_header(file_header->spec_info & ~0xF);
+          file_header = get_file_header(be32toh(file_header->spec_info) & ~0xF);
           if(!file_header) return -1;
           break;
         }
         else {
           cur_file_header = file_header;
-          return cur_file_header->size;
+          return be32toh(cur_file_header->size);
         }
       }
       else {
-        if((file_header->next & ~0xF) == 0) {
+        if((be32toh(file_header->next) & ~0xF) == 0) {
           return -1;
         }
         else {
-          file_header = get_file_header(file_header->next & ~0xF);
+          file_header = get_file_header(be32toh(file_header->next) & ~0xF);
           if(!file_header) return -1;
         }
       }
@@ -149,9 +163,9 @@ int ramdisk_read (char *buf, int len)
 
   if(!cur_file_header) return -1;
 
-  if(len > cur_file_header->size) len = cur_file_header->size;
+  if(len > be32toh(cur_file_header->size)) len = be32toh(cur_file_header->size);
 
-  phys_addr_data = cur_file_phys_offset + sizeof(romfs_file_header_t);
+  phys_addr_data = ramdisk_phys + cur_file_phys_offset + sizeof(romfs_file_header_t);
 
   while(bytes_copied < len) {
     size_t bytes_to_copy;
@@ -162,9 +176,9 @@ int ramdisk_read (char *buf, int len)
 
     bytes_to_copy = 0x1000 - page_offset;
     if(bytes_to_copy > (len - bytes_copied)) {
-      bytes_copied = len - bytes_copied;
+      bytes_to_copy = len - bytes_copied;
     }
-    memcpy(buf, &temp[page_offset], bytes_to_copy);
+    memcpy(&buf[bytes_copied], &temp[page_offset], bytes_to_copy);
     unmap_virtual_page(temp);
     bytes_copied += bytes_to_copy;
     phys_addr_data += bytes_to_copy;

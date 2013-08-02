@@ -610,6 +610,14 @@ int atoi(char* s)
   return minus ? -v : v;
 }
 
+static uint32_t be32toh(uint32_t big_endian_32bits)
+{
+  return (big_endian_32bits << 24) |
+    ((big_endian_32bits <<  8) & 0x00ff0000) |
+    ((big_endian_32bits >>  8) & 0x0000ff00) |
+    ((big_endian_32bits >> 24) & 0x000000ff);
+}
+
 /* Poor mans sprintf */
 static inline int int_to_ascii(char* buf, uint decimal)
 {

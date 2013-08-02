@@ -32,6 +32,7 @@
 #include "drivers/input/keyboard.h"
 #include "sched/sched.h"
 #include "sched/proc.h"
+#include "fs/ram_romfs.h"
 #ifdef USE_VMX
 #include "vm/ept.h"
 #include "vm/shm.h"
@@ -289,7 +290,7 @@ char* get_cmdline_arg(char* cmdline, char* key)
       return &p[key_len+1];
     }
   }
-  return VFS_FSYS_NONE;
+  return NULL;
 }
 
 int
@@ -303,12 +304,19 @@ parse_root_type(char *cmdline)
     if(!strncmp(arg, "(usb)", 5)) return VFS_FSYS_EZUSB;
     if(!strncmp(arg, "(ram)", 5)) return VFS_FSYS_EZRAM;
   }
-  return NULL;
+  return VFS_FSYS_NONE;
+}
+
+int get_ramdisk_index(char *cmdline)
+{
+  char* arg = get_cmdline_arg(cmdline, "ramdisk");
+  if(arg) return atoi(arg);
+  return -1;
 }
 
 
 u32 root_type, boot_device=0;
-int ramdisk_module_index;
+int ramdisk_module_index = -1;
 #ifdef USE_VMX
 task_id shell_tss = 0;
 #endif
@@ -445,11 +453,11 @@ init (multiboot * pmb)
   root_type = parse_root_type (pmb->cmdline);
   com1_printf ("root_type=%d\n", root_type);
   if(root_type == VFS_FSYS_EZRAM) {
-    /* ramdisk_module_index = get_ramdisk_index(pmb->cmdline); */
-    /* if(ramdisk_module_index < 0) { */
-    /*   com1_printf("Failed to find ramdisk index\n"); */
-    /*   panic("Failed to find ramdisk index"); */
-    /* } */
+    ramdisk_module_index = get_ramdisk_index(pmb->cmdline);
+    if( (ramdisk_module_index < 0) || (ramdisk_module_index > (pmb->mods_count - 1)) ) {
+      com1_printf("Failed to find valid ramdisk index\n");
+      panic("Failed to find valid ramdisk index");
+    }
   }
   
 
@@ -612,12 +620,28 @@ init (multiboot * pmb)
       com1_printf ("Relocating Linux bzImage...\n");
       grub_load_linux_bzImage (pmb->mods_addr + i, (uint32 *) LINUX_KERNEL_LOAD_VA);
     } else {
+      if(i == ramdisk_module_index) {
+        if(!copy_ramdisk_module(pmb->mods_addr + i, i)) {
+          com1_printf("Failed to relocate RAM disk\n");
+          panic("Failed to relocate RAM disk");
+        }
+      }
+      else {
+        tss[i] = load_module (pmb->mods_addr + i, i);
+        lookup_TSS (tss[i])->priority = MIN_PRIO;
+      }
+    }
+#else
+    if(i == ramdisk_module_index) {
+      if(!copy_ramdisk_module(pmb->mods_addr + i, i)) {
+        com1_printf("Failed to relocate RAM disk\n");
+        panic("Failed to relocate RAM disk");
+      }
+    }
+    else {
       tss[i] = load_module (pmb->mods_addr + i, i);
       lookup_TSS (tss[i])->priority = MIN_PRIO;
     }
-#else
-    tss[i] = load_module (pmb->mods_addr + i, i);
-    lookup_TSS (tss[i])->priority = MIN_PRIO;
 #endif
   }
 

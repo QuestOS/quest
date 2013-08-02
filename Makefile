@@ -79,7 +79,7 @@ ramdisk.img: all
 
 quest.iso: $(ISO_DIR)/grub/eltorito.img all ramdisk.img
 	$(MAKE) $(INSTALLDIRS)
-	mv ramdisk.img $(INSTALL_DIR)
+	cp ramdisk.img $(INSTALL_DIR)
 	mkisofs -quiet $(MSINFO) \
 		-R -b boot/grub/eltorito.img \
 		-no-emul-boot -boot-load-size 4 \

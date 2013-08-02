@@ -39,7 +39,7 @@ typedef enum {
   ROMFS_FIFO,
 } ROMFS_FILE_TYPE;
 
-#define romfs_get_file_type(file_header) (file_header->next & 0x7)
+#define romfs_get_file_type(file_header) (be32toh(file_header->next) & 0x7)
 
 
 typedef struct {
