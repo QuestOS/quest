@@ -2263,9 +2263,6 @@ bool ehci_init(void)
    
   if (device_index == ~0) {
     DLOG ("Unable to find compatible device on PCI bus");
-    DLOGV("Exiting %s with FALSE", __FUNCTION__);
-     
-    EHCI_DEBUG_HALT();
     return FALSE;
   }
    
