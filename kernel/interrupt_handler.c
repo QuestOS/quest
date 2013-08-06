@@ -1461,74 +1461,22 @@ _meminfo (uint32 eax, uint32 edx)
 }
 
 
-#define	_CLOCK_T_	unsigned long
-typedef _CLOCK_T_ clock_t;
-struct tms {
-  clock_t	tms_utime;		/* user time */
-  clock_t	tms_stime;		/* system time */
-  clock_t	tms_cutime;		/* user time, children */
-  clock_t	tms_cstime;		/* system time, children */
-};
-
 /* Syscall: time */
+/* -- EM -- Right now just associates a system tick with each
+   processes, so it does not give the actual time the process has been
+   running.  It also associates all time with userspace of the
+   process.  Basically its good enough to make two calls to the clock
+   function and get a time difference */
 uint32
 _time (struct tms *buf)
 {
-
-#if 0
-  static uint64 last = 0;
-  uint64 now;
-  RDTSC (now);
-  if (last) {
-    com1_printf ("Time (TSC counts): %llX\n", now - last);
-    last = 0;
-  } else {
-    last = now;
-  }
-#endif
-
-#if 0
-  uint64 now;
-  RDTSC (now);
-  return (uint32) now;
-#endif
-
-#if 0
-  int i = 0;
-  uint32 *paddr = NULL;
-
-  for (i = 0; i < 1024; i++) {
-    paddr = get_phys_addr ((void*) (i << 12));
-    com1_printf ("0x%X mapped to: 0x%X\n", i << 12, (uint32) paddr);
-  }
-#endif
-
-#if 0
-#ifdef USE_VMX
-  struct msgt_stat_report {
-    unsigned int canny_frame_count;
-    unsigned int msg_sent;
-    unsigned int msg_recv;
-    u64 tsc;
-  };
-
-  extern uint32 msgt_stat_phy_page;
-  extern struct msgt_stat_report * msgt_report;
-
-  if (msgt_stat_phy_page) {
-    if (!msgt_report)
-      msgt_report = (struct msgt_stat_report *) map_virtual_page (msgt_stat_phy_page | 3);
-    msgt_report->canny_frame_count++;
-  }
-#endif
-#endif
   
-  buf->tms_utime = tick * 3640 / 500;
+  buf->tms_utime = tick * CLOCKS_PER_SEC / HZ;
   buf->tms_stime = 0;
   buf->tms_cutime = 0;
   buf->tms_cstime = 0;
   
-  return tick * 3640 / 500;
+  return tick * CLOCKS_PER_SEC / HZ;
 }
 
 /* ACPI System Control Interrupt -- IRQ 9 usually */
