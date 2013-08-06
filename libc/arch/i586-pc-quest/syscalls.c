@@ -248,10 +248,11 @@ int stat(const char *file, struct stat *st)
 
 clock_t times(struct tms *buf)
 {
-  write(1, "In times which is a no op\n", sizeof("In times which is a no op\n"));
-  while(1);
-  errno = ENOSYS;
-  return -1;
+
+  unsigned c;
+
+  asm volatile ("int $0x39\n":"=a" (c): "a"(buf)  :CLOBBERS1);
+  return c;
 }
 
 int unlink(char *name)
@@ -323,15 +324,19 @@ switch_to (unsigned pid)
 
 }
 
-inline unsigned int
-getcode (void)
+inline uint
+pressed_keys (uint* buf, uint max)
 {
-
-  unsigned int c;
-
-  asm volatile ("int $0x34\n":"=a" (c): "b" (1):CLOBBERS2);
-
+  uint c;
+  asm volatile ("int $0x34\n": "=a"(c): "a" (buf), "b"(max):CLOBBERS2);
   return c;
+}
+
+inline int get_keyboard_events(int blocking, uint* codes, uint max)
+{
+  int res;
+  asm volatile ("int $0x30\n":"=a"(res):"a" (11L), "b"(blocking), "c"(codes), "d"(max):CLOBBERS6);
+  return res;
 }
 
 

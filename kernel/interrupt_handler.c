@@ -42,6 +42,7 @@
 #include "lwip/tcp.h"
 #include "lwip/udp.h"
 #include "drivers/video/vga.h"
+#include "drivers/video/video.h"
 #ifdef USE_VMX
 #include "vm/shm.h"
 #include "vm/spow2.h"
@@ -525,10 +526,12 @@ static int syscall_enable_video(u32 eax, int enable, unsigned char** video_memor
         for (j = 0; j < 16; j++) plPageTable[j] = 0xA0000 | (j << 12) | 7;
         
 
-        com1_printf("About to call init_graph_vga\n");
-        //if(init_graph_vga(width, height, 1)) {
-        write_regs(g_320x200x256);
-        set_color_pallete();
+        if(flags & DISTRIBUTED_COLOR_PALLETE) {
+          com1_printf("About to call init_graph_vga\n");
+          //if(init_graph_vga(width, height, 1)) {
+          write_regs(g_320x200x256);
+          set_color_pallete();
+        }
         video_enabled = TRUE;
         res = 0;
         current_video_memory = *video_memory = i * 0x400000;
@@ -590,6 +593,37 @@ int syscall_lseek(u32 eax, int file, int ptr, int dir, u32 esi)
   }
 }
 
+int syscall_get_keyboard_events(u32 eax, int blocking, uint* codes, uint max, u32 esi)
+{
+  key_event e;
+  int i, j;
+  int count = 0;
+
+  for(i = 0; i < (max < KEYBOARD_BUFFER_SIZE ? max : KEYBOARD_BUFFER_SIZE); ++i) {
+    
+    if(blocking && count == 0) {
+      keyboard_8042_next(&e);
+    }
+    else {
+      if(keyboard_8042_next_no_wait(&e) < 0) {
+        return count;
+      }
+    }
+    for(j = 0; j < KEY_EVENT_MAX; ++j) {
+      if(e.keys[j].latest) {
+        if(e.keys[j].release) {
+          codes[count] = e.keys[j].scancode | 0x80;
+        }
+        else {
+          codes[count] = e.keys[j].scancode;
+        }
+        count++;
+      }
+    }
+  }
+  return count;
+}
+
 struct syscall {
   u32 (*func) (u32, u32, u32, u32, u32);
 };
@@ -604,7 +638,8 @@ struct syscall syscall_table[] = {
   { .func = syscall_vcpu_getparams },
   { .func = syscall_vcpu_setparams },
   { .func = syscall_enable_video },
-  { .func = syscall_lseek}
+  { .func = syscall_lseek},
+  { .func = syscall_get_keyboard_events },
 };
 #define NUM_SYSCALLS (sizeof (syscall_table) / sizeof (struct syscall))
 
@@ -1098,30 +1133,13 @@ _exec (char *filename, char *argv[], uint32 *curr_stack)
 }
 
 /* Syscall: getchar / getcode */
-uint
-_getchar (uint ebx)
+uint _pressed_keys(uint* buf, int max)
 {
-
-  uint c = 0;
+  uint c;
 
   lock_kernel ();
 
-  if (ebx == 0)
-    c = keymap_getchar(TRUE);
-  else {
-    key_event e;
-    uint i;
-
-    keyboard_8042_next (&e);
-    for (i=0; i<KEY_EVENT_MAX; i++) {
-      if (e.keys[i].latest) {
-        c = e.keys[i].scancode;
-        if (e.keys[i].release)
-          c |= 0x80;            /* restore "break" code */
-        break;
-      }
-    }
-  }
+  c = pressed_keys(buf, max);
   
   unlock_kernel ();
 
@@ -1442,9 +1460,19 @@ _meminfo (uint32 eax, uint32 edx)
   }
 }
 
+
+#define	_CLOCK_T_	unsigned long
+typedef _CLOCK_T_ clock_t;
+struct tms {
+  clock_t	tms_utime;		/* user time */
+  clock_t	tms_stime;		/* system time */
+  clock_t	tms_cutime;		/* user time, children */
+  clock_t	tms_cstime;		/* system time, children */
+};
+
 /* Syscall: time */
 uint32
-_time (void)
+_time (struct tms *buf)
 {
 
 #if 0
@@ -1494,8 +1522,13 @@ _time (void)
   }
 #endif
 #endif
-
-  return tick;
+  
+  buf->tms_utime = tick * 3640 / 500;
+  buf->tms_stime = 0;
+  buf->tms_cutime = 0;
+  buf->tms_cstime = 0;
+  
+  return tick * 3640 / 500;
 }
 
 /* ACPI System Control Interrupt -- IRQ 9 usually */

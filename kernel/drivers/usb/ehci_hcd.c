@@ -2243,7 +2243,6 @@ bool ehci_init(void)
         i++;
       } else break;
     }
-  
   }
    
   if(device_index == ~0) {
