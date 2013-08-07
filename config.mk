@@ -2,6 +2,7 @@ include $(dir $(lastword $(MAKEFILE_LIST)))target-config.mk
 
 INSTALL_CMD = cp
 CC = $(TARGET)-gcc
+CXX = $(TARGET)-g++
 LD = $(TARGET)-ld
 AR = $(TARGET)-ar
 RANLIB = $(TARGET)-ranlib
