@@ -8,7 +8,7 @@ TAR = tar
 SYNC = sync
 
 QUEST_USER_PROGS_DIRS = canny netperf sysprogs tests torcs malardalen \
-			zlib-1.2.7 qcv/progs 
+			zlib-1.2.7 qcv/progs mame
 QUEST_LIB_DIRS = libc libjpeg qcv/lib ffmpeg_libraries
 DIRS = $(QUEST_USER_PROGS_DIRS) $(QUEST_LIB_DIRS) kernel
 
