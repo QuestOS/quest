@@ -1,0 +1,53 @@
+# Makefile for MAME 0.81
+# Configuration options can be found under lines marked with '***'
+
+# *** Choose your compiler. Make it ANSI-compatible (e.g. 'cc -ansi').
+CC	= gcc
+LD	= gcc
+
+# *** If you have the MIT-SHM extension, uncomment the following:
+#MS		= -DMITSHM
+MS =
+
+
+ARCH    = linux
+
+# *** architecture.
+
+# Linux
+DEFS.linux   = -DX86_ASM -DLSB_FIRST -DUNIX -Dlinux -m486
+LIBS.linux   = -L/usr/X11R6/lib -lX11 -lXext
+
+# No configurable options below this line....
+
+CFLAGS = -Isrc -Isrc/Z80 -Isrc/unix -fstrength-reduce -funroll-loops -fomit-frame-pointer -O3 -Wall
+OBJS   = obj/mame.o obj/common.o obj/driver.o obj/cpuintrf.o obj/osdepend.o \
+         obj/vidhrdw/generic.o \
+         obj/machine/pacman.o obj/vidhrdw/pacman.o obj/drivers/pacman.o \
+	 obj/vidhrdw/pengo.o obj/sndhrdw/pengo.o obj/drivers/pengo.o \
+         obj/Z80/Z80.o 
+
+VPATH = src src/Z80
+
+all: mame
+
+mame:  $(OBJS)
+	$(LD) -s -o mame $(OBJS) $(LIBS.$(ARCH))
+
+obj/osdepend.o: src/unix/unix.c
+	 $(CC) $(DEFS.$(ARCH)) $(MS) $(CFLAGS) -Isrc/unix -o $@ -c src/unix/unix.c
+
+obj/%.o: src/%.c
+	 $(CC) $(DEFS.$(ARCH)) $(MS) $(CFLAGS) -o $@ -c $<
+
+sndtest: sndtest.c
+	gcc -o sndtest sndtest.c
+
+# dependencies
+obj/sndhrdw/cclimber.o:  src/sndhrdw/psg.c src/sndhrdw/psg.h
+obj/Z80/Z80.o:  Z80.c Z80.h Z80Codes.h Z80IO.h Z80DAA.h
+obj/M6502/M6502.o:	M6502.c M6502.h Tables.h Codes.h
+
+clean:
+	rm -rf *.o */*.o */*/*.o
+	rm -f mame

@@ -1,0 +1,660 @@
+[note: only important changes are listed]
+
+0.15
+----
+
+Program:
+- Jarek Burczynski submitted a sound driver for Bomb Jack.
+  The game is now a bit slow on my 486/100, -frameskip 1 is almost good but
+  not quite.
+
+- Sound support in:
+  Scramble
+  Super Cobra (note that the "scobra" rom set is wrong - ROMs 5c, 5d and 5e
+               must be 2k, not 4k. You can take them from one of the other two
+			   sets).
+  The End
+  Battle of Atlantis
+  Lost Tomb (very nice sound, pity the ROMs are corrupted)
+  Amidar
+  Turtles
+  Frogger
+  Pooyan
+  Time Pilot
+
+  All these require -frameskip 1 on my 486/100.
+
+  I have no idea how accurate the tempo and pitch is. If you can compare it
+  with a real machine, please let me know what's wrong.
+
+  Note: I discovered that the garbled sound I experienced in Scramble was
+  caused by a bad ROM. Therefore, if sound doesn't work, check your ROM
+  set. Note that I also changed one ROM name from "2c" to "2d".
+
+- Carnival is finally working! Many thanks to Richard Davies who understood
+  how to make it accept coins.
+
+- Brad Oliver deserves a prize for being the person who, alone, has
+  discovered more bugs than everyone else put together. This time the bug
+  was illegal memory acesses in games using 224x288 and 288x224 modes (Pengo,
+  Pac Man, Rally X).
+
+- Thanks to the invaluable help of Steve Scavone, I've been able to fix
+  many bugs in the Wizard of Wor driver.
+
+- Added support for a version of Galaxian which is known to be original. It
+  has Namco copyright and the code is slightly different from the other
+  Galaxian (which has Midway copyright). I called this version "galaxian",
+  and renamed the other "galmidw".
+
+- High score support in Pac Man, Ms. Pac Man, Crush Roller, Burger Time,
+  Zaxxon, Congo Bongo, Pooyan, Moon Cresta, Moon Quasar.
+
+- Support for a different version of Frogger ("frogsega").
+
+- Miscellaneous graphics fixes to Zaxxon and Congo Bongo. Also better colors
+  (especially in Congo Bongo), thanks to Marc Lafontaine.
+
+- Fixed most of the graphics problems with Moon Patrol. The video driver is
+  a gigantic kludge right now, but it works and at a reasonable speed
+  (though I can't reach 60fps on my 486/100).
+
+- Many people requested a way to syncronize with the video beam, to avoid
+  jerkiness. Here it is: -vsync. It should be used together with -noscanlines,
+  and possible -vgafreq to adjust the frame rate to be as close as possible
+  to 60fps (use F11 to check the actual frame rate). Note that this, unlike
+  the default timer based sync, will NOT downgrade nicely if your system is
+  not fast enough.
+
+- Bernd Wiebelt provided new code for -vesascan, and implemented the new
+  "-vesaskip n" mode. It uses a 640x480 screen instead of the 800x600 used
+  by -vesascan, and allows you to scroll the visible area using the PGUP and
+  PGDOWN keys.
+
+- Maintaining the endless list of ROM subdirectories was getting quite boring,
+  so I modified readroms() to make it automatically print the complete list of
+  required ROMs if one is missing. I think I should add a CRC check as well.
+  I also added a brief explanation of what ROMs are and why they are required -
+  hoping this will cut down the flow of e-mail asking "gee, I run your program
+  and it says 'unable to open file xxxx/xxxx', what should I do?"
+
+
+0.14
+----
+
+Program:
+- Fixed bug in Mario Bros. high score loading: it was recovering the high
+  score table, but the high score at the top of the screen was not set
+  accordingly.
+
+- Mario Bros. and Donkey Kong 3 now also preserve the score distributions
+  (use F1 to see them)
+
+- High score support in Galaxian, Time Pilot, Centipede and Millipede.
+  However, high scores don't seem to work in Millipede (you are not asked
+  to enter your name).
+
+- Fixed bug which sometimes caused 6502 games not to run (actually they did
+  run, but interrupts didn't happen).
+
+- Since the US version is better, I renamed amidar to amidarjp, and
+  amidarus to amidar.
+
+- Renamed pleiades to pleiads.
+
+- The change in video modes suggested by ue303ey@sunmail.lrz-muenchen.de
+  didn't work on some systems, so I reverted to the previous one.
+
+- Ron Fries provided a new version of his Pokey emulator which fixes problems
+  in the interface with the SEAL audio library (signed vs. unsigned samples).
+
+- Ron Fries also added preliminary sound support to Donkey Kong! It uses some
+  very bad samples for now. The samples are distributed in a separate archive
+  - put them in the dkong subdirectory.
+
+- Richard Davies updated the audio routines in Phoenix, sound is now closer
+  to the original and noise is emulated.
+
+- Brad Oliver and Mirko Buffoni provided a driver for Vanguard, based on Brian
+  Levine's Vanguard emulator.
+
+Source:
+- driver.c was getting much too large and confused. I moved the GameDriver
+  structures inside the single driver/xxxx.c files. This has the additional
+  benefit that people sending me drivers will not forget to include the ROM
+  loading addresses ;-)
+
+- I also changed the GameDriver structure, moving there fields from the
+  MachineDrivers structure. The idea is that MachineDriver should describe
+  the hardware, while GameDriver the software. Therefore things like colors
+  (which are usually stored in a PROM) and dip switch settings go into
+  GameDriver; decode_color_prom, on the other hand, goes into MachineDriver
+  because it is an hardware function.
+  It could be argued that input_ports belong to the hardware; but sometimes
+  we have keys tied to dip switches (test switches and so on) whose function
+  is determined by the software. Moreover input_ports contains the default
+  values for all ports, including dip switches, and those are definitely
+  software related.
+
+
+0.13
+----
+
+Program:
+- Added the most frequently asked feature: high score saving. Check the
+  table at the beginning of readme.txt to see which games already support
+  it.
+  High scores are also reset-proof: you can reset the game by pressing F3
+  without losing them. To reset the high scores to their default, just
+  delete xxx\xxx.hi where xxx is the game name.
+  Note that hi score saving will NOT work if the default hi scores have been
+  modified in the ROMs. Use the original ROMs.
+
+- Fixed all of the problems in Burger Time related to ROM encryption. Slices
+  fall more than one level when an enemy is on them, no more crashes when a
+  bonus life is earned, the high screen table works, two players mode works,
+  and other things.
+
+- Support for an alternate ROM set for Burger Time, which is likely an
+  earlier version.
+
+- Millipede's dip switches now work.
+  DELETE MILLIPED\MILLIPED.DSW, OTHERWISE THE GAME WILL NOT WORK CORRECTLY.
+
+- Marc Lafontaine submitted a new palette for Zaxxon.
+
+- Richard Davies provided a new Phoenix/Pleiads driver with partial sound
+  support.
+
+- Fixed "froggers" (I broke it while adding sound to Scramble).
+  It now also uses the correct palette. Yes, I know that it is completely
+  different from the real Frogger. This is a bootleg version, remember.
+
+- As promised, I modified the 8910 emulator to set the clock frequency at run
+  time, so sound in Crazy Climber and Crazy Kong is now back as normal.
+
+- ue303ey@sunmail.lrz-muenchen.de reports that changing the horizontal total
+  register of the custom video modes (0x3d4, 0x00) from 0x5f to 0x61 makes
+  them work on his monitor. I experimentally made the change.
+  IF THE CUSTOM MODES WORKED FOR YOU IN VERSION 0.12 AND THEY DON'T WORK ANY
+  MORE, PLEASE NOTIFY ME AND I WILL REVERT TO THE PREVIOUS SETTING.
+
+- Keith Smethers suggested to add -vgafreq n command line parameters,
+  to select the VGA clock frequency. This may reduce flicker, especially in
+  the 224x288noscanlines mode.
+  WARNING: THE FREQUENCIES USED MIGHT BE WAY OUTSIDE OF YOUR MONITOR RANGE,
+  AND COULD EVEN DAMAGE IT. USE THESE OPTIONS AT YOUR OWN RISK.
+
+- I began working on Moon Patrol's background. It's quite messed up now.
+
+- Fixed a couple of minor bugs in Bomb Jack background colors.
+
+Source:
+- Use latest version of Marat's 6502 engine.
+
+- Changes to struct GameDriver to accomodate the high score saving functions.
+  I also moved the decryption pointers at the end, so it is not necessary to
+  explicitly define them as 0 when they are not needed.
+  Check driver.c to see how high score handlers should be written.
+  hiscore_load() is called every vblank until it returns nonzero; this allows
+  it to wait for the hi score table to be fully initialized before replacing
+  it. To avoid saving an incomplete table, hiscore_save() is called only
+  if hiscore_load() previously returned nonzero.
+
+
+0.12
+----
+
+Program:
+- Sound support in Burger Time. This is the first multiple CPU game supported
+  by MAME (two 6502, one for code, one for sound).
+  It's not perfect, but we're getting there.
+  Also, as you can guess, this is slow. A 486/100 cannot handle it at 60 fps.
+  Runs reasonably with -frameskip 1, though.
+
+- I also set up the second CPU to emulate sound in Scramble, but the sound
+  that comes out is completely wrong. I don't know what I'm missing, anyone
+  can help?
+
+- Since the 8910 emulator doesn't allow to set the clock frequency at runtime,
+  I temporarily switched to using the default one. This affects sound in Crazy
+  Climber, Crazy Kong and Bagman. Let me know whether it's better or worse
+  than before.
+
+- Sound in Centipede, through Ron Fries' POKEY emulator.
+
+- Fixed speed in Burger Time (was running at about half the real speed).
+
+- Valerio Verrando provided 288x224 video modes to be used with Rally X.
+  WARNING: these video modes might be unstable (the noscanlines one hangs my
+  system). Any help to make them better would be appreciated.
+  As usual, if the default mode doesn't work on your system, try -noscanlines.
+  If that doesn't work as well, use -vesa.
+
+- I finally found out what was causing slowdowns in Rally X and Bagman. It was
+  an interrupt related issue (see later). I hope I didn't break a dozen of
+  other games to fix this ;-)
+
+- Thanks to Mike Cuddy and Mirko Buffoni, Pooyan colors are now MUCH better ;-)
+  I also fixed a bug in the dip switches.
+  MAKE SURE TO DELETE POOYAN\POOYAN.DSW, OTHERWISE IT WILL NOT WORK CORRECTLY.
+
+- I suddenly realized that Time Pilot runs on the same hardware as Pooyan, so
+  I made a driver for it. Colors come straight from Mike Cuddy's emulator.
+
+- Gary Walton confirms that the colors in Moon Cresta and Moon Quasar are 100%
+  accurate. Very good!
+
+- The background stars in Scramble / Super Cobra now blink. However I don't
+  know how close to the real thing it is.
+
+- Ville Laitinen pointed out that The End runs on Scramble hardware, so it now
+  uses the same driver. He also fixed problems with the input controls and two
+  players modes.
+  IMPORTANT: MAKE SURE TO DELETE THE FILES SCRAMBLE\SCRAMBLE.DSW AND
+  THEEND\THEEND.DSW, OTHERWISE THE GAMES WILL NOT WORK CORRECTLY.
+
+- Ville also fixed sprite priorities in Congo Bongo.
+
+- Doug Jefferys provided the color PROMs for Crazy Kong, so colors are now 100%
+  accurate (with the possible exception of Kong itself, which uses a separate
+  palette).
+
+- Support for Moon Ranger (bootleg version of Moon Patrol).
+
+- Added support for Lost Tomb (Stern game running on Super Cobra hardware),
+  but it doesn't work well (crashes during the demo, and it's not playable) and
+  the graphics are garbled. I think some of the ROMs might be corrupted.
+
+- Preliminary support for Jump Bug. It uses a modified Scramble driver, the
+  hardware seems to be similar. It's not playable (the input bits are not even
+  mapped), and resets after a few seconds.
+  I'm not particularly interested in this game, anyone volunteers to complete
+  the driver?
+
+- Support for the version of Super Cobra with Stern copyright.
+  NOTE THAT I RENAMED THE OTHER ONE (Konami copyright) "scobrak".
+
+- Ivan Mackintosh provided a Millipede driver (dip switches are not supported
+  yet). Sound doesn't work, I don't know why.
+
+- Brad Oliver provided a preliminary version of the Mr. Do's Castle driver. Not
+  working yet!
+
+- Mike Coates pointed out that Carnival uses a RAM for character generation
+  (like Nibbler) and provided a driver for it. It's still not playable, but
+  the graphics are now correct.
+
+- Bernd Wiebelt suggested to add a new option: "-vesascan". It uses a VESA
+  800x600 screen to simulate scanlines. It is much slower than the other video
+  modes. Use this if you want scanlines and the default video mode doesn't
+  work.
+
+Source:
+- Multiple CPU support. All you have to do to setup multiple CPUs is add
+  entries to the cpu[] array in the MachineDriver definition. Each CPU can
+  have different type (currently Z80 and M6503 are supported), clock, address
+  space, memory/IO port hook, interrupt handlers, number of interrupts per
+  video frame.
+
+- Sometimes interrupt requests happen while interrupts are disabled. Until now
+  I just ignored them, but some games need them to be processed as soon as
+  interrupts are reenabled. Rally X is an example of such a game. The Z80
+  engine has provision to do that, but it would make writing a driver more
+  complex (need to find the interrupt acknowledge register) so I slightly
+  modified the engine to automatically cache an interrupt request and execute
+  it as soon as interrupts are enabled. I had already done a similar change to
+  the 6502 engine, it was needed by Burger Time which wouldn't accept coins
+  otherwise.
+
+- Since the functions xxx_vh_start(), xxx_vh_stop(), xxx_videoram_w(),
+  xxx_colorram_w() are the same for most video drivers, I moved them,
+  alongside with some variables, to vidhrdw/generic.c. This doesn't reduce
+  much the size of the executable, but greatly reduces the amount of code that
+  has to be put in a video driver (in many cases, you just have to write
+  xxx_vh_screenrefresh())
+
+- Fixed bug in msdos.c/osd_play_streamed_sampled() which prevented it from
+  handling more than one audio stream. This part of the code still needs a
+  major cleanup.
+
+- Fixed bug in drawgfx() which sometimes allowed transparent non remapped
+  copies to be drawn outside of the clip region.
+
+
+0.11
+----
+
+Program:
+- Moon Patrol support. There is no scrolling background because I don't know
+  where to place it... can anyone provide a screen snapshot?
+
+- Burger Time and Donkey Kong 3 drivers provided by Mirko Buffoni.
+  The colors for Burger Time should be accurate, but I'm not quite sure -
+  can anyone confirm?
+
+- Fixed joystick controls for Congo Bongo.
+
+- Lionel Theunissen dumped the color PROM of his Uniwars board and... it's
+  different from the one provided by Gary Walton. Galaxian boards were widely
+  pirated so it's difficult to determine which one is the "correct" palette.
+  What I did was set the Uniwars driver to use one palette, and the "Japanese
+  Irem" to use the other. Play the one you prefer.
+
+- Marc Vergoossen provided a much better palette for Zaxxon.
+
+Source:
+- increased the maximum size of the graphic elements that can be handled by
+  decodegfx() from 32x32 to 64x64. Actually I would have needed 256x64 to do
+  Moon Patrol backgrounds, but that seemed slightly overkill ;-)
+
+
+0.10
+----
+
+Program:
+- Centipede support. This is the first 6502 game supported by MAME. I'm
+  currently using Marat Fayzullin's engine.
+
+- Nibbler support. This is the second 6502 game supported by MAME ;-)
+  Interesting hardware: no sprites, two playfields, and it uses RAM for
+  character generation (redefining the characters to animate the worm).
+
+- I had also broken Pleiades, fixed. That's the drawback of emulating more
+  than 60 games, I can't check them all before releasing a new version ;-)
+
+- Ville Laitinen provided a Congo Bongo driver! The colors are terrible ;-),
+  but it's playable.
+
+- Thanks to Valerio Verrando, now -noscanlines works on Pac Man and the other
+  games using a 224x288 screen. If you have problems with the default video
+  mode try this one, it will hopefully solve them.
+
+- I received no less than three different palettes for Donkey Kong Jr., from
+  Brad Oliver, Marc Vergoossen and Richard Davies. The one included is from
+  Marc.
+
+- Thanks to Gary Walton and Simon Walls, we now have 100% accurate colors in
+  Crush Roller and Uniwars/Japirem. Moon Cresta and Moon Quasar might be
+  correct as well, but I'm not sure.
+
+- Fixed a small graphics glitch in the background of Bomb Jack's third level.
+  Thanks to Philip Chapman for the report.
+
+Source:
+- Support for 6502 CPU. From a driver writer point of view, it is used just
+  like the Z80, the only difference being that you have to specify CPU_M6502
+  instead of CPU_Z80 in the MachineDriver definition.
+  Multiple CPUs are still NOT supported.
+
+- New function in common.c: decodechar(). It was originally part of
+  decodegfx(), and is used to convert one single char from the machine format
+  to the one used by the emulator. This function was needed by the Nibbler
+  driver to dynamically convert the graphics at runtime.
+
+
+0.91
+----
+
+Program:
+- OK, even this time I managed to screw up one game (Phoenix). It works again.
+  I'm not updating the source, you can fix it yourself if you need to: the line
+     ROM_LOAD("phoenix.49", 0x2000, 0x0800)
+  in driver.c was missing the '2'.
+
+
+0.9
+---
+
+Program:
+- Bomb Jack support.
+
+- Background graphics in Zaxxon now work, albeit a bit slow (45-50 fps on my
+  486/100)
+
+- Support for the original version of Super Cobra. Note that I renamed the
+  other one (which is a bootleg) "scobrab".
+
+- Support for the original Moon Cresta (Nichibutsu copyright). These ROMs are
+  encrypted, and slightly different from the other version. This is very
+  likely the version Chuck Cochems remembers (with aliens teleporting right in
+  front of your ship). I renamed the other version (which looks like a mix of
+  the code from a bootleg version and the graphics from the Gremlin original
+  version) "mooncrsb".
+
+- Space Invaders now seems to work correctly. Deluxe version still doesn't
+  work properly.
+
+- F12 to take a snapshot of the gfx set (displayed using F4) now works.
+
+- Better colors in Donkey Kong Jr. (thanks to Brad Oliver)
+
+- Thanks to Gary Walton, Moon Quasar dip switches now are correctly described
+  in the dip switch menu.
+
+- F11 is now a toggle, also added F10 to turn off speed throttling (toggle as
+  well)
+
+Source:
+- The memory handling was no longer up to the task, so I had to make it more
+  flexible.
+  RAM is no longer a static array; it is dynamically allocated by readroms(),
+  split in memory regions (one for the CPU addressing space, one for graphics
+  ROMs, and so on) so data not needed at run time, like the graphics data, can
+  be unloaded from memory after conversion. The definition and usage of struct
+  RomModule and struct GfxDecodeInfo has changed. struct RunningMachine
+  contains an array of pointers to memory regions.
+  RomModules are now defined using macros, and readroms() does some error
+  checking as well. This greatly reduces the chance of making a silly mistake.
+
+  And don't ask me why, but as a result of this change the emulation seems to
+  run much faster than before!
+
+- New rom_decode function pointer in the GameDriver structure. It is used to
+  decrypt the whole ROMs after loading them (as opposed to opcode_decode,
+  which is used to decrypt only CPU opcodes).
+  Also, opcode_decode is now handled differently: instead of calling it at
+  runtime when the CPU reads an opcode, another 64k of memory are allocated
+  and the whole ROMs decrypted. opcodes are then fetched from this new array.
+  This approach is less flexible, for example it cannot handle code created
+  in RAM (Pengo does that). However, it is MUCH faster (finally I get 60fps
+  in Crazy Climber!), so I'll go with it for now. Should the need arise for
+  a more flexible decryption, we'll think about it.
+
+- Some changes to the MachineDriver definition and mame.c needed to support
+  multiple CPUs (they are NOT supported yet - this is just the first step)
+
+
+0.81
+----
+
+Program:
+- Sorry about screwing Donkey Kong Jr. colors... it's playable again. Colors
+  are still way off though: anyone volunteers to fix them? ;-)
+
+- Zaxxon now works, but the background graphics are missing
+
+
+0.8
+---
+
+Program:
+- Added some support for Carnival - it boots and runs the demo, but the
+  graphics are messed up.
+
+- Fixed graphics in Moon Quasar (yes it does run, but you need the correct
+  ROMs)
+
+- Better error checking in the sound initialization routines. It still sucks,
+  but at least will notify of problems instead of locking up the emulation.
+  The "0. Silence" driver also works.
+
+- Removed the "-nosound" command line switch, replaced it with "-soundcard n"
+  which allows to bypass the audio driver selection menu. Use "-soundcard 0"
+  to turn off sound.
+
+- Some support for Space Invaders (+ some clones) but it doesn't work well.
+
+- Support for Battle of Atlantis (a Scramble hack)
+
+- The ROM copyright notice is displayed in the main emulation screen.
+
+- Maybe I understood how the character colors are selected in Donkey Kong, at
+  least in part, but I'm not sure. Anyway, I started fixing them. I based on
+  the Kong emulator by Gary Shepherdson.
+
+
+  Following changes provided by Mirko Buffoni:
+
+- You can view the game graphics pressing F4. Use cursor keys to change
+  graphics set/color, F4 to return to the game.
+
+- Support for Mario Bros. (wrong colors, no sound) and Zaxxon (doesn't work yet).
+
+- Better colors in Amidar and Frogger.
+
+Source:
+- Added visible_area to the MachineDriver definition. It was used in all video
+  drivers, so it's better to keep it centralized.
+
+- Long-awaited function clearbitmap(), which correctly initializes a bitmap
+  using background_pen. Note for people porting MAME to other systems:
+  osd_create_bitmap() must call this function, the video drivers rely on that.
+
+- I got rid of machine.c and put all into mame.c... when I have time, I'll try
+  to organize the source better.
+
+
+0.7
+---
+
+Program:
+- Support for:
+  Super Cobra (version running on a modified Scramble board)
+  Amidar US version
+  Crazy Climber Japanese version
+  Pooyan (wrong colors, no sound)
+  Phoenix/Pleiades (no sound)
+
+- Scramble has 100% correct colors. The same palette is used by Super Cobra,
+  but it doesn't look right.
+
+- Gorf and Robby Roto boot but don't work.
+
+- Added some support for Moon Quasar, but it doesn't work. Since the ROMs are
+  encrypted, I don't know if this is due to wrong decryption, bad ROM, or
+  wrong driver (I'm using the Moon Cresta one). I think that either MQ3 (which
+  maps at 1000-17ff) is bad, or it uses a different encryption.
+
+
+0.6
+---
+
+Program:
+- Support for:
+  Scramble (wrong colors, no sound)
+  Uniwars (US version of Japanese Irem game)
+  Frogger (including bootleg version running on a Scramble board)
+    (wrong colors, no sound)
+  Amidar (wrong colors, no sound)
+  Turtles (wrong colors, no sound)
+  Rally X (wrong colors, no sound, slowdowns)
+
+- I'm beginning to understand how the Wizard of Wor video hardware works,
+  gameplay hasn't changed but the graphics are more faithfully reproduced.
+
+- Star background in Galaxians & co. The way I calculate it is probably not
+  correct, anyway it looks reasonable.
+
+- Fixed staccato notes in Pacman and other games using the same hardware.
+  There are still some minor glitches (especially in Ms. Pac Man) but Pac Man
+  tunes are now very close to the original.
+
+Source:
+- I reorganized the source directory tree, instead of one directory for every
+  game there are now four directories (drivers, machine, vidhrdw, sndhrdw)
+  which contain files named after the game.
+
+
+0.5
+---
+
+Program:
+- Fixed some problems in the Wizard of Wor driver, but it is still far from
+  complete.
+
+- Support for:
+  Donkey Kong Jr. (wrong colors, no sound)
+  Galaxians and the plethora of clones (correct colors, limited sound)
+  Pisces (correct colors, limited sound)
+  "Japanese Irem game". I believe the colors are correct, but since I've
+    never seen the original game I can't know for sure.
+  War of the Bugs (wrong colors, limited sound)
+  Moon Cresta (wrong colors, limited sound)
+  The End (wrong colors, no sound)
+
+- By popular demand, reverted to the old AY-3-8910 emulation code.
+
+Source:
+- Changed readroms() to allow scatter loading of a single ROM. This was needed
+  for Donkey Kong Jr. Now the end of the RomModule array is marked by a size==0,
+  while name==0 means "continue loading the previous ROM at this address".
+
+- Some bug fixes and changes to reduce porting problems (thanks to Brad Oliver)
+
+- New function copybitmap() in common.c. Limited for now, will change in the
+  future.
+
+
+0.4
+---
+
+Program:
+- Bagman support (wrong colors)
+
+- Early Wizard of Wor support (not playable).
+
+- New experimental AY-3-8910 sound emulation code provided by Andy Milne
+  (andy@canetics.com). This sounds better in some places and worse in others.
+  It is used by Crazy Climber, Crazy Kong and Bagman. Let me know what you
+  think.
+
+Source:
+- Optimizations in drawgfx(), Mr. Do!'s title screen and intermissions now
+  run faster, Crazy Climber and Crazy Kong benefit as well.
+
+- Use version 1.1 of Z80Em by Marcel de Kogel. Faster!
+  (note that I had to make a couple of changes to Z80.c to make Crazy
+  Climber work).
+
+- Handle IN and OUT instructions in the same way as memory accesses (table
+  of handler functions). The parameters of the functions are the same, so
+  the same function can be used both for memory and ports.
+  Had to change the driver structure, removed the pointers to _in and _out
+  functions and added port_read and port_write array pointers.
+  Also defined a generic interrupt_vector_w() function, this makes the Pac
+  Man driver tinier (look at pacman/machine.c, it's now there only to handle
+  the cheat).
+
+
+0.3
+---
+
+Program:
+- Donkey Kong support (wrong colors, no sound)
+
+- New definition of custom video modes, this will hopefully be compatible
+  with more systems.
+
+- Lady Bug and Crazy Climber should run a little faster on slow machines
+  (Crazy Climber is still too slow, I know).
+
+Source:
+- new general purpose readinputport() function used to handle reads of
+  input ports and dip switches. This saves some work when creating a
+  game driver. Required changes to struct MachineDriver.
+
+- struct GfxLayout now contains a planeoffset array instead of
+  planeincrement, to better support more than 2 bitplanes. I also fixed
+  (I hope) all the code which assumed 2 bitplanes. struct GfxDecodeInfo
+  had to be changed as well.

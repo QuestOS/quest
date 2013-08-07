@@ -1,0 +1,44 @@
+
+Synthetic Audio Library (SEAL) Development Kit
+Copyright (C) 1995, 1996 Carlos Hasan
+All Rights Reserved
+
+License Agreement Information
+
+The author grants to you ("Licensee") a non-exclusive, non-transferable
+license to use the Synthetic Audio Library Development Kit (hereafter 
+referred to as "The SEAL Audio Library") for non-commercial programs 
+without fee. 
+
+This license guarantees you the right to use the SEAL Audio Library.
+Therefore, by using the SEAL Audio Library, indicate that the licensee 
+understand and accept all the terms of this license.
+
+This license applies to all the files distributed in the original
+SEAL Audio Library archive, including all the source code, binaries
+and documentation in its original, unmodified form as distributed
+in the original archive.
+
+THE SEAL AUDIO LIBRARY IS PROVIDED "AS IS" WITHOUT WARRANTY OF ANY KIND, 
+EITHER EXPRESSED OR IMPLIED, INCLUDING, BUT NOT LIMITED TO, WARRANTIES 
+OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE. IN NO EVENT
+WILL THE AUTHOR OR COPYRIGHT HOLDER BE LIABLE FOR ANY DAMAGES CAUSED
+BY THE USE OR INABILITY TO USE, OF THE SEAL AUDIO LIBRARY.
+
+The SEAL Audio Library may not be used in commercial programs, including
+shareware. No program using the SEAL Audio Library may be sold for any
+price, and neither may any fee be charged for the right to use the
+program. Programs using the SEAL Audio Library may always be freely
+distributed if no fee is charged for the distribution and may freely be
+used by anyone.
+
+The SEAL Audio Library, or portions of it, may not be included as parts
+of a shareware or commercial software package, in source code, object 
+module or any other form. Neither may the SEAL Audio Library, or portions 
+of it, be printed in commercial publications, including, but not limited to, 
+magazines and books.
+
+The SEAL Audio Library, or portions of it, may not be modified. Neither
+may the SEAL Audio Library, or portions of it, be used to build similar 
+software products.
+
