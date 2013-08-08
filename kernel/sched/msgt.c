@@ -557,6 +557,7 @@ ipc_recv_init (void)
   return TRUE;
 }
 
+#ifdef USE_VMX
 extern bool
 msgt_mem_init (void)
 {
@@ -584,5 +585,6 @@ msgt_mem_init (void)
 static const struct module_ops mod_ops = {
   .init = msgt_init
 };
+#endif
 
 /* vi: set et sw=2 sts=2: */

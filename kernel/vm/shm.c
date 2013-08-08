@@ -14,6 +14,7 @@
  *  You should have received a copy of the GNU General Public License
  *  along with this program.  If not, see <http://www.gnu.org/licenses/>.
  */
+#ifdef USE_VMX
 
 #include "vm/shm.h"
 #include "vm/ept.h"
@@ -685,6 +686,7 @@ int virtual_shared_mem_map(uint vshm_key, uint size, uint sandboxes,
 #endif
 }
 
+#endif  /* USE_VMX */
 
 /* 
  * Local Variables:
@@ -694,5 +696,6 @@ int virtual_shared_mem_map(uint vshm_key, uint size, uint sandboxes,
  * c-basic-offset: 2
  * End: 
  */
+
 
 /* vi: set et sw=2 sts=2: */

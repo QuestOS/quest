@@ -36,6 +36,8 @@
 #define DLOG(fmt,...) ;
 #endif
 
+#ifdef USE_VMX
+
 /* --YL-- We use two global variables for input and output of vm_exit routine. These
  * variables should be placed in sandbox kernel memory instead of monitor and some
  * more secure method should be prefered. For now, we just place them in monitor
@@ -193,6 +195,8 @@ vmx_process_hypercall (uint32 status)
 
   return;
 }
+
+#endif /* USE_VMX */
 
 /*
  * Local Variables:
