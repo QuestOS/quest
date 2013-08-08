@@ -425,8 +425,6 @@ static int syscall_vcpu_bind_task(u32 eax, vcpu_id_t new_vcpu_index, u32 ecx, u3
       be destroyed if it is empty */
 static int syscall_vcpu_destroy(u32 eax, vcpu_id_t vcpu_index, u32 force, u32 edx, u32 esi)
 {
-  task_id t_id = str();
-  quest_tss *tssp = lookup_TSS(t_id);
   vcpu* v = vcpu_lookup(vcpu_index);
 
   if(vcpu_index == BEST_EFFORT_VCPU) return -1;
@@ -536,7 +534,7 @@ static int syscall_enable_video(u32 eax, int enable, unsigned char** video_memor
         }
         video_enabled = TRUE;
         res = 0;
-        current_video_memory = *video_memory = i * 0x400000;
+        current_video_memory = *video_memory = (void *) (i * 0x400000);
         
         unmap_virtual_page(plPageTable);
       }
@@ -630,18 +628,18 @@ struct syscall {
   u32 (*func) (u32, u32, u32, u32, u32);
 };
 struct syscall syscall_table[] = {
-  { .func = syscall_putchar },
-  { .func = syscall_usleep },
-  { .func = syscall_usb },
-  { .func = syscall_getpid },
-  { .func = syscall_vcpu_create },
-  { .func = syscall_vcpu_bind_task },
-  { .func = syscall_vcpu_destroy },
-  { .func = syscall_vcpu_getparams },
-  { .func = syscall_vcpu_setparams },
-  { .func = syscall_enable_video },
-  { .func = syscall_lseek},
-  { .func = syscall_get_keyboard_events },
+  { .func = (void *)syscall_putchar },
+  { .func = (void *)syscall_usleep },
+  { .func = (void *)syscall_usb },
+  { .func = (void *)syscall_getpid },
+  { .func = (void *)syscall_vcpu_create },
+  { .func = (void *)syscall_vcpu_bind_task },
+  { .func = (void *)syscall_vcpu_destroy },
+  { .func = (void *)syscall_vcpu_getparams },
+  { .func = (void *)syscall_vcpu_setparams },
+  { .func = (void *)syscall_enable_video },
+  { .func = (void *)syscall_lseek},
+  { .func = (void *)syscall_get_keyboard_events },
 };
 #define NUM_SYSCALLS (sizeof (syscall_table) / sizeof (struct syscall))
 
@@ -671,7 +669,6 @@ _fork (vcpu_id_t vcpu_id, uint32 ebp, uint32 *esp)
   task_id child_tid;
   void *phys_addr;
   uint32 *virt_addr;
-  uint32 priority;
   uint32 eflags, eip, this_esp, this_ebp;
   vcpu* v;
 
@@ -740,8 +737,7 @@ _fork (vcpu_id_t vcpu_id, uint32 ebp, uint32 *esp)
     duplicate_TSS (ebp, esp, eip, this_ebp, this_esp, eflags, childpgd.dir_pa);
 
   /* Inherit priority from parent */
-  priority = lookup_TSS (child_tid)->priority =
-    lookup_TSS (str ())->priority;
+  lookup_TSS (child_tid)->priority = lookup_TSS (str ())->priority;
 
   wakeup (child_tid);
 
@@ -1069,7 +1065,8 @@ _exec (char *filename, char *argv[], uint32 *curr_stack)
     pStack[i] = alloc_phys_frame ();
   }
 
-  map_user_level_stack(plPageDirectory, USER_STACK_START, USER_STACK_SIZE, pStack, TRUE);
+  map_user_level_stack(plPageDirectory, (void *) USER_STACK_START,
+                       USER_STACK_SIZE, pStack, TRUE);
 
   //invalidate_page ((void *) ((1023 - i) << 12));
   
@@ -1237,7 +1234,7 @@ _open (char *pathname, int flags)
 int
 _read (int fd, char *buf, int count)
 {
-  int i, j;
+  int i;
   quest_tss * tss;
   task_id cur;
   fd_table_entry_t* fd_table_entry;
@@ -1245,8 +1242,8 @@ _read (int fd, char *buf, int count)
   int act_len;
   int res, char_returned;
   char* temp_buf;
-  uint c = 0;
-  key_event e;
+  //uint c = 0;
+  //key_event e;
   
   lock_kernel ();
   //com1_printf ("_read (%d, %p, 0x%x)\n", fd, buf, count);
@@ -1509,6 +1506,9 @@ _interrupt3e (void)
     wakeup (str ());
   }
 
+  /* check sleeping processes */
+  process_sleepqueue ();
+
   /* with kernel locked, go ahead and schedule */
   schedule ();
   unlock_kernel ();
@@ -1535,8 +1535,10 @@ _timer (void)
   send_eoi ();
 
   if (mp_enabled) {
+#if 0
     lock_kernel ();
 
+    /* Sleep queue management is now in schedule */
     /* check sleeping processes */
     process_sleepqueue ();
 
@@ -1554,6 +1556,7 @@ _timer (void)
 #endif
 
     unlock_kernel ();
+#endif
 
 #ifdef GDBSTUB_TCP
     { 

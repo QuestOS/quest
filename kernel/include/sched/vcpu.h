@@ -161,6 +161,7 @@ extern void iovcpu_job_completion (void);
 
 extern vcpu_id_t create_vcpu(struct sched_param* params, vcpu** vcpu_p);
 extern vcpu_id_t create_main_vcpu(int C, int T, vcpu** vcpu_p);
+extern void vcpu_destroy(vcpu_id_t vcpu_index);
 
 extern vcpu_id_t lowest_priority_vcpu (void);
 extern uint select_iovcpu (iovcpu_class);

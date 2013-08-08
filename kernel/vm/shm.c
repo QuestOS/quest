@@ -18,6 +18,7 @@
 #include "vm/shm.h"
 #include "vm/ept.h"
 #include "vm/vmx.h"
+#include "vm/hypercall.h"
 #include "vm/spow2.h"
 #include "kernel.h"
 #include "mem/virtual.h"
@@ -84,7 +85,7 @@ shm_screen_init (uint32 cpu)
 /*
  * shm_init should be called sequentially by each sandbox kernel.
  * Also, this function should be called after the kernel fork unless
- * called in bootstrap processor. (which is in vmx_init_mem function).
+ * called in bootstrap processor. (which is in vmx_vm_fork function).
  */
 void
 shm_init (uint32 cpu)
@@ -354,24 +355,6 @@ shm_free_drv_lock (spinlock* lock)
   }
 }
 
-static struct _set_ept_param {
-  uint32 phys_frame;
-  uint32 count;
-  uint8 perm;
-} set_ept_param;
-
-void
-shm_set_ept_permission (uint32 phys_frame, uint32 count, uint8 perm)
-{
-  extern void * vm_exit_input_param;
-
-  set_ept_param.phys_frame = phys_frame;
-  set_ept_param.count = count;
-  set_ept_param.perm = perm;
-  vm_exit_input_param = (void *) &set_ept_param;
-  vm_exit (VM_EXIT_REASON_SET_EPT);
-}
-
 uint32
 shm_alloc_phys_frame_perm (uint8 perm)
 {
@@ -387,7 +370,7 @@ shm_alloc_phys_frame_perm (uint8 perm)
         SHM_BITMAP_CLR (shm->shm_table, i);
         spinlock_unlock (&(shm->shm_lock));
         if (shm->ept_initialized[get_pcpu_id ()]) {
-          shm_set_ept_permission (i << 12, 1, perm);
+          hypercall_set_ept (i << 12, 1, perm);
         }
         return (i << 12);
       }
@@ -422,7 +405,7 @@ shm_alloc_phys_frames_perm (uint32 count, uint8 perm)
       }
       spinlock_unlock (&(shm->shm_lock));
       if (shm->ept_initialized[get_pcpu_id ()]) {
-        shm_set_ept_permission (i << 12, count, perm);
+        hypercall_set_ept (i << 12, count, perm);
       }
       return (i << 12);           /* physical byte address of free frames */
       keep_searching:

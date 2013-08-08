@@ -678,7 +678,7 @@ init (multiboot * pmb)
 
 #ifdef USE_VMX
 #ifdef QUESTV_NO_VMX
-  { extern void vmx_init_mem (uint32); vmx_init_mem (0); }
+  { extern void vmx_vm_fork (uint32); vmx_vm_fork (0); }
 #else
   { extern bool vmx_init (void); vmx_init (); }
 #endif
@@ -730,6 +730,7 @@ init (multiboot * pmb)
   //  IP4_ADDR(&gw, 192, 168, 2, 1);
   //  netsetup_custom_init (ipaddr, netmask, gw, 1);
   //}
+  //{ extern bool beacon_thread_init (void); beacon_thread_init (); }
 
   /* count free pages for informational purposes */
   u32 *page_table = (u32 *) KERN_PGT;

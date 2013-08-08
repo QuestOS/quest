@@ -680,7 +680,8 @@ vcpu_schedule (void)
     **ptr,
     **vnext = NULL;
   u64 tprev = percpu_read64 (pcpu_tprev);
-  u64 tcur, tdelta, Tprev = 0, Tnext = 0;
+  u64 tcur, tdelta, Tnext = 0;
+  //u64 Tprev = 0;
   bool timer_set = FALSE;
 
 #ifdef CHECK_INVARIANTS
@@ -694,7 +695,7 @@ vcpu_schedule (void)
   DLOGV ("tcur=0x%llX tprev=0x%llX tdelta=0x%llX", tcur, tprev, tdelta);
 
   if (cur) {
-    Tprev = cur->T;
+    //Tprev = cur->T;
 
     /* handle end-of-timeslice accounting */
     vcpu_acnt_end_timeslice (cur);
@@ -986,8 +987,6 @@ capacity (vcpu *v)
   return (s64) v->main.Q.head->b - (s64) v->usage;
 }
 
-static void repl_merge (vcpu *);
-
 static void
 main_vcpu_update_replenishments (vcpu *v, u64 tcur)
 {
@@ -1007,6 +1006,7 @@ main_vcpu_next_event (vcpu *v)
   return 0;
 }
 
+#if 0
 static void
 repl_merge (vcpu *v)
 {
@@ -1023,6 +1023,7 @@ repl_merge (vcpu *v)
       break;
   }
 }
+#endif
 
 static void
 budget_check (vcpu *v)
@@ -1463,6 +1464,7 @@ validate_migration_condition (quest_tss * tss)
       return FALSE;
     }
     E_s = rp->t - time;
+    logger_printf ("E_s=0x%X\n", E_s);
     //com1_printf ("Next Rep: 0x%llX\n", rp->t);
     //com1_printf ("Current Time: 0x%llX\n", time);
     //com1_printf ("Next event time is: 0x%llX\n", E_s);
@@ -1488,7 +1490,7 @@ bool
 vcpu_fix_replenishment (quest_tss * tss, vcpu * v, replenishment r[], bool remote_tsc_diff,
                         uint64 remote_tsc)
 {
-  int i = 0, cpu = 0;
+  int i = 0;
   repl_queue * rq = NULL;
   replenishment * rp = NULL;
 
@@ -1524,7 +1526,6 @@ vcpu_fix_replenishment (quest_tss * tss, vcpu * v, replenishment r[], bool remot
     for (i = 0; i < MAX_REPL; i++) {
       if (tss->vcpu_backup[i].t == 0) break;
       /* Fix timestamp values */
-      cpu = get_pcpu_id ();
       if(remote_tsc_diff) {
         /* Local TSC is faster */
         repl_queue_add (rq, tss->vcpu_backup[i].b,

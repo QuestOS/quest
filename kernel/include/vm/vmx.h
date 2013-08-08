@@ -20,6 +20,7 @@
 #include "types.h"
 #include "vmx-defs.h"
 #include "smp/spinlock.h"
+#include "vm/hypercall.h"
 
 #define IA32_FEATURE_CONTROL         0x003A
 #define IA32_SYSENTER_CS             0x0174
@@ -45,13 +46,6 @@
 #define IA32_VMX_TRUE_EXIT_CTLS      0x048F
 #define IA32_VMX_TRUE_ENTRY_CTLS     0x0490
 
-/* Software VM-Exit reasons */
-#define VM_EXIT_REASON_MIGRATION     0x0001  /* Process migration */
-#define VM_EXIT_REASON_GET_HPA       0x0002  /* Get HPA for a given GPA */
-#define VM_EXIT_REASON_LINUX_BOOT    0x0003  /* Boot Linux sandbox */
-#define VM_EXIT_REASON_MASK_SB       0x0004  /* Remove EPT mapping of a sandbox */
-#define VM_EXIT_REASON_SET_EPT       0x0005  /* Set page permission in EPT (shared memory) */
-
 extern bool shared_driver_available;
 
 typedef struct
@@ -68,8 +62,6 @@ typedef struct
   uint32 launched, loaded, realmode;
 } virtual_machine;
 
-typedef void * vm_exit_param_t;
-
 #define VM_REG(n) ((((uint32 *) (&vm->guest_regs)))[7 - (n)])
 static const char gp_register_names[][4] = {
    "edi", "esi", "ebp", "esp", "ebx", "edx", "ecx", "eax"
@@ -77,15 +69,12 @@ static const char gp_register_names[][4] = {
 #define VM_REG_NAME(n) (gp_register_names[7 - n])
 
 void vmx_detect (void);
-void vmx_global_init (void);
-void vmx_processor_init (void);
-int vmx_create_VM (virtual_machine *);
-int vmx_create_pmode_VM (virtual_machine *, u32, u32);
-int vmx_destroy_VM (virtual_machine *);
-int vmx_load_VM (virtual_machine *);
-int vmx_unload_VM (virtual_machine *);
-int vmx_enter_pmode_VM (virtual_machine *);
-int vmx_start_VM (virtual_machine *);
+int vmx_create_monitor (virtual_machine *, u32, u32);
+int vmx_destroy_monitor (virtual_machine *);
+int vmx_load_monitor (virtual_machine *);
+int vmx_unload_monitor (virtual_machine *);
+int vmx_enter_guest (virtual_machine *);
+int vmx_start_monitor (virtual_machine *);
 
 static inline int
 vmx_get_error (void)

@@ -23,6 +23,8 @@
 #include "vm/shm.h"
 #include "mem/physical.h"
 #include "mem/virtual.h"
+#include "smp/smp.h"
+#include "smp/apic.h"
 
 //#define DEBUG_MSGT
 
@@ -193,6 +195,42 @@ hog_thread (void)
   unlock_kernel ();
   sti ();
   for (;;) {
+  }
+}
+
+static void
+beacon_thread (void)
+{
+  int sandbox = 0, i = 0, j = 0, b = 0;
+  sandbox = get_pcpu_id ();
+  extern void initialize_serial_port (void);
+  logger_printf ("Beacon thread started in sandbox %d\n", sandbox);
+  extern mp_IOAPIC_info mp_IOAPICs[MAX_IOAPICS];
+  extern uint32 mp_num_IOAPICs;
+  uint64 ioapic_tbl_entry = 0;
+
+  unlock_kernel ();
+  sti ();
+  for (;;) {
+    initialize_serial_port ();
+    com1_printf ("Beacon thread (%d): 0x%X\n", sandbox, b);
+    b++;
+
+    if (sandbox == 1) {
+      for (i = 0; i < mp_num_IOAPICs; i++) {
+        for (j = 0; j < mp_IOAPICs[i].numGSIs; j++) {
+          ioapic_tbl_entry = IOAPIC_read64 (IOAPIC_REDIR + (j * 2));
+          com1_printf ("IOAPIC_TBL[0x%X] : 0x%llX\n", IOAPIC_REDIR + (j * 2),
+                       ioapic_tbl_entry);
+        }
+      }
+    }
+
+    cli ();
+    lock_kernel ();
+    sched_usleep (5000000);
+    unlock_kernel ();
+    sti ();
   }
 }
 
@@ -456,6 +494,21 @@ hog_thread_init (void)
   
   create_kernel_thread_vcpu_args ((u32) hog_thread, (u32) &msgt_stack[1023],
                                   "Hog thread", vcpu_id, TRUE, 0);
+
+  return TRUE;
+}
+
+extern bool
+beacon_thread_init (void)
+{
+  int vcpu_id = create_main_vcpu(20, 100, NULL);
+  if(vcpu_id < 0) {
+    DLOG("Failed to create ipc hog vcpu");
+    return FALSE;
+  }
+  
+  create_kernel_thread_vcpu_args ((u32) beacon_thread, (u32) &msgt_stack[1023],
+                                  "Beacon thread", vcpu_id, TRUE, 0);
 
   return TRUE;
 }
