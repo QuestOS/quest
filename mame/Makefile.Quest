@@ -11,6 +11,9 @@ include ../config.mk
 #MS		= -DMITSHM
 MS =
 
+OBJ_DIRS = obj/drivers obj/M6502 obj/machine obj/sndhrdw obj/vidhrdw obj/Z80
+
+$(shell mkdir -p $(OBJ_DIRS))
 
 ARCH    = quest
 
@@ -29,7 +32,6 @@ OBJS   = obj/mame.o obj/common.o obj/driver.o obj/cpuintrf.o obj/osdepend.o \
 	 obj/vidhrdw/pengo.o obj/sndhrdw/pengo.o obj/drivers/pengo.o \
          obj/Z80/Z80.o 
 
-OBJ_DIRS = obj/drivers obj/M6502 obj/machine obj/sndhrdw obj/vidhrdw obj/Z80
 
 VPATH = src src/Z80
 
@@ -39,8 +41,6 @@ install: mame
 	mkdir -p $(INSTALL_DIR)/../pacman
 	$(INSTALL_CMD) pacman/* $(INSTALL_DIR)/../pacman
 	$(INSTALL_CMD) mame $(INSTALL_DIR)
-
-$(OBJS): $(OBJ_DIRS)
 
 $(OBJ_DIRS):
 	mkdir -p $@
