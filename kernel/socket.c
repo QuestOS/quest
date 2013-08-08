@@ -37,10 +37,10 @@
 #include "arch/i386-div64.h"
 #include "interrupt_handler.h"
 #include "fcntl.h"
+#include "vm/fault_detection.h"
 
 #ifdef USE_VMX
 #include "vm/shm.h"
-#include "vm/fault_detection.h"
 #endif
 
 //#define DEBUG_SOCKET
