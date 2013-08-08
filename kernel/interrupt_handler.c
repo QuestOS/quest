@@ -42,6 +42,7 @@
 #include "lwip/tcp.h"
 #include "lwip/udp.h"
 #include "drivers/video/vga.h"
+#include "drivers/video/video.h"
 #ifdef USE_VMX
 #include "vm/shm.h"
 #include "vm/spow2.h"
@@ -474,7 +475,8 @@ static int syscall_vcpu_setparams(u32 eax, vcpu_id_t vcpu_index, struct sched_pa
   return -1;
 }
 
-static int syscall_enable_video(u32 eax, int enable, char** video_memory, u32 edx, u32 esi)
+static int syscall_enable_video(u32 eax, int enable, unsigned char** video_memory,
+                                uint flags, u32 esi)
 {
   static bool video_enabled = FALSE;
   static void* current_video_memory = NULL;
@@ -526,10 +528,12 @@ static int syscall_enable_video(u32 eax, int enable, char** video_memory, u32 ed
         for (j = 0; j < 16; j++) plPageTable[j] = 0xA0000 | (j << 12) | 7;
         
 
-        com1_printf("About to call init_graph_vga\n");
-        //if(init_graph_vga(width, height, 1)) {
-        write_regs(g_320x200x256);
-        set_color_pallete();
+        if(flags & DISTRIBUTED_COLOR_PALLETE) {
+          com1_printf("About to call init_graph_vga\n");
+          //if(init_graph_vga(width, height, 1)) {
+          write_regs(g_320x200x256);
+          set_color_pallete();
+        }
         video_enabled = TRUE;
         res = 0;
         current_video_memory = *video_memory = i * 0x400000;
@@ -591,6 +595,37 @@ int syscall_lseek(u32 eax, int file, int ptr, int dir, u32 esi)
   }
 }
 
+int syscall_get_keyboard_events(u32 eax, int blocking, uint* codes, uint max, u32 esi)
+{
+  key_event e;
+  int i, j;
+  int count = 0;
+
+  for(i = 0; i < (max < KEYBOARD_BUFFER_SIZE ? max : KEYBOARD_BUFFER_SIZE); ++i) {
+    
+    if(blocking && count == 0) {
+      keyboard_8042_next(&e);
+    }
+    else {
+      if(keyboard_8042_next_no_wait(&e) < 0) {
+        return count;
+      }
+    }
+    for(j = 0; j < KEY_EVENT_MAX; ++j) {
+      if(e.keys[j].latest) {
+        if(e.keys[j].release) {
+          codes[count] = e.keys[j].scancode | 0x80;
+        }
+        else {
+          codes[count] = e.keys[j].scancode;
+        }
+        count++;
+      }
+    }
+  }
+  return count;
+}
+
 struct syscall {
   u32 (*func) (u32, u32, u32, u32, u32);
 };
@@ -606,6 +641,7 @@ struct syscall syscall_table[] = {
   { .func = syscall_vcpu_setparams },
   { .func = syscall_enable_video },
   { .func = syscall_lseek},
+  { .func = syscall_get_keyboard_events },
 };
 #define NUM_SYSCALLS (sizeof (syscall_table) / sizeof (struct syscall))
 
@@ -1098,30 +1134,13 @@ _exec (char *filename, char *argv[], uint32 *curr_stack)
 }
 
 /* Syscall: getchar / getcode */
-uint
-_getchar (uint ebx)
+uint _pressed_keys(uint* buf, int max)
 {
-
-  uint c = 0;
+  uint c;
 
   lock_kernel ();
 
-  if (ebx == 0)
-    c = keymap_getchar(TRUE);
-  else {
-    key_event e;
-    uint i;
-
-    keyboard_8042_next (&e);
-    for (i=0; i<KEY_EVENT_MAX; i++) {
-      if (e.keys[i].latest) {
-        c = e.keys[i].scancode;
-        if (e.keys[i].release)
-          c |= 0x80;            /* restore "break" code */
-        break;
-      }
-    }
-  }
+  c = pressed_keys(buf, max);
   
   unlock_kernel ();
 
@@ -1442,60 +1461,23 @@ _meminfo (uint32 eax, uint32 edx)
   }
 }
 
+
 /* Syscall: time */
+/* -- EM -- Right now just associates a system tick with each
+   processes, so it does not give the actual time the process has been
+   running.  It also associates all time with userspace of the
+   process.  Basically its good enough to make two calls to the clock
+   function and get a time difference */
 uint32
-_time (void)
+_time (struct tms *buf)
 {
-
-#if 0
-  static uint64 last = 0;
-  uint64 now;
-  RDTSC (now);
-  if (last) {
-    com1_printf ("Time (TSC counts): %llX\n", now - last);
-    last = 0;
-  } else {
-    last = now;
-  }
-#endif
-
-#if 0
-  uint64 now;
-  RDTSC (now);
-  return (uint32) now;
-#endif
-
-#if 0
-  int i = 0;
-  uint32 *paddr = NULL;
-
-  for (i = 0; i < 1024; i++) {
-    paddr = get_phys_addr ((void*) (i << 12));
-    com1_printf ("0x%X mapped to: 0x%X\n", i << 12, (uint32) paddr);
-  }
-#endif
-
-#if 0
-#ifdef USE_VMX
-  struct msgt_stat_report {
-    unsigned int canny_frame_count;
-    unsigned int msg_sent;
-    unsigned int msg_recv;
-    u64 tsc;
-  };
-
-  extern uint32 msgt_stat_phy_page;
-  extern struct msgt_stat_report * msgt_report;
-
-  if (msgt_stat_phy_page) {
-    if (!msgt_report)
-      msgt_report = (struct msgt_stat_report *) map_virtual_page (msgt_stat_phy_page | 3);
-    msgt_report->canny_frame_count++;
-  }
-#endif
-#endif
-
-  return tick;
+  
+  buf->tms_utime = tick * CLOCKS_PER_SEC / HZ;
+  buf->tms_stime = 0;
+  buf->tms_cutime = 0;
+  buf->tms_cstime = 0;
+  
+  return tick * CLOCKS_PER_SEC / HZ;
 }
 
 /* ACPI System Control Interrupt -- IRQ 9 usually */

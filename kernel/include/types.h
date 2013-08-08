@@ -71,6 +71,17 @@ typedef int vcpu_id_t;
 typedef int gfp_t;
 typedef uint32 task_id;
 
+#define	_CLOCK_T_	unsigned long
+typedef _CLOCK_T_ clock_t;
+struct tms {
+  clock_t	tms_utime;		/* user time */
+  clock_t	tms_stime;		/* system time */
+  clock_t	tms_cutime;		/* user time, children */
+  clock_t	tms_cstime;		/* system time, children */
+};
+
+#define CLOCKS_PER_SEC 3640
+
 #endif // [#ifndef __ASSEMBLER__]
 
 #endif

@@ -2,9 +2,9 @@
 #include "osdepend.h"
 #include "stdlib.h"
 #include "string.h"
-#include "syscall.h"
-
-#define NULL 0
+#include <video.h>
+#include <stdio.h>
+#include <stdlib.h>
 
 #define STATUS_ADDR     0x3da 
 
@@ -12,11 +12,12 @@ int play_sound;
 
 static struct osd_bitmap *bitmap;
 static int first_free_pen;
-static char key[128];
 
 static unsigned char old_red[256];
 static unsigned char old_green[256];
 static unsigned char old_blue[256];
+
+static unsigned char* video_memory = NULL;
 
 #if 0
 static unsigned char g_8x8_font[2048] =
@@ -684,9 +685,6 @@ static void update_video_mode( Register *regs, int length ) {
 }
 
 
-static int poll_keyboard( void ) {
-  return getcode ();
-}
 
 int osd_init( int argc,char **argv ) {
 
@@ -694,35 +692,49 @@ int osd_init( int argc,char **argv ) {
 }
 
 int osd_key_pressed (int keycode) {
+  int i;
+  uint keys_pressed[10];
+  uint count = pressed_keys(keys_pressed, 10);
+
+  switch(keycode) {
+  case OSD_KEY_UP:
+    keycode = 0x67;
+    break;
+  case OSD_KEY_DOWN:
+    keycode = 0x6C;
+    break;
+  case OSD_KEY_RIGHT:
+    keycode = 0x6A;
+    break;
+  case OSD_KEY_LEFT:
+    keycode = 0x69;
+    break;
+  }
   
-  int c;
-
-  c = poll_keyboard();
-  if( c & 0x80 )		/* Release key scan code */
-    key[c & 0x7F] = 0;
-  else
-    key[c & 0x7F] = 1;
-
-  return key[c & 0x7F];
+  uint codes[20];
+  get_keyboard_events(0, codes, 20); /* Clear all current events */
+  
+  for(i = 0; i < count; ++i) {
+    if(keys_pressed[i] == keycode) return 1;
+  }
+  return 0;
 }
 
 
 /* Wait for a key press and return the keycode */
 int osd_read_key( void ) {
-  int c;
-  do {
-    c = poll_keyboard();
-    if( c & 0x80 )		/* Release key scan code */
-      key[c & 0x7F] = 0;
-    else
-      key[c & 0x7F] = 1;
-  } while (c & 0x80);           /* while a "break" code */
-
-  return c;
+  uint codes[20];
+  get_keyboard_events(0, codes, 20); /* Clear all current events */
+  while(1) {
+    get_keyboard_events(1, codes, 1);
+    if(!(codes[0] & 0x80)) {	/* If not release */
+      return codes[0];
+    }
+  }
 }
 
 
-/* Create a bitmap. --??-- MSDOS version calls clearbitmap() allegro library
+/* Create a bitmap. -- RW -- MSDOS version calls clearbitmap() allegro library
    routine to appropriately initialize it to the background color. */
 
 struct osd_bitmap *osd_create_bitmap( int width,int height ) {
@@ -738,6 +750,7 @@ struct osd_bitmap *osd_create_bitmap( int width,int height ) {
     bitmap->height = height;
     if ((bm = malloc( width * height * sizeof(unsigned char)) ) == 0) {
       free( bitmap );
+      
       return 0;
     }
 
@@ -746,9 +759,9 @@ struct osd_bitmap *osd_create_bitmap( int width,int height ) {
 
     bitmap->private = bm;
 
-    /* clearbitmap(bitmap); --??-- MSDOS calls this */
+    /* clearbitmap(bitmap); -- RW -- MSDOS calls this */
   }
-
+  
   return bitmap;
 }
 
@@ -759,6 +772,7 @@ void osd_free_bitmap( struct osd_bitmap *bitmap ) {
     free( bitmap->private );
     free( bitmap );
   }
+  
 }
 
 
@@ -768,6 +782,10 @@ void osd_free_bitmap( struct osd_bitmap *bitmap ) {
 */
 struct osd_bitmap *osd_create_display( int width,int height ) {
   
+  if(enable_video(1, &video_memory, 0) < 0) {
+    printf("Failed to enable video mode\n");
+    exit(1);
+  }
   /* Set display register values temporarily for BIOS mode 13h: 320x200x256
      colours */
   set_bios_mode_13h();
@@ -785,6 +803,7 @@ void osd_close_display( void ) {
   int i;
   unsigned char *buf = g_8x16_font;
   int pen = first_free_pen;
+  
   first_free_pen = 0;
 
   for( i = 0; i < pen; i++ )
@@ -804,7 +823,7 @@ void osd_close_display( void ) {
   /* Here, we write the fontmap (for 8x16 fonts) to plane 2 of video RAM so
    * that we have valid fonts on return to text mode */
   for( i = 0; i < 256; i++ ) {
-    memcpy( (void *)( 0x200000 + i * 32 ), buf, 16 );
+    memcpy( (void *)( video_memory + i * 32 ), buf, 16 );
     buf += 16;
   }
 
@@ -831,12 +850,13 @@ int osd_obtain_pen( unsigned char red, unsigned char green, unsigned char blue )
 
 
 void osd_update_display( void ) {
-
-  memcpy( (void *)0x200000, bitmap->private, bitmap->width * bitmap->height );
+  //printf("In %s\n", __FUNCTION__);
+  memcpy( (void *)video_memory, bitmap->private, bitmap->width * bitmap->height );
+  
 }
 
 
-/* --??-- Below are just empty wrapper functions needed for resolving
+/* -- RW -- Below are just empty wrapper functions needed for resolving
    symbols */
 
 void osd_update_audio(void) {
@@ -852,7 +872,6 @@ void osd_play_streamed_sample(int channel,unsigned char *data,int len,int freq,i
 }
 
 void osd_adjust_sample(int channel,int freq,int volume) {
-
 }
 
 void osd_stop_sample(int channel) {
@@ -869,6 +888,6 @@ int osd_joy_pressed(int joycode) {
 }
 
 void osd_exit(void) { 
-
+  
 }
 

@@ -1,0 +1,60 @@
+# Makefile for MAME 0.15
+# Configuration options can be found under lines marked with '***'
+
+include ../config.mk
+
+# *** Choose your compiler. Make it ANSI-compatible (e.g. 'cc -ansi').
+#CC	= gcc
+#LD	= ld
+
+# *** If you have the MIT-SHM extension, uncomment the following:
+#MS		= -DMITSHM
+MS =
+
+
+ARCH    = quest
+
+# *** architecture.
+
+# quest
+DEFS.quest   = -DX86_ASM -DLSB_FIRST -DUNIX -Dlinux -g 
+LIBS.quest   =  $(LIB_DEST)/crt0.o -lc
+
+# No configurable options below this line....
+
+CFLAGS = -Isrc -Isrc/Z80 -fstrength-reduce -funroll-loops -Wall
+OBJS   = obj/mame.o obj/common.o obj/driver.o obj/cpuintrf.o obj/osdepend.o \
+         obj/vidhrdw/generic.o \
+         obj/machine/pacman.o obj/vidhrdw/pacman.o obj/drivers/pacman.o \
+	 obj/vidhrdw/pengo.o obj/sndhrdw/pengo.o obj/drivers/pengo.o \
+         obj/Z80/Z80.o 
+
+VPATH = src src/Z80
+
+all: mame
+
+install: mame
+	mkdir -p $(INSTALL_DIR)/../pacfman
+	$(INSTALL_CMD) pacman/* $(INSTALL_DIR)/../pacman
+	$(INSTALL_CMD) mame $(INSTALL_DIR)
+
+mame:  $(OBJS)
+	$(LD) -o mame $(OBJS) $(LIBS.$(ARCH))
+
+obj/osdepend.o: src/quest/quest.c
+	 $(CC) $(DEFS.$(ARCH)) $(MS) $(CFLAGS) -Isrc/quest -o $@ -c src/quest/quest.c
+
+obj/%.o: src/%.c
+	 $(CC) $(DEFS.$(ARCH)) $(MS) $(CFLAGS) -O3 -o $@ -c $<
+
+# dependencies
+obj/Z80/Z80.o:  Z80.c Z80.h Z80Codes.h Z80IO.h Z80DAA.h
+	$(CC) $(DEFS.$(ARCH)) $(MS) $(CFLAGS) -O3 -o $@ -c $<
+
+clean:
+	rm -rf *.o */*.o */*/*.o
+	rm -f mame
+
+tags:
+	find . -name '*.[ch]' | xargs etags -o TAGS 
+	find . -name '*.[ch]' | xargs ctags -o tags

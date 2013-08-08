@@ -47,6 +47,7 @@ typedef struct
 bool init_keyboard_8042 (void);
 void keyboard_8042_next (key_event *);
 int keyboard_8042_next_no_wait(key_event *e);
+uint pressed_keys(uint* buf, int max);
 
 
 #endif

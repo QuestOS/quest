@@ -3,11 +3,12 @@ GRUB2 = grub2
 PWD := $(shell pwd)
 MNT_POINT = /tftp/boot
 ISO_DIR = $(PWD)/iso/boot
+RAMDISK = $(PWD)/ramdisk
 TAR = tar
 SYNC = sync
 
 QUEST_USER_PROGS_DIRS = canny netperf sysprogs tests torcs malardalen \
-			zlib-1.2.7 qcv/progs 
+			zlib-1.2.7 qcv/progs mame
 QUEST_LIB_DIRS = libc libjpeg qcv/lib ffmpeg_libraries
 DIRS = $(QUEST_USER_PROGS_DIRS) $(QUEST_LIB_DIRS) kernel
 
@@ -24,6 +25,7 @@ MAKEFLAGS += -k
 
 install: export INSTALL_DIR = $(MNT_POINT)
 quest.iso: export INSTALL_DIR = $(ISO_DIR)
+ramdisk.img: export INSTALL_DIR = $(RAMDISK)/boot
 
 all: $(BUILDDIRS)
 
@@ -70,8 +72,15 @@ $(ISO_DIR)/grub/eltorito.img:  iso-grub.cfg
 	cp $(GRUB2)/eltorito.img iso/boot/grub/
 	$(TAR) -C iso/boot/grub -jxf $(GRUB2)/mods.tar.bz2
 
-quest.iso: $(ISO_DIR)/grub/eltorito.img all
-	$(MAKE) $(INSTALLDIRS);
+ramdisk.img: all
+	rm -rf $(RAMDISK) $@
+	mkdir -p $(RAMDISK)/boot
+	$(MAKE) $(INSTALLDIRS)
+	genromfs -f $@ -d $(RAMDISK)/ -V quest
+
+quest.iso: $(ISO_DIR)/grub/eltorito.img all ramdisk.img
+	$(MAKE) $(INSTALLDIRS)
+	cp ramdisk.img $(INSTALL_DIR)
 	mkisofs -quiet $(MSINFO) \
 		-R -b boot/grub/eltorito.img \
 		-no-emul-boot -boot-load-size 4 \

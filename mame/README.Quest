@@ -1,0 +1,30 @@
+MAME Disclaimer:
+
+THIS SOFTWARE IS PROVIDED BY THE COPYRIGHT HOLDERS AND CONTRIBUTORS
+"AS IS" AND ANY EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT
+LIMITED TO, THE IMPLIED WARRANTIES OF MERCHANTABILITY AND FITNESS FOR
+A PARTICULAR PURPOSE ARE DISCLAIMED. IN NO EVENT SHALL THE COPYRIGHT
+OWNER OR CONTRIBUTORS BE LIABLE FOR ANY DIRECT, INDIRECT, INCIDENTAL,
+SPECIAL, EXEMPLARY, OR CONSEQUENTIAL DAMAGES (INCLUDING, BUT NOT
+LIMITED TO, PROCUREMENT OF SUBSTITUTE GOODS OR SERVICES; LOSS OF USE,
+DATA, OR PROFITS; OR BUSINESS INTERRUPTION) HOWEVER CAUSED AND ON ANY
+THEORY OF LIABILITY, WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT
+(INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE
+OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
+
+Description:
+
+An old version of mame ported to the Quest operating system,
+specifically to support pacman.  The pacman ROMs should be placed in a
+folder called pacman and the install process will copy them as
+appropriate.  The pacman ROMs cannot be included, see
+http://www.mamedev.org/legal.html for more info about the legality of
+ROMs.  The original mame source code can be found in mame015s.zip,
+included here to comply with the redistribution requirements listed in
+http://www.mamedev.org/legal.html.
+
+The MAME source code is copyright by the developer who contributed to
+it.  This port includes some slight modifications to the mame source
+code and the addition of the Quest specific architecture code.  More
+legal information about MAME can be found here:
+http://www.mamedev.org/legal.html.

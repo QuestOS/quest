@@ -21,6 +21,7 @@ MPC = mpc-0.8.1
 MPC_BUILD_DIR = build-$(MPC)
 MPC_WEB_LOCATION = http://www.multiprecision.org/mpc/download/$(MPC).tar.gz
 
+AUTOCONF_VERSION=$(shell autoconf -V | grep "autoconf" | tr ' ' '\n' | tail -1)
 
 all: toolchain
 
@@ -89,10 +90,13 @@ $(COMPILER_BUILD_DIR)/Makefile:
 	tar xf $(COMPILER).tar.gz
 	cd compiler-files; find . -type f -name "*" -exec cp {} ../$(COMPILER)/{} \;
 	cp compiler-files/gcc/config/quest.h $(COMPILER)/gcc/config/quest.h
+# Shame on GNU GCC devs for requiring old software
+	cd $(COMPILER); sed -i "s/2.64/$(AUTOCONF_VERSION)/g" ./config/override.m4
+	cd $(COMPILER)/libstdc++-v3; autoconf
 	cd $(COMPILER_BUILD_DIR); ../$(COMPILER)/configure --target=$(TARGET) \
 		--prefix=$(TOOLCHAIN_INSTALL_DIR) \
 		--with-gmp=$(TOOLCHAIN_INSTALL_DIR) --with-mpfr=$(TOOLCHAIN_INSTALL_DIR) --with-mpc=$(TOOLCHAIN_INSTALL_DIR) \
-		--disable-nls --enable-languages=c --with-newlib
+		--disable-nls --enable-languages=c,c++ --with-newlib
 
 clean:
 	rm -rf $(GMP_BUILD_DIR)

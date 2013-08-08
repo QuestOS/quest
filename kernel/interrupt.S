@@ -374,13 +374,14 @@ syscall3:
         
         SREGS_RESTORE
 
-/* getchar from keyboard driver */      
+/* pressed_keys from keyboard driver */      
 syscall4:
         SREGS_SAVE
 
         pushl %ebx
-        call _getchar
-        popl %ebx
+        pushl %eax
+        call _pressed_keys
+        addl $8, %esp
         
         SREGS_RESTORE
 
@@ -436,8 +437,10 @@ syscall8:
 /* time */      
 syscall9:
         SREGS_SAVE
-
+        
+        pushl %eax
         call _time
+        addl $4, %esp
         
         SREGS_RESTORE
 

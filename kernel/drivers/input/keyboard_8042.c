@@ -119,7 +119,7 @@ check_control_alt_del (void)
   }
 }
 
-void new_keyboard_code(uint8 code, bool have_kernel_lock)
+void new_keyboard_code(uint16 code, bool have_kernel_lock)
 {
   int i;
   if (escape) {
@@ -128,13 +128,12 @@ void new_keyboard_code(uint8 code, bool have_kernel_lock)
     escape = 0;
   }
 
-    
   if (code == 0xE0 || code == 0xE1)
     escape = code;
   else if (code & 0x80) {
     /* Release key */
     code &= (~0x80);          /* unset "release" bit */
-
+    
     /* If a key is released, there should be a Press event in the
      * cur_event buffer already. */
     for (i=0; i<KEY_EVENT_MAX; i++) {
@@ -145,7 +144,7 @@ void new_keyboard_code(uint8 code, bool have_kernel_lock)
         cur_event.keys[i].release = 1;
         cur_event.keys[i].pressed = 0;
         cur_event.keys[i].latest  = 1;
-
+        
         /* enqueue release event */
         if (circular_insert_nowait (&keyb_buffer, (void *)&cur_event) < 0) {
           if(!have_kernel_lock) lock_kernel();
@@ -158,17 +157,17 @@ void new_keyboard_code(uint8 code, bool have_kernel_lock)
         break;
       }
     }
-
+    
     /* No previous Press event found. */
     if (i == KEY_EVENT_MAX) {
       if(!have_kernel_lock) lock_kernel();
       com1_printf ("keyboard_8042: spurious break code: %X\n", code);
       if(!have_kernel_lock) unlock_kernel();
     }
-
+    
   } else {
     /* Press key */
-
+    
     for (i=0; i<KEY_EVENT_MAX; i++) {
       /* First, see if it is already in the table: e.g. repeating
        * keystrokes will send a stream of 'make' codes with no 'break'
@@ -178,7 +177,7 @@ void new_keyboard_code(uint8 code, bool have_kernel_lock)
         break;
       }
     }
-
+    
     if (i == KEY_EVENT_MAX) {
       /* It wasn't in the table already, so, find an empty entry */
       for (i=0; i<KEY_EVENT_MAX; i++) {
@@ -187,17 +186,17 @@ void new_keyboard_code(uint8 code, bool have_kernel_lock)
         }
       }
     }
-
+    
     static char lcase_scancode[128] =
-    "\0\e1234567890-=\177\tqwertyuiop[]\n\0asdfghjkl;'`\0\\zxcvbnm,./\0*\0 \0\0\0\0\0\0\0\0\0\0\0\0\000789-456+1230.\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0";
-
-
+      "\0\e1234567890-=\177\tqwertyuiop[]\n\0asdfghjkl;'`\0\\zxcvbnm,./\0*\0 \0\0\0\0\0\0\0\0\0\0\0\0\000789-456+1230.\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0";
+    
+    
     if (i == KEY_EVENT_MAX) {
       /* no free entry */
       if(!have_kernel_lock) lock_kernel();
       com1_printf ("keyboard_8042: too many keys: %X\n", code);
       if(!have_kernel_lock) unlock_kernel();
-
+      
     }
     else {
       /* operate on entry: 0 <= i < KEY_EVENT_MAX */
@@ -284,6 +283,22 @@ int
 keyboard_8042_next_no_wait(key_event *e)
 {
   return circular_remove_nowait(&keyb_buffer, (void *)e);
+}
+
+uint pressed_keys(uint* buf, int max)
+{
+  int i;
+  uint c = 0;
+  memset(buf, 0, sizeof(uint) * max);
+
+  for(i = 0; i < (max < KEY_EVENT_MAX ? max : KEY_EVENT_MAX); ++i) {
+    if(cur_event.keys[i].present && cur_event.keys[i].pressed) {
+      buf[c++] = cur_event.keys[i].scancode;
+    }
+  }
+
+  return c;
+  
 }
 
 #include "module/header.h"
