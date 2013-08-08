@@ -41,6 +41,17 @@ int IOAPIC_get_GSI_mapping (uint32 GSI, uint8 *vector, uint64 *flags);
 uint32 IOAPIC_num_entries (void);
 extern uint32 mp_ISA_bus_id;
 
+static inline uint32
+get_logical_dest_addr (uint32 cpu)
+{
+  /* Maximum of 8 cores */
+  if (cpu >= 8) panic ("Invalid cpu number!");
+  if (cpu < 7)
+    return ((uint32) (0x2 << cpu));
+  else
+    return ((uint32) 0x1);
+}
+
 #endif 
 
 /* 

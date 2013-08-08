@@ -102,7 +102,7 @@ smp_init (void)
   phys_id = get_pcpu_id();
 
   /* setup a logical destination address */
-  log_dest = 0x01000000 << phys_id;
+  log_dest = get_logical_dest_addr (phys_id) << 24;
   LAPIC_set_logical_destination(log_dest);
 
   /* Find out how fast the LAPIC can tick -- and correspondingly the
