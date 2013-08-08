@@ -673,7 +673,7 @@ int virtual_shared_mem_map(uint vshm_key, uint size, uint sandboxes,
           com1_printf("Failed to map address that should not have failed\n");
           panic("Failed to map address that should not have failed");
           }
-        shm_set_ept_permission((i * 0x1000) + pool->start_addr, 1, permissions);
+        hypercall_set_ept((i * 0x1000) + pool->start_addr, 1, permissions);
         ++j;
       }
     }
