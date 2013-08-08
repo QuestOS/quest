@@ -14,6 +14,7 @@
  *  You should have received a copy of the GNU General Public License
  *  along with this program.  If not, see <http://www.gnu.org/licenses/>.
  */
+#ifdef USE_VMX
 
 #include "vm/shm.h"
 #include "vm/ept.h"
@@ -300,5 +301,7 @@ shm_free_phys_frames (uint32 frame, uint32 count)
     spinlock_unlock (&(shm->shm_lock));
   }
 }
+
+#endif  /* USE_VMX */
 
 /* vi: set et sw=2 sts=2: */

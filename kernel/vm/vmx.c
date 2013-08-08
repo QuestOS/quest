@@ -14,6 +14,7 @@
  *  You should have received a copy of the GNU General Public License
  *  along with this program.  If not, see <http://www.gnu.org/licenses/>.
  */
+#ifdef USE_VMX
 
 #include "vm/vmx.h"
 #include "vm/ept.h"
@@ -1260,6 +1261,8 @@ static const struct module_ops mod_ops = {
 #ifdef USE_VMX
 //DEF_MODULE (vm___vmx, "VMX hardware virtualization driver", &mod_ops, {});
 #endif
+
+#endif /* USE_VMX */
 
 /*
  * Local Variables:

@@ -14,6 +14,7 @@
  *  You should have received a copy of the GNU General Public License
  *  along with this program.  If not, see <http://www.gnu.org/licenses/>.
  */
+#ifdef USE_VMX
 
 #include "kernel.h"
 #include "mem/mem.h"
@@ -338,6 +339,8 @@ shm_kmalloc_init (void)
   shm_pow2_lock = shm_alloc_drv_lock ();
   spinlock_init (shm_pow2_lock);
 }
+
+#endif  /* USE_VMX */
 
 /* 
  * Local Variables:

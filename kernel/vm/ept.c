@@ -14,6 +14,7 @@
  *  You should have received a copy of the GNU General Public License
  *  along with this program.  If not, see <http://www.gnu.org/licenses/>.
  */
+#ifdef USE_VMX
 
 #include "vm/vmx.h"
 #include "vm/ept.h"
@@ -895,5 +896,7 @@ mask_sandbox (uint32 sandbox)
   unmap_virtual_page (pml4);
 }
 #endif
+
+#endif /* USE_VMX */
 
 /* vi: set et sw=2 sts=2: */

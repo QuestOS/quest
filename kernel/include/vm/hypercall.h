@@ -18,6 +18,8 @@
 #ifndef _HYPERCALL_H_
 #define _HYPERCALL_H_
 
+#ifdef USE_VMX
+
 #include "types.h"
 #include "vmx-defs.h"
 
@@ -89,6 +91,8 @@ hypercall_get_host_phys_addr (uint32 guest_phys)
 }
 
 void vmx_process_hypercall (uint32 status);
+
+#endif /* USE_VMX */
 
 #endif
 
