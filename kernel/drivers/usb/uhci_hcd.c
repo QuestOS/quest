@@ -849,7 +849,7 @@ uhci_init (void)
     /* use PCI routing table */
     DLOG ("Found PCI routing entry irq.gsi=0x%x, irq.trigger=0x%x", irq.gsi, irq.trigger);
     //irq.trigger = TRIGGER_EDGE;
-    if (!pci_irq_map_handler (&irq, uhci_irq_handler, 0x01,
+    if (!pci_irq_map_handler (&irq, uhci_irq_handler, get_logical_dest_addr (0),
                               IOAPIC_DESTINATION_LOGICAL,
                               IOAPIC_DELIVERY_FIXED)) {
       DLOG ("Unable to map IRQ handler");

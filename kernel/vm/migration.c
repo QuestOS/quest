@@ -443,7 +443,7 @@ request_migration (int sandbox)
   /* TODO: Also add IPI overhead into the tsc? */
   RDTSC (now);
   shm->remote_tsc[sandbox] = now;
-  return LAPIC_send_ipi (0x1 << sandbox,
+  return LAPIC_send_ipi (get_logical_dest_addr (sandbox),
                          LAPIC_ICR_LEVELASSERT
                          | LAPIC_ICR_DM_LOGICAL
                          | MIGRATION_RECV_REQ_VECTOR);

@@ -3797,7 +3797,7 @@ r8169_init (void)
     irq.trigger = TRIGGER_EDGE;
     irq_backup = irq;
 
-    if (!pci_irq_map_handler (&irq, irq_handler, 0x01,
+    if (!pci_irq_map_handler (&irq, irq_handler, get_logical_dest_addr (0),
                               IOAPIC_DESTINATION_LOGICAL,
                               IOAPIC_DELIVERY_FIXED)) {
       DLOG ("Failed to map IRQ");
@@ -4048,7 +4048,8 @@ r8169_register (void)
   }
 
   /* Ask IOAPIC for interrupt delivery to THIS sandbox (core) */
-  IOAPIC_map_GSI (irq_backup.gsi, vector, flags | (((uint64)(0x1 << cpu)) << 56));
+  IOAPIC_map_GSI (irq_backup.gsi, vector, flags |
+                  (((uint64)(get_logical_dest_addr (cpu))) << 56));
 
   atomic_inc (&num_sharing);
   logger_printf ("r8169: %d sandboxes sharing this driver\n", num_sharing.counter);

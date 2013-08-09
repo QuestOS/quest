@@ -824,7 +824,7 @@ e1000_init (void)
                     irq_pin, &irq)) {
     /* use PCI routing table */
     DLOG ("Found PCI routing entry irq.gsi=0x%x", irq.gsi);
-    if (!pci_irq_map_handler (&irq, e1000_irq_handler, 0x01,
+    if (!pci_irq_map_handler (&irq, e1000_irq_handler, get_logical_dest_addr (0),
                               IOAPIC_DESTINATION_LOGICAL,
                               IOAPIC_DELIVERY_FIXED))
       goto abort_virt;

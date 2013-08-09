@@ -2296,7 +2296,7 @@ bool ehci_init(void)
     /* use PCI routing table */
     DLOG ("Found PCI routing entry irq.gsi=0x%x", irq.gsi);
     if (! (ehci_hcd.handler_vector =
-           pci_irq_map_handler (&irq, ehci_irq_handler, 0x01,
+           pci_irq_map_handler (&irq, ehci_irq_handler, get_logical_dest_addr (0),
                                 IOAPIC_DESTINATION_LOGICAL,
                                 IOAPIC_DELIVERY_FIXED)) ) {
       DLOG ("Unable to map IRQ handler");

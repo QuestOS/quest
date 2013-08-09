@@ -175,7 +175,8 @@ acpi_secondary_init(void)
       flags |= IOAPIC_TRIGGER_EDGE;
     else
       flags |= IOAPIC_TRIGGER_LEVEL;
-    if (IOAPIC_map_GSI (gsi, vector, 0x0100000000000000ULL | flags) != -1) {
+    if (IOAPIC_map_GSI (gsi, vector, flags |
+                        (((uint64) get_logical_dest_addr (0)) << 56)) != -1) {
       set_vector_handler (vector, acpi_irq_handler);
       DLOG ("ACPI: mapped GSI 0x%X to vector 0x%X (%s, %s)\n",
                      gsi, vector,

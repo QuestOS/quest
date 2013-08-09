@@ -98,7 +98,8 @@ check_control_alt_del (void)
 //extern uint64 vm_time_start, vm_time_end;
     //int vec = 200;
     //RDTSC (ipi_rt_start);
-    //LAPIC_send_ipi (0x1 << 1, LAPIC_ICR_LEVELASSERT | LAPIC_ICR_DM_LOGICAL | vec);
+    //LAPIC_send_ipi (get_logical_dest_addr (1),
+    //                LAPIC_ICR_LEVELASSERT | LAPIC_ICR_DM_LOGICAL | vec);
     //RDTSC (vm_time_start);
     //vm_exit (0);
     //RDTSC (vm_time_end);
