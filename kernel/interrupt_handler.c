@@ -503,7 +503,7 @@ static int syscall_enable_video(u32 eax, int enable, unsigned char** video_memor
       uint32 * plPageDirectory = map_virtual_page ((uint32) get_pdbr () | 3);
       int free_dir_entry = -1;
 
-      if(plPageDirectory == 0xFFFFFFFF) return -1;
+      if((uint32) plPageDirectory == 0xFFFFFFFF) return -1;
 
       /* Find free directory entry  */
       for(i = 0; i < 1024; ++i) {
@@ -1240,7 +1240,7 @@ _read (int fd, char *buf, int count)
   fd_table_entry_t* fd_table_entry;
   fd_table_file_entry_t* file_entry;
   int act_len;
-  int res, char_returned;
+  int res;
   char* temp_buf;
   //uint c = 0;
   //key_event e;
@@ -1253,6 +1253,51 @@ _read (int fd, char *buf, int count)
 
     
   case 0: /* STDIN */
+#ifdef USE_LINUX_SANDBOX
+  {
+    static int off = -1;
+    static int cmd_len = 0;
+    static unsigned char * command = NULL;
+
+    if (!shm) return -1;
+    if (!shm_screen) return -1;
+    command = ((unsigned char *) shm_screen) + 4096 - 83;
+
+start:
+    if ((off == -1) && command[82]) {
+      /* Need to check for new command */
+      for (i = 0; i < 82; i++) {
+        if (command[i] == '\n') {
+          /* There is a new command from remote terminal */
+          off = 0;
+          cmd_len = i + 1;
+        }
+      }
+    }
+
+    if (off == -1) {
+      /* No new command */
+      sched_usleep (50*1000);
+      goto start;
+    } else {
+      i = 0;
+      while ((i < count) && (off < cmd_len)) {
+        buf[i++] = command[off++];
+      }
+      if (off == cmd_len) {
+        /* Current command consumed */
+        memset (command, 0, 83);
+        off = -1;
+        cmd_len = 0;
+      }
+    }
+    
+    unlock_kernel ();
+    return i;
+  }
+#else
+  {
+    int char_returned;
     i = 0;
     while(i < count) {
       char_returned = keymap_getchar(i == 0);
@@ -1264,6 +1309,8 @@ _read (int fd, char *buf, int count)
     //com1_printf("Read returning %d\n", i);
     unlock_kernel();
     return i;
+  }
+#endif
 
     /* Can't read on STDOUT or STDERR */
   case 1:
@@ -1758,7 +1805,7 @@ _switch_screen (int dir)
 
   vscreen = map_virtual_page (
       (uint32) shm->virtual_display.screen[shm->virtual_display.cur_screen] | 3);
-  memcpy (vscreen, pchVideo, 0x1000);
+  memcpy (vscreen, pchVideo, 80*25*2);
   unmap_virtual_page (vscreen);
 
   if ((shm->virtual_display.cur_screen == 0) && dir == 0) {
@@ -1784,7 +1831,7 @@ _switch_screen (int dir)
 
   vscreen = map_virtual_page (
       (uint32) shm->virtual_display.screen[shm->virtual_display.cur_screen] | 3);
-  memcpy (pchVideo, vscreen, 0x1000);
+  memcpy (pchVideo, vscreen, 80*25*2);
   unmap_virtual_page (vscreen);
 
   i = shm->virtual_display.cur_screen;

@@ -40,6 +40,7 @@ extern void vmx_vm_fork (uint32);
 extern void vmx_init_ept (uint32);
 extern uint32 get_host_phys_addr (uint32);
 extern void set_ept_page_permission (uint32, uint8);
+extern void map_ept_page (uint32, uint32, uint8);
 #ifdef USE_LINUX_SANDBOX
 extern void mask_sandbox (uint32);
 #endif

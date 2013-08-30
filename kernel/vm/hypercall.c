@@ -152,7 +152,7 @@ static void
 process_hypercall_get_host_phys_addr (vm_exit_param_t gphys)
 {
   vm_exit_return_val = (void *) get_host_phys_addr ((uint32) gphys);
-  DLOG ("Sandbox%d: Host Phys for 0x%X is 0x%X\n", get_pcpu_id (),
+  DLOG ("Sandbox%d: Host Phys for 0x%X is 0x%X", get_pcpu_id (),
         (uint32) vm_exit_input_param, (uint32) vm_exit_return_val);
 }
 
@@ -160,10 +160,11 @@ process_hypercall_get_host_phys_addr (vm_exit_param_t gphys)
  * Processing intentional VM-Exit from Sandboxes.
  */
 void
-vmx_process_hypercall (uint32 status)
+vmx_process_hypercall (uint32 status, void * param)
 {
   uint cpu = get_pcpu_id ();
-  DLOG ("Sandbox%d: performing VM-Exit Status: 0x%X Input: 0x%X\n",
+  virtual_machine * vm = (virtual_machine *) param;
+  DLOG ("Sandbox%d: performing VM-Exit Status: 0x%X Input: 0x%X",
         cpu, status, vm_exit_input_param);
 
   switch (status) {
@@ -188,6 +189,12 @@ vmx_process_hypercall (uint32 status)
 #endif
     case VM_EXIT_REASON_SET_EPT:
       process_hypercall_set_ept (vm_exit_input_param);
+      break;
+    case VM_EXIT_REASON_MAP_EPT:
+      logger_printf ("Mapping Guest Physical 0x%X to Machine Physical 0x%X\n",
+                     (uint32) vm->guest_regs.eax, (uint32) vm->guest_regs.ebx);
+      map_ept_page ((uint32) vm->guest_regs.eax, (uint32) vm->guest_regs.ebx,
+                    (uint8) vm->guest_regs.edx);
       break;
     default:
       logger_printf ("Unknow reason 0x%X caused VM-Exit in sandbox %d\n", status, cpu);

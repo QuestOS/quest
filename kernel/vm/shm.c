@@ -73,7 +73,7 @@ shm_screen_init (uint32 cpu)
 
   /* Backup screen buffer for Bootstrap Processor */
   if (cpu == 0) {
-    memcpy (shm_screen, pchVideo, 0x1000);
+    memcpy (shm_screen, pchVideo, 80*25*2);
   }
 
   logger_printf ("CPU %d: Virtual screen initialized.\n", cpu);

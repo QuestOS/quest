@@ -1460,7 +1460,7 @@ int _putchar_with_attributes (int ch, int attribute)
     return (int) (unsigned char) ch;
   }
 
-  if (cursor->y * 160 + cursor->x * 2 >= 0x1000) return ch;
+  if (cursor->y * 160 + cursor->x * 2 > 80*25*2) return ch;
 
 #ifdef USE_VMX
   if (shm_screen_initialized) {
@@ -1484,7 +1484,7 @@ int _putchar_with_attributes (int ch, int attribute)
   cursor->x++;
 #endif
 
-  if (cursor->y * 160 + cursor->x * 2 >= 0x1000) return ch;
+  if (cursor->y * 160 + cursor->x * 2 > 80*25*2) return ch;
 
 #ifdef USE_VMX
   if (shm_screen_initialized) {

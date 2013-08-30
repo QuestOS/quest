@@ -29,6 +29,7 @@
 #define VM_EXIT_REASON_LINUX_BOOT    0x0003  /* Boot Linux sandbox */
 #define VM_EXIT_REASON_MASK_SB       0x0004  /* Remove EPT mapping of a sandbox */
 #define VM_EXIT_REASON_SET_EPT       0x0005  /* Set page permission in EPT (shared memory) */
+#define VM_EXIT_REASON_MAP_EPT       0x0006  /* Map guest physical to machine physical */
 
 typedef void * vm_exit_param_t;
 
@@ -90,7 +91,7 @@ hypercall_get_host_phys_addr (uint32 guest_phys)
   return (uint32) vm_exit_return_val;
 }
 
-void vmx_process_hypercall (uint32 status);
+void vmx_process_hypercall (uint32 status, void * param);
 
 #endif /* USE_VMX */
 

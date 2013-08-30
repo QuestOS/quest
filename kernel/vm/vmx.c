@@ -541,21 +541,33 @@ vmx_process_exit (virtual_machine *vm, uint32 reason)
 {
   bool need_ecx_fix = FALSE;
 
-#if DEBUG_VMX > 1
-  uint32 inslen = vmread (VMXENC_VM_EXIT_INSTR_LEN);
-  uint32 intinf = vmread (VMXENC_VM_EXIT_INTERRUPT_INFO);
-  uint32 qualif = vmread (VMXENC_EXIT_QUAL);
-  uint32 ercode = vmread (VMXENC_VM_EXIT_INTERRUPT_ERRCODE);
-  uint32 insinf = vmread (VMXENC_VM_EXIT_INSTR_INFO);
-  uint32 exit_eflags = 0;
-  asm volatile ("pushfl; pop %0\n":"=r" (exit_eflags):);
-#endif
-
   switch (reason) {
+    case 0x00 :
+    {
+      /* VM-Exit due to Exception and NMI */
+      uint32 intinf = vmread (VMXENC_VM_EXIT_INTERRUPT_INFO);
+      uint32 ercode = vmread (VMXENC_VM_EXIT_INTERRUPT_ERRCODE);
+      uint8 vec = intinf & 0xFF;
+      uint32 eip = vmread (VMXENC_GUEST_RIP);
+
+      logger_printf ("Exception/NMI:\n");
+      logger_printf ("  VM_EXIT_INTERRUPT_INFO: 0x%X\n", intinf);
+      logger_printf ("  VM_EXIT_INTERRUPT_ERRCODE: 0x%X\n", ercode);
+      logger_printf ("  Guest EIP: 0x%X\n", eip);
+
+      switch (vec) {
+        case 0x01 :
+          /* Debug Exception #DB. Quest use this for I/O partitioning purpose. */
+          break;
+        default :
+          logger_printf ("Unexpected Exception/NMI!\n");
+      }
+      return -1;
+    }
     case 0x0A :
       /* We use CPUID as a way of intentional VM-Exit in Guest too */
       if (vm->guest_regs.eax == 0xFFFFFFFF) {
-        vmx_process_hypercall (vm->guest_regs.ecx);
+        vmx_process_hypercall (vm->guest_regs.ecx, vm);
         return 0;
       }
       if (vm->guest_regs.eax == 0x1) {
@@ -586,6 +598,10 @@ vmx_process_exit (virtual_machine *vm, uint32 reason)
         logger_printf ("Fixed ECX: 0x%p\n", vm->guest_regs.ecx);
       }
       return 0;
+    case 0x12 :
+      /* VM Exit through vmcall instruction */
+      vmx_process_hypercall (vm->guest_regs.ecx, vm);
+      return 0;
     case 0x1F :
       /* RDMSR / WRMSR -- conditional on MSR bitmap -- else perform in monitor */
       logger_printf ("VM: use MSR bitmaps=%d MSR_BITMAPS=0x%p bitmap[0x%X]=%d\n",
@@ -615,6 +631,50 @@ vmx_process_exit (virtual_machine *vm, uint32 reason)
                      "c" (vm->guest_regs.ecx));
       return 0;
 #ifdef VMX_EPT
+    case 0x30 :
+    {
+      uint32 qualif = vmread (VMXENC_EXIT_QUAL);
+      uint32 gphys = vmread (VMXENC_GUEST_PHYS_ADDR);
+      uint32 glinear = vmread (VMXENC_GUEST_LINEAR_ADDR);
+
+      /* EPT Violation */
+      logger_printf ("EPT violation:\n");
+      logger_printf ("  Guest Physical Address is: 0x%X\n", gphys);
+      logger_printf ("  Guest Linear Address is: 0x%X\n", glinear);
+
+      if (!(qualif & (0x1 << 0x7))) {
+        logger_printf ("  Warning: Guest linear address is not valid!\n");
+        logger_printf ("  Attempt to load guest PDPTE through MOV CR\n");
+      } else {
+        /* Bit 7 is set */
+        if (qualif & (0x1 << 0x8)) {
+          logger_printf ("  Violation happened during normal address translation\n");
+        } else {
+          logger_printf ("  Violation happened during page walk\n");
+        }
+      }
+
+      logger_printf ("  Caused by:");
+      if (qualif & (0x1 << 0x0)) logger_printf (" READ");
+      if (qualif & (0x1 << 0x1)) logger_printf (" WRITE");
+      if (qualif & (0x1 << 0x2)) logger_printf (" INST FETCH");
+      logger_printf ("\n");
+
+      logger_printf ("  Guest Physical Address Permission:");
+      if (qualif & (0x1 << 0x3)) logger_printf (" READABLE");
+      if (qualif & (0x1 << 0x4)) logger_printf (" WRITEABLE");
+      if (qualif & (0x1 << 0x5)) logger_printf (" EXECUTABLE");
+      logger_printf ("\n");
+
+      if (qualif & (0x1 << 0xC)) logger_printf ("  NMI unblocking due to IRET\n");
+
+      logger_printf ("  Guest Registers:\n");
+      logger_printf ("    EAX=0x%X, EBX=0x%X\n", vm->guest_regs.eax, vm->guest_regs.ebx);
+      logger_printf ("    ECX=0x%X, EDX=0x%X\n", vm->guest_regs.ecx, vm->guest_regs.edx);
+      logger_printf ("    EIP=0x%X\n", vmread (VMXENC_GUEST_RIP));
+
+      return -1;
+    }
     case 0x31 :
       /* EPT misconfiguration */
       logger_printf ("EPT misconfiguration:\n  VMXENC_EPT_PTR=0x%p\n",
@@ -633,7 +693,16 @@ vmx_process_exit (virtual_machine *vm, uint32 reason)
                      vm->guest_regs.edx);
       return 0;
     default :
- #if DEBUG_VMX > 1
+#if DEBUG_VMX > 1
+    {
+      uint32 inslen = vmread (VMXENC_VM_EXIT_INSTR_LEN);
+      uint32 intinf = vmread (VMXENC_VM_EXIT_INTERRUPT_INFO);
+      uint32 qualif = vmread (VMXENC_EXIT_QUAL);
+      uint32 ercode = vmread (VMXENC_VM_EXIT_INTERRUPT_ERRCODE);
+      uint32 insinf = vmread (VMXENC_VM_EXIT_INSTR_INFO);
+      uint32 exit_eflags = 0;
+      asm volatile ("pushfl; pop %0\n":"=r" (exit_eflags):);
+
       logger_printf ("VM-EXIT: %s\n  reason=%.8X qualif=%.8X\n  intinf=%.8X \
                       ercode=%.8X\n  inslen=%.8X insinf=%.8X\n",
                      (reason < VMX_NUM_EXIT_REASONS ?
@@ -641,6 +710,7 @@ vmx_process_exit (virtual_machine *vm, uint32 reason)
                      reason, qualif, intinf, ercode, inslen, insinf);
       logger_printf ("VM-EXIT: EFLAGS=0x%.8X\n", exit_eflags);
       vmx_vm_exit_reason ();
+    }
 #endif
       return -1;     
   }
@@ -656,8 +726,13 @@ vmx_host_state_save ()
 #ifdef EXCEPTION_EXIT
   vmwrite (~0, VMXENC_EXCEPTION_BITMAP);
 #else
-  /* do not exit on exception (see manual about page faults) */
-  vmwrite (0, VMXENC_EXCEPTION_BITMAP);
+  /*
+   * Force Debug Exception to trap into monitor. All others will be sent directly to
+   * the guest IDT. #DB (Vector 1) is used to do single-step debugging. Quest-V uses
+   * this to support resource (mostly I/O) partitioning. For details, see VM Exit
+   * handling in vm/vmx.c.
+   */
+  vmwrite ((0x1ul << 1), VMXENC_EXCEPTION_BITMAP);
 #endif
   vmwrite (0, VMXENC_PAGE_FAULT_ERRCODE_MASK);
   vmwrite (0, VMXENC_PAGE_FAULT_ERRCODE_MATCH);
@@ -1116,6 +1191,8 @@ test_pmode_vm (void)
 static virtual_machine VMs[MAX_CPUS] ALIGNED (0x1000);
 static int num_VMs = 0;
 DEF_PER_CPU (virtual_machine *, cpu_vm);
+
+#ifdef USE_LINUX_SANDBOX
 static uint32 vmx_bios_pgt[1024] __attribute__ ((aligned(0x1000)));
 
 static void
@@ -1133,6 +1210,7 @@ vmx_map_bios ()
   /* identity map the first megabyte */
   for (i=0; i<256; i++) vmx_bios_pgt[i] = (i << 12) | 7;
 }
+#endif
 
 static void
 vmx_percpu_init (void)

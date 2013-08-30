@@ -320,7 +320,7 @@ ap_init (void)
   //if (phys_id == 1) {
   //{ extern bool r8169_register (void); r8169_register (); }
   //{ extern bool netsetup_init (void); netsetup_init (); }
-  //{ extern bool vfs_init (void); vfs_init (); }
+  { extern bool vfs_init (void); vfs_init (); }
   //}
   { extern bool migration_init (void); migration_init (); }
     /* Initialise shared memory pools and start any necessary

@@ -851,6 +851,26 @@ set_ept_page_permission (uint32 phys_frame, uint8 permission)
   unmap_virtual_page (pml4);
 }
 
+/* Map guest physical address guest_phys to machine physical address machine_phys */
+void
+map_ept_page (uint32 guest_phys, uint32 machine_phys, uint8 permission)
+{
+  uint32 pml4_frame = vmread (VMXENC_EPT_PTR);
+  uint64 * pml4 = map_virtual_page ((pml4_frame & 0xFFFFF000) | 3);
+  uint64 * pdpt = map_virtual_page ((pml4[0] & 0xFFFFF000) | 3);
+  uint64 * pd = map_virtual_page ((pdpt[(guest_phys >> 30) & 0x3] & 0xFFFFF000) | 3);
+  uint64 * pt = map_virtual_page ((pd[(guest_phys >> 21) & 0x1FF] & 0xFFFFF000) | 3);
+
+  pt[(guest_phys >> 12) & 0x1FF] = (machine_phys & 0xFFFFF000);
+  pt[(guest_phys >> 12) & 0x1FF] |= (permission & 0x7);
+  pt[(guest_phys >> 12) & 0x1FF] |= (0x6 << 3);
+
+  unmap_virtual_page (pt);
+  unmap_virtual_page (pd);
+  unmap_virtual_page (pdpt);
+  unmap_virtual_page (pml4);
+}
+
 #ifdef USE_LINUX_SANDBOX
 void
 mask_sandbox (uint32 sandbox)

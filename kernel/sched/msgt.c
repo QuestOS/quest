@@ -212,11 +212,18 @@ beacon_thread (void)
   unlock_kernel ();
   sti ();
   for (;;) {
-    initialize_serial_port ();
-    com1_printf ("Beacon thread (%d): 0x%X\n", sandbox, b);
-    b++;
+    if (sandbox == 0) {
+      initialize_serial_port ();
+      //com1_printf ("Beacon thread (%d): 0x%X\n", sandbox, b);
+    }
 
-    if (sandbox == 1) {
+    if (sandbox == -1) {
+      void * tmp_page = map_virtual_page (0x1F000000 | 0x3);
+      *((uint32 *) tmp_page) = 0xDEADBEEF;
+      unmap_virtual_page (tmp_page);
+    }
+
+    if (sandbox == -1) {
       for (i = 0; i < mp_num_IOAPICs; i++) {
         for (j = 0; j < mp_IOAPICs[i].numGSIs; j++) {
           ioapic_tbl_entry = IOAPIC_read64 (IOAPIC_REDIR + (j * 2));
@@ -225,6 +232,8 @@ beacon_thread (void)
         }
       }
     }
+
+    b++;
 
     cli ();
     lock_kernel ();
