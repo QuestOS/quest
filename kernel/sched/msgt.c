@@ -25,6 +25,7 @@
 #include "mem/virtual.h"
 #include "smp/smp.h"
 #include "smp/apic.h"
+#include "drivers/pci/pci.h"
 
 //#define DEBUG_MSGT
 
@@ -212,18 +213,66 @@ beacon_thread (void)
   unlock_kernel ();
   sti ();
   for (;;) {
-    if (sandbox == 0) {
-      initialize_serial_port ();
-      //com1_printf ("Beacon thread (%d): 0x%X\n", sandbox, b);
+    if (sandbox == -1) {
+      //initialize_serial_port ();
+      com1_printf ("Beacon thread (%d): 0x%X\n", sandbox, b);
     }
 
     if (sandbox == -1) {
       void * tmp_page = map_virtual_page (0x1F000000 | 0x3);
+      com1_printf ("Writing to 0x1F000000\n");
       *((uint32 *) tmp_page) = 0xDEADBEEF;
+      com1_printf ("Reading from 0x1F000000: 0x%X\n", *((uint32 *) tmp_page));
       unmap_virtual_page (tmp_page);
     }
 
     if (sandbox == -1) {
+      int bus = 0, func = 0, slot = 0;
+      uint16 vendorID = 0, deviceID = 0;
+
+      if (b == 3) {
+        com1_printf ("Looking for devices...\n");
+        for (bus=0; bus <= PCI_MAX_BUS_NUM; bus++)
+          for (slot=0; slot <= PCI_MAX_DEV_NUM; slot++)
+            for (func=0; func <= PCI_MAX_FUNC_NUM; func++) {
+              vendorID = pci_read_word (pci_addr (bus, slot, func, 0x00));
+              deviceID = pci_read_word (pci_addr (bus, slot, func, 0x02));
+              if (vendorID == 0x10EC) {
+                if ((deviceID == 0x8129) ||
+                    (deviceID == 0x8136) ||
+                    (deviceID == 0x8167) ||
+                    (deviceID == 0x8168) ||
+                    (deviceID == 0x8169)) {
+                  com1_printf ("Found Realtek 0x%X\n", deviceID);
+                }
+              } else if (vendorID == 0x1186) {
+                if (deviceID == 0x4300) {
+                  com1_printf ("Found Dlink 0x%X\n", deviceID);
+                }
+              } else if (vendorID == 0x1259) {
+                if (deviceID == 0xC107) {
+                  com1_printf ("Found AT 0x%X\n", deviceID);
+                }
+              } else if (vendorID == 0x16EC) {
+                if (deviceID == 0x0116) {
+                  com1_printf ("Found 0x16EC 0x%X\n", deviceID);
+                }
+              }
+            }
+      }
+    }
+
+    if (sandbox == -1) {
+      //static int flag = 0;
+      //if (flag == 0) {
+      //  com1_printf ("Writing 0x10000\n");
+      //  IOAPIC_write64 (IOAPIC_REDIR + 0x20, 0x10000ull);
+      //  flag = 1;
+      //} else {
+      //  com1_printf ("Writing 0x100FE\n");
+      //  IOAPIC_write64 (IOAPIC_REDIR + 0x20, 0x100FEull);
+      //  flag = 0;
+      //}
       for (i = 0; i < mp_num_IOAPICs; i++) {
         for (j = 0; j < mp_IOAPICs[i].numGSIs; j++) {
           ioapic_tbl_entry = IOAPIC_read64 (IOAPIC_REDIR + (j * 2));

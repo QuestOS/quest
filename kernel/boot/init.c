@@ -685,6 +685,7 @@ init (multiboot * pmb)
 #endif
 
   /* Shared component initialization in Quest-V */
+  { extern bool vmx_io_blacklist_init (void); vmx_io_blacklist_init (); }
   { extern bool init_keyboard_8042 (void); init_keyboard_8042 (); }
   { extern bool pci_init (void); pci_init (); }
   { extern bool r8169_init (void); r8169_init (); }

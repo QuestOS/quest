@@ -3754,9 +3754,9 @@ r8169_init (void)
 
   for (i=0; compatible_ids[i].vendor != 0xFFFF; i++)
     if (pci_find_device (compatible_ids[i].vendor, compatible_ids[i].device,
-                         0xFF, 0xFF, 0, &device_index))
+                         0xFF, 0xFF, 0, &device_index)) {
       break;
-    else
+    } else
       device_index = ~0;
 
   if (device_index == (uint)(~0)) {

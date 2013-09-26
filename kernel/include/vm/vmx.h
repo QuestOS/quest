@@ -48,6 +48,19 @@
 
 extern bool shared_driver_available;
 
+/* Number of total registers in IOAPIC register blacklist */
+#define MAX_IOAPIC_BLACKLIST_LEN    32
+/* Number of total PCI devices in PCI blacklist */
+#define MAX_PCI_BLACKLIST_LEN    6
+
+/* Drivers can use these functions to set up partitioning *BEFORE* VM init! */
+extern bool ioapic_reg_in_blacklist (uint8, uint8);
+extern bool ioapic_add_reg_blacklist (uint8, uint8);
+extern bool pci_dev_in_blacklist (uint16, uint16, uint8);
+extern bool pci_add_dev_blacklist (uint16, uint16, uint8);
+
+extern bool vmx_io_blacklist_init (void);
+
 typedef struct
 {
   /* Order based on PUSHA/POPA */

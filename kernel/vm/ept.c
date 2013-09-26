@@ -782,6 +782,10 @@ vmx_init_ept (uint32 cpu)
 		}
               }
             } 
+          } else if (index == 0xFEC00000ul) {
+            /* IOAPIC is read only. Write will be allowed by configuration. */
+            /* See vmx.c vmx_process_exit for details. */
+            pt[k] = index | (memtype << 3) | EPT_READ_ACCESS;
           } else {
             pt[k] = index | (memtype << 3) | EPT_ALL_ACCESS;
           }

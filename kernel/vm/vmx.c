@@ -29,6 +29,7 @@
 #include "sched/sched.h"
 #include "vm/shdr.h"
 #include "vm/shm.h"
+#include "drivers/pci/pci.h"
 #ifdef USE_LINUX_SANDBOX
 #include "vm/linux_boot.h"
 #endif
@@ -536,6 +537,176 @@ vmx_create_monitor (virtual_machine *vm, u32 rip0, u32 rsp0)
   return -1;
 }
 
+/* 8KB memory region for IO bitmaps. It contains bits for ports 0x0000 to 0xFFFF. */
+static uint32 * io_bitmaps = NULL;
+
+#define IOBITMAP_SET(table,index) ((table)[(index)>>5] |= (1 << ((index) & 31)))
+#define IOBITMAP_CLR(table,index) ((table)[(index)>>5] &= ~(1 << ((index) & 31)))
+#define IOBITMAP_TST(table,index) ((table)[(index)>>5] & (1 << ((index) & 31)))
+
+static uint32 last_reason = 0;
+static uint32 last_port = 0;
+static uint32 last_gphys = 0;
+static uint8 last_permission = EPT_NO_ACCESS;
+
+typedef struct {
+  uint8 sandbox_id;
+  uint16 vendorID;
+  uint16 deviceID;
+} pci_dev_blacklist_t;
+
+static pci_dev_blacklist_t pci_dev_blacklist[MAX_PCI_BLACKLIST_LEN];
+
+bool
+pci_dev_in_blacklist (uint16 vendid, uint16 devid, uint8 sb)
+{
+  int i = 0;
+
+  for (i = 0; i < MAX_PCI_BLACKLIST_LEN; i++) {
+    if (pci_dev_blacklist[i].vendorID == 0xFFFF) {
+      return FALSE;
+    } else if ((pci_dev_blacklist[i].vendorID == vendid) &&
+               (pci_dev_blacklist[i].deviceID == devid) &&
+               (pci_dev_blacklist[i].sandbox_id == sb)) {
+      return TRUE;
+    }
+  }
+
+  return FALSE;
+}
+
+bool
+pci_add_dev_blacklist (uint16 vendid, uint16 devid, uint8 sb)
+{
+  int i = 0;
+
+  for (i = 0; i < MAX_PCI_BLACKLIST_LEN; i++) {
+    if (pci_dev_blacklist[i].vendorID == 0xFFFF) {
+      pci_dev_blacklist[i].vendorID = vendid;
+      pci_dev_blacklist[i].deviceID = devid;
+      pci_dev_blacklist[i].sandbox_id = sb;
+      return TRUE;
+    }
+  }
+
+  return FALSE;
+}
+
+static bool
+dev_access_allowed (uint16 vendid, uint16 devid)
+{
+  if (pci_dev_in_blacklist (vendid, devid, (uint8) get_pcpu_id ())) {
+    return FALSE;
+  }
+
+  return TRUE;
+}
+
+#define IOAPIC_ADDR_DEFAULT 0xFEC00000uL
+#define MP_IOAPIC_READ(x)   (*((volatile uint32 *) (IOAPIC_ADDR_DEFAULT+(x))))
+#define MP_IOAPIC_WRITE(x,y) (*((volatile uint32 *) (IOAPIC_ADDR_DEFAULT+(x))) = (y))
+
+typedef struct {
+  uint8 reg;
+  uint8 sandbox_id;
+} PACKED ioapic_blacklist_t;
+
+static ioapic_blacklist_t ioapic_blacklist[MAX_IOAPIC_BLACKLIST_LEN];
+
+bool
+ioapic_reg_in_blacklist (uint8 reg, uint8 sb)
+{
+  int i = 0;
+
+  for (i = 0; i < MAX_IOAPIC_BLACKLIST_LEN; i++) {
+    if (ioapic_blacklist[i].reg == 0xFF) {
+      return FALSE;
+    } else if ((ioapic_blacklist[i].reg == reg) &&
+               (ioapic_blacklist[i].sandbox_id == sb)) {
+      return TRUE;
+    }
+  }
+
+  return FALSE;
+}
+
+bool
+ioapic_add_reg_blacklist (uint8 reg, uint8 sb)
+{
+  int i = 0;
+
+  for (i = 0; i < MAX_IOAPIC_BLACKLIST_LEN; i++) {
+    if (ioapic_blacklist[i].reg == 0xFF) {
+      /* Empty block */
+      ioapic_blacklist[i].reg = reg;
+      ioapic_blacklist[i].sandbox_id = sb;
+      return TRUE;
+    }
+  }
+
+  return FALSE;
+}
+
+bool
+vmx_io_blacklist_init ()
+{
+  int i = 0;
+
+  for (i = 0; i < MAX_IOAPIC_BLACKLIST_LEN; i++) {
+    ioapic_blacklist[i].reg = 0xFF;
+  }
+
+  for (i = 0; i < MAX_PCI_BLACKLIST_LEN; i++) {
+    pci_dev_blacklist[i].vendorID = 0xFFFF;
+  }
+
+#ifdef USE_LINUX_SANDBOX
+  ioapic_add_reg_blacklist (0x30, LINUX_SANDBOX);
+  ioapic_add_reg_blacklist (0x31, LINUX_SANDBOX);
+  pci_add_dev_blacklist (0x10EC, 0x8168, LINUX_SANDBOX);
+#endif
+  
+  return TRUE;
+}
+
+/* Returns 0 to skip the access or 1 to allow access */
+static int
+gphys_access_type (uint32 gphys_addr)
+{
+  uint64 reg = 0;
+
+  if ((gphys_addr >> 12) == 0xFEC00) {
+    /* Access to IOAPIC */
+    if (gphys_addr == 0xFEC00010ul) {
+      /* Write to register data */
+      /* Find out the register */
+      reg = MP_IOAPIC_READ (IOAPIC_REGSEL + 1);
+      reg = MP_IOAPIC_READ (IOAPIC_REGSEL);
+      reg &= 0xFFull;
+      
+      if (ioapic_reg_in_blacklist ((uint8) reg, (uint8) get_pcpu_id ())) {
+        return 0;
+      }
+    }
+
+    return 1;
+  }
+
+  return -1;
+}
+
+/*
+ * This function process VM-Exit. If -1 is returned, monitor will panic.
+ * To skip the exiting instruction, 0 should be returned. To re-execute
+ * the exiting instruction, return 1. Notice though for different situations,
+ * the definition of "exiting instruction" could be different (in terms of
+ * whether the exit happens before executing the instruction or after).
+ * Please refer to the manual for details.
+ * 
+ * Basically, returning 1 will cause the instruction pointed to by guest
+ * EIP to be executed again and returning 0 will skip the instruction
+ * pointed to by guest EIP on VM entry.
+ */
 int
 vmx_process_exit (virtual_machine *vm, uint32 reason)
 {
@@ -546,18 +717,48 @@ vmx_process_exit (virtual_machine *vm, uint32 reason)
     {
       /* VM-Exit due to Exception and NMI */
       uint32 intinf = vmread (VMXENC_VM_EXIT_INTERRUPT_INFO);
-      uint32 ercode = vmread (VMXENC_VM_EXIT_INTERRUPT_ERRCODE);
       uint8 vec = intinf & 0xFF;
+#if 0
       uint32 eip = vmread (VMXENC_GUEST_RIP);
+      uint32 ercode = vmread (VMXENC_VM_EXIT_INTERRUPT_ERRCODE);
 
       logger_printf ("Exception/NMI:\n");
       logger_printf ("  VM_EXIT_INTERRUPT_INFO: 0x%X\n", intinf);
       logger_printf ("  VM_EXIT_INTERRUPT_ERRCODE: 0x%X\n", ercode);
       logger_printf ("  Guest EIP: 0x%X\n", eip);
+#endif
 
       switch (vec) {
         case 0x01 :
           /* Debug Exception #DB. Quest use this for I/O partitioning purpose. */
+          //logger_printf ("Debug Exception, debug reason (0x%X)\n", last_reason);
+          switch (last_reason) {
+            case 0x1E :
+            {
+              uint64 proc_msr = 0;
+              /* Clear TF flag */
+              vmwrite (vmread (VMXENC_GUEST_RFLAGS) & (~0x100ul), VMXENC_GUEST_RFLAGS);
+              last_reason = 0;
+              last_port = 0;
+              proc_msr = vmread (VMXENC_PROCBASED_VM_EXEC_CTRLS);
+              proc_msr |= (1ul << 25);
+              vmwrite (proc_msr, VMXENC_PROCBASED_VM_EXEC_CTRLS);
+              return 1;
+            }
+            case 0x30 :
+            {
+              /* EPT Violation */
+              /* Clear TF flag */
+              vmwrite (vmread (VMXENC_GUEST_RFLAGS) & (~0x100ul), VMXENC_GUEST_RFLAGS);
+              set_ept_page_permission (last_gphys, last_permission);
+              last_reason = 0;
+              last_gphys = 0;
+              last_permission = EPT_NO_ACCESS;
+              return 1;
+            }
+            default :
+              logger_printf ("Unknown reason triggered debug exception!\n");
+          }
           break;
         default :
           logger_printf ("Unexpected Exception/NMI!\n");
@@ -602,6 +803,132 @@ vmx_process_exit (virtual_machine *vm, uint32 reason)
       /* VM Exit through vmcall instruction */
       vmx_process_hypercall (vm->guest_regs.ecx, vm);
       return 0;
+    case 0x1E :
+    {
+      /* VM Exit due to IO instruction */
+      uint32 qualif = vmread (VMXENC_EXIT_QUAL);
+      uint64 proc_msr = 0;
+      uint32 portn = (qualif >> 16) & 0xFFFF;
+      int sflag = (qualif >> 4) & 0x01; /* 0 - Not string, 1 - String */
+      int dir_flag = (qualif >> 3) & 0x1; /* 0 - Out, 1 - In */
+      int rep_flag = (qualif >> 5) & 0x01; /* 0 - No rep, 1 - rep */
+      static uint32 cur_config_addr = 0;
+      static int deny_flag = 0;
+      int bus = 0, slot = 0, func = 0;
+      uint16 vendorID = 0, deviceID = 0;
+
+#if 0
+      int size = qualif & 0x7; /* 0 - 1B, 1 - 2B, 3 - 4B */
+      int enc_flag = (qualif >> 6) & 0x01; /* 0 - DX, 1 - imm */
+      int df_flag = (vmread (VMXENC_GUEST_RFLAGS) >> 10) & 0x01; /* 0 - CLD, 1 - STD */
+      logger_printf ("IO instruction:\n");
+      logger_printf ("  ");
+      if (df_flag)
+        logger_printf ("std; ");
+      else
+        logger_printf ("cld; ");
+      if (rep_flag) logger_printf ("rep ");
+      if (dir_flag) {
+        logger_printf ("in");
+      } else {
+        logger_printf ("out");
+      }
+      if (sflag) logger_printf ("s");
+      switch (size) {
+        case 0 :
+          logger_printf ("b\n");
+          break;
+        case 1 :
+          logger_printf ("w\n");
+          break;
+        case 3 :
+          logger_printf ("l\n");
+          break;
+      }
+      if (enc_flag)
+        logger_printf ("  Encoding using imm, port number is: 0x%X\n", portn);
+      else
+        logger_printf ("  Encoding using DX, port number is: 0x%X\n", portn);
+      logger_printf ("  EAX=0x%X, EDX=0x%X, ECX=0x%X\n", vm->guest_regs.eax,
+                     vm->guest_regs.edx, vm->guest_regs.ecx);
+#endif
+
+      /* Trying to access serial port */
+      if ((portn >= serial_port1) && (portn <= (serial_port1 + 7))) {
+        if (sflag == 0) {
+          if ((portn == (serial_port1 + 5)) && (dir_flag == 1)) {
+            /* Set line status to rescue polling drivers */
+            vm->guest_regs.eax = 0x20;
+          } else if (dir_flag == 1) {
+            vm->guest_regs.eax = 0;
+          }
+        }
+        return 0;
+      }
+
+      /* Trying to access PCI_CONFIG_ADDRESS */
+      if (portn == PCI_CONFIG_ADDRESS) {
+        if (sflag == 1) {
+          logger_printf ("Write to PCI_CONFIG_ADDRESS with string instruction\n");
+          return -1;
+        }
+        if (rep_flag == 1) {
+          logger_printf ("Write to PCI_CONFIG_ADDRESS with rep refix\n");
+          return -1;
+        }
+        if (dir_flag == 0) {
+          /* Trying to do out on PCI_CONFIG_ADDRESS */
+          cur_config_addr = vm->guest_regs.eax;
+          bus = ((cur_config_addr >> 16) & 0xFF);
+          slot = ((cur_config_addr >> 11) & 0x1F);
+          func = ((cur_config_addr >> 8) & 0x07);
+          vendorID = pci_read_word (pci_addr (bus, slot, func, 0x00));
+          deviceID = pci_read_word (pci_addr (bus, slot, func, 0x02));
+          if (dev_access_allowed (vendorID, deviceID)) {
+            deny_flag = 0;
+          } else {
+            deny_flag = 1;
+          }
+        } else {
+          logger_printf ("Guest reading PCI_CONFIG_ADDRESS!\n");
+        }
+        /* Allow access */
+        goto allow_access;
+      }
+
+      /* Trying to access PCI_CONFIG_DATA */
+      if (portn == PCI_CONFIG_DATA) {
+        if (cur_config_addr == 0) {
+          logger_printf ("Accessing PCI DATA without setting ADDRESS\n");
+          return -1;
+        }
+
+        /* Do we need to block access? */
+        if (deny_flag) {
+          /* Need to block access */
+          if ((dir_flag == 1) && (sflag == 0)) {
+            /* If this is a non-string IN, fix EAX. */
+            vm->guest_regs.eax = 0xFFFFFFFF;
+          }
+          /* If this is an OUT, OUTS, INS or IN/OUT with rep prefix, we do nothing. */
+          return 0; /* Skip instruction */
+        }
+
+        goto allow_access;
+      }
+
+allow_access:
+      /* Set TF flag in rflags for guest to enable single step debug */
+      vmwrite (vmread (VMXENC_GUEST_RFLAGS) | 0x100, VMXENC_GUEST_RFLAGS);
+      last_reason = 0x1E;
+      last_port = portn;
+      /* Allow access to port */
+      proc_msr = vmread (VMXENC_PROCBASED_VM_EXEC_CTRLS);
+      proc_msr &= (~(1ul << 25));
+      vmwrite (proc_msr, VMXENC_PROCBASED_VM_EXEC_CTRLS);
+
+      return 1;
+    }
     case 0x1F :
       /* RDMSR / WRMSR -- conditional on MSR bitmap -- else perform in monitor */
       logger_printf ("VM: use MSR bitmaps=%d MSR_BITMAPS=0x%p bitmap[0x%X]=%d\n",
@@ -633,9 +960,11 @@ vmx_process_exit (virtual_machine *vm, uint32 reason)
 #ifdef VMX_EPT
     case 0x30 :
     {
-      uint32 qualif = vmread (VMXENC_EXIT_QUAL);
       uint32 gphys = vmread (VMXENC_GUEST_PHYS_ADDR);
+
+#if 0
       uint32 glinear = vmread (VMXENC_GUEST_LINEAR_ADDR);
+      uint32 qualif = vmread (VMXENC_EXIT_QUAL);
 
       /* EPT Violation */
       logger_printf ("EPT violation:\n");
@@ -672,6 +1001,22 @@ vmx_process_exit (virtual_machine *vm, uint32 reason)
       logger_printf ("    EAX=0x%X, EBX=0x%X\n", vm->guest_regs.eax, vm->guest_regs.ebx);
       logger_printf ("    ECX=0x%X, EDX=0x%X\n", vm->guest_regs.ecx, vm->guest_regs.edx);
       logger_printf ("    EIP=0x%X\n", vmread (VMXENC_GUEST_RIP));
+#endif
+
+      switch (gphys_access_type (gphys)) {
+        case 0 :
+          return 0;
+        case 1 :
+          /* Set TF flag in rflags for guest to enable single step debug */
+          vmwrite (vmread (VMXENC_GUEST_RFLAGS) | 0x100, VMXENC_GUEST_RFLAGS);
+          last_reason = 0x30;
+          last_gphys = gphys;
+          last_permission = EPT_READ_ACCESS;
+          set_ept_page_permission (gphys, EPT_ALL_ACCESS);
+          return 1;
+        default :
+          break;
+      }
 
       return -1;
     }
@@ -717,11 +1062,48 @@ vmx_process_exit (virtual_machine *vm, uint32 reason)
 }
 
 static void
+setup_io_bitmaps ()
+{
+#ifdef USE_LINUX_SANDBOX
+  if (get_pcpu_id () == LINUX_SANDBOX) {
+    /* Restrict serial port access for Linux front end */
+    IOBITMAP_SET (io_bitmaps, serial_port1 + 0);
+    IOBITMAP_SET (io_bitmaps, serial_port1 + 1);
+    IOBITMAP_SET (io_bitmaps, serial_port1 + 2);
+    IOBITMAP_SET (io_bitmaps, serial_port1 + 3);
+    IOBITMAP_SET (io_bitmaps, serial_port1 + 4);
+    IOBITMAP_SET (io_bitmaps, serial_port1 + 5);
+    IOBITMAP_SET (io_bitmaps, serial_port1 + 6);
+    IOBITMAP_SET (io_bitmaps, serial_port1 + 7);
+  }
+#endif
+  /* Trap on access to PCI configuration space address port */
+  IOBITMAP_SET (io_bitmaps, PCI_CONFIG_ADDRESS);
+  /* Trap on access to PCI configuration space data port */
+  IOBITMAP_SET (io_bitmaps, PCI_CONFIG_DATA);
+  return;
+}
+
+static void
 vmx_host_state_save ()
 {
   u64 proc_msr = 0;
   uint32 cr = 0;
   uint16 fs = 0;
+  uint32 phys_io_bitmaps = 0;
+
+  phys_io_bitmaps = alloc_phys_frames (2);
+
+  if (phys_io_bitmaps != -1) {
+    io_bitmaps = map_contiguous_virtual_pages (phys_io_bitmaps | 3, 2);
+    if (!io_bitmaps) free_phys_frames (phys_io_bitmaps, 2);
+  }
+
+  if (io_bitmaps) {
+    memset (io_bitmaps, 0, 0x2000);
+  } else {
+    com1_printf ("WARNING: Could not allocate memory for IO Bitmaps!!!\n");
+  }
 
 #ifdef EXCEPTION_EXIT
   vmwrite (~0, VMXENC_EXCEPTION_BITMAP);
@@ -747,6 +1129,13 @@ vmx_host_state_save ()
   proc_msr &= ~((1 << 15) | (1 << 16) | (1 << 12) | (1 << 11));
   /* use MSR bitmaps */
   proc_msr |= (1 << 28);
+  /* use IO bitmaps */
+  if (io_bitmaps) {
+    proc_msr |= (1 << 25);
+    setup_io_bitmaps ();
+    vmwrite ((uint32) get_phys_addr (io_bitmaps), VMXENC_IO_BITMAP_A);
+    vmwrite ((uint32) get_phys_addr (((uint8 *) io_bitmaps) + 0x1000), VMXENC_IO_BITMAP_B);
+  }
   /* secondary controls */
   proc_msr |= (1 << 31);
   vmwrite (proc_msr, VMXENC_PROCBASED_VM_EXEC_CTRLS);
@@ -796,6 +1185,7 @@ vmx_start_monitor (virtual_machine *vm)
   uint32 phys_id = (uint32)LAPIC_get_physical_ID ();
   u64 start, finish;
   uint32 eip = 0, err = 0, state = 0;
+  int process_ret = 0;
 
   if (!vm->loaded || vm->current_cpu != phys_id)
     goto not_loaded;
@@ -1092,9 +1482,15 @@ vmx_start_monitor (virtual_machine *vm)
 
 #endif
 
-    if (vmx_process_exit (vm, reason) == 0) {
-      /* VM-Exit successfully processed, go back to guest */
+    process_ret = vmx_process_exit (vm, reason);
+
+    if (process_ret == 0) {
+      /* Return to guest, skip exiting instruction. */
       vmwrite (vmread (VMXENC_GUEST_RIP) + inslen, VMXENC_GUEST_RIP); /* skip instruction */
+      goto enter;
+    } else if (process_ret == 1) {
+      /* Return to guest, repeat exiting instruction. */
+      vmwrite (vmread (VMXENC_GUEST_RIP), VMXENC_GUEST_RIP); /* skip instruction */
       goto enter;
     }
   }
