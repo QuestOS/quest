@@ -317,11 +317,9 @@ ap_init (void)
   
   { extern bool vcpu_init (void); vcpu_init (); }
   { extern void net_init (void); net_init (); }
-  //if (phys_id == 1) {
   //{ extern bool r8169_register (void); r8169_register (); }
   //{ extern bool netsetup_init (void); netsetup_init (); }
   { extern bool vfs_init (void); vfs_init (); }
-  //}
   { extern bool migration_init (void); migration_init (); }
     /* Initialise shared memory pools and start any necessary
        communication threads */
@@ -344,7 +342,7 @@ ap_init (void)
   //{ extern bool beacon_thread_init (void); beacon_thread_init (); }
 
   /*
-   * For SeQuest, each sandbox kernel will have a shell running
+   * For Quest-V, each sandbox kernel will have a shell running
    * using the per-sandbox virtual screen buffer as output.
    */
   /* A hack! Fix the shell tss for sandboxes. */
@@ -354,12 +352,9 @@ ap_init (void)
   extern task_id shell_tss;
   int mod_num = NR_MODS - 1;
   quest_tss * usr_mod = lookup_TSS (shell_tss);
-  //quest_tss * usr_mod = (quest_tss *) ul_tss[mod_num];
   uint32 * plPageDirectory = get_phys_addr (pg_dir[mod_num]);
   uint32 * plPageTable = get_phys_addr (pg_table[mod_num]);
   uint32 * plStackPageTable = get_phys_addr(uls_pg_table[mod_num]);
-  //uint32* page_directory_virt = pg_dir[mod_num];
-  //uint32* stack_page_table;
   int stack_dir_index, stack_tbl_index;
   void * pStack = get_phys_addr (ul_stack[mod_num]);
   int i = 0;

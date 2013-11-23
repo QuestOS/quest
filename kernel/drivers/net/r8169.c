@@ -4081,7 +4081,7 @@ static const struct module_ops mod_ops = {
   .init = r8169_register
 };
 
-DEF_MODULE (net___r8169, "r8169 network driver", &mod_ops, {"net___ethernet", "pci"});
+//DEF_MODULE (net___r8169, "r8169 network driver", &mod_ops, {"net___ethernet", "pci"});
 
 
 /*

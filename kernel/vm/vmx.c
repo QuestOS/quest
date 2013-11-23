@@ -34,8 +34,10 @@
 #include "vm/linux_boot.h"
 #endif
 
-#define DEBUG_VMX 2
+#define DEBUG_VMX 0
 #define VMX_EPT
+/* Disable XCR for guests */
+//#define DISABLE_XCR
 
 #if DEBUG_VMX > 2
 #define DLOG(fmt,...) DLOG_PREFIX("vmx",fmt,##__VA_ARGS__)
@@ -661,9 +663,11 @@ vmx_io_blacklist_init ()
   }
 
 #ifdef USE_LINUX_SANDBOX
-  ioapic_add_reg_blacklist (0x30, LINUX_SANDBOX);
-  ioapic_add_reg_blacklist (0x31, LINUX_SANDBOX);
-  pci_add_dev_blacklist (0x10EC, 0x8168, LINUX_SANDBOX);
+  /* --YL-- Hard coded IOAPIC redirection table entry for Realtek NIC */
+  /* We will add facility to make this more configurable later. */
+  //ioapic_add_reg_blacklist (0x30, LINUX_SANDBOX);
+  //ioapic_add_reg_blacklist (0x31, LINUX_SANDBOX);
+  //pci_add_dev_blacklist (0x10EC, 0x8168, LINUX_SANDBOX);
 #endif
   
   return TRUE;
@@ -793,11 +797,14 @@ vmx_process_exit (virtual_machine *vm, uint32 reason)
          */
         vm->guest_regs.ecx &= ~(1ul << 5);   /* Clear VMX */
         vm->guest_regs.ecx &= ~(1ul << 6);   /* Clear SMX (TXT) */
+#ifdef DISABLE_XCR
         vm->guest_regs.ecx &= ~(1ul << 26);  /* Clear XSAVE */
         vm->guest_regs.ecx &= ~(1ul << 27);  /* Clear OSXSAVE */
         vm->guest_regs.ecx &= ~(1ul << 28);  /* Clear AVX */
+#endif
         logger_printf ("Fixed ECX: 0x%p\n", vm->guest_regs.ecx);
       }
+
       return 0;
     case 0x12 :
       /* VM Exit through vmcall instruction */
@@ -1027,10 +1034,33 @@ allow_access:
       return -1;
 #endif
     case 0x37 :
-      /* Trying to execute XSETBV instruction */
+    {
       logger_printf ("Guest trying to execute XSETBV instruction\n");
-      /* Instruction is not supported */
+#ifdef DISABLE_XCR
       return -1;
+#else
+      uint32 cr4 = 0;
+      /* Trying to execute XSETBV instruction */
+      logger_printf ("EDX=0x%X, EAX=0x%X, ECX=0x%X\n",
+                     vm->guest_regs.edx, vm->guest_regs.eax,
+                     vm->guest_regs.ecx);
+      asm volatile ("movl %%cr4, %0\r\n"
+                    : "=r" (cr4):);
+      logger_printf ("CR4=0x%X\n", cr4);
+      logger_printf ("Guest CR4=0x%X\n", vmread (VMXENC_GUEST_CR4));
+      cr4 = cr4 | (0x1 << 18);
+      asm volatile ("movl %0, %%cr4\r\n"
+                    :: "r" (cr4));
+      logger_printf ("New CR4=0x%X\n", cr4);
+      /* XSETBV writes contents of EDX:EAX into XCR[n]. */
+      /* n is specified by ECX. Currently, only XCR0 is available. */
+      asm volatile ("xsetbv\r\n":
+                    : "d" (vm->guest_regs.edx),
+                      "a" (vm->guest_regs.eax),
+                      "c" (vm->guest_regs.ecx));
+      return 0;
+#endif
+    }
     case 0x1C :
       /* MOV to control register */
       logger_printf ("GUEST-STATE: EAX=0x%X, EBX=0x%X, ECX=0x%X, EDX=0x%X\n",
@@ -1120,7 +1150,11 @@ vmx_host_state_save ()
   vmwrite (0, VMXENC_PAGE_FAULT_ERRCODE_MATCH);
   vmwrite (0, VMXENC_CR0_GUEST_HOST_MASK); /* all bits "owned" by guest */
   vmwrite (0, VMXENC_CR0_READ_SHADOW);
+#ifdef DISABLE_XCR
   vmwrite (0x42000, VMXENC_CR4_GUEST_HOST_MASK); /* VMXE and OSXSAVE "owned" by host */
+#else
+  vmwrite (0x2000, VMXENC_CR4_GUEST_HOST_MASK); /* VMXE "owned" by host */
+#endif
   vmwrite (0, VMXENC_CR4_READ_SHADOW);
 
   vmwrite (rdmsr (IA32_VMX_PINBASED_CTLS), VMXENC_PINBASED_VM_EXEC_CTRLS);

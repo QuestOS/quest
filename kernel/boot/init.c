@@ -274,7 +274,7 @@ initialize_serial_port (void)
   outb (0x03, serial_port1 + 3);       /* 8 Bits, No Parity, 1 Stop Bit */
   outb (0xC7, serial_port1 + 2);       /* FIFO Control Register */
   outb (0x0B, serial_port1 + 4);       /* Turn on DTR, RTS, and OUT2 */
-  com1_puts ("COM1 initialized.\n");
+  //com1_puts ("COM1 initialized.\n");
 }
 
 char* get_cmdline_arg(char* cmdline, char* key)
@@ -684,11 +684,13 @@ init (multiboot * pmb)
 #endif
 #endif
 
+#ifdef USE_VMX
   /* Shared component initialization in Quest-V */
   { extern bool vmx_io_blacklist_init (void); vmx_io_blacklist_init (); }
+#endif
   { extern bool init_keyboard_8042 (void); init_keyboard_8042 (); }
   { extern bool pci_init (void); pci_init (); }
-  { extern bool r8169_init (void); r8169_init (); }
+  //{ extern bool r8169_init (void); r8169_init (); }
   //{ extern bool msgt_mem_init (void); msgt_mem_init (); }
 
 /*

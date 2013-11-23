@@ -51,7 +51,7 @@
 //#define DEBUG_SYSCALL
 //#define DEBUG_PIT
 
-static char kernel_ver[] = "0.1a";
+static char kernel_ver[] = "0.9.00";
 char *kernel_version = kernel_ver;
 uint32 tick;                    /* Software clock tick */
 
@@ -279,30 +279,30 @@ splash_screen (void)
 
 #ifdef USE_VMX
   fun_printf (_user_putchar_attr_4,
-              "**** SeQuest kernel version: %s ***"
-              "  //--\\ //-- //---\\ \\\\  \\ //-- //--\\ \\\\---\\ \n",
+              "*** Quest-V kernel version: %s **"
+              "  //---\\ \\\\  \\ //-- //--\\ \\\\---\\    \\\\    /\n",
               vers);
 #else
   fun_printf (_user_putchar_attr_4,
-              "**** Quest kernel version: %s *****"
+              "*** Quest kernel version: %s ****"
               "   //---\\ \\\\  \\ //-- //--\\ \\\\---\\ \n",
               vers);
 #endif
 
 #ifdef USE_VMX
   fun_printf (_user_putchar_attr_4,
-              "* Copyright Boston University, 2012 *"
-              "  \\\\--\\ ||-- ||   | ||  | ||-- \\\\--\\   || \n");
+              "* Copyright Boston University, 2013 *"
+              "  ||   | ||  | ||-- \\\\--\\   ||   --- \\\\  / \n");
 #else
   fun_printf (_user_putchar_attr_4,
-              "* Copyright Boston University, 2012 *"
+              "* Copyright Boston University, 2013 *"
               "   ||   | ||  | ||-- \\\\--\\   || \n");
 #endif
 
 #ifdef USE_VMX
   fun_printf (_user_putchar_attr_4,
               "****** Current Output: 0x%.04X *******"
-              "  \\\\__/ \\\\__ \\\\__\\_  \\\\_/ \\\\__ \\\\__/   || \n",
+              "  \\\\__\\_  \\\\_/ \\\\__ \\\\__/   ||        \\\\/ \n",
               cpu);
 #else
   fun_printf (_user_putchar_attr_4,

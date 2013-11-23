@@ -258,17 +258,10 @@ linux_boot_thread (void)
   sti ();
 
   /* TODO: Wait for network initialization here. Other drivers should already be ready. */
-  tsc_delay_usec (6000000);
+  tsc_delay_usec (10000000);
   DLOG ("Loading Linux kernel bzImage...");
   cli ();
   lock_kernel ();
-
-  //uint32 phys_cr3 = (uint32) get_pdbr ();
-  //uint32 *virt_pgd = map_virtual_page (phys_cr3 | 3);
-  //for (i = 0; i < 0x400; i++) {
-  //  com1_printf ("PGD Entry %d: %x\n", i, virt_pgd[i]);
-  //}
-  //for (;;);
 
   //linux_sandbox_mem_check ();
 

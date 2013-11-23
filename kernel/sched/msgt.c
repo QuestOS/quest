@@ -23,6 +23,7 @@
 #include "vm/shm.h"
 #include "mem/physical.h"
 #include "mem/virtual.h"
+#include "mem/mem.h"
 #include "smp/smp.h"
 #include "smp/apic.h"
 #include "drivers/pci/pci.h"
@@ -186,6 +187,8 @@ msg_bandwidth_thread (void)
   return;
 }
 
+#include "vm/spow2.h"
+
 static void
 hog_thread (void)
 {
@@ -199,6 +202,7 @@ hog_thread (void)
   }
 }
 
+#if 1
 static void
 beacon_thread (void)
 {
@@ -214,7 +218,7 @@ beacon_thread (void)
   sti ();
   for (;;) {
     if (sandbox == -1) {
-      //initialize_serial_port ();
+      initialize_serial_port ();
       com1_printf ("Beacon thread (%d): 0x%X\n", sandbox, b);
     }
 
@@ -262,7 +266,7 @@ beacon_thread (void)
       }
     }
 
-    if (sandbox == -1) {
+    if ((sandbox == -1) && (b >= 5)) {
       //static int flag = 0;
       //if (flag == 0) {
       //  com1_printf ("Writing 0x10000\n");
@@ -276,6 +280,13 @@ beacon_thread (void)
       for (i = 0; i < mp_num_IOAPICs; i++) {
         for (j = 0; j < mp_IOAPICs[i].numGSIs; j++) {
           ioapic_tbl_entry = IOAPIC_read64 (IOAPIC_REDIR + (j * 2));
+          if (ioapic_tbl_entry & (1 << 8)) {
+            ioapic_tbl_entry &= (~((uint64) 7 << 8));  /* Using fixed */
+            //ioapic_tbl_entry &= (~((uint64) 0xFF << 56));  /* Destination */
+            //ioapic_tbl_entry |= ((uint64) 0x1 << 56);
+          }
+          IOAPIC_write64 (IOAPIC_REDIR + (j * 2), ioapic_tbl_entry);
+          ioapic_tbl_entry = IOAPIC_read64 (IOAPIC_REDIR + (j * 2));
           com1_printf ("IOAPIC_TBL[0x%X] : 0x%llX\n", IOAPIC_REDIR + (j * 2),
                        ioapic_tbl_entry);
         }
@@ -286,11 +297,12 @@ beacon_thread (void)
 
     cli ();
     lock_kernel ();
-    sched_usleep (5000000);
+    sched_usleep (10000000);
     unlock_kernel ();
     sti ();
   }
 }
+#endif
 
 #define RECV_SB           1
 #define META_PAGE         3

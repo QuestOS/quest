@@ -735,6 +735,9 @@ vmx_init_ept (uint32 cpu)
             if ((index >= (1 << 20)) && (index < LINUX_SANDBOX_KERN_OFFSET)) {
 	      pt[k] = (index + SANDBOX_KERN_OFFSET * (LINUX_SANDBOX + 1))
 	              | (memtype << 3) | EPT_ALL_ACCESS;
+	      //pd[j] = (index + SANDBOX_KERN_OFFSET * (LINUX_SANDBOX + 1))
+              //        | (1 << 7) | (memtype << 3) | EPT_ALL_ACCESS;
+              //goto skip_pte;
 	    }
           }
 #endif
@@ -794,6 +797,7 @@ vmx_init_ept (uint32 cpu)
         //pd[j] = ((i << 30) + (j << 21)) | (1 << 7) | (memtype << 3) | EPT_ALL_ACCESS;
       }
 
+//skip_pte:
       unmap_virtual_page (pt);
     }
     DLOG ("pd[0]=0x%llX", pd[0]);
