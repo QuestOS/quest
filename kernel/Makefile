@@ -28,6 +28,7 @@ PROGS = quest
 # drivers/usb/usb_test.o
 
 OBJS =  boot/boot.o boot/init.o kernel.o module/loader.o \
+	boot/multiboot.o \
 	interrupt.o interrupt_handler.o socket.o \
 	smp/boot-smp.o smp/smp.o smp/intel.o smp/acpi.o smp/apic.o smp/semaphore.o \
 	arch/i386/percpu.o arch/i386/measure.o \
@@ -63,6 +64,7 @@ OBJS =  boot/boot.o boot/init.o kernel.o module/loader.o \
 	drivers/usb/hub.o drivers/usb/uvc.o drivers/usb/beagle_gadget.o drivers/usb/beagle_gadget2.o \
 	drivers/usb/ehci_hcd.o drivers/usb/ehci_mem.o drivers/usb/ehci_debug.o \
 	drivers/usb/usb.o drivers/usb/enumeration.o \
+	drivers/serial/mmio32_uart.o \
 	kdb/i386-stub.o
 
 CFILES = $(patsubst %.o,%.c,$(OBJS))

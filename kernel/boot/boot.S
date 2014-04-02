@@ -28,6 +28,7 @@
 #include "kernel.h"
 #include "vm/linux_boot.h"
 #include "vm/spow2.h"
+#include "drivers/serial/serial.h"
 
         .globl initial_gdt
 
@@ -118,6 +119,13 @@ real_start:
         rep movsl
         lgdt gdt_ptr /* pass address of 6-byte object */
 
+        /* Before enabling paging, we need to first relocate multiboot info struct. */
+        /* mbi passed by GRUB is on top of stack (pushl %ebx) */
+        call reloc_mbi
+        pop %ebx
+        /* Push new mbi to stack for init */
+        pushl %eax 
+
         /* set up support for 4MB paging */
         movl %cr4, %eax /* EAX is temporary for CR4 */
         orl $0x10, %eax /* Set PSE bit of CR4 */
@@ -157,6 +165,15 @@ real_start:
         addl $0x4, %ebx
         loop 1b
         #endif
+
+        /* MMIO32 Serial Base */
+        movl $MMIO32_MEMBASE, %eax
+        andl $0xFFC00000, %eax
+        addl $0x83, %eax
+        movl %eax, %ebx
+        shrl $20, %ebx
+        addl $pgd, %ebx
+        movl %eax, (%ebx)
 
         /* Set 1024th (top) entry in PGD to reference kern_pg_table
          * Here, we have 1 4MB superpage for the entire kernel

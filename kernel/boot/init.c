@@ -30,6 +30,7 @@
 #include "util/debug.h"
 #include "util/perfmon.h"
 #include "drivers/input/keyboard.h"
+#include "drivers/serial/serial.h"
 #include "sched/sched.h"
 #include "sched/proc.h"
 #include "fs/ram_romfs.h"
@@ -437,7 +438,11 @@ init (multiboot * pmb)
   /* Initialize Bochs I/O debugging */
   outw (0x8A00, 0x8A00);
 
+#ifdef SERIAL_MMIO32
+  initialize_serial_mmio32 ();
+#else
   initialize_serial_port ();
+#endif
 
   pchVideo = (char *)KERN_SCR;
 
@@ -646,7 +651,13 @@ init (multiboot * pmb)
   }
 
   /* Release physical memory region occupied by modules. They are already relocated. */
+  com1_printf ("Releasing module memory...\n");
   mm_module (pmb, MM_MODULE_UNMASK);
+
+#ifdef SERIAL_MMIO32
+  com1_printf ("Remapping MMIO32 serial base...\n");
+  remap_serial_mmio32 ();
+#endif
 
   /* --??-- Assume the first is shell here */
   char * name = "/boot/shell";

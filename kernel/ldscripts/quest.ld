@@ -17,10 +17,10 @@ SECTIONS {
   /* Bootstrap physical section, at virtual and physical address 0x100000 */
   _physicalbootstrapstart = 0x100000;
   . = _physicalbootstrapstart + SIZEOF_HEADERS;
-  .physicaltext : {   boot/boot.o (.text) } : physical
-  .physicalrodata : { boot/boot.o (.rodata) } : physical
-  .physicaldata : {   boot/boot.o (.data) } : physical
-  .physicalbss : {    boot/boot.o (.bss COMMON) } : physical
+  .physicaltext : {   boot/boot.o boot/multiboot.o (.text) } : physical
+  .physicalrodata : { boot/boot.o boot/multiboot.o (.rodata) } : physical
+  .physicaldata : {   boot/boot.o boot/multiboot.o (.data) } : physical
+  .physicalbss : {    boot/boot.o boot/multiboot.o (.bss COMMON) } : physical
   _physicalkernelstart = ALIGN(0x1000);
   _bootstrap_pages = (_physicalkernelstart - _physicalbootstrapstart) / 0x1000;
 

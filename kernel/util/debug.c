@@ -17,6 +17,7 @@
 
 #include "kernel.h"
 #include "util/printf.h"
+#include "drivers/serial/serial.h"
 #ifdef USE_PL2303
 #include "drivers/usb/pl2303.h"
 #include "vm/vmx.h"
@@ -42,6 +43,10 @@ com1_putc (char c)
 #ifdef COM1_TO_SCREEN
   _putchar (c);
 #elif !defined(ENABLE_GDBSTUB) || defined(GDBSTUB_TCP)
+
+#ifdef SERIAL_MMIO32
+  mmio32_putc (c);
+#else
   if (c == '\n') {
     /* output CR before NL */
     while (!(inb (serial_port1 + 5) & 0x20));  /* check line status register, empty transmitter bit */
@@ -51,6 +56,8 @@ com1_putc (char c)
 
   while (!(inb (serial_port1 + 5) & 0x20));    /* check line status register, empty transmitter bit */
   outb (c, serial_port1);
+#endif /* SERIAL_MMIO32 */
+
 #ifdef USE_PL2303
   if (pl2303_initialized && shared_driver_available) {
     if (c == '\n') {
@@ -58,7 +65,8 @@ com1_putc (char c)
     }
     usb_pl2303_putc (c);
   }
-#endif
+#endif /* USE_PL2303 */
+
 #endif
 }
 
@@ -186,8 +194,12 @@ dump_page (u8 *addr)
 
 static int getc (void)
 {
+#ifdef SERIAL_MMIO32
+  return mmio32_getc ();
+#else
   while (!(inb (serial_port1 + 5) & 1));
   return inb (serial_port1);
+#endif
 }
 
 void

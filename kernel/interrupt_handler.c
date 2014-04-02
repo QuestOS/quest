@@ -38,6 +38,7 @@
 #include "sched/sched.h"
 #include "sched/vcpu.h"
 #include "drivers/usb/usb.h"
+#include "drivers/serial/serial.h"
 #include "lwip/pbuf.h"
 #include "lwip/tcp.h"
 #include "lwip/udp.h"
