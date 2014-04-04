@@ -1168,6 +1168,7 @@ sys_call_getsockname (int sockfd, void *addr, void *len)
   return 0;
 }
 
+#ifdef USE_VMX
 static void
 restart_networks_local ()
 {
@@ -1179,6 +1180,7 @@ restart_networks_local ()
   {extern bool netsetup_init (void); netsetup_init ();}
   sti ();
 }
+#endif
 
 static int
 sys_call_recovery (int arg)
@@ -1276,11 +1278,15 @@ int sys_call_fcntl(int fd, int cmd, void* extra_arg)
 
 int syscall_vshm_map(uint vshm_key, uint size, uint sandboxes, uint flags, void** addr)
 {
+#ifdef USE_VMX
   int res;
   lock_kernel();
   res = virtual_shared_mem_map(vshm_key, size, sandboxes, flags, addr, TRUE);
   unlock_kernel();
   return res;
+#else
+  return -1;
+#endif
 }
 
 
