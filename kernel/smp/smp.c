@@ -129,10 +129,16 @@ smp_init (void)
 
   else {
     /* unable to detect any kind of SMP configuration */
+#if 0
     mp_apic_mode = 0;
     com1_printf ("Disabling APIC mode -- assuming ISA bus-only\n");
     mp_ISA_PC = 1;            /* assume no PCI */
+#endif
     mp_num_cpus = 1;
+    /* Even without SMP, we probably still have APIC... */
+    /* TODO: We should do some capability discovery here */
+    mp_apic_mode = 1;
+    mp_ISA_PC = 0;
     return 1;                 /* assume uniprocessor */
   }
 

@@ -99,7 +99,7 @@ initialize_serial_mmio32 (void)
   mmio32_out (port, UART_MCR, 0x3);      /* DTR + RTS */
   
   divisor = DIV_ROUND_CLOSEST (BASE_BAUD * 16, 16 * probe_baud (mmio_base));
-  //divisor = DIV_ROUND_CLOSEST (BASE_BAUD * 16, 16 * BAUD);
+  /* divisor = DIV_ROUND_CLOSEST (BASE_BAUD * 16, 16 * BAUD); */
   c = mmio32_in (port, UART_LCR);
   mmio32_out (port, UART_LCR, c | UART_LCR_DLAB);
   mmio32_out (port, UART_DLL, divisor & 0xff);

@@ -284,7 +284,6 @@ static void
 vcpu_acnt_end_timeslice (vcpu *vcpu)
 {
   u64 now;
-  int i;
 
   RDTSC (now);
 
@@ -293,26 +292,31 @@ vcpu_acnt_end_timeslice (vcpu *vcpu)
     vcpu->virtual_tsc += now - vcpu->prev_tsc;
   }
 
+#if 0
+  int i;
   for (i=0; i<2; i++) {
     u64 value = perfmon_pmc_read (i);
     if (vcpu->prev_pmc[i])
       vcpu->pmc_total[i] += value - vcpu->prev_pmc[i];
   }
+#endif
 }
 
 static void
 vcpu_acnt_begin_timeslice (vcpu *vcpu)
 {
   u64 now;
-  int i;
 
   RDTSC (now);
   vcpu->prev_tsc = now;
 
+#if 0
+  int i;
   for (i=0; i<2; i++) {
     u64 value = perfmon_pmc_read (i);
     vcpu->prev_pmc[i] = value;
   }
+#endif
 }
 
 extern void
@@ -676,7 +680,6 @@ vcpu_schedule (void)
     *queue = percpu_read (vcpu_queue),
     *cur   = percpu_read (vcpu_current),
     *vcpu  = NULL,
-    *mvcpu = NULL,
     **ptr,
     **vnext = NULL;
   u64 tprev = percpu_read64 (pcpu_tprev);
@@ -731,17 +734,21 @@ vcpu_schedule (void)
       }
       next = vcpu->tr;
 
+#if 0
       if (cur != vcpu) {
         perfmon_vcpu_acnt_end (cur);
       }
+#endif
 
       percpu_write (vcpu_current, vcpu);
       percpu_write (vcpu_queue, queue);
       DLOGV ("scheduling vcpu=%p with budget=0x%llX", vcpu, vcpu->b);
     } else {
+#if 0
       if (cur) {
         perfmon_vcpu_acnt_end (cur);
       }
+#endif
 
       percpu_write (vcpu_current, NULL);
     }
@@ -778,6 +785,7 @@ vcpu_schedule (void)
   }
 
 #ifdef USE_VMX
+   vcpu *mvcpu = NULL,
   /* Check migration request */
   if (str () != next) {
     quest_tss * tss = lookup_TSS (str ());
@@ -901,8 +909,10 @@ vmx_migration_end:
   if (vcpu) {
     /* handle beginning-of-timeslice accounting */
     vcpu_acnt_begin_timeslice (vcpu);
+#if 0
     if (cur != vcpu)
       perfmon_vcpu_acnt_start (vcpu);
+#endif
   } else
     idle_time_acnt_begin ();
   if (next == 0) {

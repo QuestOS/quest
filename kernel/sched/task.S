@@ -45,7 +45,11 @@ _sw_jmp_task:
         movl %ebx, EFLAGS(%esi)
 
         /* Safe FPU state */
+#ifdef NO_FPU
+        /* Do nothing */
+#else
         fxsave FPU_STATE(%esi)
+#endif
         
         
         /* save stack */
@@ -82,7 +86,11 @@ skipCR3:
         movl ESP(%edi), %ebp
         movl %ebp, %esp
 
+#ifdef NO_FPU
+        /* Do nothing */
+#else
         fxrstor FPU_STATE(%edi)
+#endif
         
         /* restore EBP */
         movl EBP(%edi), %ebp

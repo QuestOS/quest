@@ -98,6 +98,13 @@ load_module (multiboot_module * pmm, int mod_num)
   void *pStack = get_phys_addr (ul_stack[mod_num]);
   /* temporarily map pmm->pe in order to read pph->p_memsz */
   Elf32_Ehdr *pe, *pe0 = map_virtual_page ((uint) pmm->pe | 3);
+
+  if (!pe0) {
+    com1_printf ("map_virtual_page for pe0 failed in load_module()!\n");
+    com1_printf ("Phys Addr=0x%X\n", (uint32_t) pmm->pe);
+    panic ("load_module failed!");
+  }
+
   Elf32_Phdr *pph = (void *) pe0 + pe0->e_phoff;
   void *pEntry = (void *) pe0->e_entry;
   int i, c, j;
@@ -116,6 +123,12 @@ load_module (multiboot_module * pmm, int mod_num)
 
   /* now map the entire module */
   pe = map_contiguous_virtual_pages ((uint) pmm->pe | 3, page_count);
+
+  if (!pe) {
+    com1_printf ("map_contiguous_virtual_pages failed in load_module()!\n");
+    com1_printf ("Addr=0x%X, Page Count=%d\n", (uint32_t) pmm->pe, page_count);
+    panic ("load_module failed!");
+  }
 
   unmap_virtual_page (pe0);
 
@@ -365,12 +378,16 @@ mem_check (void)
 #define MM_MODULE_MASK    0x0
 #define MM_MODULE_UNMASK  0x1
 
+/*
+ * --YL-- We need to revisit the early memory management code. The current
+ *  scheme is obviously flawed. For now, let's mark all the memory occupied
+ *  by module to be used. When GRUB load modules in low memory, we were
+ *  definitely overwriting the module image!
+ */
 static void
 mm_module (multiboot * pmb, int op)
 {
-  Elf32_Phdr *pph;
-  Elf32_Ehdr *pe;
-  int i, j, k, c;
+  int i, j;
 #ifdef USE_VMX
   uint32 limit = 256 + (SANDBOX_KERN_OFFSET >> 12);
 #else
@@ -382,6 +399,20 @@ mm_module (multiboot * pmb, int op)
 #else
   for (i = 0; i < pmb->mods_count; i++) {
 #endif
+
+    for (j = (((uint32_t) pmb->mods_addr[i].pe) >> 12);
+         j < (((uint32_t) pmb->mods_addr[i].mod_end) >> 12); j++) {
+      if (op == MM_MODULE_MASK) {
+        if (j < limit) BITMAP_CLR (mm_table, j);
+      } else if (op == MM_MODULE_UNMASK) {
+        if (j < limit) BITMAP_SET (mm_table, j);
+      }
+    }
+
+#if 0
+    Elf32_Phdr *pph;
+    Elf32_Ehdr *pe;
+    int k, c;
 
     pe = map_virtual_page ((uint32)pmb->mods_addr[i].pe | 3);
 
@@ -408,6 +439,7 @@ mm_module (multiboot * pmb, int op)
     }
 
     unmap_virtual_page (pe);
+#endif
   }
 
   /* Handling Linux kernel bzImage module */
@@ -584,7 +616,11 @@ init (multiboot * pmb)
   }
 
   /* Initialise the floating-point unit (FPU) */
+#ifdef NO_FPU
+  /* Do nothing */
+#else
   initialise_fpu_and_mmx();
+#endif
   
   /* Setup per-CPU area for bootstrap CPU */
   percpu_per_cpu_init ();
@@ -685,7 +721,7 @@ init (multiboot * pmb)
    * to utilize the dummy TSS without locking the kernel yet. */
   smp_secondary_init ();
 
-  mem_check ();
+  /* mem_check (); */
 
 #ifdef USE_VMX
 #ifdef QUESTV_NO_VMX

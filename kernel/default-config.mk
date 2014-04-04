@@ -45,3 +45,11 @@ KMALLOC = tlsf
 # Enable Quest-V multi-kernel without VMX enabled
 # CFG += -DQUESTV_NO_VMX
 
+# Enable Serial MMIO32 driver
+# This will disable port based RS232
+# Enable this flag for embedded platforms such as Galileo board
+# CFG += -DSERIAL_MMIO32
+
+# Disable FPU
+# CFG += -DNO_FPU
+

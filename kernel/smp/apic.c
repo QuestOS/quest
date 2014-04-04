@@ -222,15 +222,16 @@ LAPIC_measure_timer (void)
   /* I want to enable interrupts but I don't want the normal
    * interrupt-handling architecture to kick-in just yet.  Here's an
    * idea: mask off every single entry in the IDT! */
-  disable_idt ();
+  /* --YL-- Not a good idea. We had a spurious interrupt on Galileo and it hung the system */
+  /* TODO: We should register some dummy handlers here and handle spurious interrupt */
+  /* disable_idt (); */
 
   /* Now save the handlers for vectors 0x20 and 0x3F */
   get_idt_descriptor (0x20, &old_timer);
   get_idt_descriptor (0x3f, &old_3f);
   /* And use them for our temporary handlers */
   set_idt_descriptor_by_addr (0x20, (void *) &smp_setup_LAPIC_timer_int, 0x3);
-  set_idt_descriptor_by_addr (0x3f, (void *) &smp_LAPIC_timer_irq_handler,
-                              0x3);
+  set_idt_descriptor_by_addr (0x3f, (void *) &smp_LAPIC_timer_irq_handler, 0x3);
 
   MP_LAPIC_WRITE (LAPIC_LVTT, 0x3f);    /* enable LAPIC timer int: vector=0x3f */
   MP_LAPIC_WRITE (LAPIC_TDCR, 0x0B);    /* set LAPIC timer divisor to 1 */
@@ -239,8 +240,9 @@ LAPIC_measure_timer (void)
   value = tick;
   asm volatile ("sti");
   /* Wait until the PIT fires: */
-  while (tick == value)
+  while (tick == value) {
     asm volatile ("pause");
+  }
   start = tick;
   MP_LAPIC_WRITE (LAPIC_TICR, 0xFFFFFFFF);      /* write large value to Initial Count Reg. */
   asm volatile ("rdtsc":"=a" (tsc_start_lo), "=d" (tsc_start_hi));      /* store timestamp */

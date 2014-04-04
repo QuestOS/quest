@@ -187,7 +187,11 @@ duplicate_TSS (uint32 ebp,
   pTSS->ESP = child_esp;
   pTSS->EBP = child_ebp;
   pTSS->tid = new_task_id ();
+#ifdef NO_FPU
+  /* Do nothing */
+#else
   save_fpu_and_mmx_state(pTSS->fpu_state);
+#endif
   pTSS->sandbox_affinity = get_pcpu_id ();
   pTSS->machine_affinity = 0;
 
