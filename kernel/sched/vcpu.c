@@ -676,6 +676,11 @@ extern void
 vcpu_schedule (void)
 {
   task_id next = 0;
+
+#ifdef USE_VMX
+  vcpu * mvcpu = NULL;
+#endif
+
   vcpu
     *queue = percpu_read (vcpu_queue),
     *cur   = percpu_read (vcpu_current),
@@ -785,7 +790,6 @@ vcpu_schedule (void)
   }
 
 #ifdef USE_VMX
-   vcpu *mvcpu = NULL,
   /* Check migration request */
   if (str () != next) {
     quest_tss * tss = lookup_TSS (str ());
