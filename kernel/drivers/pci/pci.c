@@ -396,6 +396,7 @@ i2c_write(struct i2c_msg *msgs, int msg_num)
         data_cmd.fields.cmd |= DW_IC_CMD_STOP;
       }
 
+      DLOG("data_cmd.value is %x\n", data_cmd.value);
       i2c_write_r(data_cmd.value, DW_IC_DATA_CMD);
       buf_len--;
     }
@@ -695,6 +696,7 @@ cy8c9540a_gpio_set_value(unsigned gpio, int val)
   }
 
   ret = i2c_write_byte_data(out_reg, dev_c.outreg_cache[port]);
+  DLOG("here\n");
 
   if (ret < 0) {
     DLOG("can't read output port%u\n", port);
@@ -811,7 +813,7 @@ static int cy8c9540a_setup()
 	const u8 eeprom_enable_seq[] = {0x43, 0x4D, 0x53, 0x2};
 
   dev_id = cypress_get_id();
-  DLOG("dev_id is %d\n", dev_id);
+  DLOG("dev_id is 0x%x\n", dev_id);
 
 	/* Disable PWM, set all GPIOs as input.  */
 	for (i = 0; i < NPORTS; i++) {
@@ -834,6 +836,7 @@ static int cy8c9540a_setup()
 		}
 	}
 
+#if 0
 	/* Cache the output registers */
 	ret = i2c_read_block_data(REG_OUTPUT_PORT0,
             sizeof(dev_c.outreg_cache),
@@ -866,6 +869,7 @@ static int cy8c9540a_setup()
 		DLOG("can't enable EEPROM\n");
     return ret;
 	}
+#endif
 
 	return 0;
 }
@@ -873,12 +877,12 @@ static int cy8c9540a_setup()
 static void
 cy8c9540a_test()
 {
-  unsigned gpio = 27;
-  int out = 1;
+  unsigned gpio = 11;
 
   cy8c9540a_setup();
+  cy8c9540a_gpio_direction_output(gpio, 0);
   cy8c9540a_gpio_set_drive(gpio, GPIOF_DRIVE_STRONG);
-  cy8c9540a_gpio_direction_output(gpio, out);
+  cy8c9540a_gpio_set_value(gpio, 1);
 }
 
 static void
