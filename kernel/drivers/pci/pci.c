@@ -83,18 +83,75 @@ pci_search_class_code_table (uint32 base, uint32 sub, uint32 prog,
 static pci_device devices[PCI_MAX_DEVICES];
 static uint32 num_devices = 0;
 
+
 /******************************************************************/
 /* i2c master driver */
+/* XXX: definitely need a better error handling machanism
+ * DLOG() is awful
+ */
+/*
+ * Registers offset
+ */
+#define DW_IC_CON		0x0
+#define DW_IC_TAR		0x4
+#define DW_IC_DATA_CMD		0x10
+#define DW_IC_SS_SCL_HCNT	0x14
+#define DW_IC_SS_SCL_LCNT	0x18
+#define DW_IC_FS_SCL_HCNT	0x1c
+#define DW_IC_FS_SCL_LCNT	0x20
+#define DW_IC_INTR_STAT		0x2c
+#define DW_IC_INTR_MASK		0x30
+#define DW_IC_RAW_INTR_STAT	0x34
+#define DW_IC_RX_TL		0x38
+#define DW_IC_TX_TL		0x3c
+#define DW_IC_CLR_INTR		0x40
+#define DW_IC_CLR_RX_UNDER	0x44
+#define DW_IC_CLR_RX_OVER	0x48
+#define DW_IC_CLR_TX_OVER	0x4c
+#define DW_IC_CLR_RD_REQ	0x50
+#define DW_IC_CLR_TX_ABRT	0x54
+#define DW_IC_CLR_RX_DONE	0x58
+#define DW_IC_CLR_ACTIVITY	0x5c
+#define DW_IC_CLR_STOP_DET	0x60
+#define DW_IC_CLR_START_DET	0x64
+#define DW_IC_CLR_GEN_CALL	0x68
+#define DW_IC_ENABLE		0x6c
+#define DW_IC_STATUS		0x70
+#define DW_IC_TXFLR		0x74
+#define DW_IC_RXFLR		0x78
+#define DW_IC_TX_ABRT_SOURCE	0x80
 
-static uint32 I2C_BASE;
-static uint32 IO_EXP_ADDR = 0x20;
+u32 i2c_base;
 
-#define WRITEL(val, reg) do {*(uint32 *)reg = val;} while(0)
-#define READL(reg) *(uint32 *)reg
+struct i2c_dev {
+  u32 tx_fifo_depth;
+  u32 rx_fifo_depth;
+  u32 clk_khz;
+  u32 rx_outstanding;
+};
+
+static struct i2c_dev dev_i2c = {
+  .tx_fifo_depth = 16,
+  .rx_fifo_depth = 16,
+  .clk_khz = 33000,
+  .rx_outstanding = 0,
+};
+
+static inline void
+i2c_write_r(u32 val , u32 reg)
+{
+  *(u32 *)(i2c_base + reg) = val;
+}
+
+static inline u32
+i2c_read_r(u32 reg)
+{
+  return *(u32 *)(i2c_base + reg);
+}
 
 /* copy from linux to configure clock */
-static uint32
-i2c_dw_scl_hcnt(uint32 ic_clk, uint32 tSYMBOL, uint32 tf, int cond, int offset)
+static u32
+i2c_dw_scl_hcnt(u32 ic_clk, u32 tSYMBOL, u32 tf, int cond, int offset)
 {
 	/*
 	 * DesignWare I2C core doesn't seem to have solid strategy to meet
@@ -132,7 +189,7 @@ i2c_dw_scl_hcnt(uint32 ic_clk, uint32 tSYMBOL, uint32 tf, int cond, int offset)
 		return (ic_clk * (tSYMBOL + tf) + 5000) / 10000 - 3 + offset;
 }
 
-static uint32 i2c_dw_scl_lcnt(uint32 ic_clk, uint32 tLOW, uint32 tf, int offset)
+static u32 i2c_dw_scl_lcnt(u32 ic_clk, u32 tLOW, u32 tf, int offset)
 {
 	/*
 	 * Conditional expression:
@@ -162,29 +219,10 @@ static uint32 i2c_dw_scl_lcnt(uint32 ic_clk, uint32 tLOW, uint32 tf, int offset)
 static void
 i2c_config()
 {
-  /*
-   * copy from clanton
-   * intel_cln_gip_i2c.c : line 59
-   */
-  /* XXX: divided by 8 */
-  uint32 input_clock_khz = 33000;
-  /*
-   * copy from clanton
-   * intel_cln_gip_i2c.c : line 53
-   */
-  uint32 tx_fifo_depth = 16;
-
-  /* registers */
-  uint32 I2C_SS_SCL_HCNT = I2C_BASE + 0x14;
-  uint32 I2C_SS_SCL_LCNT = I2C_BASE + 0x18;
-  uint32 I2C_FS_SCL_HCNT = I2C_BASE + 0x1c;
-  uint32 I2C_FS_SCL_LCNT = I2C_BASE + 0x20;
-  uint32 I2C_TX_TL = I2C_BASE + 0x3c;
-  uint32 I2C_RX_TL = I2C_BASE + 0x38;
-  uint32 I2C_CON = I2C_BASE + 0x0;
+  u32 input_clock_khz = dev_i2c.clk_khz;
 
   /* set standard and fast speed deviders for high/low periods */
-  uint32 hcnt, lcnt;
+  u32 hcnt, lcnt;
 
 	/* Standard-mode */
   hcnt = i2c_dw_scl_hcnt(input_clock_khz,
@@ -196,8 +234,8 @@ i2c_config()
 				47,	/* tLOW = 4.7 us */
 				3,	/* tf = 0.3 us */
 				0);	/* No offset */
-  WRITEL(hcnt, I2C_SS_SCL_HCNT);
-  WRITEL(lcnt, I2C_SS_SCL_LCNT);
+  i2c_write_r(hcnt, DW_IC_SS_SCL_HCNT);
+  i2c_write_r(lcnt, DW_IC_SS_SCL_LCNT);
 
 	/* Fast-mode */
   hcnt = i2c_dw_scl_hcnt(input_clock_khz,
@@ -209,43 +247,41 @@ i2c_config()
 				13,	/* tLOW = 1.3 us */
 				3,	/* tf = 0.3 us */
 				0);	/* No offset */
-  WRITEL(hcnt, I2C_FS_SCL_HCNT);
-	WRITEL(lcnt, I2C_FS_SCL_LCNT);
+  i2c_write_r(hcnt, DW_IC_FS_SCL_HCNT);
+	i2c_write_r(lcnt, DW_IC_FS_SCL_LCNT);
 
 	/* Configure Tx/Rx FIFO threshold levels */
-  WRITEL(tx_fifo_depth - 1, I2C_TX_TL); 
-  WRITEL(0, I2C_RX_TL); 
+  i2c_write_r(dev_i2c.tx_fifo_depth - 1, DW_IC_TX_TL); 
+  i2c_write_r(0, DW_IC_RX_TL); 
 
   /* 
    * copy from clanton. In comment, it says:
    * Clanton default configuration is fast mode, unless otherwise asked.
+   * XXX: this is not true... setting fast mode makes it not working
    * XXX: Donno what is DW_IC_CON_SLAVE_DISABLE...
    */
-  //uint32 cfg = INTEL_CLN_STD_CFG | DW_IC_CON_SPEED_FAST;
-  uint32 cfg = INTEL_CLN_STD_CFG | DW_IC_CON_SPEED_STD;
+  //u32 cfg = INTEL_CLN_STD_CFG | DW_IC_CON_SPEED_FAST;
+  u32 cfg = INTEL_CLN_STD_CFG | DW_IC_CON_SPEED_STD;
   /* configure the i2c master */
-  WRITEL(cfg, I2C_CON);
+  i2c_write_r(cfg, DW_IC_CON);
 }
 
 static void
 i2c_disable_int()
 {
-  uint32 I2C_INTR_MASK = I2C_BASE + 0x30;
-  WRITEL(0, I2C_INTR_MASK);
+  i2c_write_r(0, DW_IC_INTR_MASK);
 }
 
 static void
 i2c_clear_int()
 {
-  uint32 I2C_CLR_INTR = I2C_BASE + 0x40;
-  uint32 val = READL(I2C_CLR_INTR);
+  i2c_read_r(DW_IC_CLR_INTR);
 }
 
 static void
 i2c_disable()
 {
-  uint32 I2C_ENABLE = I2C_BASE + 0x6c;
-  WRITEL(0, I2C_ENABLE);
+  i2c_write_r(0, DW_IC_ENABLE);
 }
 
 #define DW_IC_INTR_RX_UNDER	0x001
@@ -266,40 +302,28 @@ i2c_disable()
 					 DW_IC_INTR_TX_ABRT | \
 					 DW_IC_INTR_STOP_DET)
 
-static void i2c_xfer_init()
+static void i2c_xfer_init(u32 slave_addr)
 {
-  uint32 I2C_TAR = I2C_BASE + 0x4;
-  uint32 I2C_ENABLE = I2C_BASE + 0x6c;
-  uint32 I2C_INTR_MASK = I2C_BASE + 0x30;
-
   i2c_disable();
 
   /* set the slave (target) address */
-  WRITEL(IO_EXP_ADDR, I2C_TAR);
+  i2c_write_r(slave_addr, DW_IC_TAR);
 
 	/* Enable the adapter */
-	WRITEL(1, I2C_ENABLE);
+	i2c_write_r(1, DW_IC_ENABLE);
 
 	/* XXX: Enable interrupts */
-	/* WRITEL(DW_IC_INTR_DEFAULT_MASK, I2C_INTR_MASK); */
+	/* i2c_write_r(DW_IC_INTR_DEFAULT_MASK, DW_IC_INTR_MASK); */
 }
 
-static uint32
-i2c_enable_status()
-{
-  uint32 I2C_ENABLE_STATUS = I2C_BASE + 0x9c;
-  return READL(I2C_ENABLE_STATUS);
-}
-
-static uint32
+static u32
 i2c_status()
 {
-  uint32 I2C_STATUS = I2C_BASE + 0x70;
-  return READL(I2C_STATUS);
+  return i2c_read_r(DW_IC_STATUS);
 }
 
 struct i2c_msg {
-	uint16 flags;
+	u16 flags;
 #define I2C_M_TEN		0x0010	/* this is a ten bit chip address */
 #define I2C_M_RD		0x0001	/* read data, from slave to master */
 #define I2C_M_STOP		0x8000	/* if I2C_FUNC_PROTOCOL_MANGLING */
@@ -308,8 +332,8 @@ struct i2c_msg {
 #define I2C_M_IGNORE_NAK	0x1000	/* if I2C_FUNC_PROTOCOL_MANGLING */
 #define I2C_M_NO_RD_ACK		0x0800	/* if I2C_FUNC_PROTOCOL_MANGLING */
 #define I2C_M_RECV_LEN		0x0400	/* length will be first received byte */
-	uint16 len;		/* msg length				*/
-	uint8 *buf;		/* pointer to msg data			*/
+	u16 len;		/* msg length				*/
+	u8 *buf;		/* pointer to msg data			*/
 };
 
 #define DW_IC_CMD_READ			0x01
@@ -321,81 +345,69 @@ struct i2c_msg {
  */
 static union i2c_dw_data_cmd {
 	struct fields {
-		uint8 data;
-		uint8 cmd;
+		u8 data;
+		u8 cmd;
 	} fields;
-	uint16 value;
+	u16 value;
 } data_cmd;
 
-/* XXX: status may need to be returned */
 static void
-i2c_xfer(struct i2c_msg *msgs, int msg_num)
+i2c_write(struct i2c_msg *msgs, int msg_num)
 {
-  uint32 I2C_DATA_CMD = I2C_BASE + 0x10;
-  uint32 I2C_STATUS = I2C_BASE + 0x70;
-  uint32 buf_len;
-  uint8 *buf;
-  int i, explicit_stop = 1, segment_start;
+  u32 buf_len;
+  u8 *buf;
+  int i, segment_start;
+  /* reset pending RX */
+  dev_i2c.rx_outstanding = 0;
 
   for (i = 0; i < msg_num; i++) {
-    /* XXX: indicates if this is the first byte of a msg 
-     * right now it is always turned on since both msgs we have 
-     * are of 1 byte */
     segment_start = 1;
     buf_len = msgs[i].len;
     buf = msgs[i].buf;
-    DLOG("buf: %x", *buf);
-    data_cmd.fields.data = 0x00;
-    data_cmd.fields.cmd = 0x00;
 
-    if (msgs[i].flags & I2C_M_RD)
-      data_cmd.fields.cmd = DW_IC_CMD_READ;
-    else {
-      data_cmd.fields.data = *buf;
-      buf++;
+    while (buf_len > 0) {
+      data_cmd.fields.data = 0x00;
+      data_cmd.fields.cmd = 0x00;
+
+      if (msgs[i].flags & I2C_M_RD) {
+        data_cmd.fields.cmd = DW_IC_CMD_READ;
+        dev_i2c.rx_outstanding++;
+      } else {
+        data_cmd.fields.data = *buf;
+        buf++;
+      }
+
+      if (segment_start) {
+        /*
+         * First byte of a transaction segment for a
+         * device requiring explicit transaction
+         * termination: generate (re)start symbol.
+         */
+        segment_start = 0;
+        data_cmd.fields.cmd |= DW_IC_CMD_RESTART;
+      }
+
+      if (i == msg_num - 1 && buf_len == 1) {
+        /*
+         * Last byte of last transction segment for a
+         * device requiring explicit transaction
+         * termination: generate stop symbol.
+         */
+        data_cmd.fields.cmd |= DW_IC_CMD_STOP;
+      }
+
+      i2c_write_r(data_cmd.value, DW_IC_DATA_CMD);
+      buf_len--;
     }
-
-    if (1 == explicit_stop
-        && 1 == segment_start) {
-      /*
-       * First byte of a transaction segment for a
-       * device requiring explicit transaction
-       * termination: generate (re)start symbol.
-       */
-      segment_start = 0;
-      data_cmd.fields.cmd |= DW_IC_CMD_RESTART;
-    }
-
-    if (1 == explicit_stop
-        && i == msg_num - 1
-        && 1 == buf_len) {
-      /*
-       * Last byte of last transction segment for a
-       * device requiring explicit transaction
-       * termination: generate stop symbol.
-       */
-      data_cmd.fields.cmd |= DW_IC_CMD_STOP;
-    }
-
-    DLOG("data_cmd.value is %x", data_cmd.value);
-    uint32 status = READL(I2C_STATUS);
-    DLOG("status1 is %x", status);
-    WRITEL(data_cmd.value, I2C_DATA_CMD);
-    status = READL(I2C_STATUS);
-    DLOG("status2 is %x", status);
   }
 }
 
 static void
 i2c_read(struct i2c_msg *msgs, int msg_num)
 {
-  uint32 I2C_DATA_CMD = I2C_BASE + 0x10;
-  uint32 I2C_RXFLR = I2C_BASE + 0x78;
-  uint32 I2C_STATUS = I2C_BASE + 0x70;
   int i, rx_valid;
-  uint32 buf_len;
-  uint8 *buf;
-  uint32 status;
+  u32 buf_len;
+  u8 *buf;
 
   for (i = 0; i < msg_num; i++) {
     if (!(msgs[i].flags & I2C_M_RD)) 
@@ -404,19 +416,16 @@ i2c_read(struct i2c_msg *msgs, int msg_num)
     buf_len = msgs[i].len;
     buf = msgs[i].buf;
 
-    /* XXX: hack */
-    //while (!((status = READL(I2C_STATUS)) & 0x8));
-    status = READL(I2C_STATUS);
-    DLOG("status is %d", status);
-		rx_valid = READL(I2C_RXFLR);
-    DLOG("rx_valid is %d", rx_valid);
-		for (; buf_len > 0 && rx_valid > 0; buf_len--, rx_valid--) {
-      uint8 val = (uint8)READL(I2C_DATA_CMD);
-      DLOG("val is %d", val);
-			*buf++ = val;
+    while (dev_i2c.rx_outstanding > 0) {
+      /* more read requests need to be handled */
+      rx_valid = i2c_read_r(DW_IC_RXFLR);
+
+      for (; buf_len > 0 && rx_valid > 0; buf_len--, rx_valid--) {
+        u8 val = (u8)i2c_read_r(DW_IC_DATA_CMD);
+        *buf++ = val;
+        dev_i2c.rx_outstanding--;
+      }
     }
-    uint8 val = (uint8)READL(I2C_DATA_CMD);
-    DLOG("val is %d", val);
   }
 }
 
@@ -426,42 +435,33 @@ i2c_read(struct i2c_msg *msgs, int msg_num)
 /* i2c protocol */
 
 /*
- * Data for SMBus Messages
+ * Data for Messages
  * copy from clanton
  */
-#define I2C_SMBUS_BLOCK_MAX	32	/* As specified in SMBus standard */
-union i2c_smbus_data {
-	uint8 byte;
-	uint16 word;
-	uint8 block[I2C_SMBUS_BLOCK_MAX + 2]; /* block[0] is used for length */
+#define I2C_BLOCK_MAX	32	/* As specified in SMBus standard */
+union i2c_data {
+	u8 byte;
+	u16 word;
+	u8 block[I2C_BLOCK_MAX + 2]; /* block[0] is used for length */
 			       /* and one more for user-space compatibility */
 };
 
-/* SMBus transaction types (size parameter in the above functions)
-   Note: these no longer correspond to the (arbitrary) PIIX4 internal codes! */
-#define I2C_SMBUS_QUICK		    0
-#define I2C_SMBUS_BYTE		    1
-#define I2C_SMBUS_BYTE_DATA	    2
-#define I2C_SMBUS_WORD_DATA	    3
-#define I2C_SMBUS_PROC_CALL	    4
-#define I2C_SMBUS_BLOCK_DATA	    5
-#define I2C_SMBUS_I2C_BLOCK_BROKEN  6
-#define I2C_SMBUS_BLOCK_PROC_CALL   7		/* SMBus 2.0 */
-#define I2C_SMBUS_I2C_BLOCK_DATA    8
+/* transaction types */
+#define I2C_BYTE_DATA	    0
+#define I2C_WORD_DATA	    1
+#define I2C_BLOCK_DATA    2
 
-/* i2c_smbus_xfer read or write markers */
-#define I2C_SMBUS_READ	1
-#define I2C_SMBUS_WRITE	0
+/* i2c_xfer read or write markers */
+#define I2C_READ	1
+#define I2C_WRITE	0
 
-static sint32 i2c_proto_xfer(unsigned short flags,
-    char read_write, uint8 command, int size,
-    union i2c_smbus_data *data)
+static s32 i2c_xfer(unsigned short flags, char read_write,
+    u8 command, int size, union i2c_data *data)
 {
-  unsigned char msgbuf0[I2C_SMBUS_BLOCK_MAX+3];
-  unsigned char msgbuf1[I2C_SMBUS_BLOCK_MAX+2];
-	int num = read_write == I2C_SMBUS_READ ? 2 : 1;
+  unsigned char msgbuf0[I2C_BLOCK_MAX+3];
+  unsigned char msgbuf1[I2C_BLOCK_MAX+2];
+	int num = read_write == I2C_READ ? 2 : 1;
 	int i;
-
   struct i2c_msg msg[2] = {
     {
       .flags = flags,
@@ -476,30 +476,30 @@ static sint32 i2c_proto_xfer(unsigned short flags,
 
 	msgbuf0[0] = command;
   switch (size) {
-	case I2C_SMBUS_QUICK:
-		msg[0].len = 0;
-		/* Special case: The read/write field is used as data */
-		msg[0].flags = flags | (read_write == I2C_SMBUS_READ ?
-					I2C_M_RD : 0);
-		num = 1;
-		break;
-	case I2C_SMBUS_BYTE:
-		if (read_write == I2C_SMBUS_READ) {
-			/* Special case: only a read! */
-			msg[0].flags = I2C_M_RD | flags;
-			num = 1;
-		}
-		break;
-	case I2C_SMBUS_BYTE_DATA:
-		if (read_write == I2C_SMBUS_READ)
+  case I2C_BYTE_DATA:
+		if (read_write == I2C_READ)
 			msg[1].len = 1;
 		else {
 			msg[0].len = 2;
 			msgbuf0[1] = data->byte;
 		}
 		break;
-	case I2C_SMBUS_WORD_DATA:
-		if (read_write == I2C_SMBUS_READ)
+  case I2C_BLOCK_DATA:
+		if (read_write == I2C_READ) {
+			msg[1].len = data->block[0];
+		} else {
+			msg[0].len = data->block[0] + 1;
+			if (msg[0].len > I2C_BLOCK_MAX + 1) {
+        DLOG("Invalid block write size %d\n",
+             data->block[0]);
+        return -1;
+			}
+			for (i = 1; i <= data->block[0]; i++)
+				msgbuf0[i] = data->block[i];
+		}
+		break;
+  case I2C_WORD_DATA:
+		if (read_write == I2C_READ)
 			msg[1].len = 2;
 		else {
 			msg[0].len = 3;
@@ -507,113 +507,37 @@ static sint32 i2c_proto_xfer(unsigned short flags,
 			msgbuf0[2] = data->word >> 8;
 		}
 		break;
-	case I2C_SMBUS_PROC_CALL:
-		num = 2; /* Special case */
-		read_write = I2C_SMBUS_READ;
-		msg[0].len = 3;
-		msg[1].len = 2;
-		msgbuf0[1] = data->word & 0xff;
-		msgbuf0[2] = data->word >> 8;
-		break;
-	case I2C_SMBUS_BLOCK_DATA:
-		if (read_write == I2C_SMBUS_READ) {
-			msg[1].flags |= I2C_M_RECV_LEN;
-			msg[1].len = 1; /* block length will be added by
-					   the underlying bus driver */
-		} else {
-			msg[0].len = data->block[0] + 2;
-			if (msg[0].len > I2C_SMBUS_BLOCK_MAX + 2) {
-      /*
-				dev_err(&adapter->dev,
-					"Invalid block write size %d\n",
-					data->block[0]);
-				return -EINVAL;
-      */
-        return -1;
-			}
-			for (i = 1; i < msg[0].len; i++)
-				msgbuf0[i] = data->block[i-1];
-		}
-		break;
-	case I2C_SMBUS_BLOCK_PROC_CALL:
-		num = 2; /* Another special case */
-		read_write = I2C_SMBUS_READ;
-		if (data->block[0] > I2C_SMBUS_BLOCK_MAX) {
-    /*
-			dev_err(&adapter->dev,
-				"Invalid block write size %d\n",
-				data->block[0]);
-			return -EINVAL;
-    */
-      return -1;
-		}
-		msg[0].len = data->block[0] + 2;
-		for (i = 1; i < msg[0].len; i++)
-			msgbuf0[i] = data->block[i-1];
-		msg[1].flags |= I2C_M_RECV_LEN;
-		msg[1].len = 1; /* block length will be added by
-				   the underlying bus driver */
-		break;
-	case I2C_SMBUS_I2C_BLOCK_DATA:
-		if (read_write == I2C_SMBUS_READ) {
-			msg[1].len = data->block[0];
-		} else {
-			msg[0].len = data->block[0] + 1;
-			if (msg[0].len > I2C_SMBUS_BLOCK_MAX + 1) {
-      /*
-				dev_err(&adapter->dev,
-					"Invalid block write size %d\n",
-					data->block[0]);
-				return -EINVAL;
-      */
-        return -1;
-			}
-			for (i = 1; i <= data->block[0]; i++)
-				msgbuf0[i] = data->block[i];
-		}
-		break;
 	default:
-    /*
-		dev_err(&adapter->dev, "Unsupported transaction %d\n", size);
-		return -EOPNOTSUPP;
-    */
+    DLOG("Unsupported transaction%d\n",
+         size);
     return -1;
 	}
 
-  i2c_xfer(msg, num);
-  i2c_read(msg, num);
+  i2c_write(msg, num);
 
-  if (read_write == I2C_SMBUS_READ)
+  if (read_write == I2C_READ)
+    i2c_read(msg, num);
+
 		switch (size) {
-		case I2C_SMBUS_BYTE:
-			data->byte = msgbuf0[0];
-			break;
-		case I2C_SMBUS_BYTE_DATA:
+		case I2C_BYTE_DATA:
 			data->byte = msgbuf1[0];
 			break;
-		case I2C_SMBUS_WORD_DATA:
-		case I2C_SMBUS_PROC_CALL:
+		case I2C_WORD_DATA:
 			data->word = msgbuf1[0] | (msgbuf1[1] << 8);
 			break;
-		case I2C_SMBUS_I2C_BLOCK_DATA:
+		case I2C_BLOCK_DATA:
 			for (i = 0; i < data->block[0]; i++)
 				data->block[i+1] = msgbuf1[i];
-			break;
-		case I2C_SMBUS_BLOCK_DATA:
-		case I2C_SMBUS_BLOCK_PROC_CALL:
-			for (i = 0; i < msgbuf1[0] + 1; i++)
-				data->block[i] = msgbuf1[i];
 			break;
 		}
 
 	return 0;
 }
 
-static sint32
-i2c_read_byte_data(uint8 command)
+s32 i2c_read_byte_data(u8 command)
 {
-  union i2c_smbus_data data;
-  sint32 status = i2c_proto_xfer(0, I2C_SMBUS_READ, command, I2C_SMBUS_BYTE_DATA, &data);
+  union i2c_data data;
+  s32 status = i2c_xfer(0, I2C_READ, command, I2C_BYTE_DATA, &data);
   if (status < 0) {
     DLOG("i2c_read_byte_data error");
     return -1;
@@ -621,12 +545,12 @@ i2c_read_byte_data(uint8 command)
   return data.byte;
 }
 
-static sint32
-i2c_write_byte_data(uint8 command, uint8 value)
+/* return 0 on success, -1 on failure */
+s32 i2c_write_byte_data(u8 command, u8 value)
 {
-  union i2c_smbus_data data;
+  union i2c_data data;
   data.byte = value;
-  sint32 status = i2c_proto_xfer(0, I2C_SMBUS_WRITE, command, I2C_SMBUS_BYTE_DATA, &data);
+  s32 status = i2c_xfer(0, I2C_WRITE, command, I2C_BYTE_DATA, &data);
   if (status < 0) {
     DLOG("i2c_write_byte_data error");
     return -1;
@@ -634,51 +558,45 @@ i2c_write_byte_data(uint8 command, uint8 value)
   return 0;
 }
 
-#define REG_DEVID_STAT			0x2e
-/* XXX: this function should be in cy8c9540 driver */
-static sint32
-cy_dev_id()
+s32 i2c_read_block_data(u8 command, u8 length, u8 *values)
 {
-  sint32 dev_id = i2c_read_byte_data(REG_DEVID_STAT);
-  return dev_id & 0xf0;
+  union i2c_data data;
+  int status;
+
+  if (length > I2C_BLOCK_MAX)
+    length = I2C_BLOCK_MAX;
+  data.block[0] = length;
+
+  status = i2c_xfer(0, I2C_READ, command, I2C_BLOCK_DATA, &data);
+  if (status < 0)
+    return status;
+
+  memcpy(values, &data.block[1], data.block[0]);
+  return data.block[0];
 }
 
-static void
-i2c_test()
+s32 i2c_write_block_data(u8 command, u8 length, u8 *values)
 {
-  I2C_BASE = map_virtual_page (0x90007000 | 0x3);
+  union i2c_data data;
+  int status;
 
-  i2c_disable();
-  uint32 enabled = i2c_enable_status();
-  DLOG("1: enabled is %x", enabled);
-  i2c_config();
-  i2c_disable_int();
-  i2c_clear_int();
+  if (length > I2C_BLOCK_MAX)
+    length = I2C_BLOCK_MAX;
+  data.block[0] = length;
 
-  /* XXX: do I need to wait_bus_not_busy */
-  /* enable i2c master */
-  i2c_xfer_init();
-  enabled = i2c_enable_status();
-  DLOG("2: enabled is %x", enabled);
+  memcpy(&data.block[1], values, length);
+  status = i2c_xfer(0, I2C_WRITE, command, I2C_BLOCK_DATA, &data);
 
-  /* read cy8c9540's device id */
-  sint32 val = cy_dev_id();
-
-	/* XXX: wait for tx to complete */
-	/* ret = wait_for_completion_interruptible_timeout(&dev->cmd_complete, HZ); */
-
-  i2c_disable();
-  DLOG("dev_id is %x", val);
-
-  unmap_virtual_page ((void *) I2C_BASE);
+  return status;
 }
-
 /******************************************************************/
 
 /******************************************************************/
 /* cy8c9540 driver */
 
 #define NPORTS				6
+#define NPWM          8
+#define PWM_CLK				0x00	/* see resulting PWM_TCLK_NS */
 
 /* Register offset  */
 #define REG_INPUT_PORT0			0x00
@@ -696,153 +614,289 @@ i2c_test()
 #define REG_ENABLE			0x2d
 #define REG_DEVID_STAT			0x2e
 
+#define BIT(nr)			(1UL << (nr))
+
+#define GPIOF_DRIVE_PULLUP	(1 << 6)
+#define GPIOF_DRIVE_PULLDOWN	(1 << 7)
+#define GPIOF_DRIVE_STRONG	(1 << 8)
+#define GPIOF_DRIVE_HIZ		(1 << 9)
+
+/* Per-port GPIO offset */
+static const u8 cy8c9540a_port_offs[] = {
+	0,
+	8,
+	16,
+	20,
+	28,
+	36,
+};
+
+/* XXX: need to change name */
 struct cy8c9540a {
-	struct i2c_client *client;
-	struct gpio_chip gpio_chip;
-	struct pwm_chip pwm_chip;
-	struct mutex lock;
-	/* protect serialized access to the interrupt controller bus */
-	struct mutex irq_lock;
 	/* cached output registers */
 	u8 outreg_cache[NPORTS];
 	/* cached IRQ mask */
 	u8 irq_mask_cache[NPORTS];
 	/* IRQ mask to be applied */
 	u8 irq_mask[NPORTS];
-} cy_dev;
+  u32 addr;
+};
+
+static struct cy8c9540a dev_c = {
+  .addr = 0x20,
+};
+
+static inline u8
+cypress_get_port(unsigned gpio)
+{
+  u8 i = 0;
+  for (i = 0; i < sizeof(cy8c9540a_port_offs) - 1; i++) {
+    if (!(gpio / cy8c9540a_port_offs[i + 1]))
+      break;
+  }
+  return i;
+}
+
+static inline u8 cypress_get_offs(unsigned gpio, u8 port)
+{
+	return gpio - cy8c9540a_port_offs[port];
+}
+
+static int
+cy8c9540a_gpio_get_value(unsigned gpio)
+{
+  s32 ret = 0;
+  u8 port = 0, pin = 0, in_reg = 0;
+  port = cypress_get_port(gpio);
+  pin = cypress_get_offs(gpio, port);
+  in_reg = REG_INPUT_PORT0 + port;
+
+  ret = i2c_read_byte_data(in_reg);
+  if (ret < 0) {
+    DLOG("can't read input port%u\n", port);
+  }
+
+  return !!(ret & BIT(pin));
+}
+
+static void
+cy8c9540a_gpio_set_value(unsigned gpio, int val)
+{
+  s32 ret = 0;
+  u8 port = 0, pin = 0, out_reg = 0;
+  port = cypress_get_port(gpio);
+  pin = cypress_get_offs(gpio, port);
+  out_reg = REG_OUTPUT_PORT0 + port;
+
+  if (val) {
+    dev_c.outreg_cache[port] |= BIT(pin);
+  } else {
+    dev_c.outreg_cache[port] &= ~BIT(pin);
+  }
+
+  ret = i2c_write_byte_data(out_reg, dev_c.outreg_cache[port]);
+
+  if (ret < 0) {
+    DLOG("can't read output port%u\n", port);
+  }
+}
+
+static int cy8c9540a_gpio_set_drive(unsigned gpio, unsigned mode)
+{
+  s32 ret = 0;
+  u8 port = 0, pin = 0, offs = 0, val = 0;
+  port = cypress_get_port(gpio);
+  pin = cypress_get_offs(gpio, port);
+
+  switch(mode) {
+    case GPIOF_DRIVE_PULLUP:
+      offs = 0x0;
+      break;
+    case GPIOF_DRIVE_STRONG:
+      offs = 0x4;
+      break;
+    case GPIOF_DRIVE_HIZ:
+      offs = 0x6;
+      break;
+    default:
+      return -1;
+  }
+
+  ret = i2c_write_byte_data(REG_PORT_SELECT, port);
+  if (ret < 0) {
+    DLOG("can't select port%u\n", port);
+    return ret;
+  }
+
+  ret = i2c_read_byte_data(REG_DRIVE_PULLUP + offs);
+  if (ret < 0) {
+    DLOG("can't read drive mode port%u\n", port);
+    return ret;
+  }
+
+  val = (u8)(ret | BIT(pin));
+
+  ret = i2c_write_byte_data(REG_DRIVE_PULLUP + offs, val);
+  if (ret < 0) {
+    DLOG("can't write drive mode port%u\n", port);
+    return ret;
+  }
+
+  return 0;
+}
+
+static int
+cy8c9540a_gpio_direction(unsigned gpio, int out, int val)
+{
+  s32 ret = 0;
+  u8 pins = 0, port = 0, pin = 0;
+  port = cypress_get_port(gpio);
+
+  if (out) {
+    cy8c9540a_gpio_set_value(gpio, val);
+  }
+
+  ret = i2c_write_byte_data(REG_PORT_SELECT, port);
+  if (ret < 0) {
+    DLOG("can't select port%u\n", port);
+    return ret;
+  }
+
+  ret = i2c_read_byte_data(REG_PIN_DIR);
+  if (ret < 0) {
+    DLOG("can't read pin direction\n", port);
+    return ret;
+  }
+
+  pin = cypress_get_offs(gpio, port);
+
+  pins = (u8)ret & 0xff;
+  if (out) {
+    pins &= ~BIT(pin);
+  } else {
+    pins |= BIT(pin);
+  }
+  
+  ret = i2c_write_byte_data(REG_PIN_DIR, pins);
+  if (ret < 0) {
+    DLOG("can't write pin direction\n", port);
+    return ret;
+  }
+
+  return 0;
+}
+
+static int cy8c9540a_gpio_direction_output(unsigned gpio, int val)
+{
+  return cy8c9540a_gpio_direction(gpio, 1, val);
+}
+
+static int cy8c9540a_gpio_direction_input(unsigned gpio)
+{
+  return cy8c9540a_gpio_direction(gpio, 0, 0);
+}
+
+static s32 cypress_get_id()
+{
+  s32 dev_id = i2c_read_byte_data(REG_DEVID_STAT);
+  return dev_id & 0xf0;
+}
 
 /* called when initializing */
 static int cy8c9540a_setup()
 {
 	int ret = 0;
 	int i = 0;
-	const uint8 eeprom_enable_seq[] = {0x43, 0x4D, 0x53, 0x2};
+  s32 dev_id;
+	const u8 eeprom_enable_seq[] = {0x43, 0x4D, 0x53, 0x2};
+
+  dev_id = cypress_get_id();
+  DLOG("dev_id is %d\n", dev_id);
 
 	/* Disable PWM, set all GPIOs as input.  */
-	for (i = 0; i < NPORTS; i ++) {
+	for (i = 0; i < NPORTS; i++) {
 		ret = i2c_write_byte_data(REG_PORT_SELECT, i);
 		if (ret < 0) {
 			DLOG("can't select port %u\n", i);
-			goto end;
+      return ret;
 		}
 
-		ret = i2c_smbus_write_byte_data(REG_SELECT_PWM, 0x00);
+		ret = i2c_write_byte_data(REG_SELECT_PWM, 0x00);
 		if (ret < 0) {
 			DLOG("can't write to SELECT_PWM\n");
-			goto end;
+      return ret;
 		}
 
-		ret = i2c_smbus_write_byte_data(REG_PIN_DIR, 0xff);
+		ret = i2c_write_byte_data(REG_PIN_DIR, 0xff);
 		if (ret < 0) {
 			DLOG("can't write to PIN_DIR\n");
-			goto end;
+      return ret;
 		}
 	}
 
-  gc->direction_input = cy8c9540a_gpio_direction_input;
-	gc->direction_output = cy8c9540a_gpio_direction_output;
-	gc->get = cy8c9540a_gpio_get_value;
-	gc->set = cy8c9540a_gpio_set_value;
-	gc->set_drive = cy8c9540a_gpio_set_drive;
-
-	gc->can_sleep = 1;
-
-	gc->base = GPIO_BASE_ID;
-	gc->ngpio = NGPIO;
-	gc->label = client->name;
-	gc->owner = THIS_MODULE;
-	gc->to_irq = cy8c9540a_gpio_to_irq;
-
-
-#if 0
 	/* Cache the output registers */
-	ret = i2c_smbus_read_i2c_block_data(dev->client, REG_OUTPUT_PORT0,
-					    sizeof(dev->outreg_cache),
-					    dev->outreg_cache);
+	ret = i2c_read_block_data(REG_OUTPUT_PORT0,
+            sizeof(dev_c.outreg_cache),
+            dev_c.outreg_cache);
 	if (ret < 0) {
-		dev_err(&client->dev, "can't cache output registers\n");
-		goto end;
+    DLOG("can't cache output registers\n");
+    return ret;
 	}
 
 	/* Set default PWM clock source.  */
 	for (i = 0; i < NPWM; i ++) {
-		ret = i2c_smbus_write_byte_data(client, REG_PWM_SELECT, i);
+		ret = i2c_write_byte_data(REG_PWM_SELECT, i);
 		if (ret < 0) {
-			dev_err(&client->dev, "can't select pwm %u\n", i);
-			goto end;
+			DLOG("can't select pwm %u\n", i);
+      return ret;
 		}
 
-		ret = i2c_smbus_write_byte_data(client, REG_PWM_CLK, PWM_CLK);
+		ret = i2c_write_byte_data(REG_PWM_CLK, PWM_CLK);
 		if (ret < 0) {
-			dev_err(&client->dev, "can't write to REG_PWM_CLK\n");
-			goto end;
+			DLOG("can't write to REG_PWM_CLK\n");
+      return ret;
 		}
 	}
 
 	/* Enable the EEPROM */
-	ret = i2c_smbus_write_i2c_block_data(client, REG_ENABLE,
+	ret = i2c_write_block_data(REG_ENABLE,
 					     sizeof(eeprom_enable_seq),
 					     eeprom_enable_seq);
 	if (ret < 0) {
-		dev_err(&client->dev, "can't enable EEPROM\n");
-		goto end;
+		DLOG("can't enable EEPROM\n");
+    return ret;
 	}
-#endif
 
-end:
-	return ret;
+	return 0;
 }
-
-/******************************************************************/
-
-/******************************************************************/
-/* gpio driver */
-/* copy from include/asm-generic/gpio.h */
-/* XXX: need to get rid of some unused members */
-struct gpio_chip {
-	const char		*label;
-	struct device		*dev;
-	struct module		*owner;
-
-	int			(*request)(struct gpio_chip *chip,
-						unsigned offset);
-	void			(*free)(struct gpio_chip *chip,
-						unsigned offset);
-	int			(*get_direction)(struct gpio_chip *chip,
-						unsigned offset);
-	int			(*direction_input)(struct gpio_chip *chip,
-						unsigned offset);
-	int			(*get)(struct gpio_chip *chip,
-						unsigned offset);
-	int			(*direction_output)(struct gpio_chip *chip,
-						unsigned offset, int value);
-	int			(*set_debounce)(struct gpio_chip *chip,
-						unsigned offset, unsigned debounce);
-	int			(*set_drive)(struct gpio_chip *chip,
-					     unsigned offset, unsigned mode);
-
-	void			(*set)(struct gpio_chip *chip,
-						unsigned offset, int value);
-
-	int			(*to_irq)(struct gpio_chip *chip,
-						unsigned offset);
-
-	void			(*dbg_show)(struct seq_file *s,
-						struct gpio_chip *chip);
-	int			base;
-	u16			ngpio;
-	const char		*const *names;
-	unsigned		can_sleep:1;
-	unsigned		exported:1;
-} gc;
 
 static void
-gpio_chip_setup()
+cy8c9540a_test()
 {
-  gc.direction_input = cy8c9540a_gpio_direction_input; 
+  unsigned gpio = 27;
+  int out = 1;
 
+  cy8c9540a_setup();
+  cy8c9540a_gpio_set_drive(gpio, GPIOF_DRIVE_STRONG);
+  cy8c9540a_gpio_direction_output(gpio, out);
 }
 
+static void
+i2c_test()
+{
+  i2c_base = map_virtual_page (0x90007000 | 0x3);
+
+  i2c_disable();
+  i2c_config();
+  i2c_disable_int();
+  i2c_clear_int();
+  /* enable i2c master */
+  i2c_xfer_init(dev_c.addr);
+  cy8c9540a_test();
+  i2c_disable();
+
+  unmap_virtual_page ((void *) i2c_base);
+}
 /******************************************************************/
 
 static void
