@@ -396,7 +396,6 @@ i2c_write(struct i2c_msg *msgs, int msg_num)
         data_cmd.fields.cmd |= DW_IC_CMD_STOP;
       }
 
-      DLOG("data_cmd.value is %x\n", data_cmd.value);
       i2c_write_r(data_cmd.value, DW_IC_DATA_CMD);
       buf_len--;
     }
@@ -696,7 +695,6 @@ cy8c9540a_gpio_set_value(unsigned gpio, int val)
   }
 
   ret = i2c_write_byte_data(out_reg, dev_c.outreg_cache[port]);
-  DLOG("here\n");
 
   if (ret < 0) {
     DLOG("can't read output port%u\n", port);
