@@ -310,7 +310,6 @@ i2c_write(struct i2c_msg *msgs, int msg_num)
         data_cmd.fields.cmd |= DW_IC_CMD_STOP;
       }
 
-			DLOG("data_cmd.value is %x\n", data_cmd.value);
       i2c_write_r(data_cmd.value, DW_IC_DATA_CMD);
       buf_len--;
     }
@@ -420,10 +419,15 @@ static s32 i2c_xfer(unsigned short flags, char read_write,
 	}
 
   i2c_write(msg, num);
+	/* some delay is necessary here
+	 * so that we won't suffer from 
+	 * timing issue. I think it is
+	 * caused by writing too fast */
+	/* XXX: fix me */
+	tsc_delay_usec(10000);
 
-  if (read_write == I2C_READ)
-    i2c_read(msg, num);
-
+  if (read_write == I2C_READ) {
+		i2c_read(msg, num);
 		switch (size) {
 		case I2C_BYTE_DATA:
 			data->byte = msgbuf1[0];
@@ -436,6 +440,7 @@ static s32 i2c_xfer(unsigned short flags, char read_write,
 				data->block[i+1] = msgbuf1[i];
 			break;
 		}
+	} 
 
 	return 0;
 }
@@ -547,7 +552,6 @@ bool i2c_init()
     return FALSE;
   } 
 
-	DLOG("mem_addr is 0x%x\n", mem_addr);
   u32 addr = map_virtual_page (mem_addr | 0x3);
 	dev.i2c_base = addr;
 	i2c_disable();
