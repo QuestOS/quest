@@ -273,6 +273,7 @@ i2c_write(struct i2c_msg *msgs, int msg_num)
   int i, segment_start;
   /* reset pending RX */
   dev.rx_outstanding = 0;
+	int tx_limit;
 
   for (i = 0; i < msg_num; i++) {
     segment_start = 1;
@@ -280,6 +281,10 @@ i2c_write(struct i2c_msg *msgs, int msg_num)
     buf = msgs[i].buf;
 
     while (buf_len > 0) {
+			do {
+				tx_limit = dev.tx_fifo_depth - i2c_read_r(DW_IC_TXFLR);
+			} while (tx_limit <= 0);
+
       data_cmd.fields.data = 0x00;
       data_cmd.fields.cmd = 0x00;
 
@@ -419,12 +424,6 @@ static s32 i2c_xfer(unsigned short flags, char read_write,
 	}
 
   i2c_write(msg, num);
-	/* some delay is necessary here
-	 * so that we won't suffer from 
-	 * timing issue. I think it is
-	 * caused by writing too fast */
-	/* XXX: fix me */
-	tsc_delay_usec(10000);
 
   if (read_write == I2C_READ) {
 		i2c_read(msg, num);
@@ -552,7 +551,7 @@ bool i2c_init()
     return FALSE;
   } 
 
-  u32 addr = map_virtual_page (mem_addr | 0x3);
+  u32 addr = (u32)map_virtual_page (mem_addr | 0x3);
 	dev.i2c_base = addr;
 	i2c_disable();
   i2c_config();

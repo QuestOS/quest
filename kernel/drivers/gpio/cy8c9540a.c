@@ -240,11 +240,17 @@ s32 cypress_get_id()
 void cy8c9540a_test()
 {
   unsigned gpio = 11;
+	int i;
 
   cy8c9540a_gpio_direction_output(gpio, 0);
   cy8c9540a_gpio_set_drive(gpio, GPIOF_DRIVE_STRONG);
   cy8c9540a_gpio_set_value(gpio, 1);
-	i2c_remove();
+	tsc_delay_usec (3000000);
+  for (i = 1; i <= 1000; i++) {
+		cy8c9540a_gpio_set_value(gpio, 1);
+		cy8c9540a_gpio_set_value(gpio, 0);
+		cy8c9540a_gpio_set_value(gpio, 0);
+	}
 }
 
 bool cy8c9540a_setup()
@@ -252,7 +258,7 @@ bool cy8c9540a_setup()
 	int ret = 0;
 	int i = 0;
   s32 dev_id;
-	const u8 eeprom_enable_seq[] = {0x43, 0x4D, 0x53, 0x2};
+	u8 eeprom_enable_seq[] = {0x43, 0x4D, 0x53, 0x2};
 
 	/* enable i2c device */
 	i2c_xfer_init(dev.addr);
