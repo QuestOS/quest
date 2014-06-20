@@ -107,7 +107,7 @@ cy8c9540a_gpio_get_value(unsigned gpio)
 
   ret = i2c_read_byte_data(in_reg);
   if (ret < 0) {
-    DLOG("can't read input port%u\n", port);
+    DLOG("can't read input port%u", port);
   }
 
   return !!(ret & BIT(pin));
@@ -131,7 +131,7 @@ cy8c9540a_gpio_set_value(unsigned gpio, int val)
   ret = i2c_write_byte_data(out_reg, dev.outreg_cache[port]);
 
   if (ret < 0) {
-    DLOG("can't read output port%u\n", port);
+    DLOG("can't read output port%u", port);
   }
 }
 
@@ -159,13 +159,13 @@ cy8c9540a_gpio_set_drive(unsigned gpio, unsigned mode)
 
   ret = i2c_write_byte_data(REG_PORT_SELECT, port);
   if (ret < 0) {
-    DLOG("can't select port%u\n", port);
+    DLOG("can't select port%u", port);
     return ret;
   }
 
   ret = i2c_read_byte_data(REG_DRIVE_PULLUP + offs);
   if (ret < 0) {
-    DLOG("can't read drive mode port%u\n", port);
+    DLOG("can't read drive mode port%u", port);
     return ret;
   }
 
@@ -173,7 +173,7 @@ cy8c9540a_gpio_set_drive(unsigned gpio, unsigned mode)
 
   ret = i2c_write_byte_data(REG_DRIVE_PULLUP + offs, val);
   if (ret < 0) {
-    DLOG("can't write drive mode port%u\n", port);
+    DLOG("can't write drive mode port%u", port);
     return ret;
   }
 
@@ -193,13 +193,13 @@ cy8c9540a_gpio_direction(unsigned gpio, int out, int val)
 
   ret = i2c_write_byte_data(REG_PORT_SELECT, port);
   if (ret < 0) {
-    DLOG("can't select port%u\n", port);
+    DLOG("can't select port%u", port);
     return ret;
   }
 
   ret = i2c_read_byte_data(REG_PIN_DIR);
   if (ret < 0) {
-    DLOG("can't read pin direction\n", port);
+    DLOG("can't read pin direction", port);
     return ret;
   }
 
@@ -214,7 +214,7 @@ cy8c9540a_gpio_direction(unsigned gpio, int out, int val)
   
   ret = i2c_write_byte_data(REG_PIN_DIR, pins);
   if (ret < 0) {
-    DLOG("can't write pin direction\n", port);
+    DLOG("can't write pin direction", port);
     return ret;
   }
 
@@ -264,25 +264,25 @@ bool cy8c9540a_setup()
 	i2c_xfer_init(dev.addr);
 
   dev_id = cypress_get_id();
-  DLOG("dev_id is 0x%x\n", dev_id);
+  DLOG("dev_id is 0x%x", dev_id);
 
 	/* Disable PWM, set all GPIOs as input.  */
 	for (i = 0; i < NPORTS; i++) {
 		ret = i2c_write_byte_data(REG_PORT_SELECT, i);
 		if (ret < 0) {
-			DLOG("can't select port %u\n", i);
+			DLOG("can't select port %u", i);
       return FALSE;
 		}
 
 		ret = i2c_write_byte_data(REG_SELECT_PWM, 0x00);
 		if (ret < 0) {
-			DLOG("can't write to SELECT_PWM\n");
+			DLOG("can't write to SELECT_PWM");
       return FALSE;
 		}
 
 		ret = i2c_write_byte_data(REG_PIN_DIR, 0xff);
 		if (ret < 0) {
-			DLOG("can't write to PIN_DIR\n");
+			DLOG("can't write to PIN_DIR");
       return FALSE;
 		}
 	}
@@ -292,33 +292,31 @@ bool cy8c9540a_setup()
             sizeof(dev.outreg_cache),
             dev.outreg_cache);
 	if (ret < 0) {
-    DLOG("can't cache output registers\n");
+    DLOG("can't cache output registers");
     return ret;
 	}
 
-#if 0
 	/* Set default PWM clock source.  */
 	for (i = 0; i < NPWM; i ++) {
 		ret = i2c_write_byte_data(REG_PWM_SELECT, i);
 		if (ret < 0) {
-			DLOG("can't select pwm %u\n", i);
+			DLOG("can't select pwm %u", i);
       return ret;
 		}
 
 		ret = i2c_write_byte_data(REG_PWM_CLK, PWM_CLK);
 		if (ret < 0) {
-			DLOG("can't write to REG_PWM_CLK\n");
+			DLOG("can't write to REG_PWM_CLK");
       return ret;
 		}
 	}
-#endif
 
 	/* Enable the EEPROM */
 	ret = i2c_write_block_data(REG_ENABLE,
 					     sizeof(eeprom_enable_seq),
 					     eeprom_enable_seq);
 	if (ret < 0) {
-		DLOG("can't enable EEPROM\n");
+		DLOG("can't enable EEPROM");
     return ret;
 	}
 
