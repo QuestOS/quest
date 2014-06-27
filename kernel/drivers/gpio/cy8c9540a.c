@@ -28,10 +28,11 @@
 #define DLOG(fmt,...) ;
 #endif
 
+/* CY8C9540A settings */
 #define TAR_ADDR   		0x20
 #define NPORTS				6
 #define NPWM          8
-#define PWM_CLK				0x00	/* see resulting PWM_TCLK_NS */
+#define PWM_MAX_PERIOD	0xff
 
 /* Register offset  */
 #define REG_INPUT_PORT0			0x00
@@ -64,6 +65,24 @@ static const u8 cy8c9540a_port_offs[] = {
 	20,
 	28,
 	36,
+};
+
+/* Galileo-specific data */
+#define PWM_CLK				0x00	/* see resulting PWM_TCLK_NS */
+/* XXX: i donno why 32kHz is 31250 */
+#define PWM_TCLK_NS 			31250 /* 32kHz */
+
+/* PWM-to-GPIO mapping (0 == first Cypress GPIO).  */
+#define PWM_UNUSED			-1
+static const int pwm2gpio_mapping[] = {
+	PWM_UNUSED,
+	3,
+	PWM_UNUSED,
+	2,
+	9,
+	1,
+	8,
+	0,
 };
 
 struct cy8c9540a {
@@ -231,6 +250,113 @@ int cy8c9540a_gpio_direction_input(unsigned gpio)
   return cy8c9540a_gpio_direction(gpio, 0, 0);
 }
 
+int cy8c9540a_pwm_config(unsigned pwm, int duty_ns, int period_ns)
+{
+	int period = 0, duty = 0;
+	int ret;
+
+	if (pwm > NPWM) {
+		DLOG("invalid pwm number");
+		return -1;
+	}
+
+	if (duty_ns < 0 || period_ns <= 0 || duty_ns > period_ns) {
+		DLOG("invalid duty and period configuration");
+		return -1;
+	}
+	
+	period = period_ns / PWM_TCLK_NS;
+	duty = duty_ns / PWM_TCLK_NS;
+
+	if (period > PWM_MAX_PERIOD) {
+		DLOG("period must be within [0-%d]ns",
+				PWM_MAX_PERIOD * PWM_TCLK_NS);
+		return -1;
+	}
+
+	ret = i2c_write_byte_data(REG_PWM_SELECT, (u8)pwm);
+	if (ret < 0) {
+		DLOG("can't write to REG_PWM_SELECT");
+		return ret;
+	}
+
+	ret = i2c_write_byte_data(REG_PWM_PERIOD, (u8)period);
+	if (ret < 0) {
+		DLOG("can't write to REG_PWM_PERIOD");
+		return ret;
+	}
+
+	ret = i2c_write_byte_data(REG_PWM_PULSE_W, (u8)duty);
+	if (ret < 0) {
+		DLOG("can't write to REG_PWM_PULSE_W");
+		return ret;
+	}
+
+	return 0;
+}
+
+int cy8c9540a_pwm_switch(unsigned pwm, int enable)
+{
+  int ret = 0, gpio = 0;
+  u8 port = 0, pin = 0;
+	u8 val = 0;
+
+	if (pwm > NPWM) {
+		DLOG("invalid pwm number");
+		return -1;
+	}
+
+	gpio = pwm2gpio_mapping[pwm];
+	if (PWM_UNUSED == gpio) {
+		DLOG("pwm%u is unused", pwm);
+		return -1;
+	}
+  port = cypress_get_port(gpio);
+  pin = cypress_get_offs(gpio, port);
+
+	val = i2c_read_byte_data(REG_SELECT_PWM);
+	if (val < 0) {
+		DLOG("can't read REG_SELECT_PWM");
+		return val;
+	}
+
+	if (enable) {
+		/* Set pin as output driving high */
+		ret = cy8c9540a_gpio_direction_output(gpio, 1);
+		if (ret < 0) {
+			DLOG("can't set pwm%u as output", pwm);
+			return ret;
+		}
+		val |= BIT((u8)pin);
+	} else {
+		val &= ~BIT((u8)pin);
+	}
+
+	ret = i2c_write_byte_data(REG_SELECT_PWM, val);
+	if (ret < 0) {
+		DLOG("can't write to REG_SELECT_PWM", pwm);
+		return ret;
+	}
+
+	return 0;
+}
+
+int cy8c9540a_pwm_enable(unsigned pwm)
+{
+	/* XXX: in CY8C9540A manual, it says
+		 pwm pin must be congfigured to an 
+		 appropriate mode but doesn't say which
+		 one is appropriate. I choose GPIOF_DRIVE_STRONG */
+  cy8c9540a_gpio_set_drive(pwm2gpio_mapping[pwm],
+		 	GPIOF_DRIVE_STRONG);
+	return cy8c9540a_pwm_switch(pwm, 1);
+}
+
+int cy8c9540a_pwm_disable(unsigned pwm)
+{
+	return cy8c9540a_pwm_switch(pwm, 0);
+}
+
 s32 cypress_get_id()
 {
   s32 dev_id = i2c_read_byte_data(REG_DEVID_STAT);
@@ -239,9 +365,12 @@ s32 cypress_get_id()
 
 void cy8c9540a_test()
 {
-  unsigned gpio = 11;
+  unsigned gpio = 3;
+	unsigned pwm = 1;
 	int i;
+	int fade_val;
 
+#if 0
   cy8c9540a_gpio_direction_output(gpio, 0);
   cy8c9540a_gpio_set_drive(gpio, GPIOF_DRIVE_STRONG);
   cy8c9540a_gpio_set_value(gpio, 1);
@@ -250,6 +379,18 @@ void cy8c9540a_test()
 		cy8c9540a_gpio_set_value(gpio, 1);
 		cy8c9540a_gpio_set_value(gpio, 0);
 		cy8c9540a_gpio_set_value(gpio, 0);
+	}
+#endif
+	cy8c9540a_pwm_enable(pwm);
+	for (fade_val = 0; fade_val <= 255; fade_val += 5) {
+		cy8c9540a_pwm_config(pwm, fade_val * PWM_TCLK_NS, 
+				255 * PWM_TCLK_NS);
+		tsc_delay_usec(30 * 1000);
+	}
+	for (fade_val = 255; fade_val >= 0; fade_val -= 5) {
+		cy8c9540a_pwm_config(pwm, fade_val * PWM_TCLK_NS, 
+				255 * PWM_TCLK_NS);
+		tsc_delay_usec(30 * 1000);
 	}
 }
 
@@ -304,6 +445,7 @@ bool cy8c9540a_setup()
       return ret;
 		}
 
+		/* XXX: actually there is no API implemented to set clock */
 		ret = i2c_write_byte_data(REG_PWM_CLK, PWM_CLK);
 		if (ret < 0) {
 			DLOG("can't write to REG_PWM_CLK");
