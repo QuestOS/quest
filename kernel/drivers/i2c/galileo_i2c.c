@@ -400,7 +400,7 @@ static s32 i2c_xfer(unsigned short flags, char read_write,
 		} else {
 			msg[0].len = data->block[0] + 1;
 			if (msg[0].len > I2C_BLOCK_MAX + 1) {
-        DLOG("Invalid block write size %d\n",
+        DLOG("Invalid block write size %d",
              data->block[0]);
         return -1;
 			}
@@ -418,7 +418,7 @@ static s32 i2c_xfer(unsigned short flags, char read_write,
 		}
 		break;
 	default:
-    DLOG("Unsupported transaction%d\n",
+    DLOG("Unsupported transaction%d",
          size);
     return -1;
 	}
