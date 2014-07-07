@@ -74,6 +74,15 @@ main ()
     fprintf(stderr, "Failed add path to environment\n");
   }
 
+/* added by Tom, for test */
+  line[0] = 't';
+  line[1] = 'e';
+  line[2] = 's';
+  line[3] = 't';
+  line[4] = '1';
+  line[5] = '\0';
+  goto stub;
+
   while (1) {
 
     /* The shell prompt */
@@ -86,6 +95,7 @@ main ()
     if (scanline (line)) {      /* Got input */
       /* --??-- Parse input and verify it is meaningful */
 
+stub:
       if (*line == '\0')
         continue;
 

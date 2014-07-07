@@ -462,7 +462,7 @@ bool cy8c9540a_setup()
     return ret;
 	}
 
-	cy8c9540a_test();
+	//cy8c9540a_test();
 
 	return TRUE;
 }
