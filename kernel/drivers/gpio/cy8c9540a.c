@@ -19,6 +19,7 @@
 
 #include "drivers/i2c/galileo_i2c.h"
 #include "util/printf.h"
+#include "cy8c9540a.h"
 
 #define DEBUG_CYPRESS
 
@@ -51,11 +52,6 @@
 #define REG_DEVID_STAT			0x2e
 
 #define BIT(nr)			(1UL << (nr))
-
-#define GPIOF_DRIVE_PULLUP	(1 << 6)
-#define GPIOF_DRIVE_PULLDOWN	(1 << 7)
-#define GPIOF_DRIVE_STRONG	(1 << 8)
-#define GPIOF_DRIVE_HIZ		(1 << 9)
 
 /* Per-port GPIO offset */
 static const u8 cy8c9540a_port_offs[] = {
@@ -363,6 +359,7 @@ s32 cypress_get_id()
   return dev_id & 0xf0;
 }
 
+#if 0
 void cy8c9540a_test()
 {
   unsigned gpio = 3;
@@ -393,6 +390,7 @@ void cy8c9540a_test()
 		tsc_delay_usec(30 * 1000);
 	}
 }
+#endif
 
 bool cy8c9540a_setup()
 {
@@ -404,8 +402,8 @@ bool cy8c9540a_setup()
 	/* enable i2c device */
 	i2c_xfer_init(dev.addr);
 
-  dev_id = cypress_get_id();
-  DLOG("dev_id is 0x%x", dev_id);
+  //dev_id = cypress_get_id();
+  //DLOG("dev_id is 0x%x", dev_id);
 
 	/* Disable PWM, set all GPIOs as input.  */
 	for (i = 0; i < NPORTS; i++) {
