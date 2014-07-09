@@ -41,7 +41,7 @@ OBJS =  boot/boot.o boot/init.o kernel.o module/loader.o \
 	drivers/ata/ata.o drivers/ata/diskio.o \
 	drivers/input/keyboard_8042.o drivers/input/keymap.o \
 	drivers/pci/pci.o drivers/pci/pci_irq.o \
-	drivers/i2c/galileo_i2c.o drivers/gpio/cy8c9540a.o \
+	drivers/i2c/galileo_i2c.o drivers/gpio/cy8c9540a.o drivers/gpio/gpio.o \
 	drivers/net/ethernetif.o drivers/net/pcnet.o \
 	drivers/net/e1000.o drivers/net/e1000e.o \
 	drivers/net/bnx2.o \
