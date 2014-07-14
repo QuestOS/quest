@@ -65,6 +65,7 @@ OBJS =  boot/boot.o boot/init.o kernel.o module/loader.o \
 	drivers/usb/ehci_hcd.o drivers/usb/ehci_mem.o drivers/usb/ehci_debug.o \
 	drivers/usb/usb.o drivers/usb/enumeration.o \
 	drivers/serial/mmio32_uart.o \
+	drivers/serial/pololu.o \
 	kdb/i386-stub.o
 
 CFILES = $(patsubst %.o,%.c,$(OBJS))

@@ -196,6 +196,12 @@ vmx_process_hypercall (uint32 status, void * param)
       map_ept_page ((uint32) vm->guest_regs.eax, (uint32) vm->guest_regs.ebx,
                     (uint8) vm->guest_regs.edx);
       break;
+    case VM_EXIT_REASON_SHM_ALLOC:
+      logger_printf ("Allocating shared memory: %d pages Perm=0x%X\n",
+                     (uint32) vm->guest_regs.eax, (uint32) vm->guest_regs.ebx);
+      vm->guest_regs.eax =
+        shm_alloc_phys_frames_perm ((uint32) vm->guest_regs.eax, (uint32) vm->guest_regs.ebx);
+      break;
     default:
       logger_printf ("Unknow reason 0x%X caused VM-Exit in sandbox %d\n", status, cpu);
   }

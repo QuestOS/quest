@@ -30,6 +30,7 @@
 #define VM_EXIT_REASON_MASK_SB       0x0004  /* Remove EPT mapping of a sandbox */
 #define VM_EXIT_REASON_SET_EPT       0x0005  /* Set page permission in EPT (shared memory) */
 #define VM_EXIT_REASON_MAP_EPT       0x0006  /* Map guest physical to machine physical */
+#define VM_EXIT_REASON_SHM_ALLOC     0x0007  /* Allocate a machine physical frame from shared memory */
 
 typedef void * vm_exit_param_t;
 

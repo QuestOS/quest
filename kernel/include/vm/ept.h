@@ -23,6 +23,7 @@
 #define PHYS_PAGE_SIZE       4096
 #define APIC_VIRT_ADDR       0xFEC00000
 /* Physical memory offset between each sandbox kernel */
+//#define SANDBOX_KERN_OFFSET  0x28000000
 #define SANDBOX_KERN_OFFSET  0x10000000
 #define SCREEN_PHYS          0x000B8000
 /* Size of EPT paging structure, 10MB for each kernel. */

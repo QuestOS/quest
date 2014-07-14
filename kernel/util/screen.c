@@ -27,6 +27,7 @@ spinlock screen_lock = { 0 };
 
 static screen_cursor_t cursor = {.x = 0, .y = 0,};
 
+extern int _putchar_with_attributes (int, int);
 
 int _putchar(int ch)
 {
