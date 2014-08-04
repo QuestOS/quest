@@ -25,6 +25,11 @@
 #define POLOLU_CMD_SETPOS2     0x3
 #define POLOLU_CMD_SETPOSABS   0x4
 #define POLOLU_CMD_SETNEUTRAL  0x5
+#define POLOLU_CMD_INIT        0x6
+
+#define NUM_POLOLU_PORTS  1
+
+extern uint16_t pololu_ports[NUM_POLOLU_PORTS];
 
 /* Pololu Mode Command Format */
 typedef struct {

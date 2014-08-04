@@ -38,6 +38,7 @@
 #include "interrupt_handler.h"
 #include "fcntl.h"
 #include "vm/fault_detection.h"
+#include "drivers/serial/pololu.h"
 
 #ifdef USE_VMX
 #include "vm/shm.h"
@@ -1289,7 +1290,11 @@ int syscall_vshm_map(uint vshm_key, uint size, uint sandboxes, uint flags, void*
 #endif
 }
 
-
+int syscall_pololu_send_cmd (uint32_t ssc, uint32_t commands)
+{
+  return pololu_send_cmd (ssc, (commands >> 24) & 0xFF, (commands >> 16) & 0xFF,
+                          (commands >> 8) & 0xFF, (commands) & 0xFF);
+}
 
 sys_call_ptr_t _socket_syscall_table [] ALIGNED (0x1000) = {
   (sys_call_ptr_t) sys_call_open_socket,    /* 00 */
@@ -1309,6 +1314,7 @@ sys_call_ptr_t _socket_syscall_table [] ALIGNED (0x1000) = {
   (sys_call_ptr_t) sys_call_fcntl,          /* 14 */
   (sys_call_ptr_t) syscall_vshm_map,        /* 15 */
   (sys_call_ptr_t) syscall_fault_detection, /* 16 */
+  (sys_call_ptr_t) syscall_pololu_send_cmd, /* 17 */
 };
 
 static bool socket_sys_call_initialized = FALSE;

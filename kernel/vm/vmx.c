@@ -32,6 +32,7 @@
 #include "drivers/pci/pci.h"
 #ifdef USE_LINUX_SANDBOX
 #include "vm/linux_boot.h"
+#include "drivers/serial/pololu.h"
 #endif
 
 #define DEBUG_VMX 0
@@ -668,6 +669,8 @@ vmx_io_blacklist_init ()
   //ioapic_add_reg_blacklist (0x30, LINUX_SANDBOX);
   //ioapic_add_reg_blacklist (0x31, LINUX_SANDBOX);
   //pci_add_dev_blacklist (0x10EC, 0x8168, LINUX_SANDBOX);
+  /* MosChip 9922 Serial Card */
+  pci_add_dev_blacklist (0x9710, 0x9922, LINUX_SANDBOX);
 #endif
   
   return TRUE;
@@ -1095,6 +1098,8 @@ static void
 setup_io_bitmaps ()
 {
 #ifdef USE_LINUX_SANDBOX
+  int i = 0;
+
   if (get_pcpu_id () == LINUX_SANDBOX) {
     /* Restrict serial port access for Linux front end */
     IOBITMAP_SET (io_bitmaps, serial_port1 + 0);
@@ -1105,6 +1110,18 @@ setup_io_bitmaps ()
     IOBITMAP_SET (io_bitmaps, serial_port1 + 5);
     IOBITMAP_SET (io_bitmaps, serial_port1 + 6);
     IOBITMAP_SET (io_bitmaps, serial_port1 + 7);
+
+    /* Restrict access to Pololu serial ports */
+    for (i = 0; i < NUM_POLOLU_PORTS; i++) {
+      IOBITMAP_SET (io_bitmaps, pololu_ports[i] + 0);
+      IOBITMAP_SET (io_bitmaps, pololu_ports[i] + 1);
+      IOBITMAP_SET (io_bitmaps, pololu_ports[i] + 2);
+      IOBITMAP_SET (io_bitmaps, pololu_ports[i] + 3);
+      IOBITMAP_SET (io_bitmaps, pololu_ports[i] + 4);
+      IOBITMAP_SET (io_bitmaps, pololu_ports[i] + 5);
+      IOBITMAP_SET (io_bitmaps, pololu_ports[i] + 6);
+      IOBITMAP_SET (io_bitmaps, pololu_ports[i] + 7);
+    }
   }
 #endif
   /* Trap on access to PCI configuration space address port */

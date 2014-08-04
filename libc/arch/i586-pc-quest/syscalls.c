@@ -596,3 +596,14 @@ int syscall_fault_detection(uint action, uint key, uint sink_sandbox)
 		"c"(key), "d"(sink_sandbox):CLOBBERS6);
   return res;
 }
+
+inline int
+syscall_pololu_send_cmd (uint32_t ssc, uint8_t servo, uint8_t cmd, uint8_t data1, uint8_t data2)
+{
+  int res;
+  uint32_t commands = (uint32_t) data2 | ((uint32_t) data1) << 8 |
+                      ((uint32_t) cmd) << 16 | ((uint32_t) servo) << 24;
+  asm volatile ("int $0x3D\n":"=a"(res):"a" (17L), "b"(ssc), "c"(commands),
+		"d"(0), "S"(0), "D"(0) : "memory", "cc");
+  return res;
+}

@@ -46,11 +46,6 @@
 vm_exit_param_t vm_exit_input_param = NULL;
 vm_exit_param_t vm_exit_return_val = NULL;
 
-struct _hypercall_set_ept_param hypercall_set_ept_param;
-
-/* Input parameter for VM-Exit */
-struct _hypercall_linux_boot_param hypercall_linux_boot_param;
-
 #ifdef USE_LINUX_SANDBOX
 static void
 linux_vm_init (uint32 kernel_addr, int kernel_size)
@@ -73,20 +68,12 @@ linux_vm_init (uint32 kernel_addr, int kernel_size)
 #endif
 
 static void
-process_hypercall_set_ept (vm_exit_param_t vm_exit_input_param)
+process_hypercall_set_ept (uint32 phys_frame, uint32 count, uint8 perm)
 {
   int i = 0;
-  struct _hypercall_set_ept_param * param = NULL;
 
-  param = (struct _hypercall_set_ept_param *) vm_exit_input_param;
-
-  if (!param) {
-    DLOG ("hypercall_set_ept has NULL parameter");
-    return;
-  }
-
-  for (i = 0; i < param->count; i++) {
-    set_ept_page_permission ((param->phys_frame & 0xFFFFF000) + (i << 12), param->perm);
+  for (i = 0; i < count; i++) {
+    set_ept_page_permission ((phys_frame & 0xFFFFF000) + (i << 12), perm);
   }
 }
 
@@ -170,8 +157,7 @@ vmx_process_hypercall (uint32 status, void * param)
   switch (status) {
 #ifdef USE_LINUX_SANDBOX
     case VM_EXIT_REASON_LINUX_BOOT:
-      linux_vm_init (((struct _hypercall_linux_boot_param *) vm_exit_input_param)->kernel_addr,
-                     ((struct _hypercall_linux_boot_param *) vm_exit_input_param)->size);
+      linux_vm_init ((uint32) vm->guest_regs.eax, (int) vm->guest_regs.ebx);
       break;
 #endif
     case VM_EXIT_REASON_MIGRATION:
@@ -188,7 +174,8 @@ vmx_process_hypercall (uint32 status, void * param)
       break;
 #endif
     case VM_EXIT_REASON_SET_EPT:
-      process_hypercall_set_ept (vm_exit_input_param);
+      process_hypercall_set_ept ((uint32) vm->guest_regs.eax, (uint32) vm->guest_regs.esi,
+                                 (uint8) vm->guest_regs.edx);
       break;
     case VM_EXIT_REASON_MAP_EPT:
       logger_printf ("Mapping Guest Physical 0x%X to Machine Physical 0x%X\n",
@@ -200,7 +187,7 @@ vmx_process_hypercall (uint32 status, void * param)
       logger_printf ("Allocating shared memory: %d pages Perm=0x%X\n",
                      (uint32) vm->guest_regs.eax, (uint32) vm->guest_regs.ebx);
       vm->guest_regs.eax =
-        shm_alloc_phys_frames_perm ((uint32) vm->guest_regs.eax, (uint32) vm->guest_regs.ebx);
+        shm_alloc_phys_frames_perm ((uint32) vm->guest_regs.eax, (uint32) vm->guest_regs.edx);
       break;
     default:
       logger_printf ("Unknow reason 0x%X caused VM-Exit in sandbox %d\n", status, cpu);

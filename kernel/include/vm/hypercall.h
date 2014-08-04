@@ -34,17 +34,6 @@
 
 typedef void * vm_exit_param_t;
 
-struct _hypercall_linux_boot_param {
-  uint32 kernel_addr;
-  int size;
-};
-
-struct _hypercall_set_ept_param {
-  uint32 phys_frame;
-  uint32 count;
-  uint8 perm;
-};
-
 struct _hypercall_migration_param {
   void * ptss;
   u64 dl;
@@ -64,22 +53,18 @@ hyper_call (uint32 call_num)
 static inline void
 hypercall_set_ept (uint32 phys_frame, uint32 count, uint8 perm)
 {
-  extern void * vm_exit_input_param;
-  hypercall_set_ept_param.phys_frame = phys_frame;
-  hypercall_set_ept_param.count = count;
-  hypercall_set_ept_param.perm = perm;
-  vm_exit_input_param = (void *) &hypercall_set_ept_param;
-  hyper_call (VM_EXIT_REASON_SET_EPT);
+  asm volatile ("vmcall\n\t":: "S" (count),
+                               "a" (phys_frame),
+                               "d" (perm),
+                               "c" (VM_EXIT_REASON_SET_EPT));
 }
 
 static inline void
 hypercall_linux_boot (uint32 kernel_addr, int kernel_size)
 {
-  extern void * vm_exit_input_param;
-  hypercall_linux_boot_param.kernel_addr = kernel_addr;
-  hypercall_linux_boot_param.size = kernel_size;
-  vm_exit_input_param = (vm_exit_param_t) &hypercall_linux_boot_param;
-  hyper_call (VM_EXIT_REASON_LINUX_BOOT);
+  asm volatile ("vmcall\n\t":: "a" (kernel_addr),
+                               "b" (kernel_size),
+                               "c" (VM_EXIT_REASON_LINUX_BOOT));
 }
 
 static inline uint32

@@ -25,11 +25,11 @@
 #include "kernel.h"
 #include "drivers/serial/pololu.h"
 
-#define NUM_POLOLU_PORTS  1
-
 uint16_t pololu_ports[NUM_POLOLU_PORTS] = {0xEE00};
 
 static pololu_cmd_t pololu_cmd = {0x80, 0x01, 0x0, 0x0, 0x0, 0x0};
+
+bool pololu_init (void);
 
 int
 pololu_send_cmd (uint32_t ssc, uint8_t servo, uint8_t cmd, uint8_t data1, uint8_t data2)
@@ -43,6 +43,9 @@ pololu_send_cmd (uint32_t ssc, uint8_t servo, uint8_t cmd, uint8_t data1, uint8_
   }
 
   switch (cmd) {
+    case POLOLU_CMD_INIT:
+      pololu_init ();
+      return 0;
     case POLOLU_CMD_SETPARAM:
     case POLOLU_CMD_SETSPD:
     case POLOLU_CMD_SETPOS1:
@@ -68,7 +71,7 @@ pololu_send_cmd (uint32_t ssc, uint8_t servo, uint8_t cmd, uint8_t data1, uint8_
     outb (c[i], pololu_ports[ssc]);
   }
 
-  return -1;
+  return 0;
 }
 
 int
