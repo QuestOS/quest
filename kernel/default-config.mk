@@ -4,16 +4,16 @@
 OPT = 0
 
 # Disable SMP
-# CFG += -DNO_SMP
+CFG += -DNO_SMP
 
 # Disable "logger" thread
-# CFG += -DNO_LOGGER
+CFG += -DNO_LOGGER
 
 # Disable ACPI support
 # CFG += -DNO_ACPI
 
 # Disable Intel Multiprocessor Specification parsing
-# CFG += -DNO_INTEL_MPS
+CFG += -DNO_INTEL_MPS
 
 # Use VMX-based virtual machines for isolation
 # CFG += -DUSE_VMX
@@ -25,10 +25,10 @@ OPT = 0
 #CFG += -DSHARED_UHCI
 
 # USB provides real-time guarantees for bulk and control transactions
-CFG += -DUSB_REALTIME_ASYNC 
+# CFG += -DUSB_REALTIME_ASYNC 
 
 # Use USB Migration for cross machine migration
-CFG += -DUSB_MIGRATION
+# CFG += -DUSB_MIGRATION
 
 # Change to use different allocator (default: tlsf)
 KMALLOC = tlsf
@@ -48,8 +48,8 @@ KMALLOC = tlsf
 # Enable Serial MMIO32 driver
 # This will disable port based RS232
 # Enable this flag for embedded platforms such as Galileo board
-# CFG += -DSERIAL_MMIO32
+CFG += -DSERIAL_MMIO32
 
 # Disable FPU
-# CFG += -DNO_FPU
+CFG += -DNO_FPU
 
