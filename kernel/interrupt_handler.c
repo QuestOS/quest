@@ -38,6 +38,7 @@
 #include "sched/sched.h"
 #include "sched/vcpu.h"
 #include "drivers/usb/usb.h"
+#include "drivers/gpio/gpio.h"
 #include "drivers/serial/serial.h"
 #include "lwip/pbuf.h"
 #include "lwip/tcp.h"
@@ -330,6 +331,18 @@ syscall_usleep (u32 eax, u32 ebx, u32 ecx, u32 edx, u32 esi)
   return ebx;
 }
 
+static int
+syscall_gpio (u32 eax, u32 ebx, u32 ecx, u32 edx, u32 esi)
+{
+  u32 operation = ebx;
+  u32 arg1 = ecx;
+  u32 arg2 = edx;
+  int ret;
+
+  ret = gpio_handler(operation, arg1, arg2, 0);
+
+  return ret;
+}
 
 /*
  * Syscall: _usb_syscall This is just a hack right now to give user
@@ -641,6 +654,7 @@ struct syscall syscall_table[] = {
   { .func = (void *)syscall_enable_video },
   { .func = (void *)syscall_lseek},
   { .func = (void *)syscall_get_keyboard_events },
+  { .func = (void *)syscall_gpio },
 };
 #define NUM_SYSCALLS (sizeof (syscall_table) / sizeof (struct syscall))
 

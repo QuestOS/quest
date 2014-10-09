@@ -22,8 +22,9 @@
 #include "smp/smp.h"
 #include "smp/apic.h"
 #include "kernel.h"
+#include "mem/mem.h"
 
-//#define DEBUG_PCI
+#define DEBUG_PCI 
 
 #ifdef DEBUG_PCI
 #define DLOG(fmt,...) DLOG_PREFIX("PCI",fmt,##__VA_ARGS__)
@@ -81,7 +82,6 @@ pci_search_class_code_table (uint32 base, uint32 sub, uint32 prog,
 /* store table of PCI devices */
 static pci_device devices[PCI_MAX_DEVICES];
 static uint32 num_devices = 0;
-
 
 static void
 probe (void)
@@ -193,7 +193,6 @@ probe (void)
           if (num_devices >= PCI_MAX_DEVICES) /* reached our limit */
             return;
         }
-
 }
 
 bool

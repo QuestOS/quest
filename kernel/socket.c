@@ -1282,7 +1282,7 @@ int syscall_vshm_map(uint vshm_key, uint size, uint sandboxes, uint flags, void*
 #ifdef USE_VMX
   int res;
   lock_kernel();
-  res = virtual_shared_mem_map(vshm_key, size, sandboxes, flags, addr, TRUE);
+  //res = virtual_shared_mem_map(vshm_key, size, sandboxes, flags, addr, TRUE);
   unlock_kernel();
   return res;
 #else

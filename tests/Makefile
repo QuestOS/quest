@@ -16,7 +16,8 @@ PROGS = exec migtest race test1 test2 test3 test4 test5 \
 	cl-param-test vcputest vga seek getpid \
 	vshm_test vshm_circ_buf vshm_async \
 	fault_detection fault_detection_sink \
-	vshm_linux pololu
+	vshm_linux pololu \
+	gpio_test
 
 #usb_test usb_test_rtt
 
