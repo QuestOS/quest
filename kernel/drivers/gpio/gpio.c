@@ -29,7 +29,8 @@
 
 #define DLOG(fmt,...) DLOG_PREFIX("SYSCALL",fmt,##__VA_ARGS__)
 
-int gpio_handler(int operation, int gpio, int val, int arg)
+int
+gpio_handler(int operation, int gpio, int val, int arg)
 {
 	int ret;
 
@@ -54,3 +55,13 @@ int gpio_handler(int operation, int gpio, int val, int arg)
 	return 0;
 }
 
+/*
+ * Local Variables:
+ * indent-tabs-mode: nil
+ * mode: C
+ * c-file-style: "gnu"
+ * c-basic-offset: 2
+ * End:
+ */
+
+/* vi: set et sw=2 sts=2: */
