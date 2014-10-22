@@ -75,7 +75,6 @@ main ()
   }
 
 /* added by Tom, for test */
-#if 0
   line[0] = 'g';
   line[1] = 'p';
   line[2] = 'i';
@@ -87,7 +86,6 @@ main ()
   line[8] = 't';
   line[9] = '\0';
   goto stub;
-#endif
 
   while (1) {
 
@@ -101,7 +99,7 @@ main ()
     if (scanline (line)) {      /* Got input */
       /* --??-- Parse input and verify it is meaningful */
 
-//stub:
+stub:
       if (*line == '\0')
         continue;
 

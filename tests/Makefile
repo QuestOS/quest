@@ -5,7 +5,7 @@ INSTALL_DIR=/tftp/boot
 endif
 
 LIBS   = $(LIB_DEST)/crt0.o -lc
-INCS   = 
+INCS   =
 CFLAGS = -g
 
 OTHER_FILES = sample.txt
@@ -17,7 +17,7 @@ PROGS = exec migtest race test1 test2 test3 test4 test5 \
 	vshm_test vshm_circ_buf vshm_async \
 	fault_detection fault_detection_sink \
 	vshm_linux pololu \
-	gpio_test
+	sketches/gpio_test
 
 #usb_test usb_test_rtt
 
