@@ -1,5 +1,5 @@
 #include <stdio.h>
-#include <gpio.h>
+#include "digital_io.h"
 
 int
 main ()
