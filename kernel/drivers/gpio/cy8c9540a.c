@@ -103,11 +103,13 @@ cypress_get_port(unsigned gpio)
     if (!(gpio / cy8c9540a_port_offs[i + 1]))
       break;
   }
+	//printf("port is %d\n", i);
   return i;
 }
 
 static inline u8 cypress_get_offs(unsigned gpio, u8 port)
 {
+	//printf("offset is %d\n", gpio - cy8c9540a_port_offs[port]);
 	return gpio - cy8c9540a_port_offs[port];
 }
 
@@ -246,9 +248,8 @@ int cy8c9540a_gpio_direction_input(unsigned gpio)
   return cy8c9540a_gpio_direction(gpio, 0, 0);
 }
 
-int cy8c9540a_pwm_config(unsigned pwm, int duty_ns, int period_ns)
+int cy8c9540a_pwm_config(unsigned pwm, int duty, int period)
 {
-	int period = 0, duty = 0;
 	int ret;
 
 	if (pwm > NPWM) {
@@ -256,14 +257,11 @@ int cy8c9540a_pwm_config(unsigned pwm, int duty_ns, int period_ns)
 		return -1;
 	}
 
-	if (duty_ns < 0 || period_ns <= 0 || duty_ns > period_ns) {
+	if (duty < 0 || period <= 0 || duty > period) {
 		DLOG("invalid duty and period configuration");
 		return -1;
 	}
 	
-	period = period_ns / PWM_TCLK_NS;
-	duty = duty_ns / PWM_TCLK_NS;
-
 	if (period > PWM_MAX_PERIOD) {
 		DLOG("period must be within [0-%d]ns",
 				PWM_MAX_PERIOD * PWM_TCLK_NS);
@@ -359,15 +357,14 @@ s32 cypress_get_id()
   return dev_id & 0xf0;
 }
 
-#if 0
 void cy8c9540a_test()
 {
-  unsigned gpio = 3;
 	unsigned pwm = 1;
 	int i;
 	int fade_val;
 
 #if 0
+  unsigned gpio = 3;
   cy8c9540a_gpio_direction_output(gpio, 0);
   cy8c9540a_gpio_set_drive(gpio, GPIOF_DRIVE_STRONG);
   cy8c9540a_gpio_set_value(gpio, 1);
@@ -379,18 +376,17 @@ void cy8c9540a_test()
 	}
 #endif
 	cy8c9540a_pwm_enable(pwm);
-	for (fade_val = 0; fade_val <= 255; fade_val += 5) {
-		cy8c9540a_pwm_config(pwm, fade_val * PWM_TCLK_NS, 
-				255 * PWM_TCLK_NS);
-		tsc_delay_usec(30 * 1000);
-	}
-	for (fade_val = 255; fade_val >= 0; fade_val -= 5) {
-		cy8c9540a_pwm_config(pwm, fade_val * PWM_TCLK_NS, 
-				255 * PWM_TCLK_NS);
-		tsc_delay_usec(30 * 1000);
+	while(1) {
+		for (fade_val = 0; fade_val <= 255; fade_val += 5) {
+			cy8c9540a_pwm_config(pwm, fade_val, 255);
+			tsc_delay_usec(30 * 1000);
+		}
+		for (fade_val = 255; fade_val >= 0; fade_val -= 5) {
+			cy8c9540a_pwm_config(pwm, fade_val, 255);
+			tsc_delay_usec(30 * 1000);
+		}
 	}
 }
-#endif
 
 bool cy8c9540a_setup()
 {
