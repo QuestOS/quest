@@ -15,57 +15,36 @@
  *  along with this program.  If not, see <http://www.gnu.org/licenses/>.
  */
 
-#include "cy8c9540a.h"
-#include "util/printf.h"
+#ifndef _GPIO_H_
+#define _GPIO_H_
 
 #define PIN_MODE  0
 #define DIG_WRITE 1
 #define DIG_READ  2
-#define PWM       3
 
 #define OUTPUT  0
 #define INPUT   1
 #define HIGH    1
 #define LOW     0
 
-#define DLOG(fmt,...) DLOG_PREFIX("SYSCALL",fmt,##__VA_ARGS__)
-
-static int pwm_enabled[14] = {0};
+#define CLOBBERS1 "memory","cc","%ebx","%ecx","%edx","%esi","%edi"
+#define CLOBBERS2 "memory","cc","%ecx","%edx","%esi","%edi"
+#define CLOBBERS3 "memory","cc","%ebx","%edx","%esi","%edi"
+#define CLOBBERS4 "memory","cc","%ebx","%ecx","%esi","%edi"
+#define CLOBBERS5 "memory","cc","%edx","%esi","%edi"
+#define CLOBBERS6 "memory","cc","%esi","%edi"
+#define CLOBBERS7 "memory","cc","%edi"
 
 int
-gpio_handler(int operation, int gpio, int val, int arg)
+gpio_syscall(int operation, int arg1, int arg2)
 {
-	int ret;
-
-	switch(operation) {
-		case PIN_MODE:
-			ret = cy8c9540a_gpio_set_drive(gpio, GPIOF_DRIVE_STRONG);
-			if (ret < 0)
-				return ret;
-			if (val ==  OUTPUT)
-				return cy8c9540a_gpio_direction_output(gpio, 0);
-			else 
-				return cy8c9540a_gpio_direction_input(gpio);
-		case DIG_WRITE:
-			cy8c9540a_gpio_set_value(gpio, val);
-      break;
-		case DIG_READ:
-			return cy8c9540a_gpio_get_value(gpio);
-    case PWM:
-      if (pwm_enabled[gpio] == 0) {
-        cy8c9540a_pwm_enable(gpio);
-        pwm_enabled[gpio] = 1;
-      }
-      cy8c9540a_pwm_config(gpio, val, 255);
-      break;
-		default:
-			DLOG("Unsupported operation!");
-			return -1;
-	}
-
-	return 0;
+  int ret;
+  asm volatile ("int $0x30\n":"=a" (ret) : "a" (12L),
+      "b"(operation), "c" (arg1), "d" (arg2), "S" (0) : CLOBBERS7);
+  return ret;
 }
 
+#endif
 /*
  * Local Variables:
  * indent-tabs-mode: nil
