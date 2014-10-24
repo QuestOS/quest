@@ -17,7 +17,7 @@ PROGS = exec migtest race test1 test2 test3 test4 test5 \
 	vshm_test vshm_circ_buf vshm_async \
 	fault_detection fault_detection_sink \
 	vshm_linux pololu \
-	sketches/gpio_test
+	sketches/blink sketches/fade
 
 #usb_test usb_test_rtt
 

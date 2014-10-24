@@ -75,16 +75,12 @@ main ()
   }
 
 /* added by Tom, for test */
-  line[0] = 'g';
-  line[1] = 'p';
+  line[0] = 'b';
+  line[1] = 'l';
   line[2] = 'i';
-  line[3] = 'o';
-  line[4] = '_';
-  line[5] = 't';
-  line[6] = 'e';
-  line[7] = 's';
-  line[8] = 't';
-  line[9] = '\0';
+  line[3] = 'n';
+  line[4] = 'k';
+  line[5] = '\0';
   goto stub;
 
   while (1) {
