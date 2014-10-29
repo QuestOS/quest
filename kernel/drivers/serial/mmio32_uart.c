@@ -42,8 +42,27 @@ wait_for_xmitr (uint32_t port)
 
   for (;;) {
     status = mmio32_in (port, UART_LSR);
-    if ((status & BOTH_EMPTY) == BOTH_EMPTY)
+    if ((status & BOTH_EMPTY) == BOTH_EMPTY) {
       return;
+    }
+    /* asm volatile ("rep;nop": : :"memory"); */
+  }
+}
+
+static void
+wait_for_rcvrr (uint32_t port)
+{
+  unsigned int status;
+
+  unlock_kernel ();
+  sti ();
+  for (;;) {
+    status = mmio32_in (port, UART_LSR);
+    if ((status & UART_LSR_DR) == UART_LSR_DR) {
+      cli ();
+      lock_kernel ();
+      return;
+    }
     /* asm volatile ("rep;nop": : :"memory"); */
   }
 }
@@ -62,12 +81,17 @@ mmio32_putc (char c)
   serial_putc (mmio_base, c);
 }
 
+static int 
+serial_getc (uint32_t port)
+{
+  wait_for_rcvrr (port);
+  return mmio32_in (port, UART_RX);
+}
+
 int
 mmio32_getc ()
 {
-  /* TODO: Implement getc */
-  for (;;);
-  return 0;
+  return serial_getc(mmio_base);
 }
 
 unsigned int
@@ -95,6 +119,7 @@ initialize_serial_mmio32 (void)
   
   mmio32_out (port, UART_LCR, 0x3);      /* 8n1 */
   mmio32_out (port, UART_IER, 0);        /* no interrupt */
+  /* XXX: enable FIFO? */
   mmio32_out (port, UART_FCR, 0);        /* no fifo */
   mmio32_out (port, UART_MCR, 0x3);      /* DTR + RTS */
   
