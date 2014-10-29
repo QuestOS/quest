@@ -192,7 +192,7 @@ dump_page (u8 *addr)
   logger_printf ("\n");
 }
 
-static int getc (void)
+int getc (void)
 {
 #ifdef SERIAL_MMIO32
   return mmio32_getc ();
