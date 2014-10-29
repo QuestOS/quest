@@ -70,28 +70,9 @@ main ()
   int child_pid;
   int vcpu_index;
   
-/*
-  struct sched_param s_params = {.type = MAIN_VCPU, .C = 80, .T = 100};
-  int new_vcpu = vcpu_create(&s_params);
-  if(new_vcpu < 0) {
-    printf("Failed to create vcpu\n");
-    exit(1);
-  }
-  vcpu_bind_task(new_vcpu);
-*/
-
   if(setenv("PATH","/boot/", 0)) {
     fprintf(stderr, "Failed add path to environment\n");
   }
-
-/* added by Tom, for test */
-  line[0] = 'b';
-  line[1] = 'l';
-  line[2] = 'i';
-  line[3] = 'n';
-  line[4] = 'k';
-  line[5] = '\0';
-  goto stub;
 
   while (1) {
 
@@ -105,7 +86,6 @@ main ()
     if (scanline (line)) {      /* Got input */
       /* --??-- Parse input and verify it is meaningful */
 
-stub:
       if (*line == '\0')
         continue;
 
