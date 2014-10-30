@@ -814,6 +814,10 @@ init (multiboot * pmb)
 
   ltr (tss[0]);
   /* task-switch to shell module */
+
+  /* XXX: a big hack to work around the absense of PIT on Galileo */
+  mp_enabled = 1;
+
   asm volatile ("jmp _sw_init_user_task"::"D" (lookup_TSS (tss[0])));
 
   /* never return */

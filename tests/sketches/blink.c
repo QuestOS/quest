@@ -24,13 +24,15 @@ void loop() {
 
 void main()
 {
-	struct sched_param s_params = {.type = MAIN_VCPU, .C = 90, .T = 100};
+	/*
+	struct sched_param s_params = {.type = MAIN_VCPU, .C = 10, .T = 100};
   int new_vcpu = vcpu_create(&s_params);
   if(new_vcpu < 0) {
     printf("Failed to create vcpu\n");
     exit(1);
   }
   vcpu_bind_task(new_vcpu);
+	*/
 
 	setup();
 	while(1) loop();
