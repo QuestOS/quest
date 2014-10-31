@@ -1310,6 +1310,29 @@ start:
     unlock_kernel ();
     return i;
   }
+#elif SERIAL_MMIO32
+  {
+    int char_returned;
+    i = 0;
+    char_returned = getc();
+    switch (char_returned) {
+      case 13:
+        char_returned = 10;
+        break;
+      /*
+      case 8:
+        char_returned = 127;
+        break;
+      */
+      default:
+        break;
+    }
+    buf[i++] = char_returned;
+    //com1_printf("char_returned is %d\n", char_returned);
+    //com1_printf("Read returning %d\n", i);
+    unlock_kernel();
+    return i;
+  }
 #else
   {
     int char_returned;

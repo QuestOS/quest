@@ -814,6 +814,7 @@ init (multiboot * pmb)
 
   ltr (tss[0]);
   /* task-switch to shell module */
+
   asm volatile ("jmp _sw_init_user_task"::"D" (lookup_TSS (tss[0])));
 
   /* never return */

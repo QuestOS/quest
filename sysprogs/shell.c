@@ -38,7 +38,7 @@ scanline (char *line)
     }
 #endif
     /* if backspace key */
-    if(c == 127) {
+    if(c == 127 || c == 8) {
       if(count) {
         *line-- = 0;
         count--;
@@ -74,21 +74,6 @@ main ()
     fprintf(stderr, "Failed add path to environment\n");
   }
 
-/* added by Tom, for test */
-#if 0
-  line[0] = 'g';
-  line[1] = 'p';
-  line[2] = 'i';
-  line[3] = 'o';
-  line[4] = '_';
-  line[5] = 't';
-  line[6] = 'e';
-  line[7] = 's';
-  line[8] = 't';
-  line[9] = '\0';
-  goto stub;
-#endif
-
   while (1) {
 
     /* The shell prompt */
@@ -101,7 +86,6 @@ main ()
     if (scanline (line)) {      /* Got input */
       /* --??-- Parse input and verify it is meaningful */
 
-//stub:
       if (*line == '\0')
         continue;
 
