@@ -112,7 +112,7 @@ LAPIC_get_physical_ID (void)
 void
 send_eoi (void)
 {
-  if (mp_apic_mode) {
+  if (mp_apic_mode && ioapic_exists) {
     MP_LAPIC_WRITE (LAPIC_EOI, 0);      /* send to LAPIC */
   } else {
     outb (0x20, 0x20);          /* send to 8259A PIC */

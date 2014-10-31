@@ -50,6 +50,7 @@ extern uint8 APIC_to_CPU[MAX_CPUS];
 extern uint32 mp_num_cpus;
 extern bool mp_ISA_PC;
 extern bool mp_apic_mode;
+extern bool ioapic_exists;
 
 #define MAX_INT_OVERRIDES 128
 

@@ -46,6 +46,7 @@
 volatile bool mp_enabled = 0;
 uint32 mp_num_cpus = 1;
 bool mp_apic_mode = 0;
+bool ioapic_exists = 0;
 bool mp_ISA_PC = 0;
 
 mp_int_override mp_overrides[MAX_INT_OVERRIDES];
@@ -95,6 +96,8 @@ smp_init (void)
   void LAPIC_measure_timer(void);
   void LAPIC_init(void);
 
+  /* Even without SMP, we probably still have APIC... */
+  /* TODO: We should do some capability discovery here (CPUID) */
   mp_apic_mode = 1;
 
   LAPIC_init();
@@ -116,6 +119,8 @@ smp_init (void)
   if ((acpi_early_init()) > 0) {
     /* ACPI succeeded */
     mp_ACPI_enabled = 1;
+    /* TODO: Read MADT to detect IOAPIC. Currently, this is for Quark. */
+    ioapic_exists = 1;
   }
 #endif
 
@@ -135,9 +140,8 @@ smp_init (void)
     mp_ISA_PC = 1;            /* assume no PCI */
 #endif
     mp_num_cpus = 1;
-    /* Even without SMP, we probably still have APIC... */
-    /* TODO: We should do some capability discovery here */
-    mp_apic_mode = 1;
+    /* We assume IOAPIC does not exist without SMP (Is this true?) */
+    ioapic_exists = 0;
     mp_ISA_PC = 0;
     return 1;                 /* assume uniprocessor */
   }
@@ -151,7 +155,7 @@ smp_secondary_init (void)
   void acpi_secondary_init(void);
   void IOAPIC_init(void);
 
-  if (!mp_ISA_PC)               /* ISA PCs do not have IO APICs */
+  if ((!mp_ISA_PC) && ioapic_exists)               /* ISA PCs do not have IO APICs */
     IOAPIC_init();
 
   if(mp_ACPI_enabled)
