@@ -62,7 +62,7 @@ static bool vcpu_init_called = FALSE;
 
 
 static struct sched_param init_params[] = {
-  { .type = MAIN_VCPU, .C = 5, .T = 100 }, /* Best Effort VCPU */
+  { .type = MAIN_VCPU, .C = 10, .T = 100 }, /* Best Effort VCPU */
 #ifdef SPORADIC_IO
   { .type = IO_VCPU, .C = 10, .T = 300, .io_class = IOVCPU_CLASS_USB },
   { .type = IO_VCPU, .C = 10, .T = 400, .io_class = IOVCPU_CLASS_ATA },
