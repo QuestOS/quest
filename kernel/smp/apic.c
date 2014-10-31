@@ -112,9 +112,15 @@ LAPIC_get_physical_ID (void)
 void
 send_eoi (void)
 {
-  if (mp_apic_mode && ioapic_exists) {
+  /*
+   * TODO: send_eoi should be separated. On processors that do not have IOAPIC
+   * but have Local APIC, we need EOI for both 8259A (I/O) and LAPIC (e.g. Local
+   * APIC Timer). This happens on Quark in Galileo.
+   */
+  if (mp_apic_mode) {
     MP_LAPIC_WRITE (LAPIC_EOI, 0);      /* send to LAPIC */
-  } else {
+  }
+  if (!ioapic_exists) {
     outb (0x20, 0x20);          /* send to 8259A PIC */
   }
 }
