@@ -155,8 +155,10 @@ smp_secondary_init (void)
   void acpi_secondary_init(void);
   void IOAPIC_init(void);
 
-  if ((!mp_ISA_PC) && ioapic_exists)               /* ISA PCs do not have IO APICs */
+  if ((!mp_ISA_PC) && ioapic_exists) {               /* ISA PCs do not have IO APICs */
+    com1_printf ("Initializing IOAPIC(s)...\n");
     IOAPIC_init();
+  }
 
   if(mp_ACPI_enabled)
     acpi_secondary_init();
