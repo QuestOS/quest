@@ -1,3 +1,20 @@
+/*                    The Quest Operating System
+ *  Copyright (C) 2005-2012  Richard West, Boston University
+ *
+ *  This program is free software: you can redistribute it and/or modify
+ *  it under the terms of the GNU General Public License as published by
+ *  the Free Software Foundation, either version 3 of the License, or
+ *  (at your option) any later version.
+ *
+ *  This program is distributed in the hope that it will be useful,
+ *  but WITHOUT ANY WARRANTY; without even the implied warranty of
+ *  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+ *  GNU General Public License for more details.
+ *
+ *  You should have received a copy of the GNU General Public License
+ *  along with this program.  If not, see <http://www.gnu.org/licenses/>.
+ */
+
 #include "drivers/pci/pci.h"
 #include "util/printf.h"
 #include "mem/mem.h"
@@ -9,75 +26,177 @@
 #else
 #define DLOG(fmt,...) ;
 #endif
-#define DERR(fmt,...) DLOG_PREFIX("Quark GPIO",fmt,##__VA_ARGS__)
 
-#define GALILEO_QGPIO_VID			0x8086
-#define	GALILEO_QGPIO_DID			 	0x0934
+#define GPIO_SWPORTA_DR 		0x00
+#define GPIO_SWPORTA_DDR		0x04
+#define GPIO_INTEN					0x30
+#define GPIO_INTMASK				0x34
+#define GPIO_INTTYPE_LEVEL 	0x38
+#define GPIO_INT_POLARITY		0x3C
+#define GPIO_INTSTATUS			0x40
+#define GPIO_RAW_INTSTATUS	0x44
+#define GPIO_DEBOUNCE				0x48
+#define GPIO_PORTA_EOI			0x4C
+#define GPIO_EXT_PORTA			0x50
+#define GPIO_LS_SYNC				0x60
 
-#define QGPIO_PORT_A_DATA 0x0
-#define QGPIO_PORT_A_DIR 	0x04
-
-static u32 qgpio_base;
+static void *mmio_base;
 
 static inline void
 qgpio_write_r(u32 val , u32 reg)
 {
-  *(u32 *)(qgpio_base + reg) = val;
+  *(u32 *)((u32)mmio_base + reg) = val;
 }
 
 static inline u32
 qgpio_read_r(u32 reg)
 {
-  return *(u32 *)(qgpio_base+ reg);
+  return *(u32 *)((u32)mmio_base + reg);
 }
 
 void 
-quark_gpio8_high()
+quark_gpio_high(u8 gpio)
 {
-	qgpio_write_r(0x1UL | qgpio_read_r(QGPIO_PORT_A_DATA), QGPIO_PORT_A_DATA);
+	qgpio_write_r((1 << gpio) | qgpio_read_r(GPIO_SWPORTA_DR), GPIO_SWPORTA_DR);
 }
 
 void 
-quark_gpio8_low()
+quark_gpio_low(u8 gpio)
 {
-	qgpio_write_r((~0x1UL) & qgpio_read_r(QGPIO_PORT_A_DATA), QGPIO_PORT_A_DATA);
+	qgpio_write_r(~(1 << gpio) & qgpio_read_r(GPIO_SWPORTA_DR), GPIO_SWPORTA_DR);
 }
 
-u32 
-quark_gpio8_read()
+void 
+quark_gpio_interrupt_enable(u8 gpio)
 {
-	return qgpio_read_r(QGPIO_PORT_A_DATA);
+	qgpio_write_r((1 << gpio) | qgpio_read_r(GPIO_INTEN), GPIO_INTEN);
 }
+
+void 
+quark_gpio_interrupt_disable(u8 gpio)
+{
+	qgpio_write_r(~(1 << gpio) & qgpio_read_r(GPIO_INTEN), GPIO_INTEN);
+}
+
+typedef enum {
+	LEVEL = 0,
+	EDGE,
+} interrupt_type;
+
+void 
+quark_gpio_set_interrupt_type(u8 gpio, interrupt_type type)
+{
+	if (type == EDGE)
+		qgpio_write_r((1 << gpio) | qgpio_read_r(GPIO_INTTYPE_LEVEL), GPIO_INTTYPE_LEVEL);
+	else
+		qgpio_write_r(~(1 << gpio) & qgpio_read_r(GPIO_INTTYPE_LEVEL), GPIO_INTTYPE_LEVEL);
+}
+
+typedef enum {
+	ACTIVE_LOW = 0,
+	ACTIVE_HIGH,
+	FALLING_EDGE,
+	RISING_EDEG,
+} interrupt_polarity;
+
+s32 
+quark_gpio_set_interrupt_polarity(u8 gpio, interrupt_polarity polarity)
+{
+	interrupt_type type = qgpio_read_r(GPIO_INTTYPE_LEVEL);
+
+	switch (polarity) {
+		case ACTIVE_LOW:
+		case ACTIVE_HIGH:
+			if (type != LEVEL)
+				return -1;
+		case FALLING_EDGE:
+		case RISING_EDEG:
+			if (type != EDGE)
+				return -1;
+	}
+	switch (polarity) {
+		case ACTIVE_LOW:
+		case FALLING_EDGE:
+			qgpio_write_r(~(1 << gpio) & qgpio_read_r(GPIO_INT_POLARITY), GPIO_INT_POLARITY);
+			return 0;
+		case ACTIVE_HIGH:
+		case RISING_EDEG:
+			qgpio_write_r((1 << gpio) | qgpio_read_r(GPIO_INT_POLARITY), GPIO_INT_POLARITY);
+			return 0;
+	}
+}
+
+static uint32
+quark_irq_handler(uint8 vec)
+{
+	return 0;
+}
+
+#define GALILEO_QGPIO_VID			0x8086
+#define	GALILEO_QGPIO_DID		 	0x0934
+
+static pci_device quark_gpio_pci_device;
 
 bool
 quark_gpio_init()
 {
-	uint device_index;
+	uint device_index, irq_line, irq_pin;
 	uint mem_addr;
+	pci_irq_t irq;
 
 	if (!pci_find_device(GALILEO_QGPIO_VID, GALILEO_QGPIO_DID,
 				0xFF, 0xFF, 0, &device_index))
 		return FALSE;
 	if (device_index == (uint)(~0)) {
-    DERR ("Unable to detect compatible device.");
+    DLOG ("Unable to detect compatible device.");
     return FALSE;
   }
-	DLOG("device_index is %u", device_index);
+	DLOG ("Found device_index=%d", device_index);
+
+	if (!pci_get_device(device_index, &quark_gpio_pci_device)) {
+		DLOG("Unable to get PCI device from PCI subsystem");
+		return FALSE;
+	}
+  DLOG ("Using PCI bus=%x dev=%x func=%x",
+        quark_gpio_pci_device.bus,
+        quark_gpio_pci_device.slot,
+        quark_gpio_pci_device.func);
+
 	if (!pci_decode_bar (device_index, 1, &mem_addr, NULL, NULL)) {
-    DERR ("Bar decoding failed!");
+    DLOG ("Invalid PCI configuration or BAR0 not found");
     return FALSE;
   } 
-	DLOG("Initializing Quark GPIO...");
-	DLOG("mem_addr is 0x%X", mem_addr);
+	if (mem_addr == 0) {
+    DLOG ("Unable to detect memory mapped IO region");
+    return FALSE;
+  }
+  mmio_base = map_virtual_page (mem_addr | 0x3);
+  if (mmio_base == NULL) {
+    DLOG ("Unable to map page to phys=%p", mem_addr);
+    return FALSE;
+  }
+  DLOG ("Using memory mapped IO at phys=%p virt=%p", mem_addr, mmio_base);
 
-	/* map the physical page of memory-mapped registers in page table */
-	qgpio_base = (u32)map_virtual_page(mem_addr | 0x3); // PTE_P | PTE_W
-
-	/* test */
-	//DLOG("DIR=0x%X", qgpio_read_r(QGPIO_PORT_A_DIR));
-	//DLOG("DATA=0x%X", qgpio_read_r(QGPIO_PORT_A_DATA));
-
+	if (!pci_get_interrupt(device_index, &irq_line, &irq_pin)) {
+		DLOG("Unable to get IRQ");
+		goto abort;
+	}
+	if (pci_irq_find(quark_gpio_pci_device.bus, quark_gpio_pci_device.slot,
+				irq_pin, &irq)) {
+		/* use PCI routing table */
+    DLOG ("Found PCI routing entry irq.gsi=0x%x", irq.gsi);
+		if (!pci_irq_map_handler(&irq, quark_irq_handler, get_logical_dest_addr(0),
+					IOAPIC_DESTINATION_LOGICAL,
+					IOAPIC_DELIVERY_FIXED))
+			goto abort;
+		irq_line = irq.gsi;
+	}
+  DLOG ("Using IRQ line=%.02X pin=%X", irq_line, irq_pin);
 	return TRUE;
+
+abort:
+	unmap_virtual_page(mmio_base);
+	return FALSE;
 }
 
 #include "module/header.h"

@@ -357,6 +357,7 @@ int cypress_get_id()
   return dev_id & 0xf0;
 }
 
+#if 0
 void cy8c9540a_test()
 {
 	unsigned pwm = 1;
@@ -387,13 +388,14 @@ void cy8c9540a_test()
 		}
 	}
 }
+#endif
 
 bool cy8c9540a_setup()
 {
 	int ret = 0;
 	int i = 0;
   int dev_id;
-	u8 eeprom_enable_seq[] = {0x43, 0x4D, 0x53, 0x2};
+	//u8 eeprom_enable_seq[] = {0x43, 0x4D, 0x53, 0x2};
 
 	/* enable i2c device */
 	i2c_xfer_init(dev.addr);
