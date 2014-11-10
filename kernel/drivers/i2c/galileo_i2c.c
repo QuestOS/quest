@@ -15,16 +15,17 @@
  *  along with this program.  If not, see <http://www.gnu.org/licenses/>.
  */
 
-/* I2C driver */
-/* Based on Claton
+/* some parts are copied from linux
  * i2c-designware-core.c
  * i2c-core.c */
 
-#include "drivers/pci/pci.h"
-#include "util/printf.h"
-#include "mem/mem.h"
+#include <drivers/pci/pci.h>
+#include <util/printf.h>
+#include <mem/mem.h>
+#include <sched/sched.h>
+#include <sched/vcpu.h>
 
-#define DEBUG_I2C 
+//#define DEBUG_I2C 
 
 #ifdef DEBUG_I2C
 #define DLOG(fmt,...) DLOG_PREFIX("I2C",fmt,##__VA_ARGS__)
@@ -66,31 +67,21 @@
 #define DW_IC_RXFLR		0x78
 #define DW_IC_TX_ABRT_SOURCE	0x80
 
-struct i2c_dev {
-  u32 tx_fifo_depth;
-  u32 rx_fifo_depth;
-  u32 clk_khz;
-  u32 rx_outstanding;
-	u32 i2c_base;
-};
-
-static struct i2c_dev dev = {
-  .tx_fifo_depth = 16,
-  .rx_fifo_depth = 16,
-  .clk_khz = 33000,
-  .rx_outstanding = 0,
-};
+static u32 tx_fifo_depth = 16;
+static u32 rx_fifo_depth = 1;
+static u32 clk_khz = 33000;
+static void *mmio_base;
 
 static inline void
 i2c_write_r(u32 val , u32 reg)
 {
-  *(u32 *)(dev.i2c_base + reg) = val;
+  *(u32 *)((u32)mmio_base + reg) = val;
 }
 
 static inline u32
 i2c_read_r(u32 reg)
 {
-  return *(u32 *)(dev.i2c_base + reg);
+  return *(u32 *)((u32)mmio_base + reg);
 }
 
 /* copied from clanton to configure clock */
@@ -149,21 +140,17 @@ static u32 i2c_dw_scl_lcnt(u32 ic_clk, u32 tLOW, u32 tf, int offset)
 	return ((ic_clk * (tLOW + tf) + 5000) / 10000) - 1 + offset;
 }
 
+/* IC_CON register */
 #define DW_IC_CON_MASTER    0x1
 #define DW_IC_CON_SPEED_STD   0x2
 #define DW_IC_CON_SPEED_FAST    0x4
 #define DW_IC_CON_10BITADDR_MASTER  0x10
 #define DW_IC_CON_RESTART_EN    0x20
-#define DW_IC_CON_SLAVE_DISABLE   0x40
-
-#define INTEL_CLN_STD_CFG  (DW_IC_CON_MASTER |      \
-    DW_IC_CON_SLAVE_DISABLE | \
-    DW_IC_CON_RESTART_EN)
 
 static void
 i2c_config()
 {
-  u32 input_clock_khz = dev.clk_khz;
+  u32 input_clock_khz = clk_khz;
 
   /* set standard and fast speed deviders for high/low periods */
   u32 hcnt, lcnt;
@@ -195,311 +182,17 @@ i2c_config()
 	i2c_write_r(lcnt, DW_IC_FS_SCL_LCNT);
 
 	/* Configure Tx/Rx FIFO threshold levels */
-  i2c_write_r(dev.tx_fifo_depth - 1, DW_IC_TX_TL); 
-  i2c_write_r(0, DW_IC_RX_TL); 
+	/* XXX: currently we only allow byte_write and byte_read.
+	 * So each transaction has 2 bytes to write.
+	 * We set threshold = (tx_fifo_depth - 2) so that when TX_EMPTY
+	 * interrupt occurs, we are guaranteed to have enough tx fifo slot
+	 * for one transaction */
+  i2c_write_r(tx_fifo_depth - 2, DW_IC_TX_TL); 
+  i2c_write_r(rx_fifo_depth - 1, DW_IC_RX_TL); 
 
-  /* 
-   * copy from clanton. In comment, it says:
-   * Clanton default configuration is fast mode, unless otherwise asked.
-   * XXX: this is not true... setting fast mode makes it not work
-   */
-  //u32 cfg = INTEL_CLN_STD_CFG | DW_IC_CON_SPEED_FAST;
-  u32 cfg = INTEL_CLN_STD_CFG | DW_IC_CON_SPEED_STD;
+  u32 cfg = DW_IC_CON_MASTER | DW_IC_CON_RESTART_EN | DW_IC_CON_SPEED_STD;
   /* configure the i2c master */
   i2c_write_r(cfg, DW_IC_CON);
-}
-
-static void
-i2c_disable_int()
-{
-  i2c_write_r(0, DW_IC_INTR_MASK);
-}
-
-static void
-i2c_clear_int()
-{
-  i2c_read_r(DW_IC_CLR_INTR);
-}
-
-static void
-i2c_disable()
-{
-  i2c_write_r(0, DW_IC_ENABLE);
-}
-
-static u32
-i2c_status()
-{
-  return i2c_read_r(DW_IC_STATUS);
-}
-/* ************************************************************ */
-
-/* Protocol */
-
-struct i2c_msg {
-	u16 flags;
-#define I2C_M_TEN		0x0010	/* this is a ten bit chip address */
-#define I2C_M_RD		0x0001	/* read data, from slave to master */
-#define I2C_M_STOP		0x8000	/* if I2C_FUNC_PROTOCOL_MANGLING */
-#define I2C_M_NOSTART		0x4000	/* if I2C_FUNC_NOSTART */
-#define I2C_M_REV_DIR_ADDR	0x2000	/* if I2C_FUNC_PROTOCOL_MANGLING */
-#define I2C_M_IGNORE_NAK	0x1000	/* if I2C_FUNC_PROTOCOL_MANGLING */
-#define I2C_M_NO_RD_ACK		0x0800	/* if I2C_FUNC_PROTOCOL_MANGLING */
-#define I2C_M_RECV_LEN		0x0400	/* length will be first received byte */
-	u16 len;		/* msg length				*/
-	u8 *buf;		/* pointer to msg data			*/
-};
-
-#define DW_IC_CMD_READ			0x01
-#define DW_IC_CMD_STOP			0x02
-#define DW_IC_CMD_RESTART		0x04
-
-/*
- * Define the IC_DATA_CMD format.
- */
-static union i2c_dw_data_cmd {
-	struct fields {
-		u8 data;
-		u8 cmd;
-	} fields;
-	u16 value;
-} data_cmd;
-
-static void
-i2c_write(struct i2c_msg *msgs, int msg_num)
-{
-  u32 buf_len;
-  u8 *buf;
-  int i, segment_start;
-  /* reset pending RX */
-  dev.rx_outstanding = 0;
-	int tx_limit;
-
-  for (i = 0; i < msg_num; i++) {
-    segment_start = 1;
-    buf_len = msgs[i].len;
-    buf = msgs[i].buf;
-
-    while (buf_len > 0) {
-			do {
-				tx_limit = dev.tx_fifo_depth - i2c_read_r(DW_IC_TXFLR);
-			} while (tx_limit <= 0);
-
-      data_cmd.fields.data = 0x00;
-      data_cmd.fields.cmd = 0x00;
-
-      if (msgs[i].flags & I2C_M_RD) {
-        data_cmd.fields.cmd = DW_IC_CMD_READ;
-        dev.rx_outstanding++;
-      } else {
-        data_cmd.fields.data = *buf;
-        buf++;
-      }
-
-      if (segment_start) {
-        /*
-         * First byte of a transaction segment for a
-         * device requiring explicit transaction
-         * termination: generate (re)start symbol.
-         */
-        segment_start = 0;
-        data_cmd.fields.cmd |= DW_IC_CMD_RESTART;
-      }
-
-      if (i == msg_num - 1 && buf_len == 1) {
-        /*
-         * Last byte of last transction segment for a
-         * device requiring explicit transaction
-         * termination: generate stop symbol.
-         */
-        data_cmd.fields.cmd |= DW_IC_CMD_STOP;
-      }
-
-      i2c_write_r(data_cmd.value, DW_IC_DATA_CMD);
-      buf_len--;
-    }
-  }
-}
-
-static void
-i2c_read(struct i2c_msg *msgs, int msg_num)
-{
-  int i, rx_valid;
-  u32 buf_len;
-  u8 *buf;
-
-  for (i = 0; i < msg_num; i++) {
-    if (!(msgs[i].flags & I2C_M_RD)) 
-      continue;
-
-    buf_len = msgs[i].len;
-    buf = msgs[i].buf;
-
-    while (dev.rx_outstanding > 0) {
-      /* more read requests need to be handled */
-      rx_valid = i2c_read_r(DW_IC_RXFLR);
-
-      for (; buf_len > 0 && rx_valid > 0; buf_len--, rx_valid--) {
-        u8 val = (u8)i2c_read_r(DW_IC_DATA_CMD);
-        *buf++ = val;
-        dev.rx_outstanding--;
-      }
-    }
-  }
-}
-
-/* transaction types */
-#define I2C_BYTE_DATA	    0
-#define I2C_WORD_DATA	    1
-#define I2C_BLOCK_DATA    2
-
-/* i2c_xfer read or write markers */
-#define I2C_READ	1
-#define I2C_WRITE	0
-
-#define I2C_BLOCK_MAX	32	/* As specified in SMBus standard */
-union i2c_data {
-	u8 byte;
-	u16 word;
-	u8 block[I2C_BLOCK_MAX + 2]; /* block[0] is used for length */
-			       /* and one more for user-space compatibility */
-};
-
-static s32 i2c_xfer(unsigned short flags, char read_write,
-    u8 command, int size, union i2c_data *data)
-{
-  unsigned char msgbuf0[I2C_BLOCK_MAX+3];
-  unsigned char msgbuf1[I2C_BLOCK_MAX+2];
-	int num = read_write == I2C_READ ? 2 : 1;
-	int i;
-  struct i2c_msg msg[2] = {
-    {
-      .flags = flags,
-      .len = 1,
-      .buf = msgbuf0,
-    }, {
-      .flags = flags | I2C_M_RD,
-      .len = 0,
-      .buf = msgbuf1,
-    },
-  };
-
-	msgbuf0[0] = command;
-  switch (size) {
-  case I2C_BYTE_DATA:
-		if (read_write == I2C_READ)
-			msg[1].len = 1;
-		else {
-			msg[0].len = 2;
-			msgbuf0[1] = data->byte;
-		}
-		break;
-  case I2C_BLOCK_DATA:
-		if (read_write == I2C_READ) {
-			msg[1].len = data->block[0];
-		} else {
-			msg[0].len = data->block[0] + 1;
-			if (msg[0].len > I2C_BLOCK_MAX + 1) {
-        DLOG("Invalid block write size %d",
-             data->block[0]);
-        return -1;
-			}
-			for (i = 1; i <= data->block[0]; i++)
-				msgbuf0[i] = data->block[i];
-		}
-		break;
-  case I2C_WORD_DATA:
-		if (read_write == I2C_READ)
-			msg[1].len = 2;
-		else {
-			msg[0].len = 3;
-			msgbuf0[1] = data->word & 0xff;
-			msgbuf0[2] = data->word >> 8;
-		}
-		break;
-	default:
-    DLOG("Unsupported transaction%d",
-         size);
-    return -1;
-	}
-
-  i2c_write(msg, num);
-
-  if (read_write == I2C_READ) {
-		i2c_read(msg, num);
-		switch (size) {
-		case I2C_BYTE_DATA:
-			data->byte = msgbuf1[0];
-			break;
-		case I2C_WORD_DATA:
-			data->word = msgbuf1[0] | (msgbuf1[1] << 8);
-			break;
-		case I2C_BLOCK_DATA:
-			for (i = 0; i < data->block[0]; i++)
-				data->block[i+1] = msgbuf1[i];
-			break;
-		}
-	} 
-
-	return 0;
-}
-/* ************************************************************ */
-
-/* APIs */
-
-s32 i2c_read_byte_data(u8 command)
-{
-  union i2c_data data;
-  s32 status = i2c_xfer(0, I2C_READ, command, I2C_BYTE_DATA, &data);
-  if (status < 0) {
-    DLOG("i2c_read_byte_data error");
-    return -1;
-  }
-  return data.byte;
-}
-
-s32 i2c_write_byte_data(u8 command, u8 value)
-{
-  union i2c_data data;
-  data.byte = value;
-  s32 status = i2c_xfer(0, I2C_WRITE, command, I2C_BYTE_DATA, &data);
-  if (status < 0) {
-    DLOG("i2c_write_byte_data error");
-    return -1;
-  }
-  return 0;
-}
-
-s32 i2c_read_block_data(u8 command, u8 length, u8 *values)
-{
-  union i2c_data data;
-  int status;
-
-  if (length > I2C_BLOCK_MAX)
-    length = I2C_BLOCK_MAX;
-  data.block[0] = length;
-
-  status = i2c_xfer(0, I2C_READ, command, I2C_BLOCK_DATA, &data);
-  if (status < 0)
-    return status;
-
-  memcpy(values, &data.block[1], data.block[0]);
-  return data.block[0];
-}
-
-s32 i2c_write_block_data(u8 command, u8 length, u8 *values)
-{
-  union i2c_data data;
-  int status;
-
-  if (length > I2C_BLOCK_MAX)
-    length = I2C_BLOCK_MAX;
-  data.block[0] = length;
-
-  memcpy(&data.block[1], values, length);
-  status = i2c_xfer(0, I2C_WRITE, command, I2C_BLOCK_DATA, &data);
-
-  return status;
 }
 
 #define DW_IC_INTR_RX_UNDER	0x001
@@ -517,27 +210,238 @@ s32 i2c_write_block_data(u8 command, u8 length, u8 *values)
 
 #define DW_IC_INTR_DEFAULT_MASK		(DW_IC_INTR_RX_FULL | \
 					 DW_IC_INTR_TX_EMPTY | \
-					 DW_IC_INTR_TX_ABRT | \
-					 DW_IC_INTR_STOP_DET)
+					 DW_IC_INTR_TX_ABRT)
 
+static inline void
+i2c_disable_int()
+{
+  i2c_write_r(0, DW_IC_INTR_MASK);
+}
+
+static inline void
+i2c_clear_int()
+{
+  i2c_read_r(DW_IC_CLR_INTR);
+}
+
+static inline void
+i2c_disable()
+{
+  i2c_write_r(0, DW_IC_ENABLE);
+}
+
+static inline void
+i2c_enable()
+{
+  i2c_write_r(1, DW_IC_ENABLE);
+}
+
+static inline u32
+i2c_int_stat()
+{
+	return i2c_read_r(DW_IC_INTR_STAT);
+}
+
+#define DW_IC_CMD_WRITE 		0x000
+#define DW_IC_CMD_READ			0x100
+#define DW_IC_CMD_STOP			0x200
+#define DW_IC_CMD_RESTART		0x400
+
+#define STATUS_RFNE 0x8
+#define STATUS_TFNF 0x2
+
+static void wait_rx()
+{
+	u32 val;
+	do {
+		val = i2c_read_r(DW_IC_STATUS);
+		DLOG("waiting rx...");
+	} while (!(val & STATUS_RFNE));
+}
+
+static void wait_tx()
+{
+	u32 val;
+	do {
+		val = i2c_read_r(DW_IC_STATUS);
+		DLOG("waiting tx...");
+	} while (!(val & STATUS_TFNF));
+}
+
+typedef enum {
+	READ = 0,
+	WRITE,
+} i2c_trans_type;
+
+typedef enum {
+	WRITE_PENDING = 0,
+	READ_PENDING,
+	DONE,
+} i2c_trans_status;
+
+struct i2c_trans {
+	i2c_trans_type type;
+	i2c_trans_status status;
+	u32 ispending;
+	u32 data_w[2];
+	u32 data_r;
+};
+
+static task_id i2c_sleep_queue = 0;
+struct i2c_trans i2c_dev_buffer;
+semaphore i2c_dev_mtx;
+#define _mutex_init(mtx) semaphore_init(mtx, 1, 1) 
+#define _mutex_destory(mtx) semaphore_destroy(mtx) 
+#define _mutex_lock(mtx) semaphore_wait(mtx, 1, -1) 
+#define _mutex_unlock(mtx) semaphore_signal(mtx, 1) 
+
+u8 i2c_read_byte_data(u8 reg)
+{
+	u32 val1, val2, retval;
+
+	val1 = reg | DW_IC_CMD_WRITE | DW_IC_CMD_RESTART;
+	val2 = DW_IC_CMD_READ | DW_IC_CMD_STOP | DW_IC_CMD_RESTART;
+	/* --TOM--
+	 * mp_enabled can infer weather we are here from
+	 * user process or still doing kernel
+	 * initialization. If from user process, do a sleep
+	 * to block the process and wait for interrupts.
+	 * Otherwise, do a polling */
+	if (!mp_enabled) {
+		wait_tx();
+		i2c_write_r(val1, DW_IC_DATA_CMD);
+		wait_tx();
+		i2c_write_r(val2, DW_IC_DATA_CMD);
+		wait_rx();
+		retval = i2c_read_r(DW_IC_DATA_CMD);
+	} else {
+		//lock i2c device and write device-global buffer
+		_mutex_lock(&i2c_dev_mtx);
+		i2c_dev_buffer.type = READ;
+		i2c_dev_buffer.status = WRITE_PENDING,
+		i2c_dev_buffer.data_w[0] = val1;
+		i2c_dev_buffer.data_w[1] = val2;
+		queue_append(&i2c_sleep_queue, str());
+		i2c_write_r(DW_IC_INTR_DEFAULT_MASK, DW_IC_INTR_MASK);
+		/* We won't receive interrupts until schedule() is called
+		 * because kernel will never be interrupted */
+		DLOG("about to sleep");
+		schedule();
+		retval = i2c_dev_buffer.data_r;
+		_mutex_unlock(&i2c_dev_mtx);
+	}
+	return (retval & 0xFF);
+}
+
+s32 i2c_write_byte_data(u8 reg, u8 data)
+{
+	u32 val1, val2;
+
+	val1 = reg | DW_IC_CMD_WRITE | DW_IC_CMD_RESTART;
+	val2 = data | DW_IC_CMD_WRITE | DW_IC_CMD_STOP;
+	if (!mp_enabled) {
+		wait_tx();
+		i2c_write_r(val1, DW_IC_DATA_CMD);
+		wait_tx();
+		i2c_write_r(val2, DW_IC_DATA_CMD);
+	} else {
+		//lock i2c device
+		_mutex_lock(&i2c_dev_mtx);
+		i2c_dev_buffer.type = WRITE;
+		i2c_dev_buffer.status = WRITE_PENDING,
+		i2c_dev_buffer.data_w[0] = val1;
+		i2c_dev_buffer.data_w[1] = val2;
+		queue_append(&i2c_sleep_queue, str());
+		i2c_write_r(DW_IC_INTR_DEFAULT_MASK, DW_IC_INTR_MASK);
+		DLOG("about to sleep");
+		schedule();
+		_mutex_unlock(&i2c_dev_mtx);
+	}
+	return 0;
+}
+
+static inline void
+i2c_write()
+{
+	if (i2c_dev_buffer.status != WRITE_PENDING) {
+		return;
+	}
+	/* we set DW_IC_TX_TL to the value that we are guaranteed
+	 * to finish a transaction's write in one TX_EMPTY interrupt.
+	 * So mask TX_EMPTY out. It is the next transaction who
+	 * will set it on again */
+	i2c_write_r((DW_IC_INTR_DEFAULT_MASK & ~DW_IC_INTR_TX_EMPTY),
+			DW_IC_INTR_MASK);
+	DLOG("data_w[0] is 0x%x", i2c_dev_buffer.data_w[0]);
+	DLOG("data_w[1] is 0x%x", i2c_dev_buffer.data_w[1]);
+	i2c_write_r(i2c_dev_buffer.data_w[0], DW_IC_DATA_CMD);
+	i2c_write_r(i2c_dev_buffer.data_w[1], DW_IC_DATA_CMD);
+	i2c_dev_buffer.status = (i2c_dev_buffer.type == READ) ?
+		READ_PENDING : DONE;
+}
+
+static inline void
+i2c_read()
+{
+	if (i2c_dev_buffer.status != READ_PENDING)
+		return;
+	i2c_dev_buffer.data_r = i2c_read_r(DW_IC_DATA_CMD);
+	i2c_dev_buffer.status = DONE;
+}
+
+static uint32
+i2c_irq_handler(uint8 vec)
+{
+	u32 int_stat = i2c_int_stat();
+	DLOG("IRQ coming..., int_status is 0x%x", int_stat);
+	if (int_stat & DW_IC_INTR_RX_FULL) {
+		i2c_read();
+		goto done;
+	}
+	else if (int_stat & DW_IC_INTR_TX_EMPTY) {
+		DLOG("type is %d", i2c_dev_buffer.type);
+		i2c_write();
+		/* we are probably not done yet.
+		 * If we are doing a read, we need to
+		 * keep interrupt enabled so that
+		 * RX_FULL will be handled */
+		if (i2c_dev_buffer.type == READ)
+			return 0;
+		goto done;
+	}
+	else {
+		i2c_clear_int();
+		return 0;
+	}
+
+done:
+	i2c_disable_int();
+	DLOG("about to wakeup");
+	wakeup_queue(&i2c_sleep_queue);
+	return 0;
+}
+
+/* It will be called by cy8c9540a intialization code
+ * So polling will be able to work. But interrupt will
+ * be enabled only when user programs call i2c_read_byte_data()
+ * or i2c_write_byte_data() 
+ */
 void i2c_xfer_init(u32 slave_addr)
 {
-  i2c_disable();
-  /* set the slave (target) address */
   i2c_write_r(slave_addr, DW_IC_TAR);
-	/* Enable the adapter */
-	i2c_write_r(1, DW_IC_ENABLE);
-	/* XXX: Enable interrupts */
-	/* i2c_write_r(DW_IC_INTR_DEFAULT_MASK, DW_IC_INTR_MASK); */
+	i2c_enable();
 }
 
 #define GALILEO_I2C_VID		 		0x8086
 #define	GALILEO_I2C_DID			 	0x0934
 
+static pci_device i2c_pci_device;
+
 bool i2c_init()
 {
-	uint device_index;
+	uint device_index, irq_line, irq_pin;
 	uint mem_addr;
+	pci_irq_t irq;
 
 	if (!pci_find_device(GALILEO_I2C_VID, GALILEO_I2C_DID,
 				0xFF, 0xFF, 0, &device_index))
@@ -546,25 +450,65 @@ bool i2c_init()
     DLOG ("Unable to detect compatible device.");
     return FALSE;
   }
+  DLOG ("Found device_index=%d", device_index);
+
+	if (!pci_get_device(device_index, &i2c_pci_device)) {
+		DLOG("Unable to get PCI device from PCI subsystem");
+		return FALSE;
+	}
+  DLOG ("Using PCI bus=%x dev=%x func=%x",
+        i2c_pci_device.bus,
+        i2c_pci_device.slot,
+        i2c_pci_device.func);
+
 	if (!pci_decode_bar (device_index, 0, &mem_addr, NULL, NULL)) {
-    DLOG ("Bar decoding failed!");
+    DLOG ("Invalid PCI configuration or BAR0 not found");
     return FALSE;
   } 
+  if (mem_addr == 0) {
+    DLOG ("Unable to detect memory mapped IO region");
+    return FALSE;
+  }
+  mmio_base = map_virtual_page (mem_addr | 0x3);
+  if (mmio_base == NULL) {
+    DLOG ("Unable to map page to phys=%p", mem_addr);
+    return FALSE;
+  }
+  DLOG ("Using memory mapped IO at phys=%p virt=%p", mem_addr, mmio_base);
 
-  u32 addr = (u32)map_virtual_page (mem_addr | 0x3);
-	dev.i2c_base = addr;
+	if (!pci_get_interrupt(device_index, &irq_line, &irq_pin)) {
+		DLOG("Unable to get IRQ");
+		goto abort;
+	}
+	if (pci_irq_find(i2c_pci_device.bus, i2c_pci_device.slot,
+				irq_pin, &irq)) {
+		/* use PCI routing table */
+    DLOG ("Found PCI routing entry irq.gsi=0x%x", irq.gsi);
+		if (!pci_irq_map_handler(&irq, i2c_irq_handler, get_logical_dest_addr(0),
+					IOAPIC_DESTINATION_LOGICAL,
+					IOAPIC_DELIVERY_FIXED))
+			goto abort;
+		irq_line = irq.gsi;
+	}
+  DLOG ("Using IRQ line=%.02X pin=%X", irq_line, irq_pin);
+
+	_mutex_init(&i2c_dev_mtx);
 	i2c_disable();
   i2c_config();
   i2c_disable_int();
   i2c_clear_int();
-
 	return TRUE;
+
+abort:
+	unmap_virtual_page(mmio_base);
+	return FALSE;
 }
 
 void i2c_remove()
 {
 	i2c_disable();
-  unmap_virtual_page ((void *) dev.i2c_base);
+	_mutex_destory(&i2c_dev_mtx);
+  unmap_virtual_page (mmio_base);
 }
 
 #include "module/header.h"
@@ -574,5 +518,4 @@ static const struct module_ops mod_ops = {
 };
 
 DEF_MODULE (galileo_i2c, "Galileo I2C driver", &mod_ops, {"pci"});
-
 

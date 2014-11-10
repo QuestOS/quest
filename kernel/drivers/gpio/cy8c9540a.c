@@ -351,9 +351,9 @@ int cy8c9540a_pwm_disable(unsigned pwm)
 	return cy8c9540a_pwm_switch(pwm, 0);
 }
 
-s32 cypress_get_id()
+int cypress_get_id()
 {
-  s32 dev_id = i2c_read_byte_data(REG_DEVID_STAT);
+  u8 dev_id = i2c_read_byte_data(REG_DEVID_STAT);
   return dev_id & 0xf0;
 }
 
@@ -392,14 +392,14 @@ bool cy8c9540a_setup()
 {
 	int ret = 0;
 	int i = 0;
-  s32 dev_id;
+  int dev_id;
 	u8 eeprom_enable_seq[] = {0x43, 0x4D, 0x53, 0x2};
 
 	/* enable i2c device */
 	i2c_xfer_init(dev.addr);
 
-  //dev_id = cypress_get_id();
-  //DLOG("dev_id is 0x%x", dev_id);
+  dev_id = cypress_get_id();
+  DLOG("dev_id is 0x%x", dev_id);
 
 	/* Disable PWM, set all GPIOs as input.  */
 	for (i = 0; i < NPORTS; i++) {
@@ -422,6 +422,7 @@ bool cy8c9540a_setup()
 		}
 	}
 
+#if 0
 	/* Cache the output registers */
 	ret = i2c_read_block_data(REG_OUTPUT_PORT0,
             sizeof(dev.outreg_cache),
@@ -430,6 +431,7 @@ bool cy8c9540a_setup()
     DLOG("can't cache output registers");
     return ret;
 	}
+#endif
 
 	/* Set default PWM clock source.  */
 	for (i = 0; i < NPWM; i ++) {
@@ -447,6 +449,7 @@ bool cy8c9540a_setup()
 		}
 	}
 
+#if 0
 	/* Enable the EEPROM */
 	ret = i2c_write_block_data(REG_ENABLE,
 					     sizeof(eeprom_enable_seq),
@@ -455,6 +458,7 @@ bool cy8c9540a_setup()
 		DLOG("can't enable EEPROM");
     return ret;
 	}
+#endif
 
 	//cy8c9540a_test();
 
