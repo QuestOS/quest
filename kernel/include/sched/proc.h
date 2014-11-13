@@ -94,7 +94,13 @@ typedef struct _quest_tss
   u32 initial_EIP;
   u32 CR3;
   u32 EFLAGS;
-  u8 padding[12];
+  u32 ulStack;                  /* User level stack location (top, high address) */
+  task_id ptid;                 /* "Parent" thread ID. Used only by threads to identify
+                                   the main thread. In main thread, ptid == tid */
+  u32 num_threads;              /* Number of threads in this process address space. This
+                                   number is only valid for main thread. For threads
+                                   created with pthread_create, num_threads is only the
+                                   "index" of the thread when it is created */
   u8 fpu_state[512];            /* 512 bytes for fpu and mmx state */
   struct _semaphore Msem;
   u32 M[NUM_M];
@@ -120,7 +126,7 @@ typedef struct _quest_tss
   struct _quest_tss * next_tss;
   struct _quest_tss * prev_tss;
   task_id tid;
-  char name[32];              /* A simple description or the path of the process */
+  char name[32];                /* A simple description or the path of the process */
   uint sandbox_affinity;        /* Sandbox binding. Change this to migrate. */
 
   /* -- EM -- Machine affinity right now since we do not have a global
@@ -166,6 +172,15 @@ duplicate_TSS (uint32 ebp,
                uint32 child_eflags,
                uint32 child_directory);
 
+extern task_id
+alloc_thread_TSS (uint32_t child_directory,
+                  uint32_t eip,
+                  uint32_t child_eip,
+                  uint32_t child_eflags,
+                  uint32_t usr_stk,
+                  uint32_t parent_esp,
+                  uint32_t parent_ebp,
+                  quest_tss * mTSS);
 extern quest_tss * alloc_quest_tss (void);
 extern void free_quest_tss (quest_tss *tss);
 extern task_id alloc_idle_TSS (int cpu_num);
@@ -175,6 +190,18 @@ extern void tss_add_head (quest_tss * new_tss);
 extern void tss_add_tail (quest_tss * new_tss);
 extern task_id new_task_id (void);
 extern void tss_remove (task_id tid);
+
+static inline quest_tss *
+parent_TSS (quest_tss *tss)
+{
+  if (!tss) return NULL;
+  if (tss->tid == tss->ptid) {
+    return tss;
+  } else {
+    return lookup_TSS (tss->ptid);
+  }
+  return NULL;
+}
 
 #endif
 

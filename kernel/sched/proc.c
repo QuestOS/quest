@@ -138,6 +138,120 @@ lookup_TSS (task_id tid)
   return NULL;
 }
 
+task_id
+alloc_thread_TSS (uint32_t child_directory,
+                  uint32_t eip,
+                  uint32_t child_eip,
+                  uint32_t child_eflags,
+                  uint32_t usr_stk,
+                  uint32_t parent_esp,
+                  uint32_t parent_ebp,
+                  quest_tss * mTSS)
+{
+  quest_tss * pTSS = NULL;
+  linear_address_t esp_la;
+  pgdir_t child_pgdir;
+  frame_t esp_frame;
+  uint32_t klStack = 0;
+  uint32_t * virt_pgd = NULL, * esp_virt = NULL;
+
+  /* Note, we rely on page being initialised to 0 since EAX contains
+   * return value for child
+   */
+  if (!(pTSS = alloc_quest_tss ())) {
+    com1_printf ("alloc_quest_tss failed!\n");
+    /* task_id = 0 means error since 0 belongs to idle TSS and is statically allocated */
+    return 0;
+  }
+
+  /* Clear virtual page before use. */
+  memset (pTSS, 0, 4096);
+
+  tss_add_tail (pTSS);
+
+  virt_pgd = map_virtual_page (child_directory | 0x3);
+  if (!virt_pgd) {
+    com1_printf ("map_virtual_page failed in alloc_thread_TSS!\n");
+    return 0;
+  }
+
+  pTSS->CR3 = (u32) child_directory;
+  /* The child will begin running at the specified EIP */
+  pTSS->initial_EIP = child_eip;
+
+  /* Find a kernel stack for new thread */
+  klStack = find_and_map_kernel_level_stack (virt_pgd);
+  if (klStack == -1) {
+    com1_printf ("Kernel stack allocation failed!\n");
+    return 0;
+  }
+  //com1_printf ("Found new kernel stack: 0x%X\n", klStack);
+  //com1_printf ("Parent ESP=0x%X\n", parent_esp);
+  /* Copy kernel stack */
+  memcpy ((void *) klStack, (void *) (parent_esp & 0xFFFFF000), 4096);
+  /* 4 bytes are needed for kernel return address. Used to "return" from switch_to. */
+  pTSS->ESP = klStack + (parent_esp & 0xFFF) - 4;
+  pTSS->EBP = klStack + (parent_ebp & 0xFFF);
+
+  /* modify stack in child space (patch up "kernel" return address -- call 1f) */
+  esp_la.raw = pTSS->ESP;
+  child_pgdir.dir_pa = child_directory;
+  child_pgdir.dir_va = (pgdir_entry_t *) virt_pgd;
+  esp_frame = pgdir_get_frame (child_pgdir, (void *) (pTSS->ESP & (~0xFFF)));
+  esp_virt = map_virtual_page (esp_frame | 3);
+  if (esp_virt == NULL) panic ("esp_virt: out of memory");
+  esp_virt[esp_la.offset >> 2] = eip;
+
+#if 0
+  com1_printf ("Dump copied kernel stack:\n");
+  com1_printf ("  esp_virt[1023]=0x%x\n", esp_virt[1023]);
+  com1_printf ("  esp_virt[1022]=0x%x\n", esp_virt[1022]);
+  com1_printf ("  esp_virt[1021]=0x%x\n", esp_virt[1021]);
+  com1_printf ("  esp_virt[1020]=0x%x\n", esp_virt[1020]);
+  com1_printf ("  esp_virt[1019]=0x%x\n", esp_virt[1019]);
+  com1_printf ("  esp_virt[1018]=0x%x\n", esp_virt[1018]);
+  com1_printf ("  esp_virt[1017]=0x%x\n", esp_virt[1017]);
+#endif
+
+  /* Patch up kernel stack for "user" return address */
+  esp_virt[1023] = 0x23;                   /* SS selector */
+  esp_virt[1022] = usr_stk - 100;          /* ESP3 -- User stack */
+  esp_virt[1021] = F_1 | F_IF | 0x3000;    /* EFLAGS */
+  esp_virt[1020] = 0x1B;                   /* CS selector */
+  esp_virt[1019] = child_eip;              /* EIP -- User EIP */
+  esp_virt[1018] = 0x00230023;             /* FS/GS selectors */
+  esp_virt[1017] = 0x00230023;             /* DS/ES selectors */
+
+  /* child_pgdir.dir_va is virt_pgd */
+  unmap_virtual_page (child_pgdir.dir_va);
+  unmap_virtual_page (esp_virt);
+
+  pTSS->EFLAGS = child_eflags & 0xFFFFBFFF;   /* Disable NT flag */
+  /* Inherit priority from main thread */
+  pTSS->priority = mTSS->priority;
+  pTSS->tid = new_task_id ();
+  /* Set parent tid to main thread tid */
+  pTSS->ptid = mTSS->tid;
+  /* Increase thread count. Child num_threads is not changed. */
+  pTSS->num_threads = mTSS->num_threads++;
+  /* Remember user level stack location */
+  pTSS->ulStack = usr_stk;
+#ifdef NO_FPU
+  /* Do nothing */
+#else
+  save_fpu_and_mmx_state(pTSS->fpu_state);
+#endif
+  pTSS->sandbox_affinity = get_pcpu_id ();
+  pTSS->machine_affinity = 0;
+
+  semaphore_init (&pTSS->Msem, 1, 0);
+
+  pTSS->cpu = BEST_EFFORT_VCPU;
+  
+  /* Return the index into the GDT for the segment */
+  return pTSS->tid;
+}
+
 /* Duplicate parent TSS -- used with fork */
 task_id
 duplicate_TSS (uint32 ebp,
@@ -187,6 +301,9 @@ duplicate_TSS (uint32 ebp,
   pTSS->ESP = child_esp;
   pTSS->EBP = child_ebp;
   pTSS->tid = new_task_id ();
+  pTSS->ptid = pTSS->tid;
+  pTSS->num_threads = 1;
+  pTSS->ulStack = USER_STACK_START;
 #ifdef NO_FPU
   /* Do nothing */
 #else
@@ -226,6 +343,9 @@ alloc_idle_TSS (int cpu_num)
   pTSS->ESP = (u32) &stk[1023];
   pTSS->EBP = pTSS->ESP;
   pTSS->tid = new_task_id ();
+  pTSS->ptid = pTSS->tid;
+  pTSS->num_threads = 1;
+  pTSS->ulStack = USER_STACK_START;
   pTSS->sandbox_affinity = cpu_num;
   pTSS->machine_affinity = 0;
   memcpy (pTSS->name, name, strlen (name));
@@ -255,6 +375,9 @@ alloc_TSS (void *pPageDirectory, void *pEntry, int mod_num)
   pTSS->ESP = USER_STACK_START - 100;
   pTSS->EBP = USER_STACK_START - 100;
   pTSS->tid = new_task_id ();
+  pTSS->ptid = pTSS->tid;
+  pTSS->num_threads = 1;
+  pTSS->ulStack = USER_STACK_START;
   pTSS->sandbox_affinity = get_pcpu_id ();
   pTSS->machine_affinity = 0;
 

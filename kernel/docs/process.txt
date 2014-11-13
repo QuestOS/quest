@@ -1,0 +1,287 @@
+
+                      +--------------------------+
+                      | Quest Process Management |
+                      +--------------------------+
+
+1. Process Address Space
+
+   All the user processes in Quest are forked and exec'ed from the shell
+   program loaded by GRUB as a module during boot. After the ELF image is
+   loaded by GRUB, the shell process address space is assembled through the
+   load_moduel () function in boot/init.c. For a single thread process, the
+   virtual memory layout looks like the following:
+
+                     --+-----------------------+ 0xFFFFFFFF (4GB)
+                    /  |                       |
+                   /   |                       |
+                  /    |      Kernel (4MB)     |
+                 /     |                       |
+                /      |                       |
+             Kernel    +-----------------------+ 0xFFC00000
+             Access    |  4MB Total Reserved   |
+                \      |                       |
+                 \     |                       |
+                  \    |                       |
+                   \   +-----------------------+ 0xFF801000 <-- ESP0
+                    \  |  Kernel Stack (4KB)   |
+                     --+-----------------------+ 0xFF800000
+                       |                       |
+                       
+                                 . . .
+                       
+                       |                       |
+                  -----+-----------------------+ 0xFF000000
+                 /     |                       |
+                /      |      Local APIC       |
+             Kernel    |                       |
+             Access    +-----------------------+ 0xFEE00000
+                       |                       |
+                \      |        IO-APIC        |
+                 \     |                       |
+                  -----+-----------------------+ 0xFEC00000
+                       |                       |
+                       
+                                 . . .
+                       
+                       |                       |
+                      -+-----------------------+ 0x40000000 (1GB)
+                     / |      User Stack       |
+                    /  |  (Default: 16 Pages)  |
+                   /   +-----------------------+ 0x3FFF0000
+                  /    |                       |
+                 /     
+                /                . . .
+               |       
+               |       |                       |
+                       +-----------------------+
+             User      |                       |
+            Access
+                                 . . .
+               |       
+               |       |                       |
+                \      +-----------------------+
+                 \     |                       |
+                  \    |  User Text and Data   |
+                   \   |                       |
+                    \  +-----------------------+ 0x00001000
+                     \ |    4KB Not Mapped     |
+                      -+-----------------------+ 0x00000000 (0GB)
+
+   The kernel stack starts 4MB below the kernel image. It is located at
+   0xFF800000. A macro called KERN_STK is defined for kernel stack in
+   include/kernel-defs.h. Every time a user process traps into the kernel, the
+   ESP register will be switched to ESP0 in hardware TSS (of course, SS is
+   also updated). And ESP0 in hardware TSS is set to (KERN_STK + 0x1000). The
+   per-CPU TSS is allocated during system initialization using the
+   alloc_CPU_TSS () function in boot/init.c. In Quest, the per-CPU TSS is
+   never switched during process context switch. The per-CPU TSS for all the
+   cores in an SMP system are stored in an array called
+   cpuTSS_selector[MAX_CPUS] defined in kernel.c (The TSS's themselves are
+   stored in cpuTSS[MAX_CPUS] also define in kernel.c).
+
+   Process user stack starts at 0x40000000 (1GB) in process address space and
+   grows downwards. A macro called USER_STACK_START is defined in
+   include/kernel.h. The default user stack size is 16 pages (defined in
+   include/kernel.h as USER_STACK_SIZE).
+
+2. Quest Process Structure
+
+   Each process in Quest has a quest_tss structure allocated for process
+   states management. Some important field of this structure is shown below:
+
+       struct quest_tss {
+         uint32_t          ESP;
+         uint32_t          EBP
+         uint32_t          initial_EIP;
+         uint32_t          CR3;
+         uint32_t          EFLAGS;
+         task_id           waitqueue;
+         uint16_t          cpu;
+         task_id           tid;
+         fd_table_entry_t  fd_table[MAX_FD];
+         ...
+       };
+
+   This structure is defined in include/sched/proc.h. ESP and EBP in quest_tss
+   always tracks the kernel stack used during context switch. When a process
+   is scheduled off, it would always be in the kernel context, and the kernel
+   stack along with ESP + EBP provides most of the process context you need.
+   initial_EIP is set to the user process entry point when it is created. This
+   field is really used for scheduling a newly created process. After a
+   process has been schedule at least once, its EIP will be preserved on the
+   kernel stack when it traps into the kernel. The CR3 field in quest_tss
+   simply points to the address space page directory table. waitqueue is used
+   to create a single linked list of quest_tss's that queues all the processes
+   "waiting" (with waitpid () system call) on "this" process. The field cpu is
+   really a bit misleading, it really means the "VCPU" that this process
+   belongs to. Please refer to the VCPU scheduling documentation for more
+   details. tid is the process ID. It is defined as a 32-bit integer. In
+   Quest-V, it is separated into two segments: sandbox ID and task ID. In a
+   single core or SMP Quest setup, the sandbox ID is the CPU ID where the
+   process is created. Finally, the fd_table field holds the file descriptors
+   of all the opened files in a process.
+
+   A basic quest_tss structure can be allocated by calling alloc_TSS ()
+   function defined in sched/proc.c. Additionally, some helper functions are
+   also defined in the same file for creating quest_tss under different
+   circumstances.
+
+3. fork and exec
+
+   Quest kernel adopts the traditional UNIX fork and exec sementics for
+   process creation. These two system calls are implemented in
+   interrupt_handler.c (_fork and _exec).
+
+   The center of the fork system call is a function called
+   clone_page_directory () (defined in mem/virual.c). This function
+   essentially clones an entire address space by making copies of the old
+   address space. Except for kernel image and APIC mappings, all the other
+   parts (all of user space and kernel stack) of the old address space are
+   copied to a new address space. A new quest_tss is also created for the
+   child process by calling duplicate_TSS () (defined in sched/proc.c). The
+   CR3 field of the new TSS will point to the new page directory returned by
+   clone_page_directory (). The kernel return address (On the new kernel
+   stack, will be used by scheduler to "return" to the position in the kernel
+   when the process was schedule off.) will be modified to point to the
+   special return point in _fork after "call 1f".
+
+   The exec system call is much more complicated than fork mostly because of
+   the details of loading ELF images and manually managing the release of old
+   address space and creation of the new one (instead of using
+   clone_page_directory ()). Additionally, instead of patching the new kernel
+   stack, we also need to patch the user stack for the new process.
+
+   The details of these two system calls are hard to describe in words alone.
+   A thorough study of the source code is definitely helpful to fully
+   understand the gory details involved.
+
+4. Thread Support
+
+   Support of user threads has been added to Quest kernel recently (Dec.
+   2014). The changes required for this update are relatively small since we
+   treated threads as normal process in the Quest kernel. The creation of a
+   new thread is similar to a normal fork except that no new address space is
+   created. The child thread reuses the parent address space (same CR3).
+   However, a new kernel stack and user stack have to be created for the
+   thread and they have to be mapped to different virtual addresses since the
+   address space is shared by all threads. To do this, new kernel stack will
+   be allocated from the 4MB reserved memory region starting from 0xFF800000,
+   going upwards; while the new user stack will be allocated from 0x40000000,
+   going downwards. This allocation scheme is show in the following figure:
+
+
+                       +-----------------------+ 0xFFFFFFFF (4GB)
+                       |                       |
+                       |                       |
+                       |      Kernel (4MB)     |
+                       |                       |
+                       |                       |
+                       +-----------------------+ 0xFFC00000
+                       |  4MB Total Reserved   |
+                       |                       |
+                       |     Grows Upwards     |
+                       |           ^           |
+                       |           |           |
+                       |           |           |
+                       +-----------+-----------+ 0xFF803000
+                       | Kernel Stack 3 (4KB)  |
+                       +-----------------------+ 0xFF802000
+                       | Kernel Stack 2 (4KB)  |
+                       +-----------------------+ 0xFF801000
+                       | Kernel Stack 1 (4KB)  |
+                       +-----------------------+ 0xFF800000
+                       |                       |
+                       
+                                 . . .
+                       
+                       
+                       |                       |
+                       +-----------------------+ 0x40000000 (1GB)
+                       |  User Stack 1 (64KB)  |
+                       |                       |
+                       +-----------------------+ 0x3FFF0000
+                       |  User Stack 2 (64KB)  |
+                       |                       |
+                       +-----------------------+ 0x3FFE0000
+                       |  User Stack 3 (64KB)  |
+                       |                       |
+                       +-----------+-----------+ 0x3FFD0000
+                       |           |           |
+                       |           |           |
+                       |           V           |
+                       |    Grows Downwards    |
+                       |                       |
+                       |                       |
+                       
+                                 . . .
+                       
+                       |                       |
+                       +-----------------------+
+                       |                       |
+                       |  User Text and Data   |
+                       |                       |
+                       +-----------------------+ 0x00001000
+                       |    4KB Not Mapped     |
+                       +-----------------------+ 0x00000000 (0GB)
+
+
+   Since there is currently only 4MB reserved for kernel stacks and each
+   kernel stack is 4KB by default, the number of threads in a process has been
+   limited to 1024. By default, we limited the number of threads to
+   MAX_THREADS defined in include/kernel.h (default is 32). Increasing the
+   hard limit is not hard, we simply have to move KERN_STK lower.
+   Additionally, several new fields have also been added to quest_tss for
+   thread support, these fields are:
+
+       struct quest_tss {
+         uint32_t          ESP;
+         uint32_t          EBP
+         uint32_t          initial_EIP;
+         uint32_t          CR3;
+         uint32_t          EFLAGS;
+         task_id           waitqueue;
+         uint16_t          cpu;
+         task_id           tid;
+         fd_table_entry_t  fd_table[MAX_FD];
+        *task_id           ptid;
+        *uint32_t          ulStack;
+        *uint32_t          num_threads;
+         ...
+       };
+
+       + New fields are marked with "*"
+
+   ptid is now the task ID of the main thread. All the threads in a process
+   will have the same ptid and for the main thread, ptid == tid. ulStack is
+   used to remember the address of user stack allocated for each new thread.
+   It points to the top of the stack and never changes. The "current" user
+   stack pointer will always be saved on kernel stack during context switch.
+   ulStack is only used to make thread exit easier. num_threads field is used
+   by the main thread to keep track of current thread count. This field does
+   not make too much sense in child thread except it is the number of threads
+   that existed already in the process at the time the child thread was
+   created. Notice that we did not add a new field to track the kernel stack
+   since ESP and EBP have already done this for us.
+
+   A user thread is created using pthread_create (). This will eventually
+   invoke the system call syscall_create_thread () (defined in socket.c). The
+   system call implementation is called _rfork in interrupt_handler.c.
+   _rfork () is similar to _fork except that clone_page_directory () is not
+   used. As a result, the new user stack is allocated and mapped by calling
+   find_user_level_stack () and map_user_level_stack () (both defined in
+   kernel.c). The new kernel stack is allocated and mapped by calling
+   find_and_map_kernel_level_stack () (defined in kernel.c) in
+   alloc_thread_TSS () function defined in sched/proc.c.
+
+   A user thread can be terminated by calling pthread_exit (). This will trap
+   the thread into kernel and invoke __thread_exit () defined in
+   interrupt_handler.c. Unlike __exit (), this system call does not free the
+   whole address space of the calling process/thread, it simply frees: (1) the
+   user stack using ulStack in quest_tss, (2) the kernel stack using ESP in
+   quest_tss, and (3) the quest_tss structure itself. Additionally, all the
+   processes/threads waiting on the calling thread will be woken up. The
+   address space is only released when the main thread exits.
+
+   pthread_join () is also supported in user space but it is converted to a
+   call to waitpid ().
+

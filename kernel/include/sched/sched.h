@@ -52,6 +52,8 @@ software_context_switch (task_id next)
   quest_tss *nxt_TSS = lookup_TSS (next);
 
   percpu_write (current_task, next);
+  /* Update kernel stack in per-CPU TSS */
+  update_CPU_TSS ((nxt_TSS->ESP & 0xFFFFF000) + 0x1000);
   
   asm volatile ("call _sw_jmp_task":
                 :"S" (cur_TSS), "D" (nxt_TSS)
