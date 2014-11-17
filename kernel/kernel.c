@@ -86,6 +86,141 @@ unlock_kernel (void)
   spinlock_unlock (&kernel_lock);
 }
 
+bool
+update_CPU_TSS (uint32_t esp0)
+{
+  int cpu = get_pcpu_id ();
+  tss * tss = &cpuTSS[cpu];
+  if (!tss) panic ("update_CPU_TSS failed");
+  tss->ulESP0 = esp0;
+  return TRUE;
+}
+
+bool
+kern_stk_pte_free (uint32_t pte)
+{
+  if ((pte == 0) || ((pte & KERN_STK_PTE_FREE_FLAG) == KERN_STK_PTE_FREE_FLAG))
+    return TRUE;
+  else
+    return FALSE;
+}
+
+/*
+ * Find an empty kernel stack of 4KB and map it in plPageDirectory.
+ * This function is used by _rfork to create user threads.
+ */
+uint32_t
+find_and_map_kernel_level_stack (uint32_t * plPageDirectory)
+{
+  int i = 0;
+  uint32_t * plPageTable = NULL;
+  uint32_t phys_frame = 0, stk_frame = 0;
+
+  if (!plPageDirectory[KERN_STK >> 22]) {
+    /* This really shouldn't happen */
+    return -1;
+  } else {
+    plPageTable = map_virtual_page ((plPageDirectory[KERN_STK >> 22] & 0xFFFFF000) | 0x3);
+    if (!plPageTable) {
+      com1_printf ("map_virtual_page failed in find_kernel_level_stack!\n");
+      return -1;
+    }
+
+    for (i = 0; i < 1024; i++) {
+      if (kern_stk_pte_free (plPageTable[i])) {
+        /* Found a free kernel stack */
+        phys_frame = alloc_phys_frame ();
+        if (phys_frame == -1) {
+          com1_printf ("alloc_phys_frame failed in find_and_map_kernel_level_stack!\n");
+          break;
+        }
+
+        plPageTable[i] = (phys_frame | 3);
+        unmap_virtual_page (plPageTable);
+        stk_frame = 0xFF800000 + (i << 12);
+        invalidate_page ((void *) stk_frame);
+        return stk_frame;
+      }
+    }
+
+    unmap_virtual_page (plPageTable);
+  }
+
+  return -1;
+}
+
+void
+free_kernel_level_stack (uint32_t * plPageDirectory, uint32_t stack_addr)
+{
+  int index = 0;
+  uint32_t * plPageTable = NULL;
+  uint32_t phys_frame = 0;
+
+  if (!plPageDirectory[KERN_STK >> 22]) {
+    /* This really shouldn't happen */
+    return;
+  } else {
+    plPageTable = map_virtual_page ((plPageDirectory[KERN_STK >> 22] & 0xFFFFF000) | 0x3);
+    if (!plPageTable) {
+      panic ("map_virtual_page failed in free_kernel_level_stack!\n");
+    }
+    /* Get page table index for stack_addr */
+    index = ((stack_addr >> 12) & 0x3FF);
+    if (plPageTable[index]) {
+      phys_frame = plPageTable[index] & 0xFFFFF000;
+      /* Free physical memory */
+      free_phys_frame (phys_frame);
+      /*
+       * Set entry to "free". We cannot unmap kernel stack at this point.
+       * It is still used. Only the physical memory is freed. We have to
+       * guarantee the rest of thread exit path does not involve physical
+       * memory allocation.
+       */
+      plPageTable[index] |= KERN_STK_PTE_FREE_FLAG;
+    } else {
+      com1_printf ("Warning: tried to free 0x%X, but it is not mapped!\n", stack_addr);
+    }
+    unmap_virtual_page (plPageTable);
+  }
+
+  return;
+}
+
+uint32_t
+find_user_level_stack (uint32_t * plPageDirectory)
+{
+  int pg_dir_index, pg_tbl_index;
+  uint32_t * plPageTable;
+  uint32_t i = 0, usr_stk = 0;
+
+  /* Search begins at virtual address USER_STACK_START */
+  for (i = 0; i < MAX_THREADS; i++) {
+    usr_stk = USER_STACK_START - (USER_STACK_SIZE << 12) * i;
+    get_pg_dir_and_table_indices((void *)(usr_stk - 1), &pg_dir_index, &pg_tbl_index);
+    if (!plPageDirectory[pg_dir_index]) {
+      /* Not present */
+      return usr_stk;
+    } else {
+      plPageTable = map_virtual_page ((plPageDirectory[pg_dir_index] & 0xFFFFF000) | 0x3);
+      if (!plPageTable) {
+        com1_printf ("map_virtual_page failed in find_user_level_stack!\n");
+        return -1;
+      }
+      if (!plPageTable[pg_tbl_index]) {
+        /* Found available stack */
+        unmap_virtual_page (plPageTable);
+        return usr_stk;
+      }
+      unmap_virtual_page (plPageTable);
+    }
+  }
+
+  /* Cannot find available user stack */
+  com1_printf ("Cannot find available user stack!\n");
+
+  return -1;
+}
+
 void map_user_level_stack(uint32_t* plPageDirectory, void* start_addr,
                           int num_frames, uint32_t* frames, bool invalidate_pages)
 {
@@ -130,6 +265,53 @@ void map_user_level_stack(uint32_t* plPageDirectory, void* start_addr,
   }
 
   unmap_virtual_page(plPageTable);
+}
+
+void
+free_user_level_stack (uint32_t * plPageDirectory, uint32_t stack_addr, int num_frames)
+{
+  int pg_dir_index, pg_tbl_index;
+  uint32_t * plPageTable = NULL;
+  uint32_t phys_frame = 0;
+  get_pg_dir_and_table_indices((void *) (stack_addr - 1), &pg_dir_index, &pg_tbl_index);
+
+  if(!plPageDirectory[pg_dir_index]) {
+    com1_printf ("Warning: tried to free unmapped user stack (0x%X)!\n", stack_addr);
+    return;
+  } else {
+    plPageTable = map_virtual_page ((plPageDirectory[pg_dir_index] & 0xFFFFF000) | 0x03);
+    if (!plPageTable) panic ("free_user_level_stack: Out of memory!");
+  }
+
+  while (num_frames--) {
+    if (pg_tbl_index < 0) {
+      pg_tbl_index = 1023;
+      unmap_virtual_page(plPageTable);
+      pg_dir_index--;
+      if(pg_dir_index < 0) {
+        panic ("Attempted to free a stack larger than its starting position");
+      }
+      if(!plPageDirectory[pg_dir_index]) {
+        /* Not present */
+        com1_printf ("Warning: tried to free unmapped user stack (0x%X)!\n", stack_addr);
+        return;
+      }
+      plPageTable = map_virtual_page ((plPageDirectory[pg_dir_index] & 0xFFFFF000) | 0x3);
+      if (!plPageTable) panic ("free_user_level_stack: Out of memory!");
+    }
+
+    if (plPageTable[pg_tbl_index]) {
+      phys_frame = plPageTable[pg_tbl_index] & 0xFFFFF000;
+      /* Free physical memory */
+      free_phys_frame (phys_frame);
+      /* Set entry to 0 */
+      plPageTable[pg_tbl_index] = 0;
+      invalidate_page((void*)((pg_tbl_index) << 12) + ((1 << 22) * pg_dir_index));
+    }
+    pg_tbl_index--;
+  }
+
+  unmap_virtual_page (plPageTable);
 }
 
 extern void *

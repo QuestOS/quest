@@ -74,12 +74,22 @@
 #define USER_STACK_START 0x40000000
 #define USER_STACK_SIZE 16
 
+#define MAX_THREADS  32
+
+#define KERN_STK_PTE_FREE_FLAG    (0x7 << 9)
+
 #define BEST_EFFORT_VCPU 0
 
 
+extern bool update_CPU_TSS (uint32_t esp0);
 void map_user_level_stack(uint32_t* plPageDirectory, void* start_addr, int num_frames,
                           uint32_t* frames, bool invalidate_pages);
 
+extern bool kern_stk_pte_free (uint32_t pte);
+extern uint32_t find_user_level_stack (uint32_t * plPageDirectory);
+extern void free_kernel_level_stack (uint32_t * plPageDirectory, uint32_t stack_addr);
+extern uint32_t find_and_map_kernel_level_stack (uint32_t * plPageDirectory);
+extern void free_user_level_stack (uint32_t * plPageDirectory, uint32_t stack_addr, int num_frames);
 extern char *kernel_version;
 extern uint16 runqueue[];       /* TSS of next runnable task; 0 if none */
 

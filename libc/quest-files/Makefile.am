@@ -4,7 +4,7 @@ AM_CCASFLAGS = $(INCLUDES)
 
 noinst_LIBRARIES = lib.a
 
-lib_a_SOURCES = syscalls.c socket.c fcntl.c unimplemented.c vshm.c fault_detection.c
+lib_a_SOURCES = syscalls.c socket.c fcntl.c unimplemented.c vshm.c fault_detection.c pthread.c
 lib_a_CCASFLAGS = $(AM_CCASFLAGS)
 lib_a_CFLAGS = $(AM_CFLAGS)
 
