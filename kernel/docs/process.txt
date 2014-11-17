@@ -8,7 +8,7 @@
    All the user processes in Quest are forked and exec'ed from the shell
    program loaded by GRUB as a module during boot. After the ELF image is
    loaded by GRUB, the shell process address space is assembled through the
-   load_moduel () function in boot/init.c. For a single thread process, the
+   load_module () function in boot/init.c. For a single thread process, the
    virtual memory layout looks like the following:
 
                      --+-----------------------+ 0xFFFFFFFF (4GB)
