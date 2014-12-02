@@ -45,6 +45,7 @@
 #include "lwip/udp.h"
 #include "drivers/video/vga.h"
 #include "drivers/video/video.h"
+#include "string.h"
 #ifdef USE_VMX
 #include "vm/shm.h"
 #include "vm/spow2.h"
@@ -1277,16 +1278,28 @@ _exec (char *filename, char *argv[], uint32 *curr_stack)
   
   flush_tlb_all ();
 
+  /* --TOM-- Currently support two commandline arguments */
+  char *remaining_str = command_args;
+  uint32 argv1_off = 0;
+  uint32 argc = 1;
+  while ((remaining_str = strchr(remaining_str, ' '))) {
+    *remaining_str = '\0';
+    remaining_str++;
+    argc++;
+    if (argc == 2)
+      argv1_off = remaining_str - command_args;
+  }
+
   /* Copy command-line arguments to top of new stack */
   memcpy ((void *) (USER_STACK_START - 80), command_args, 80);
 
   /* Push onto stack argument vector for when we call _start in our "libc"
      library. Here, we work with user-level virtual addresses for when we
      return to user. */
-  *(uint32 *) (USER_STACK_START - 84) = 0;    /* argv[1] -- not used right now */
+  *(uint32 *) (USER_STACK_START - 84) = USER_STACK_START - 80 + argv1_off;    /* argv[1] -- not used right now */
   *(uint32 *) (USER_STACK_START - 88) = USER_STACK_START - 80;        /* argv[0] */
   *(uint32 *) (USER_STACK_START - 92) = USER_STACK_START - 88;        /* argv */
-  *(uint32 *) (USER_STACK_START - 96) = 1;    /* argc -- hard-coded right now */
+  *(uint32 *) (USER_STACK_START - 96) = argc;    /* argc -- hard-coded right now */
 
   /* Dummy return address placed here for the simulated "call" to our
      library */

@@ -19,6 +19,7 @@
 #include <stdlib.h>
 #include <vcpu.h>
 
+#define INPUT_SIZE 80
  
 static int
 scanline (char *line)
@@ -64,11 +65,12 @@ int
 main ()
 {
 
-  char line[80];
+  char line[INPUT_SIZE], file_name[INPUT_SIZE];
   char *command_line_args = line;
   char *p;
   int child_pid;
   int vcpu_index;
+  int i;
   
   if(setenv("PATH","/boot/", 0)) {
     fprintf(stderr, "Failed add path to environment\n");
@@ -88,6 +90,14 @@ main ()
 
       if (*line == '\0')
         continue;
+
+      /* get file name from line */
+      i = 0;
+      while (line[i] != '\0' && line[i] != ' ') {
+        file_name[i] = line[i];
+        i++;
+      }
+      file_name[i] = '\0';
 
       vcpu_index = vcpu_create_main(20, 100);
 
@@ -125,11 +135,10 @@ main ()
         for (p = "child!\n"; *p; p++)
           putchar (*p);
 #endif
-        execvp (line, &command_line_args);
+        execvp (file_name, &command_line_args);
 
         /* Got here due to exec failing on an ext2fs_dir call  */
-        for (p = "Error: file not found\n"; *p; p++)
-          putchar (*p);
+        fprintf(stderr, "Error: file %s not found\n", file_name);
 
         exit (1);
       }
