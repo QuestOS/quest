@@ -2,6 +2,7 @@
 #define __THREAD_H_
 
 #include <pthread.h>
+#include <vcpu.h>
 
 extern pthread_t thread[];
 
