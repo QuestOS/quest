@@ -1,8 +1,6 @@
 #include <pin.h>
 #include <ardutime.h>
 
-#include <vcpu.h>
-
 /* fade example */
 int led = 9;           // the pin that the LED is attached to
 int brightness = 0;    // how bright the LED is

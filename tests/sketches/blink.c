@@ -1,8 +1,6 @@
 #include <pin.h>
 #include <ardutime.h>
 
-#include <vcpu.h>
-
 // Pin 13 has an LED connected on most Arduino boards.
 // give it a name:
 int led = 13;
