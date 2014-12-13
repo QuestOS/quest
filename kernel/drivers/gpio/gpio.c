@@ -39,13 +39,14 @@ gpio_handler(int operation, int gpio, int val, int arg)
 
 	switch(operation) {
 		case PIN_MODE:
-			ret = cy8c9540a_gpio_set_drive(gpio, GPIOF_DRIVE_STRONG);
-			if (ret < 0)
-				return ret;
-			if (val ==  OUTPUT)
+			if (val == OUTPUT) {
+        ret = cy8c9540a_gpio_set_drive(gpio, GPIOF_DRIVE_STRONG);
+        if (ret < 0)
+          return ret;
 				return cy8c9540a_gpio_direction_output(gpio, 0);
-			else 
+      } else {
 				return cy8c9540a_gpio_direction_input(gpio);
+      }
 		case DIG_WRITE:
 			cy8c9540a_gpio_set_value(gpio, val);
       break;

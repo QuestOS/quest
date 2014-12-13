@@ -407,7 +407,6 @@ void cy8c9540a_test()
 	//unsigned pwm = 1;
 	//int fade_val;
 
-#if 0
   unsigned gpio = 3;
   cy8c9540a_gpio_direction_output(gpio, 0);
   cy8c9540a_gpio_set_drive(gpio, GPIOF_DRIVE_STRONG);
@@ -429,7 +428,7 @@ void cy8c9540a_test()
 			tsc_delay_usec(30 * 1000);
 		}
 	}
-#endif
+
 	unsigned gpio = 16;
 	unsigned mux = 15;
 	/* route IO2 to cy8c9540a */ 
@@ -484,8 +483,16 @@ void cy8c9540a_test()
 		DLOG("port status is 0x%x", quark_gpio_read_port_status());
 		tsc_delay_usec(2000000);
 	}
-#endif
 
+	unsigned gpio = 9;
+  cy8c9540a_gpio_direction_input(gpio);
+  //cy8c9540a_gpio_set_drive(gpio, GPIOF_DRIVE_PULLUP);
+	while (1) {
+		int val = cy8c9540a_gpio_get_value(gpio);
+		DLOG("val is 0x%x", val);
+		tsc_delay_usec (1000000);
+	}
+#endif
 }
 
 bool cy8c9540a_setup()
@@ -493,7 +500,6 @@ bool cy8c9540a_setup()
 	int ret = 0;
 	int i = 0;
   int dev_id;
-	//u8 eeprom_enable_seq[] = {0x43, 0x4D, 0x53, 0x2};
 
 	/* enable i2c device */
 	i2c_xfer_init(dev.addr);
@@ -548,17 +554,6 @@ bool cy8c9540a_setup()
       return ret;
 		}
 	}
-
-#if 0
-	/* Enable the EEPROM */
-	ret = i2c_write_block_data(REG_ENABLE,
-					     sizeof(eeprom_enable_seq),
-					     eeprom_enable_seq);
-	if (ret < 0) {
-		DLOG("can't enable EEPROM");
-    return ret;
-	}
-#endif
 
 	cy8c9540a_test();
 
