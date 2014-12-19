@@ -287,7 +287,7 @@ struct i2c_trans {
 	u32 data_r;
 };
 
-static task_id i2c_sleep_queue = 0;
+static task_id i2c_owner = 0;
 struct i2c_trans i2c_dev_buffer;
 semaphore i2c_dev_mtx;
 #define _mutex_init(mtx) semaphore_init(mtx, 1, 1) 
@@ -321,7 +321,7 @@ u8 i2c_read_byte_data(u8 reg)
 		i2c_dev_buffer.status = WRITE_PENDING,
 		i2c_dev_buffer.data_w[0] = val1;
 		i2c_dev_buffer.data_w[1] = val2;
-		queue_append(&i2c_sleep_queue, str());
+		i2c_owner = str();
 		i2c_write_r(DW_IC_INTR_DEFAULT_MASK, DW_IC_INTR_MASK);
 		/* We won't receive interrupts until schedule() is called
 		 * because kernel will never be interrupted */
@@ -351,7 +351,7 @@ s32 i2c_write_byte_data(u8 reg, u8 data)
 		i2c_dev_buffer.status = WRITE_PENDING,
 		i2c_dev_buffer.data_w[0] = val1;
 		i2c_dev_buffer.data_w[1] = val2;
-		queue_append(&i2c_sleep_queue, str());
+		i2c_owner = str();
 		i2c_write_r(DW_IC_INTR_DEFAULT_MASK, DW_IC_INTR_MASK);
 		DLOG("about to sleep");
 		schedule();
@@ -424,7 +424,7 @@ i2c_irq_handler(uint8 vec)
 done:
 	i2c_disable_int();
 	DLOG("about to wakeup");
-	wakeup_queue(&i2c_sleep_queue);
+	wakeup(i2c_owner);
 	return 0;
 }
 
