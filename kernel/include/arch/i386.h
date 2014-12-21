@@ -558,6 +558,15 @@ strlen (const char *s)
   return i;
 }
 
+static inline char *
+strchr (const char *s, int c)
+{
+  for (; *s != '\0'; ++s)
+    if (*s == c)
+      return (char *) s;
+  return 0;
+}
+
 static inline void *
 strcpy (char *dest, const char *src)
 {

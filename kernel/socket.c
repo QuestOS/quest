@@ -1296,6 +1296,43 @@ int syscall_pololu_send_cmd (uint32_t ssc, uint32_t commands)
                           (commands >> 8) & 0xFF, (commands) & 0xFF);
 }
 
+int
+syscall_create_thread (int * tid, void * attr, uint32_t eip, void * arg)
+{
+  extern int _rfork (int *, void *, uint32_t, uint32_t *, void *, int);
+  int res = _rfork (tid, attr, eip, NULL, arg, 0);
+
+#if 0
+  u32 *esp_virt = NULL;
+  uint32_t cur_esp = 0, cur_ebp = 0;
+
+  asm volatile ("movl %%esp, %0\n"
+                "movl %%ebp, %1\n"
+                : "=r" (cur_esp), "=r" (cur_ebp):);
+
+  esp_virt = (u32 *) (cur_esp & 0xFFFFF000);
+
+  com1_printf ("Dump current kernel stack (esp=0x%X, ebp=0x%X):\n",
+               cur_esp, cur_ebp);
+  com1_printf ("  esp_virt[1023]=0x%x\n", esp_virt[1023]);
+  com1_printf ("  esp_virt[1022]=0x%x\n", esp_virt[1022]);
+  com1_printf ("  esp_virt[1021]=0x%x\n", esp_virt[1021]);
+  com1_printf ("  esp_virt[1020]=0x%x\n", esp_virt[1020]);
+  com1_printf ("  esp_virt[1019]=0x%x\n", esp_virt[1019]);
+  com1_printf ("  esp_virt[1018]=0x%x\n", esp_virt[1018]);
+  com1_printf ("  esp_virt[1017]=0x%x\n", esp_virt[1017]);
+#endif
+
+  return res;
+}
+
+void
+syscall_thread_exit (void * retval)
+{
+  extern void __thread_exit (void *);
+  __thread_exit (retval);
+}
+
 sys_call_ptr_t _socket_syscall_table [] ALIGNED (0x1000) = {
   (sys_call_ptr_t) sys_call_open_socket,    /* 00 */
   (sys_call_ptr_t) sys_call_close,          /* 01 */
@@ -1315,6 +1352,8 @@ sys_call_ptr_t _socket_syscall_table [] ALIGNED (0x1000) = {
   (sys_call_ptr_t) syscall_vshm_map,        /* 15 */
   (sys_call_ptr_t) syscall_fault_detection, /* 16 */
   (sys_call_ptr_t) syscall_pololu_send_cmd, /* 17 */
+  (sys_call_ptr_t) syscall_create_thread,   /* 18 */
+  (sys_call_ptr_t) syscall_thread_exit,     /* 19 */
 };
 
 static bool socket_sys_call_initialized = FALSE;

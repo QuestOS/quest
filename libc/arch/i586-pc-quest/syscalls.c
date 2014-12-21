@@ -607,3 +607,22 @@ syscall_pololu_send_cmd (uint32_t ssc, uint8_t servo, uint8_t cmd, uint8_t data1
 		"d"(0), "S"(0), "D"(0) : "memory", "cc");
   return res;
 }
+
+int
+syscall_create_thread (int * tid, void * attr, uint32_t eip, void * arg)
+{
+  int res;
+  asm volatile ("int $0x3D\n":"=a"(res):"a" (18L), "b"(tid), "c"(attr),
+		"d"(eip), "S"(arg), "D"(0) : "memory", "cc");
+  return res;
+}
+
+void syscall_thread_exit (void *) __attribute__ ((noreturn));
+
+void
+syscall_thread_exit (void * retval)
+{
+  asm volatile ("int $0x3D\n"::"a" (19L), "b"(retval), "c"(0),
+                "d"(0), "S"(0), "D"(0) : "memory", "cc");
+  while (1);
+}

@@ -45,6 +45,7 @@
 #include "lwip/udp.h"
 #include "drivers/video/vga.h"
 #include "drivers/video/video.h"
+#include "string.h"
 #ifdef USE_VMX
 #include "vm/shm.h"
 #include "vm/spow2.h"
@@ -671,6 +672,177 @@ handle_syscall0 (u32 eax, u32 ebx, u32 ecx, u32 edx, u32 esi)
   return res;
 }
 
+int
+_rfork (int * ctid, void * attr, uint32_t eip, uint32_t * esp, void * arg, int flag)
+{
+  task_id child_tid;
+  quest_tss * cur_tss = NULL, * main_tss = NULL;
+  uint32 eflags, this_esp, this_ebp;
+  vcpu* v;
+  void *phys_addr;
+  uint32 *virt_addr;
+  uint32 pStack[USER_STACK_SIZE];
+  uint32 stub_eip = 0, usr_stk = 0;
+  int i = 0;
+  struct _pthread_attr_t {
+    /* Exit function (pthread_exit) */
+    void (* exit_func) (void);
+  };
+  struct _pthread_attr_t * pthread_attr = attr;
+
+  lock_kernel ();
+
+  v = percpu_read (vcpu_current);
+  if( (!v)  || (v->type != MAIN_VCPU)) {
+    unlock_kernel();
+    return -1;
+  }
+
+  /* Get kernel return address for child thread */
+  asm volatile ("call 1f\n"
+                "movl $0, %0\n"
+                "jmp 2f\n"
+                "1:\n"
+                "movl (%%esp), %0\n"
+                "addl $4, %%esp\n"
+                "2:\n"
+                :"=r" (stub_eip):
+  );
+
+  if (stub_eip == 0) {
+#if 0
+    asm volatile ("movl %%esp, %0\n":"=r" (this_esp):);
+    com1_printf ("Parent ESP before rfork return: 0x%X\n", this_esp);
+    virt_addr = (uint32_t *) (this_esp + 0xAC);
+    com1_printf ("  (ESP + 0xAC)[5]=0x%X\n", virt_addr[5]);
+    com1_printf ("  (ESP + 0xAC)[4]=0x%X\n", virt_addr[4]);
+    com1_printf ("  (ESP + 0xAC)[3]=0x%X\n", virt_addr[3]);
+    com1_printf ("  (ESP + 0xAC)[2]=0x%X\n", virt_addr[2]);
+    com1_printf ("  (ESP + 0xAC)[1]=0x%X\n", virt_addr[1]);
+    com1_printf ("  (ESP + 0xAC)[0]=0x%X\n", virt_addr[0]);
+
+    return 0;
+#endif
+
+    /*
+     * It is necessary to use inline assembly here instead of C return.
+     * At this point, we are using the new kernel stack for the child
+     * thread. Since "naked" attribute is not supported by GCC on the
+     * x86, a normal return path to user might involve epilogue that
+     * pops EBP from stack. However, the value of EBP is wrong in this
+     * case. It will be pointing to the old stack. To solve this problem,
+     * we have to return directly to user in this inline assembly code.
+     */
+    asm volatile ("call unlock_kernel\n"
+                  /* Move ESP to point to DS/ES selectors on kernel stack */
+                  /* See _rfork for details of stack setup */
+                  "andl $0xFFFFF000, %%esp\n"
+                  "addl $4068, %%esp\n"
+                  /* Clear NT flag in EFLAGS */
+                  "pushfl\n"
+                  "popl %%edx\n"
+                  "andl $0xFFFFBFFF, %%edx\n"
+                  "pushl %%edx\n"
+                  "popfl\n"
+                  /* Restore segment selectors */
+                  "popw %%gs\n"
+                  "popw %%fs\n"
+                  "popw %%es\n"
+                  "popw %%ds\n"
+                  /* Return to user */
+                  "iret\n":::"%edx");
+  }
+
+  /* Snapshot current ESP and EBP */
+  asm volatile ("movl %%ebp, %0\n"
+                "movl %%esp, %1\n"
+                "pushfl\n"
+                "pop %2\n":"=r" (this_ebp), "=r" (this_esp), "=r" (eflags):);
+
+  phys_addr = get_pdbr ();  /* Parent page dir base address */
+  virt_addr = map_virtual_page ((uint32) phys_addr | 3);
+
+  if (virt_addr == NULL)
+    panic ("_rfork: virt_addr: out of memory");
+
+  pgdir_t parentpgd = { .dir_pa = (frame_t) phys_addr,
+                        .dir_va = (pgdir_entry_t *) virt_addr };
+
+  cur_tss = lookup_TSS (str ());
+  if ((main_tss = parent_TSS (cur_tss)) == NULL) {
+    panic ("_rfork: Cannot find parent TSS");
+  }
+
+  /* Now, main_tss points to the TSS of the main thread */
+#ifdef DEBUG_SYSCALL
+  com1_printf ("_rfork: Main thread info: tid=0x%X, ptid=0x%X, num_threads=%d\n",
+               main_tss->tid, main_tss->ptid, main_tss->num_threads);
+  com1_printf ("        ulStack=0x%X, klStack=0x%X\n",
+               main_tss->ulStack, main_tss->ESP);
+#endif
+
+  for (i = 0; i < USER_STACK_SIZE; i++) {
+    pStack[i] = alloc_phys_frame ();
+  }
+
+  /* Find a user stack for new thread */
+  usr_stk = find_user_level_stack ((uint32_t *) parentpgd.dir_va);
+  if (usr_stk == -1) {
+    /* User stack not found */
+    unlock_kernel();
+    return -1;
+  }
+
+#ifdef DEBUG_SYSCALL
+  com1_printf ("Mapping user stack: 0x%X\n", usr_stk);
+#endif
+  map_user_level_stack ((uint32_t *) parentpgd.dir_va, (void *) usr_stk,
+                        USER_STACK_SIZE, pStack, TRUE);
+
+  /* User stack is now mapped in current address space */
+  memset ((void *) (usr_stk - (USER_STACK_SIZE << 12)), 0, USER_STACK_SIZE << 12);
+
+  *(uint32 *) (usr_stk - 96) = (uint32_t) arg;    /* arg */
+  /* Patch user stack with exit function so that thread can "return" */
+  if (pthread_attr) {
+    *(uint32 *) (usr_stk - 100) = (uint32_t) pthread_attr->exit_func;
+  } else {
+    com1_printf ("Warning: no return address specified in pthread_create!\n");
+    *(uint32 *) (usr_stk - 100) = 0;
+  }
+
+  /* Create child thread TSS. This also allocates and patches kernel stack. */
+  child_tid = alloc_thread_TSS (parentpgd.dir_pa, stub_eip, eip, eflags, usr_stk,
+                                this_esp, this_ebp, main_tss);
+
+  if (!child_tid) {
+    com1_printf ("Cannot allocate thread TSS!\n");
+    unlock_kernel ();
+    return -1;
+  }
+
+#ifdef DEBUG_SYSCALL
+  com1_printf ("_rfork: Child thread info: tid=0x%X, ptid=0x%X, num_threads=%d\n",
+               lookup_TSS (child_tid)->tid, lookup_TSS (child_tid)->ptid,
+               lookup_TSS (child_tid)->num_threads, lookup_TSS (child_tid)->ulStack);
+  com1_printf ("        ulStack=0x%X, klStack=0x%X\n",
+               lookup_TSS (child_tid)->ulStack, lookup_TSS (child_tid)->ESP);
+#endif
+
+  /* Fill in ctid in user space */
+  if (ctid) *ctid = child_tid;
+
+  unmap_virtual_page (parentpgd.dir_va);
+
+  wakeup (child_tid);
+
+  /* --??-- Duplicate any other parent resources as necessary */
+  /* TODO: Share file descriptor table for thread */
+
+  unlock_kernel ();
+
+  return 0;
+}
 
 /* Syscall: fork
  *
@@ -1106,16 +1278,28 @@ _exec (char *filename, char *argv[], uint32 *curr_stack)
   
   flush_tlb_all ();
 
+  /* --TOM-- Currently support two commandline arguments */
+  char *remaining_str = command_args;
+  uint32 argv1_off = 0;
+  uint32 argc = 1;
+  while ((remaining_str = strchr(remaining_str, ' '))) {
+    *remaining_str = '\0';
+    remaining_str++;
+    argc++;
+    if (argc == 2)
+      argv1_off = remaining_str - command_args;
+  }
+
   /* Copy command-line arguments to top of new stack */
   memcpy ((void *) (USER_STACK_START - 80), command_args, 80);
 
   /* Push onto stack argument vector for when we call _start in our "libc"
      library. Here, we work with user-level virtual addresses for when we
      return to user. */
-  *(uint32 *) (USER_STACK_START - 84) = 0;    /* argv[1] -- not used right now */
+  *(uint32 *) (USER_STACK_START - 84) = USER_STACK_START - 80 + argv1_off;    /* argv[1] -- not used right now */
   *(uint32 *) (USER_STACK_START - 88) = USER_STACK_START - 80;        /* argv[0] */
   *(uint32 *) (USER_STACK_START - 92) = USER_STACK_START - 88;        /* argv */
-  *(uint32 *) (USER_STACK_START - 96) = 1;    /* argc -- hard-coded right now */
+  *(uint32 *) (USER_STACK_START - 96) = argc;    /* argc -- hard-coded right now */
 
   /* Dummy return address placed here for the simulated "call" to our
      library */
@@ -1702,6 +1886,8 @@ __exit (int status)
   phys_addr = get_pdbr ();
   virt_addr = map_virtual_page ((uint32) phys_addr | 3);
 
+  /* TODO: Need to check all child threads and remove them from the run queue */
+
   /* Free user-level virtual address space */
   for (i = 0; i < 1023; i++) {
     if (virt_addr[i]             /* Free page directory entry */
@@ -1711,6 +1897,10 @@ __exit (int status)
       tmp_page = map_virtual_page (virt_addr[i] | 3);
       for (j = 0; j < 1024; j++) {
         if (tmp_page[j]) {      /* Free frame */
+          if ((i == (KERN_STK >> 22)) && (kern_stk_pte_free (tmp_page[j]))) {
+            /* Kernel stack for threads that are already freed but not unmapped. Skip! */
+            continue;
+          }
           if ((j < 0x200) || (j > 0x20F) || i) {        /* --??-- Skip releasing
                                                            video memory */
             BITMAP_SET (mm_table, tmp_page[j] >> 12);
@@ -1764,6 +1954,73 @@ __exit (int status)
   /* Remove quest_tss */
   tss_remove (tss);
   free_quest_tss (ptss);
+
+  schedule ();
+  /* never return */
+  panic ("__exit: unreachable");
+}
+
+void
+__thread_exit (void * retval)
+{
+  task_id tss = 0, waiter = 0;
+  quest_tss * pTSS = NULL, * mTSS = NULL;
+  void *phys_addr;
+  uint32 *virt_addr;
+
+  lock_kernel ();
+
+  tss = str ();
+  pTSS = lookup_TSS (tss);
+
+  if (pTSS->tid == pTSS->ptid) {
+    /* Called from main thread. Let's call __exit for the process. */
+    /* All the other threads will be destroyed. This is different from Linux. */
+    unlock_kernel ();
+    __exit (0);
+  }
+
+#ifdef DEBUG_SYSCALL
+  com1_printf ("Terminating thread 0x%X...\n", pTSS->tid);
+#endif
+
+  ltr (0);
+
+  /* Decrement thread count in main thread by one */
+  mTSS = lookup_TSS (pTSS->ptid);
+  mTSS->num_threads--;
+
+  /*
+   * Now, we are in a child thread created by pthread_create. Resources need to
+   * be released are:
+   *   1. User level stack (64K default): Use ulStack in TSS
+   *   2. Kernel level stack (4K): Use ESP in TSS
+   *   3. TSS itself
+   * We also need to process the thread wait queue as in process exit.
+   */
+
+  phys_addr = get_pdbr ();
+  virt_addr = map_virtual_page ((uint32) phys_addr | 3);
+  if (virt_addr == NULL) panic ("__thread_exit: virt_addr: out of memory");
+
+  /* 1. Free user level stack */
+  free_user_level_stack (virt_addr, pTSS->ulStack, USER_STACK_SIZE);
+
+  /* All tasks waiting for us now belong on the runqueue. */
+  while ((waiter = queue_remove_head (&pTSS->waitqueue)))
+    wakeup (waiter);
+
+  /* 2. Free kernel level stack */
+  free_kernel_level_stack (virt_addr, pTSS->ESP & 0xFFFFF000);
+
+  unmap_virtual_page (virt_addr);
+
+  /* 3. Remove quest_tss */
+  tss_remove (tss);
+  free_quest_tss (pTSS);
+
+  /* Set reval to 0 (Success) */
+  if (retval) *((int *) retval) = 0;
 
   schedule ();
   /* never return */
