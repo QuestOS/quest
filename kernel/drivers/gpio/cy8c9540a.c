@@ -18,6 +18,7 @@
 /* cy8c9540 driver */
 
 #include "drivers/i2c/galileo_i2c.h"
+#include "drivers/gpio/quark_gpio.h"
 #include "util/printf.h"
 #include "cy8c9540a.h"
 
@@ -351,18 +352,60 @@ int cy8c9540a_pwm_disable(unsigned pwm)
 	return cy8c9540a_pwm_switch(pwm, 0);
 }
 
+static int
+cy8c9540a_unmask_interrupt(unsigned gpio)
+{
+	s32 ret = 0;
+  u8 port = 0, pin = 0, val;
+  port = cypress_get_port(gpio);
+  pin = cypress_get_offs(gpio, port);
+
+	ret = i2c_write_byte_data(REG_PORT_SELECT, port);
+  if (ret < 0) {
+    DLOG("can't select port%u", port);
+    return ret;
+  }
+
+  ret = i2c_read_byte_data(REG_INTR_MASK);
+  if (ret < 0) {
+    DLOG("can't read interrupt mask port%u", port);
+    return ret;
+  }
+
+  val = (u8)(ret & ~BIT(pin));
+	DLOG("about to write 0x%x to REG_INTR_MASK", val);
+
+  ret = i2c_write_byte_data(REG_INTR_MASK, val);
+  if (ret < 0) {
+    DLOG("can't write interrupt mask port%u", port);
+    return ret;
+  }
+
+  return 0;
+}
+
 int cypress_get_id()
 {
   u8 dev_id = i2c_read_byte_data(REG_DEVID_STAT);
   return dev_id & 0xf0;
 }
 
-#if 0
+int
+enabled_int_line()
+{
+	int i;
+	for (i = 0; i <= 7; i++) {
+		quark_gpio_interrupt_enable(i);
+		quark_gpio_set_interrupt_type(i, EDGE);
+		quark_gpio_set_interrupt_polarity(i, FALLING_EDGE);
+	}
+	return 0;
+}
+
 void cy8c9540a_test()
 {
-	unsigned pwm = 1;
-	int i;
-	int fade_val;
+	//unsigned pwm = 1;
+	//int fade_val;
 
 #if 0
   unsigned gpio = 3;
@@ -375,7 +418,6 @@ void cy8c9540a_test()
 		cy8c9540a_gpio_set_value(gpio, 0);
 		cy8c9540a_gpio_set_value(gpio, 0);
 	}
-#endif
 	cy8c9540a_pwm_enable(pwm);
 	while(1) {
 		for (fade_val = 0; fade_val <= 255; fade_val += 5) {
@@ -387,8 +429,64 @@ void cy8c9540a_test()
 			tsc_delay_usec(30 * 1000);
 		}
 	}
-}
 #endif
+	unsigned gpio = 16;
+	unsigned mux = 15;
+	/* route IO2 to cy8c9540a */ 
+	cy8c9540a_gpio_direction_output(mux, 1);
+	/* turn on led */
+  cy8c9540a_gpio_set_drive(gpio, GPIOF_DRIVE_STRONG);
+	cy8c9540a_gpio_direction_output(gpio, 1);
+	/* delay 3s */
+	tsc_delay_usec(3000000);
+	/* reset cy8c9540a */
+	//DLOG("resetting cy8c9540a...");
+	//quark_gpio_direction(4, 1);
+	//quark_gpio_high(4);
+	/* delay 3s */
+	//tsc_delay_usec(3000000);
+	/* route IO2 to quark GPIO 6*/
+	DLOG("routing to GPIO 6...");
+	quark_gpio_direction(6, 1);
+	quark_gpio_high(6);
+	cy8c9540a_gpio_direction_output(mux, 0);
+	/* turn on led */
+  //cy8c9540a_gpio_set_drive(gpio, GPIOF_DRIVE_STRONG);
+	//cy8c9540a_gpio_direction_output(gpio, 1);
+	/* delay 3s */
+	//tsc_delay_usec(3000000);
+	tsc_delay_usec(3000000);
+
+	DLOG("routing back to cy8c9540a...");
+	/* route IO2 to cy8c9540a */ 
+	cy8c9540a_gpio_direction_output(mux, 1);
+	/* turn on led */
+  cy8c9540a_gpio_set_drive(gpio, GPIOF_DRIVE_STRONG);
+	cy8c9540a_gpio_direction_output(gpio, 1);
+	tsc_delay_usec(3000000);
+
+	//while(1);
+	//u8 port = cypress_get_port(gpio);
+	//cy8c9540a_unmask_interrupt(gpio);
+	/* clear interrupt status */
+	//i2c_read_byte_data(REG_INTR_STAT_PORT0 + port);
+	//enabled_int_line();
+	//int i;
+	//DLOG("cypress setting");
+  //cy8c9540a_gpio_set_drive(gpio, GPIOF_DRIVE_STRONG);
+	//cy8c9540a_gpio_direction_output(gpio, 1);
+	//tsc_delay_usec(2000000);
+#if 0
+	for (i = 7; i >= 0; i--) { 
+		DLOG("setting %d", i);
+		quark_gpio_direction(i, 1);
+		quark_gpio_high(i);
+		DLOG("port status is 0x%x", quark_gpio_read_port_status());
+		tsc_delay_usec(2000000);
+	}
+#endif
+
+}
 
 bool cy8c9540a_setup()
 {
@@ -462,7 +560,7 @@ bool cy8c9540a_setup()
 	}
 #endif
 
-	//cy8c9540a_test();
+	cy8c9540a_test();
 
 	return TRUE;
 }
@@ -473,6 +571,6 @@ static const struct module_ops mod_ops = {
   .init = cy8c9540a_setup
 };
 
-DEF_MODULE (galileo_cy8c9540a, "Galileo CY8C9540A driver", &mod_ops, {"galileo_i2c"});
+DEF_MODULE (galileo_cy8c9540a, "Galileo CY8C9540A driver", &mod_ops, {"galileo_i2c", "galileo_quark_gpio"});
 
 

@@ -16,6 +16,8 @@
  */
 
 #include "drivers/pci/pci.h"
+#include "drivers/i2c/galileo_i2c.h"
+#include "drivers/gpio/quark_gpio.h"
 #include "util/printf.h"
 #include "mem/mem.h"
 
@@ -66,10 +68,22 @@ quark_gpio_low(u8 gpio)
 	qgpio_write_r(~(1 << gpio) & qgpio_read_r(GPIO_SWPORTA_DR), GPIO_SWPORTA_DR);
 }
 
+void
+quark_gpio_direction(u8 gpio, int out)
+{
+	u32 val = qgpio_read_r(GPIO_SWPORTA_DDR);
+	if (out) 
+		val |= (1 << gpio);
+	else
+		val &= ~(1 << gpio);
+	qgpio_write_r(val, GPIO_SWPORTA_DDR);
+}
+
 void 
 quark_gpio_interrupt_enable(u8 gpio)
 {
 	qgpio_write_r((1 << gpio) | qgpio_read_r(GPIO_INTEN), GPIO_INTEN);
+	DLOG("quark gpio interrupt enable reg is 0x%x", qgpio_read_r(GPIO_INTEN)); 
 }
 
 void 
@@ -77,11 +91,6 @@ quark_gpio_interrupt_disable(u8 gpio)
 {
 	qgpio_write_r(~(1 << gpio) & qgpio_read_r(GPIO_INTEN), GPIO_INTEN);
 }
-
-typedef enum {
-	LEVEL = 0,
-	EDGE,
-} interrupt_type;
 
 void 
 quark_gpio_set_interrupt_type(u8 gpio, interrupt_type type)
@@ -91,13 +100,6 @@ quark_gpio_set_interrupt_type(u8 gpio, interrupt_type type)
 	else
 		qgpio_write_r(~(1 << gpio) & qgpio_read_r(GPIO_INTTYPE_LEVEL), GPIO_INTTYPE_LEVEL);
 }
-
-typedef enum {
-	ACTIVE_LOW = 0,
-	ACTIVE_HIGH,
-	FALLING_EDGE,
-	RISING_EDEG,
-} interrupt_polarity;
 
 s32 
 quark_gpio_set_interrupt_polarity(u8 gpio, interrupt_polarity polarity)
@@ -126,10 +128,29 @@ quark_gpio_set_interrupt_polarity(u8 gpio, interrupt_polarity polarity)
 	}
 }
 
+u8
+quark_gpio_read_port_status()
+{
+	return (u8)qgpio_read_r(GPIO_EXT_PORTA);
+}
+
 static uint32
 quark_irq_handler(uint8 vec)
 {
+	DLOG("quark_irq_handler");
 	return 0;
+}
+
+static uint32
+shared_irq_handler(uint8 vec)
+{
+	sint32 ret;
+	DLOG("quark_irq_handler");
+	if ((ret = i2c_irq_handler(vec)) < 0)
+		/* this interrupt is not for i2c
+		 * so it must be for quark gpio */
+		return quark_irq_handler(vec);
+	return ret;
 }
 
 #define GALILEO_QGPIO_VID			0x8086
@@ -185,7 +206,7 @@ quark_gpio_init()
 				irq_pin, &irq)) {
 		/* use PCI routing table */
     DLOG ("Found PCI routing entry irq.gsi=0x%x", irq.gsi);
-		if (!pci_irq_map_handler(&irq, quark_irq_handler, get_logical_dest_addr(0),
+		if (!pci_irq_map_handler(&irq, shared_irq_handler, get_logical_dest_addr(0),
 					IOAPIC_DESTINATION_LOGICAL,
 					IOAPIC_DELIVERY_FIXED))
 			goto abort;

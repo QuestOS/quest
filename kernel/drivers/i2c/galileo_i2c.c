@@ -25,7 +25,7 @@
 #include <sched/sched.h>
 #include <sched/vcpu.h>
 
-//#define DEBUG_I2C 
+#define DEBUG_I2C 
 
 #ifdef DEBUG_I2C
 #define DLOG(fmt,...) DLOG_PREFIX("I2C",fmt,##__VA_ARGS__)
@@ -389,10 +389,17 @@ i2c_read()
 	i2c_dev_buffer.status = DONE;
 }
 
-static uint32
+/**
+ * Sharing IRQ with GPIO controller.
+ * Only called by shared_irq_handler in quark_gpio.c
+ */
+uint32
 i2c_irq_handler(uint8 vec)
 {
 	u32 int_stat = i2c_int_stat();
+	if (int_stat == 0)
+		/* interrupt is not for me... */
+		return -1;
 	DLOG("IRQ coming..., int_status is 0x%x", int_stat);
 	if (int_stat & DW_IC_INTR_RX_FULL) {
 		i2c_read();
@@ -476,6 +483,7 @@ bool i2c_init()
   }
   DLOG ("Using memory mapped IO at phys=%p virt=%p", mem_addr, mmio_base);
 
+#if 0
 	if (!pci_get_interrupt(device_index, &irq_line, &irq_pin)) {
 		DLOG("Unable to get IRQ");
 		goto abort;
@@ -491,6 +499,7 @@ bool i2c_init()
 		irq_line = irq.gsi;
 	}
   DLOG ("Using IRQ line=%.02X pin=%X", irq_line, irq_pin);
+#endif
 
 	_mutex_init(&i2c_dev_mtx);
 	i2c_disable();
