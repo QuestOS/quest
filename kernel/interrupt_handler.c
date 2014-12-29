@@ -345,6 +345,18 @@ syscall_gpio (u32 eax, u32 ebx, u32 ecx, u32 edx, u32 esi)
   return ret;
 }
 
+static int
+syscall_rdtsc(u32 eax, u32 ebx, u32 ecx, u32 edx, u32 esi)
+{
+  /* XXX: need to check pointer from user */
+  uint64 *rdtsc_ptr = ebx;
+  uint64 rdtsc_val;
+
+  RDTSC(rdtsc_val);
+  memcpy(rdtsc_ptr, &rdtsc_val, sizeof(rdtsc_val));
+  return 0;
+}
+
 /*
  * Syscall: _usb_syscall This is just a hack right now to give user
  * space access to usb devices
@@ -656,6 +668,7 @@ struct syscall syscall_table[] = {
   { .func = (void *)syscall_lseek},
   { .func = (void *)syscall_get_keyboard_events },
   { .func = (void *)syscall_gpio },
+  { .func = (void *)syscall_rdtsc},
 };
 #define NUM_SYSCALLS (sizeof (syscall_table) / sizeof (struct syscall))
 
