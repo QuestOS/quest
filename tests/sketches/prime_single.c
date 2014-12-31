@@ -38,9 +38,8 @@ loop() {
 	int N = 80000;
 
 	res = find_prime(N);
-  printf("C=20, Cycles: ");
+  printf("C=80, Cycles: ");
 	print_long_long_hex(res);
-	printf("\n");
 	while (1);
 }
 

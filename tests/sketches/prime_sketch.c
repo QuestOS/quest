@@ -36,23 +36,21 @@ find_prime (int NUM_NB)
 
 loop(1,40,100) {
 	unsigned long long res;
-	int N = 50000;
+	int N = 80000;
 
 	res = find_prime(N);
   printf("C=40, Cycles: ");
 	print_long_long_hex(res);
-	printf("\n");
 	while (1);
 }
 
 loop(2,20,100) {
 	unsigned long long res;
-	int N = 50000;
+	int N = 80000;
 
 	res = find_prime(N);
   printf("C=20, Cycles: ");
 	print_long_long_hex(res);
-	printf("\n");
 	while (1);
 }
 

@@ -1,5 +1,6 @@
 #include <stdio.h>
 #include <pthread.h>
+#include <vcpu.h>
 
 #define WEAK_LOOP(i)	  \
 	extern void loop##i##_init() __attribute__((weak))
@@ -43,12 +44,19 @@ pthread_t thread[MAX_THREAD_NUM];
 
 void main()
 {
-	int i, res;
+	int i, res, new_vcpu;
+	struct sched_param s_params = {.type = MAIN_VCPU, .C = 80, .T = 100};
 
 	setup();
-
+	/* backward compatible */
 	if (loop) {
-		/* backward compatible */
+		/* create new vcpu */
+		new_vcpu = vcpu_create(&s_params);
+		if (new_vcpu < 0) {
+			printf("Failed to create vcpu\n");
+		}
+		vcpu_bind_task(new_vcpu);
+
 		while(1) loop();
 	} else {
 		/* call user defined loop_init() to start thread */

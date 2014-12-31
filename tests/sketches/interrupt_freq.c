@@ -18,7 +18,11 @@ void setup() {
 	unsigned long long start_t, end_t;
   attachInterrupt(2, IntHandler, CHANGE);
   pinMode(13, OUTPUT);
-  int i;
+}
+
+void loop() {
+  // put your main code here, to run repeatedly: 
+	int i;
 
 	printf("starting...\n");
 	rdtsc(&start_t);
@@ -29,8 +33,5 @@ void setup() {
 	rdtsc(&end_t);
 	printf("counter is %d\n", counter);
 	print_long_long_hex(end_t - start_t);
-}
-
-void loop() {
-  // put your main code here, to run repeatedly: 
+	while (1);
 }
