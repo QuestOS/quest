@@ -21,5 +21,7 @@ void quark_gpio_interrupt_disable(u8);
 void quark_gpio_set_interrupt_type(u8, interrupt_type);
 s32 quark_gpio_set_interrupt_polarity(u8, interrupt_polarity);
 u8 quark_gpio_read_port_status();
+void quark_gpio_clear_interrupt(u8 gpio);
+void quark_gpio_registers();
 
 #endif

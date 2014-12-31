@@ -1,18 +1,24 @@
 #include <gpio.h>
+#include <pthread.h>
+#include <stdlib.h>
 
 #ifndef _DIGITAL_IO_H_
 #define _DIGITAL_IO_H_
 
 /* command */
-#define PIN_MODE  0
-#define DIG_WRITE 1
-#define DIG_READ  2
-#define PWM 			3
+#define PIN_MODE  			0
+#define DIG_WRITE 			1
+#define DIG_READ  			2
+#define PWM 						3
+#define INTERRUPT_REG 	4
+#define INTERRUPT_WAIT 	5
 
 #define OUTPUT  0
 #define INPUT   1
 #define HIGH    1
 #define LOW     0
+
+#define CHANGE 0
 
 #define PERIOD 255
 
@@ -72,6 +78,50 @@ analogWrite(int pin, int value)
 {
   gpio_syscall(PWM, gpio2pwm_mapping[arduino2galileo_gpio_mapping[pin]], value);
 	return 0;
+}
+
+struct isr_args {
+	void (*handler)(void);
+	int mode;
+	int pin;
+};
+
+static void *isr(void *args)
+{
+	struct isr_args *local_args;
+	int pin, mode;
+	void (*handler)(void);
+
+	local_args = (struct isr_args *)args;
+	pin = local_args->pin;
+	mode = local_args->mode;
+	handler = local_args->handler;
+
+	/* Register pin to driver.
+	 * Notice that pin is not converted to kernel-aware
+	 * pin number as other syscalls do
+	 */
+	gpio_syscall(INTERRUPT_REG, pin, mode);
+
+	//wait for interrupt
+	while (1) {
+		gpio_syscall(INTERRUPT_WAIT, pin, -1);
+		handler();
+	}
+	free(args);
+}
+
+int
+attachInterrupt(int pin, void (*handler)(void), int mode)
+{
+	pthread_t isr_thread;
+	struct isr_args *args;
+		
+	args = malloc(sizeof (struct isr_args));
+	args->pin = pin;
+	args->handler = handler;
+	args->mode = mode;
+	pthread_create(&isr_thread, NULL, isr, (void *)args);
 }
 
 #endif

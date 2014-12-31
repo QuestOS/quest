@@ -18,10 +18,12 @@
 #include "cy8c9540a.h"
 #include "util/printf.h"
 
-#define PIN_MODE  0
-#define DIG_WRITE 1
-#define DIG_READ  2
-#define PWM       3
+#define PIN_MODE        0
+#define DIG_WRITE       1
+#define DIG_READ        2
+#define PWM             3
+#define INTERRUPT_REG   4
+#define INTERRUPT_WAIT  5
 
 #define OUTPUT  0
 #define INPUT   1
@@ -58,6 +60,12 @@ gpio_handler(int operation, int gpio, int val, int arg)
         pwm_enabled[gpio] = 1;
       }
       cy8c9540a_pwm_config(gpio, val, 255);
+      break;
+    case INTERRUPT_REG:
+      cy8c9540a_register_interrupt(gpio, val);
+      break;
+    case INTERRUPT_WAIT:
+      cy8c9540a_wait_interrupt(gpio);
       break;
 		default:
 			DLOG("Unsupported operation!");

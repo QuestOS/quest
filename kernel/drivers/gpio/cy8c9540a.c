@@ -18,9 +18,10 @@
 /* cy8c9540 driver */
 
 #include "drivers/i2c/galileo_i2c.h"
-#include "drivers/gpio/quark_gpio.h"
 #include "util/printf.h"
 #include "cy8c9540a.h"
+#include "sched/sched.h"
+#include "mem/malloc.h"
 
 #define DEBUG_CYPRESS
 
@@ -352,6 +353,9 @@ int cy8c9540a_pwm_disable(unsigned pwm)
 	return cy8c9540a_pwm_switch(pwm, 0);
 }
 
+/* ****************************************************** *
+ * interrupt *
+ */
 static int
 cy8c9540a_unmask_interrupt(unsigned gpio)
 {
@@ -384,22 +388,115 @@ cy8c9540a_unmask_interrupt(unsigned gpio)
   return 0;
 }
 
+#define INT_PIN_NUM 14
+
+struct int_pin_data {
+	task_id waitqueue;
+	u8 port;
+	u8 pin;
+} *int_pin_array[INT_PIN_NUM];
+
+static const unsigned int arduino2galileo_gpio_mapping[] = {
+  34, 35, 16, 2, 12, 1, 8,
+  11, 10, 3, 0, 9, 22, 23
+};
+
+void
+cy8c9540a_register_interrupt(unsigned gpio, int mode)
+{
+	u8 port;
+	unsigned kgpio;
+
+	if (int_pin_array[gpio]) {
+		logger_printf("warning: this pin has already got a handler attached.\n");
+	} else {
+		int_pin_array[gpio] = kmalloc(sizeof(*int_pin_array[0]));
+		kgpio = arduino2galileo_gpio_mapping[gpio];
+		port = cypress_get_port(kgpio);
+		int_pin_array[gpio]->port = port;
+		int_pin_array[gpio]->pin = cypress_get_offs(kgpio, port);
+		/* unmask interrupt */
+		cy8c9540a_unmask_interrupt(kgpio);
+	}
+}
+
+void
+cy8c9540a_wait_interrupt(unsigned gpio)
+{
+	queue_append(&(int_pin_array[gpio]->waitqueue), str());
+	schedule();
+}
+
+static u8 
+cy8c9540a_read_int_status(u8 port_off)
+{
+	u8 int_status;
+
+	/* i2c use either polling or blocking, depending on 
+	 * mp_enabled. Since this function is called
+	 * in interrupt context, so set mp_enabled
+	 * to 0 to make i2c do polling.
+	 * XXX: this is a hack!! Some other components also
+	 * depend on mp_enabled. This could cause other
+	 * CPUs to detect wrong system status if SMP enabled */
+	mp_enabled = 0;
+	int_status = i2c_read_byte_data(REG_INTR_STAT_PORT0 + port_off);
+	mp_enabled = 1;
+	return int_status;
+}
+
+void
+cy8c9540a_irq_handler()
+{
+	u8 int_status[6], status;
+	int gpio;
+
+	/* The only way to find out which pin triggered
+	 * the interrupt is to read the port's interrupt
+	 * status register via i2c. It has unnegligible time
+	 * cost. So try to read as few ports as possible, only
+	 * those to which pins with handler attached belongs to */
+	if (int_pin_array[10] || int_pin_array[5]
+			|| int_pin_array[3] || int_pin_array[9]) {
+		/* pin 10, 5, 3, 9 belongs to port 0 */
+		int_status[0] = cy8c9540a_read_int_status(0);
+	}
+	if (int_pin_array[6] || int_pin_array[11]
+			|| int_pin_array[8] || int_pin_array[7]
+			|| int_pin_array[4]) {
+		int_status[1] = cy8c9540a_read_int_status(1);
+	}
+	if (int_pin_array[2]) {
+		int_status[2] = cy8c9540a_read_int_status(2);
+	}
+	if (int_pin_array[12] || int_pin_array[13]) {
+		int_status[3] = cy8c9540a_read_int_status(3);
+	}
+	if (int_pin_array[0] || int_pin_array[1]) {
+		int_status[5] = cy8c9540a_read_int_status(5);
+	}
+
+	for (gpio = 0; gpio < INT_PIN_NUM; gpio++) {
+		if (int_pin_array[gpio]) {
+			/* this pin has handler attached 
+			 * So it is possible to generate a interrupt */
+			status = int_status[int_pin_array[gpio]->port];
+			if (status & (1 << int_pin_array[gpio]->pin)) {
+				/* it is this pin triggered the interrupt.
+				 * wake up the task waiting on this pin
+				 * and stop checking */
+				wakeup_queue(&(int_pin_array[gpio]->waitqueue));
+				break;
+			}
+		}
+	}
+}
+/* ************************************************************* */
+
 int cypress_get_id()
 {
   u8 dev_id = i2c_read_byte_data(REG_DEVID_STAT);
   return dev_id & 0xf0;
-}
-
-int
-enabled_int_line()
-{
-	int i;
-	for (i = 0; i <= 7; i++) {
-		quark_gpio_interrupt_enable(i);
-		quark_gpio_set_interrupt_type(i, EDGE);
-		quark_gpio_set_interrupt_polarity(i, FALLING_EDGE);
-	}
-	return 0;
 }
 
 void cy8c9540a_test()
@@ -407,6 +504,7 @@ void cy8c9540a_test()
 	//unsigned pwm = 1;
 	//int fade_val;
 
+#if 0
   unsigned gpio = 3;
   cy8c9540a_gpio_direction_output(gpio, 0);
   cy8c9540a_gpio_set_drive(gpio, GPIOF_DRIVE_STRONG);
@@ -428,70 +526,29 @@ void cy8c9540a_test()
 			tsc_delay_usec(30 * 1000);
 		}
 	}
+#endif
 
+#if 0
 	unsigned gpio = 16;
 	unsigned mux = 15;
-	/* route IO2 to cy8c9540a */ 
-	cy8c9540a_gpio_direction_output(mux, 1);
-	/* turn on led */
-  cy8c9540a_gpio_set_drive(gpio, GPIOF_DRIVE_STRONG);
-	cy8c9540a_gpio_direction_output(gpio, 1);
-	/* delay 3s */
-	tsc_delay_usec(3000000);
-	/* reset cy8c9540a */
-	//DLOG("resetting cy8c9540a...");
-	//quark_gpio_direction(4, 1);
-	//quark_gpio_high(4);
-	/* delay 3s */
-	//tsc_delay_usec(3000000);
-	/* route IO2 to quark GPIO 6*/
-	DLOG("routing to GPIO 6...");
-	quark_gpio_direction(6, 1);
-	quark_gpio_high(6);
+	/* route IO2 to GPIO6 */
+	cy8c9540a_gpio_set_drive(mux, GPIOF_DRIVE_PULLUP);
 	cy8c9540a_gpio_direction_output(mux, 0);
-	/* turn on led */
-  //cy8c9540a_gpio_set_drive(gpio, GPIOF_DRIVE_STRONG);
-	//cy8c9540a_gpio_direction_output(gpio, 1);
-	/* delay 3s */
-	//tsc_delay_usec(3000000);
-	tsc_delay_usec(3000000);
-
-	DLOG("routing back to cy8c9540a...");
-	/* route IO2 to cy8c9540a */ 
+	/* route IO2 to cy8c9540a */
+	cy8c9540a_gpio_set_drive(mux, GPIOF_DRIVE_PULLUP);
 	cy8c9540a_gpio_direction_output(mux, 1);
-	/* turn on led */
-  cy8c9540a_gpio_set_drive(gpio, GPIOF_DRIVE_STRONG);
-	cy8c9540a_gpio_direction_output(gpio, 1);
-	tsc_delay_usec(3000000);
-
-	//while(1);
-	//u8 port = cypress_get_port(gpio);
-	//cy8c9540a_unmask_interrupt(gpio);
-	/* clear interrupt status */
-	//i2c_read_byte_data(REG_INTR_STAT_PORT0 + port);
-	//enabled_int_line();
-	//int i;
-	//DLOG("cypress setting");
-  //cy8c9540a_gpio_set_drive(gpio, GPIOF_DRIVE_STRONG);
-	//cy8c9540a_gpio_direction_output(gpio, 1);
-	//tsc_delay_usec(2000000);
-#if 0
-	for (i = 7; i >= 0; i--) { 
-		DLOG("setting %d", i);
-		quark_gpio_direction(i, 1);
-		quark_gpio_high(i);
-		DLOG("port status is 0x%x", quark_gpio_read_port_status());
-		tsc_delay_usec(2000000);
-	}
-
-	unsigned gpio = 9;
-  cy8c9540a_gpio_direction_input(gpio);
-  //cy8c9540a_gpio_set_drive(gpio, GPIOF_DRIVE_PULLUP);
-	while (1) {
-		int val = cy8c9540a_gpio_get_value(gpio);
-		DLOG("val is 0x%x", val);
-		tsc_delay_usec (1000000);
-	}
+	DLOG("mux is 0x%x", cy8c9540a_gpio_get_value(mux));
+	/* unmask IO2 */
+	cy8c9540a_unmask_interrupt(gpio);
+	/* enable GPIO6 as interrupt source */
+	int i = 5;
+	//for (i = 0; i < 8; i++) {
+		quark_gpio_set_interrupt_type(i, EDGE);
+		quark_gpio_set_interrupt_polarity(i, FALLING_EDGE);
+		quark_gpio_interrupt_enable(i);
+		quark_gpio_clear_interrupt(i);
+	//}
+	quark_gpio_registers();
 #endif
 }
 
@@ -555,8 +612,7 @@ bool cy8c9540a_setup()
 		}
 	}
 
-	cy8c9540a_test();
-
+	//cy8c9540a_test();
 	return TRUE;
 }
 

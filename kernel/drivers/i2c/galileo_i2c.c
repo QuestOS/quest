@@ -25,7 +25,7 @@
 #include <sched/sched.h>
 #include <sched/vcpu.h>
 
-#define DEBUG_I2C 
+//#define DEBUG_I2C 
 
 #ifdef DEBUG_I2C
 #define DLOG(fmt,...) DLOG_PREFIX("I2C",fmt,##__VA_ARGS__)

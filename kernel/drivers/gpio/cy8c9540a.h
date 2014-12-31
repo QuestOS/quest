@@ -12,3 +12,5 @@ int cy8c9540a_pwm_config(unsigned pwm, int duty_ns, int period_ns);
 int cy8c9540a_pwm_switch(unsigned pwm, int enable);
 int cy8c9540a_pwm_enable(unsigned pwm);
 int cy8c9540a_pwm_disable(unsigned pwm);
+void cy8c9540a_register_interrupt(unsigned gpio, int mode);
+void cy8c9540a_wait_interrupt(unsigned gpio);

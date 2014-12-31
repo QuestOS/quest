@@ -10,7 +10,7 @@ CFLAGS =
 
 SKETCH_MAIN = ../../libarduino/main.c
 
-PROGS = multithread/multi_blink blink fade
+PROGS = multithread/multi_blink blink fade interrupt
 
 .PHONY: all clean install
 

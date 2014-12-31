@@ -17,7 +17,6 @@
 
 #include "drivers/pci/pci.h"
 #include "drivers/i2c/galileo_i2c.h"
-#include "drivers/gpio/quark_gpio.h"
 #include "util/printf.h"
 #include "mem/mem.h"
 
@@ -92,6 +91,18 @@ quark_gpio_interrupt_disable(u8 gpio)
 	qgpio_write_r(~(1 << gpio) & qgpio_read_r(GPIO_INTEN), GPIO_INTEN);
 }
 
+typedef enum {
+	LEVEL = 0,
+	EDGE,
+} interrupt_type;
+
+typedef enum {
+	ACTIVE_LOW = 0,
+	ACTIVE_HIGH,
+	FALLING_EDGE,
+	RISING_EDEG,
+} interrupt_polarity;
+
 void 
 quark_gpio_set_interrupt_type(u8 gpio, interrupt_type type)
 {
@@ -134,10 +145,31 @@ quark_gpio_read_port_status()
 	return (u8)qgpio_read_r(GPIO_EXT_PORTA);
 }
 
+void
+quark_gpio_registers()
+{
+	DLOG("int mask 0x%x", qgpio_read_r(GPIO_INTMASK));
+	DLOG("int status 0x%x", qgpio_read_r(GPIO_INTSTATUS));
+	DLOG("int level 0x%x", qgpio_read_r(GPIO_INTTYPE_LEVEL));
+	DLOG("int polarity 0x%x", qgpio_read_r(GPIO_INT_POLARITY));
+	DLOG("int enable 0x%x", qgpio_read_r(GPIO_INTEN));
+	DLOG("int direction 0x%x", qgpio_read_r(GPIO_SWPORTA_DDR));
+	DLOG("int data 0x%x", qgpio_read_r(GPIO_SWPORTA_DR));
+}
+
+void
+quark_gpio_clear_interrupt(u8 gpio)
+{
+	qgpio_write_r((1 << gpio), GPIO_PORTA_EOI);
+}
+
+#define CYPRESS_INT_LINE 5
+
 static uint32
 quark_irq_handler(uint8 vec)
 {
-	DLOG("quark_irq_handler");
+	quark_gpio_clear_interrupt(CYPRESS_INT_LINE);
+	cy8c9540a_irq_handler();
 	return 0;
 }
 
@@ -145,7 +177,6 @@ static uint32
 shared_irq_handler(uint8 vec)
 {
 	sint32 ret;
-	DLOG("quark_irq_handler");
 	if ((ret = i2c_irq_handler(vec)) < 0)
 		/* this interrupt is not for i2c
 		 * so it must be for quark gpio */
@@ -213,6 +244,12 @@ quark_gpio_init()
 		irq_line = irq.gsi;
 	}
   DLOG ("Using IRQ line=%.02X pin=%X", irq_line, irq_pin);
+
+	/* set up cypress interrupt */
+	quark_gpio_set_interrupt_type(CYPRESS_INT_LINE, EDGE);
+	quark_gpio_set_interrupt_polarity(CYPRESS_INT_LINE, RISING_EDEG);
+	quark_gpio_clear_interrupt(CYPRESS_INT_LINE);
+	quark_gpio_interrupt_enable(CYPRESS_INT_LINE);
 	return TRUE;
 
 abort:
