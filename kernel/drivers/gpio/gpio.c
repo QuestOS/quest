@@ -16,6 +16,8 @@
  */
 
 #include "cy8c9540a.h"
+#include "sched/sched.h"
+#include "sched/vcpu.h"
 #include "util/printf.h"
 
 #define PIN_MODE        0
@@ -63,6 +65,8 @@ gpio_handler(int operation, int gpio, int val, int arg)
       break;
     case INTERRUPT_REG:
       cy8c9540a_register_interrupt(gpio, val);
+      /* bind the calling thread to a IOVCPU */
+      lookup_TSS(str())->cpu = select_iovcpu(1);
       break;
     case INTERRUPT_WAIT:
       cy8c9540a_wait_interrupt(gpio);

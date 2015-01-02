@@ -137,6 +137,8 @@ quark_gpio_set_interrupt_polarity(u8 gpio, interrupt_polarity polarity)
 			qgpio_write_r((1 << gpio) | qgpio_read_r(GPIO_INT_POLARITY), GPIO_INT_POLARITY);
 			return 0;
 	}
+
+	return -1;
 }
 
 u8
@@ -169,6 +171,7 @@ static uint32
 quark_irq_handler(uint8 vec)
 {
 	quark_gpio_clear_interrupt(CYPRESS_INT_LINE);
+	extern void cy8c9540a_irq_handler();
 	cy8c9540a_irq_handler();
 	return 0;
 }
