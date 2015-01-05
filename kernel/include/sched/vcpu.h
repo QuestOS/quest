@@ -42,6 +42,7 @@ typedef enum {
   IOVCPU_CLASS_USB = (1<<2),
   IOVCPU_CLASS_DISK = (1<<3),
   IOVCPU_CLASS_CDROM = (1<<4),
+  IOVCPU_CLASS_GPIO = (1<<5),
 } iovcpu_class;
 
 

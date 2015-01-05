@@ -338,9 +338,10 @@ syscall_gpio (u32 eax, u32 ebx, u32 ecx, u32 edx, u32 esi)
   u32 operation = ebx;
   u32 arg1 = ecx;
   u32 arg2 = edx;
+  u32 arg3 = esi;
   int ret;
 
-  ret = gpio_handler(operation, arg1, arg2, 0);
+  ret = gpio_handler(operation, arg1, arg2, arg3);
 
   return ret;
 }

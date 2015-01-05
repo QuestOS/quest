@@ -71,6 +71,7 @@ static struct sched_param init_params[] = {
   { .type = IO_VCPU, .C = 1, .T = 10, .io_class = IOVCPU_CLASS_USB },
   { .type = IO_VCPU, .C = 1, .T = 10, .io_class = IOVCPU_CLASS_ATA },
   { .type = IO_VCPU, .C = 1, .T = 10, .io_class = IOVCPU_CLASS_NET },
+  { .type = IO_VCPU, .C = 1, .T = 10, .io_class = IOVCPU_CLASS_GPIO },
 #endif
 };
 

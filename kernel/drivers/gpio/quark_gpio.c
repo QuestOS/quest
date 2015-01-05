@@ -18,9 +18,11 @@
 #include "drivers/pci/pci.h"
 #include "drivers/i2c/galileo_i2c.h"
 #include "util/printf.h"
+#include "sched/sched.h"
+#include "sched/vcpu.h"
 #include "mem/mem.h"
 
-#define DEBUG_QGPIO
+//#define DEBUG_QGPIO
 
 #ifdef DEBUG_QGPIO
 #define DLOG(fmt,...) DLOG_PREFIX("Quark GPIO",fmt,##__VA_ARGS__)
@@ -165,14 +167,52 @@ quark_gpio_clear_interrupt(u8 gpio)
 	qgpio_write_r((1 << gpio), GPIO_PORTA_EOI);
 }
 
+void
+quark_gpio_mask_interrupt(u8 gpio)
+{
+	qgpio_write_r((1 << gpio) | qgpio_read_r(GPIO_INTMASK), GPIO_INTMASK);
+}
+
+void
+quark_gpio_unmask_interrupt(u8 gpio)
+{
+	qgpio_write_r(~(1 << gpio) & qgpio_read_r(GPIO_INTMASK), GPIO_INTMASK);
+}
+
 #define CYPRESS_INT_LINE 5
+
+/* called by cy8c9540a_interrupt_thread */
+extern void
+quark_gpio_unmask_cypress_interrupt()
+{
+	quark_gpio_unmask_interrupt(CYPRESS_INT_LINE);
+}
 
 static uint32
 quark_irq_handler(uint8 vec)
 {
 	quark_gpio_clear_interrupt(CYPRESS_INT_LINE);
+#ifndef NO_GPIO_IOVCPU
+	/* mask gpio interrupt out. So the next gpio interrupt
+	 * will be allowed to deliver only after bottom half
+	 * unmasks it */
+	quark_gpio_mask_interrupt(CYPRESS_INT_LINE);
+	extern task_id cy8c9540a_interrupt_pid;
+	extern int gpio_handler_T_min_tid;
+	extern void iovcpu_job_wakeup (task_id job, u64 T);
+	/* wake up the interrupt handler thread.
+	 * T is the smallest T of main vcpus that
+	 * are using this iovcpu's service */
+	vcpu_id_t vcpu_id = lookup_TSS(gpio_handler_T_min_tid)->cpu;
+	int T = vcpu_lookup(vcpu_id)->T;
+	iovcpu_job_wakeup(cy8c9540a_interrupt_pid, T);
+#else
+	/* if we are not using bottom half thread, there is
+	 * no need to mask gpio interrupt since system interrupt
+	 * is disabled when in hardware interrupt handler */
 	extern void cy8c9540a_irq_handler();
 	cy8c9540a_irq_handler();
+#endif
 	return 0;
 }
 

@@ -53,3 +53,5 @@ KMALLOC = tlsf
 # Disable FPU
 # CFG += -DNO_FPU
 
+# Disable attachInterrupt IOVCPU
+# CFG += -DNO_GPIO_IOVCPU

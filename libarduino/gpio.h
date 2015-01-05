@@ -36,11 +36,11 @@
 #define CLOBBERS7 "memory","cc","%edi"
 
 int
-gpio_syscall(int operation, int arg1, int arg2)
+gpio_syscall(int operation, int arg1, int arg2, int arg3)
 {
   int ret;
   asm volatile ("int $0x30\n":"=a" (ret) : "a" (12L),
-      "b"(operation), "c" (arg1), "d" (arg2), "S" (0) : CLOBBERS7);
+      "b"(operation), "c" (arg1), "d" (arg2), "S" (arg3) : CLOBBERS7);
   return ret;
 }
 

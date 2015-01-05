@@ -37,7 +37,7 @@
 static int pwm_enabled[14] = {0};
 
 int
-gpio_handler(int operation, int gpio, int val, int arg)
+gpio_handler(int operation, int gpio, int val, int extra_arg)
 {
 	int ret;
 
@@ -64,9 +64,7 @@ gpio_handler(int operation, int gpio, int val, int arg)
       cy8c9540a_pwm_config(gpio, val, 255);
       break;
     case INTERRUPT_REG:
-      cy8c9540a_register_interrupt(gpio, val);
-      /* bind the calling thread to a IOVCPU */
-      lookup_TSS(str())->cpu = select_iovcpu(1);
+      cy8c9540a_register_interrupt(gpio, val, extra_arg);
       break;
     case INTERRUPT_WAIT:
       cy8c9540a_wait_interrupt(gpio);

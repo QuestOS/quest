@@ -21,6 +21,7 @@
 #include "util/printf.h"
 #include "cy8c9540a.h"
 #include "sched/sched.h"
+#include "sched/vcpu.h"
 #include "mem/malloc.h"
 
 //#define DEBUG_CYPRESS
@@ -356,6 +357,32 @@ int cy8c9540a_pwm_disable(unsigned pwm)
 /* ****************************************************** *
  * interrupt *
  */
+static uint32 cy8c9540a_interrupt_stack[1024] ALIGNED (0x1000);
+#ifndef NO_GPIO_IOVCPU
+task_id cy8c9540a_interrupt_pid;
+
+static void
+cy8c9540a_interrupt_thread()
+{
+	while (1) {
+		/* sleep until interrupt comes */
+		iovcpu_job_completion();
+		/* unlock kernel and enable interrupt
+		 * so that interrupt thread can be preempted */
+		unlock_kernel();
+		sti();
+		void cy8c9540a_irq_handler();
+		cy8c9540a_irq_handler();
+		/* unmask interrupt so that interrupt from 
+		 * cy8c9540a can be delivered again */
+		extern void quark_gpio_unmask_cypress_interrupt();
+		quark_gpio_unmask_cypress_interrupt();
+		cli();
+		lock_kernel();
+	}
+}
+#endif
+
 static int
 cy8c9540a_unmask_interrupt(unsigned gpio)
 {
@@ -377,8 +404,6 @@ cy8c9540a_unmask_interrupt(unsigned gpio)
   }
 
   val = (u8)(ret & ~BIT(pin));
-	DLOG("about to write 0x%x to REG_INTR_MASK", val);
-
   ret = i2c_write_byte_data(REG_INTR_MASK, val);
   if (ret < 0) {
     logger_printf("can't write interrupt mask port%u", port);
@@ -401,8 +426,13 @@ static const unsigned int arduino2galileo_gpio_mapping[] = {
   11, 10, 3, 0, 9, 22, 23
 };
 
+#ifndef NO_GPIO_IOVCPU
+int gpio_handler_T_min = 1000000;
+int gpio_handler_T_min_tid;
+#endif
+
 void
-cy8c9540a_register_interrupt(unsigned gpio, int mode)
+cy8c9540a_register_interrupt(unsigned gpio, int mode, int T)
 {
 	u8 port;
 	unsigned kgpio;
@@ -417,6 +447,12 @@ cy8c9540a_register_interrupt(unsigned gpio, int mode)
 		int_pin_array[gpio]->pin = cypress_get_offs(kgpio, port);
 		/* unmask interrupt */
 		cy8c9540a_unmask_interrupt(kgpio);
+#ifndef NO_GPIO_IOVCPU
+		if (T < gpio_handler_T_min) {
+			gpio_handler_T_min = T;
+			gpio_handler_T_min_tid = str();
+		}
+#endif
 	}
 }
 
@@ -439,9 +475,17 @@ cy8c9540a_read_int_status(u8 port_off)
 	 * XXX: this is a hack!! Some other components also
 	 * depend on mp_enabled. This could cause other
 	 * CPUs to detect wrong system status if SMP enabled */
+#ifndef NO_GPIO_IOVCPU
+	cli();
+	lock_kernel();
+#endif
 	mp_enabled = 0;
 	int_status = i2c_read_byte_data(REG_INTR_STAT_PORT0 + port_off);
 	mp_enabled = 1;
+#ifndef NO_GPIO_IOVCPU
+	unlock_kernel();
+	sti();
+#endif
 	return int_status;
 }
 
@@ -464,15 +508,19 @@ cy8c9540a_irq_handler()
 	if (int_pin_array[6] || int_pin_array[11]
 			|| int_pin_array[8] || int_pin_array[7]
 			|| int_pin_array[4]) {
+		/* pin 6, 11, 8, 7, 4 belongs to port 1 */
 		int_status[1] = cy8c9540a_read_int_status(1);
 	}
 	if (int_pin_array[2]) {
+		/* pin 2 belongs to port 2 */
 		int_status[2] = cy8c9540a_read_int_status(2);
 	}
 	if (int_pin_array[12] || int_pin_array[13]) {
+		/* pin 12, 13 belongs to port 3 */
 		int_status[3] = cy8c9540a_read_int_status(3);
 	}
 	if (int_pin_array[0] || int_pin_array[1]) {
+		/* pin 0, 1 belongs to port 5 */
 		int_status[5] = cy8c9540a_read_int_status(5);
 	}
 
@@ -482,15 +530,25 @@ cy8c9540a_irq_handler()
 			 * So it is possible to generate a interrupt */
 			status = int_status[int_pin_array[gpio]->port];
 			if (status & (1 << int_pin_array[gpio]->pin)) {
-				/* it is this pin triggered the interrupt.
-				 * wake up the task waiting on this pin
+				/* Aha, we found the pin triggered the interrupt!
+				 * Wake up the task waiting on this pin
 				 * and stop checking */
+#ifndef NO_GPIO_IOVCPU
+				/* lock kernel before calling kernel function */
+				cli();
+				lock_kernel();
+#endif
 				wakeup_queue(&(int_pin_array[gpio]->waitqueue));
+#ifndef NO_GPIO_IOVCPU
+				unlock_kernel();
+				sti();
+#endif
 				break;
 			}
 		}
 	}
 }
+
 /* ************************************************************* */
 
 int cypress_get_id()
@@ -611,6 +669,14 @@ bool cy8c9540a_setup()
       return ret;
 		}
 	}
+
+#ifndef NO_GPIO_IOVCPU
+	cy8c9540a_interrupt_pid = start_kernel_thread(
+			(uint) cy8c9540a_interrupt_thread,
+			(uint)&cy8c9540a_interrupt_stack[1023],
+			"Cy8c9540a Interrupt Thread");
+	lookup_TSS(cy8c9540a_interrupt_pid)->cpu = select_iovcpu(1<<5);
+#endif
 
 	//cy8c9540a_test();
 	return TRUE;
