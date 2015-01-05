@@ -1329,6 +1329,7 @@ vcpu_id_t create_vcpu(struct sched_param* params, vcpu** vcpu_p)
   u32 C = params->C;
   u32 T = params->T;
   vcpu_type type = params->type;
+  iovcpu_class io_class = params->io_class;
   vcpu_id_t vcpu_i = next_vcpu_index();
 
   if(!vcpu_init_called) {
@@ -1372,6 +1373,7 @@ vcpu_id_t create_vcpu(struct sched_param* params, vcpu** vcpu_p)
   } else if (vcpu->type == IO_VCPU) {
     vcpu->io.Unum = C;
     vcpu->io.Uden = T;
+    vcpu->io.class = io_class;
     vcpu->b = vcpu->C;
   }
   vcpu->hooks = vcpu_hooks_table[type];
