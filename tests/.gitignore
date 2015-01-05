@@ -36,6 +36,7 @@ sketches/multithread/multi_blink
 sketches/prime_single
 sketches/prime_sketch
 sketches/rdtsc_test
+sketches/prime_interrupt
 thread
 thread1
 vshm_linux
