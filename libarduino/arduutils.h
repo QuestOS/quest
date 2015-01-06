@@ -10,7 +10,7 @@ void print_long_long_hex(unsigned long long int val)
 
 	if (val_hi != 0) {
 		printf("0x%lx", val_hi);
-		printf("%lx\n", val_lo);
+		printf("%.8lx\n", val_lo);
 	} else {
 		printf("0x%lx\n", val_lo);
 	}
