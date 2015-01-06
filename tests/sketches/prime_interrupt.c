@@ -51,7 +51,7 @@ loop()
 
 	printf("starting...\n");
 	res = find_prime(N);
-  printf("C=80, Cycles: ");
+  printf("C=70, Cycles: ");
 	print_long_long_hex(res);
 	printf("counter is %d\n", counter);
 	while (1);

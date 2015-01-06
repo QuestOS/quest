@@ -1,4 +1,5 @@
 #include <stdio.h>
+#include <string.h>
 #include <pthread.h>
 #include <vcpu.h>
 
@@ -56,6 +57,13 @@ void main()
 			printf("Failed to create vcpu\n");
 		}
 		vcpu_bind_task(new_vcpu);
+
+#if 0
+		struct sched_param s_params2;
+		memset(&s_params2, 0, sizeof(s_params2));
+		vcpu_getparams(&s_params2);
+		printf("C is %d, T is %d\n", s_params2.C, s_params2.T);
+#endif
 
 		while(1) loop();
 	} else {
