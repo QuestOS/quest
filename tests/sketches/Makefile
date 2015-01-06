@@ -6,13 +6,14 @@ endif
 
 LIBS   = $(LIB_DEST)/crt0.o -lc
 INCS   = -I../../libarduino/
-CFLAGS =
+CFLAGS = 
 
 SKETCH_MAIN = ../../libarduino/main.c
 
 PROGS = multithread/multi_blink blink fade prime_sketch \
 				gettimeofday_test digital_io_freq rdtsc_test \
-				interrupt prime_single interrupt_freq prime_interrupt
+				interrupt prime_single interrupt_freq prime_interrupt \
+				digital2000 prime_digital
 
 .PHONY: all clean install
 

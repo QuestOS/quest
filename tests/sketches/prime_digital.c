@@ -1,5 +1,10 @@
+#include <arduthread.h>
 #include <ardutime.h>
 #include <arduutils.h>
+#include <pin.h>
+
+int pin_status = LOW;
+int BLINK_NB = 2000;
 
 unsigned long long
 find_prime (int NUM_NB)    
@@ -28,21 +33,29 @@ find_prime (int NUM_NB)
     if (j >= number) count++;
   }
   rdtsc(&end);
-
   printf ("Counting finished! %d prime numbers found.\n", count);
-  return (end - start);
-}
+  return end - start;
+}    
 
-void loop() {
+void loop(1,490,500) {
 	unsigned long long res;
 	int N = 80000;
 
 	res = find_prime(N);
-  printf("C=80, Cycles: ");
+  printf("Cycles: ");
 	print_long_long_hex(res);
 	while (1);
 }
 
+void loop(2,1,100) {
+	int i;
+	for (i = 0; i < BLINK_NB; i++) 
+		digitalWrite(13, pin_status = !pin_status);
+	pthread_exit(NULL);
+}
+
 void setup()
 {
+	pinMode(13, OUTPUT);
 }
+

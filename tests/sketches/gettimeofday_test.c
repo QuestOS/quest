@@ -5,7 +5,7 @@
 
 struct timeval tval_start, tval_end;
 
-loop()
+void loop()
 {
 	time_t ms_start, ms_end;
 	gettimeofday (&tval_start, NULL);
@@ -18,6 +18,6 @@ loop()
 }
 
 
-setup()
+void setup()
 {
 }

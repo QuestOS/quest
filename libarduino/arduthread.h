@@ -7,6 +7,7 @@
 extern pthread_t thread[];
 
 #define loop(i,c,t)  																										\
+	dummy##i();																															\
 	extern void _loop##i(); 																							\
 																																				\
   void loop##i () {        																							\

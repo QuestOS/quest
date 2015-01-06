@@ -44,7 +44,7 @@ IntHandler()
 	counter++;
 }
 
-loop()
+void loop()
 {
 	unsigned long long res;
 	int N = 80000;
@@ -57,7 +57,7 @@ loop()
 	while (1);
 }
 
-setup()
+void setup()
 {
   attachInterrupt(2, IntHandler, CHANGE);
 }

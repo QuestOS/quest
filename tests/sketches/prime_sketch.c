@@ -34,7 +34,7 @@ find_prime (int NUM_NB)
   return (end - start);
 }    
 
-loop(1,40,100) {
+void loop(1,40,100) {
 	unsigned long long res;
 	int N = 80000;
 
@@ -44,7 +44,7 @@ loop(1,40,100) {
 	while (1);
 }
 
-loop(2,20,100) {
+void loop(2,20,100) {
 	unsigned long long res;
 	int N = 80000;
 
@@ -54,6 +54,6 @@ loop(2,20,100) {
 	while (1);
 }
 
-setup()
+void setup()
 {
 }

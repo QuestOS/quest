@@ -10,7 +10,7 @@ int brightness = 0;    // how bright the LED is
 int fadeAmount = 5;    // how many points to fade the LED by
 
 // the loop routine runs over and over again forever:
-loop(1,40,100) {
+void loop(1,40,100) {
 	digitalWrite(led1, HIGH);   // turn the LED on (HIGH is the voltage level)
 	delay(1000);               // wait for a second
 	digitalWrite(led1, LOW);    // turn the LED off by making the voltage LOW
@@ -18,7 +18,7 @@ loop(1,40,100) {
 }
 
 // the loop routine runs over and over again forever:
-loop(2,40,100) { 
+void loop(2,40,100) { 
 	// set the brightness of pin 9:
 	analogWrite(led2, brightness);    
 	// change the brightness for next time through the loop:
@@ -32,7 +32,7 @@ loop(2,40,100) {
 }
 
 // the setup routine runs once when you press reset:
-setup() {                
+void setup() {                
   // initialize the digital pin as an output.
   pinMode(led1, OUTPUT);     
   pinMode(led2, OUTPUT);

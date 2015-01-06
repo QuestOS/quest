@@ -6,12 +6,12 @@ int pin_status = LOW;
 int BLINK_NB = 2000;
 
 // the setup routine runs once when you press reset:
-setup() {                
+void setup() {                
   // initialize the digital pin as an output.
   pinMode(13, OUTPUT);     
 }
 
-loop() {
+void loop() {
 	//experiment
 	unsigned long long start_t, end_t;
 	int i;
