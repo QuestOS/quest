@@ -9,7 +9,7 @@ find_prime (int NUM_NB)
   unsigned long long start = 0, end = 0;
   unsigned int number = 0;
 
-  printf ("Find prime in 1 to %d\n", NUM_NB);
+  //printf ("Find prime in 1 to %d\n", NUM_NB);
 
   rdtsc(&start);
   for (i = 0; i < NUM_NB; i++) {
@@ -30,7 +30,7 @@ find_prime (int NUM_NB)
   }
   rdtsc(&end);
 
-  printf ("Counting finished! %d prime numbers found.\n", count);
+  //printf ("Counting finished! %d prime numbers found.\n", count);
   return (end - start);
 }    
 
@@ -50,6 +50,16 @@ void loop(2,20,100) {
 
 	res = find_prime(N);
   printf("C=20, Cycles: ");
+	print_long_long_hex(res);
+	while (1);
+}
+
+void loop(3,10,100) {
+	unsigned long long res;
+	int N = 80000;
+
+	res = find_prime(N);
+  printf("C=10, Cycles: ");
 	print_long_long_hex(res);
 	while (1);
 }

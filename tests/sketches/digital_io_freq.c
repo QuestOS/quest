@@ -3,7 +3,7 @@
 #include <arduutils.h>
 
 int pin_status = LOW;
-int BLINK_NB = 2000;
+int BLINK_NB = 4000;
 
 // the setup routine runs once when you press reset:
 void setup() {                
