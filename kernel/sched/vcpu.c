@@ -1363,8 +1363,8 @@ vcpu_id_t create_vcpu(struct sched_param* params, vcpu** vcpu_p)
     cpu_i = 0;
 #endif
   vcpu->quantum = div_u64_u32_u32 (tsc_freq, QUANTUM_HZ);
-  vcpu->C = C * tsc_unit_freq;
-  vcpu->T = T * tsc_unit_freq;
+  vcpu->C = (u64)C * (u64)tsc_unit_freq;
+  vcpu->T = (u64)T * (u64)tsc_unit_freq;
   vcpu->_C = C;
   vcpu->_T = T;
   vcpu->type = type;

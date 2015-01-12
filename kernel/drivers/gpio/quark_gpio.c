@@ -204,7 +204,7 @@ quark_irq_handler(uint8 vec)
 	 * T is the smallest T of main vcpus that
 	 * are using this iovcpu's service */
 	vcpu_id_t vcpu_id = lookup_TSS(gpio_handler_T_min_tid)->cpu;
-	int T = vcpu_lookup(vcpu_id)->T;
+	u64 T = vcpu_lookup(vcpu_id)->T;
 	iovcpu_job_wakeup(cy8c9540a_interrupt_pid, T);
 #else
 	/* if we are not using bottom half thread, there is
