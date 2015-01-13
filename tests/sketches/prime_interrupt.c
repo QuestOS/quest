@@ -14,7 +14,6 @@ find_prime (int NUM_NB)
   printf ("Find prime in 1 to %d\n", NUM_NB);
 
   rdtsc(&start);
-	//print_long_long_hex(start);
   for (i = 0; i < NUM_NB; i++) {
     number++;
     if (number <= 3) {
@@ -32,7 +31,6 @@ find_prime (int NUM_NB)
     if (j >= number) count++;
   }
   rdtsc(&end);
-	//print_long_long_hex(end);
 
   printf ("Counting finished! %d prime numbers found.\n", count);
   return (end - start);
