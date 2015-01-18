@@ -61,7 +61,8 @@ gpio_handler(int operation, int gpio, int val, int extra_arg)
         cy8c9540a_pwm_enable(gpio);
         pwm_enabled[gpio] = 1;
       }
-      cy8c9540a_pwm_config(gpio, val, 255);
+      val = (PERIOD * val) / 255;
+      cy8c9540a_pwm_config(gpio, val, PERIOD);
       break;
     case INTERRUPT_REG:
       cy8c9540a_register_interrupt(gpio, val, extra_arg);

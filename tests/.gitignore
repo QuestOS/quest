@@ -39,8 +39,9 @@ sketches/rdtsc_test
 sketches/prime_interrupt
 sketches/prime_digital
 sketches/digital2000
+sketches/interrupt_wcet
+sketches/progress
+sketches/analog_freq
 thread
 thread1
 vshm_linux
-
-

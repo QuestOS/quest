@@ -2,6 +2,7 @@
 #define GPIOF_DRIVE_PULLDOWN	(1 << 7)
 #define GPIOF_DRIVE_STRONG	(1 << 8)
 #define GPIOF_DRIVE_HIZ		(1 << 9)
+#define PERIOD				191
 
 int cy8c9540a_gpio_get_value(unsigned gpio);
 void cy8c9540a_gpio_set_value(unsigned gpio, int val);

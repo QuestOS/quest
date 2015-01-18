@@ -66,10 +66,12 @@ static const u8 cy8c9540a_port_offs[] = {
 	36,
 };
 
-/* Galileo-specific data */
-#define PWM_CLK				0x00	/* see resulting PWM_TCLK_NS */
-/* XXX: i donno why 32kHz is 31250 */
-#define PWM_TCLK_NS 			31250 /* 32kHz */
+/* choose clock frequency 93.75khz
+ * set period to 191 so that the resulting
+ * output period will be 490.8hz, very close to
+ * what Arduino uses. But we have less duty cycles
+ * to use */
+#define PWM_CLK				0x03	
 
 /* PWM-to-GPIO mapping (0 == first Cypress GPIO).  */
 #define PWM_UNUSED			-1
@@ -266,8 +268,7 @@ int cy8c9540a_pwm_config(unsigned pwm, int duty, int period)
 	}
 	
 	if (period > PWM_MAX_PERIOD) {
-		logger_printf("period must be within [0-%d]ns",
-				PWM_MAX_PERIOD * PWM_TCLK_NS);
+		logger_printf("period must be within [0-%d]ns", PWM_MAX_PERIOD);
 		return -1;
 	}
 
@@ -662,7 +663,6 @@ bool cy8c9540a_setup()
       return ret;
 		}
 
-		/* XXX: actually there is no API implemented to set clock */
 		ret = i2c_write_byte_data(REG_PWM_CLK, PWM_CLK);
 		if (ret < 0) {
 			logger_printf("can't write to REG_PWM_CLK");
