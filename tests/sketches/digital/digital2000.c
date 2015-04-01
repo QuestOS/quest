@@ -1,6 +1,7 @@
 #include <pin.h>
 #include <ardutime.h>
 #include <arduutils.h>
+#include <arduthread.h>
 #include <stdio.h>
 
 int pin_status = LOW;
@@ -11,7 +12,7 @@ void setup() {
   pinMode(13, OUTPUT);
 }
 
-void loop() {
+void loop(1,490,500) {
   // put your main code here, to run repeatedly: 
   int i;
   unsigned long long start_t, end_t, duration;

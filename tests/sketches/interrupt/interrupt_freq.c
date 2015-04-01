@@ -3,6 +3,14 @@
 #include <arduutils.h>
 #include <arduthread.h>
 
+/* XXX: This is a sketch to test what is the
+ * max interrupt freq that Qduino can handle
+ * without harming the execution of digitalWrite.
+ * NB: a better way would be to use oscilloscope 
+ * to generate square wave to trigger the interrupt
+ * handler on Qduino. See how what is the max freq
+ * of the square wave that Qduino is able to handle
+ * every interrupt */
 volatile int counter;
 int status = LOW;
 int FLIP_N = 1000;

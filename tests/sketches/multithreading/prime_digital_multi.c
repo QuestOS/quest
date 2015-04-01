@@ -37,7 +37,7 @@ find_prime (int NUM_NB)
   return end - start;
 }    
 
-void loop(1,490,500) {
+void loop(1,495,500) {
 	unsigned long long res;
 	int N = 80000;
 
@@ -47,7 +47,7 @@ void loop(1,490,500) {
 	while (1);
 }
 
-void loop(2,1,100) {
+void loop(2,3,500) {
 	int i;
 	for (i = 0; i < BLINK_NB; i++) 
 		digitalWrite(13, pin_status = !pin_status);

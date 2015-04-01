@@ -6,27 +6,31 @@ endif
 
 LIBS   = $(LIB_DEST)/crt0.o -lc
 INCS   = -I../../libarduino/
-CFLAGS = 
+CFLAGS = -Os
 
 SKETCH_MAIN = ../../libarduino/main.c
+MODULES := multithreading time digital standard_arduino interrupt \
+	temporal_isolation
+SRC_DIR := $(MODULES)
+BUILD_DIR := $(MODULES)
+SRC := $(foreach sdir,$(SRC_DIR),$(wildcard $(sdir)/*.c))
+PROGS := $(patsubst %.c,%,$(SRC))
 
-PROGS = multithread/multi_blink blink fade prime_sketch \
-				gettimeofday_test digital_io_freq rdtsc_test \
-				interrupt prime_single interrupt_freq prime_interrupt \
-				digital2000 prime_digital interrupt_wcet progress \
-				analog_freq
+vpath %.c $(SRC_DIR)
+
+define make-goal
+$1/%: %.c $(SKETCH_MAIN) $(LIB_DEST)/libc.a
+	$(CC) $(INCS) $(CFLAGS) $$< $(SKETCH_MAIN) -o $$@
+endef
 
 .PHONY: all clean install
 
 all: $(PROGS)
 
-
-%: %.c $(SKETCH_MAIN) $(LIB_DEST)/libc.a
-	$(CC) $(INCS) $(CFLAGS) $< $(SKETCH_MAIN) -o $@
-
-
 clean:
-	rm -f *.o *.d *.map *~ $(PROGS)
+	rm -f $(PROGS)
 
 install: $(PROGS)
 	$(INSTALL_CMD) $(PROGS) $(INSTALL_DIR)
+
+$(foreach bdir,$(BUILD_DIR),$(eval $(call make-goal,$(bdir))))

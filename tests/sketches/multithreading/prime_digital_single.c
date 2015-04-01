@@ -1,6 +1,10 @@
 #include <ardutime.h>
 #include <arduutils.h>
 #include <arduthread.h>
+#include <pin.h>
+
+int pin_status = LOW;
+int BLINK_NB = 2000;
 
 unsigned long long
 find_prime (int NUM_NB)    
@@ -13,6 +17,11 @@ find_prime (int NUM_NB)
 
   rdtsc(&start);
   for (i = 0; i < NUM_NB; i++) {
+
+		/* mix digital io with find_prime */
+		if (i < BLINK_NB)
+			digitalWrite(13, pin_status = !pin_status);
+
     number++;
     if (number <= 3) {
       if ((number == 2) || (number == 3)) {
@@ -46,4 +55,5 @@ void loop(1,495,500) {
 
 void setup()
 {
+	pinMode(13, OUTPUT);
 }
