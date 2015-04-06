@@ -1081,9 +1081,16 @@ sys_call_get_time (struct timeval *tp)
 
   RDTSC (cur_tsc);
 
+  /*
   usec = div64_64 (cur_tsc - last_tsc, tsc_freq);
   if (!usec) goto finish;
   usec = usec * 1000000LL;
+  sec = div64_64 (usec, 1000000LL);
+  usec = usec - sec * 1000000LL;
+  */
+  
+  uint64 tsc_freq_usec = div64_64 (tsc_freq, 1000000LL);
+  usec = div64_64 (cur_tsc - last_tsc, tsc_freq_usec);
   sec = div64_64 (usec, 1000000LL);
   usec = usec - sec * 1000000LL;
 
