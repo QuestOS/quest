@@ -8,7 +8,13 @@
 void
 delay(unsigned long ms)
 {
-    usleep(ms * 1000);
+  usleep(ms * 1000);
+}
+
+void
+delayMicroseconds(unsigned long us)
+{
+	usleep(us);
 }
 
 void
