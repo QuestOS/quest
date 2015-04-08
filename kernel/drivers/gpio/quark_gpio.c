@@ -22,7 +22,7 @@
 #include "sched/vcpu.h"
 #include "mem/mem.h"
 
-//#define DEBUG_QGPIO
+#define DEBUG_QGPIO
 
 #ifdef DEBUG_QGPIO
 #define DLOG(fmt,...) DLOG_PREFIX("Quark GPIO",fmt,##__VA_ARGS__)
@@ -69,9 +69,28 @@ quark_gpio_low(u8 gpio)
 	qgpio_write_r(~(1 << gpio) & qgpio_read_r(GPIO_SWPORTA_DR), GPIO_SWPORTA_DR);
 }
 
+void 
+quark_gpio_write(int gpio, int val)
+{
+	printf("write: gpio is %d, val is %d\n",
+			gpio, val);
+	if (val == 1)
+		quark_gpio_high((u8)gpio);
+	else
+		quark_gpio_low((u8)gpio);
+}
+
+u32
+quark_gpio_read(u8 gpio)
+{
+	return (1 << gpio) & qgpio_read_r(GPIO_EXT_PORTA);
+}
+
 void
 quark_gpio_direction(u8 gpio, int out)
 {
+	printf("direction: gpio is %d, out is %d\n",
+			gpio, out);
 	u32 val = qgpio_read_r(GPIO_SWPORTA_DDR);
 	if (out) 
 		val |= (1 << gpio);
@@ -141,12 +160,6 @@ quark_gpio_set_interrupt_polarity(u8 gpio, interrupt_polarity polarity)
 	}
 
 	return -1;
-}
-
-u8
-quark_gpio_read_port_status()
-{
-	return (u8)qgpio_read_r(GPIO_EXT_PORTA);
 }
 
 void

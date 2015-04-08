@@ -31,6 +31,7 @@ thread1
 vshm_linux
 sketches/demo/buggy
 sketches/digital/digital2000
+sketches/digital/fastdigital
 sketches/interrupt/interrupt_freq
 sketches/interrupt/prime_interrupt
 sketches/multithreading/multi_blink

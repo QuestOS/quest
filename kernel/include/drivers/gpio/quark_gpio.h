@@ -1,6 +1,8 @@
 #ifndef __QUARK_GPIO__
 #define __QUARK_GPIO__
 
+#include <types.h>
+
 typedef enum {
 	LEVEL = 0,
 	EDGE,
@@ -20,7 +22,8 @@ void quark_gpio_interrupt_enable(u8);
 void quark_gpio_interrupt_disable(u8);
 void quark_gpio_set_interrupt_type(u8, interrupt_type);
 s32 quark_gpio_set_interrupt_polarity(u8, interrupt_polarity);
-u8 quark_gpio_read_port_status();
+u32 quark_gpio_read(u8);
+void quark_gpio_write(int, int);
 void quark_gpio_clear_interrupt(u8 gpio);
 void quark_gpio_registers();
 

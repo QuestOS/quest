@@ -253,6 +253,18 @@ int cy8c9540a_gpio_direction_input(unsigned gpio)
   return cy8c9540a_gpio_direction(gpio, 0, 0);
 }
 
+int cy8c9540a_fast_gpio_mux(unsigned gpio)
+{
+	unsigned mux = (gpio == 16) ? 15 : 14;
+	printf("muxing gpio %d\n", mux);
+	cy8c9540a_gpio_set_drive(mux, GPIOF_DRIVE_PULLUP);
+	printf("done with set dirve\n");
+	cy8c9540a_gpio_direction_output(mux, 0);
+	printf("done with set direction\n");
+	return 0;
+}
+
+/* ------ PWM ------------ */
 int cy8c9540a_pwm_config(unsigned pwm, int duty, int period)
 {
 	int ret;
@@ -609,6 +621,15 @@ void cy8c9540a_test()
 	//}
 	quark_gpio_registers();
 #endif
+
+	unsigned mux = 15, fast_gpio = 6;
+	/* route IO2 to GPIO6 */
+	cy8c9540a_gpio_set_drive(mux, GPIOF_DRIVE_PULLUP);
+	cy8c9540a_gpio_direction_output(mux, 0);
+	/* set GPIO6 direction and value */
+	quark_gpio_direction(fast_gpio, 1);
+	quark_gpio_high(fast_gpio);
+	while(1);
 }
 
 bool cy8c9540a_setup()

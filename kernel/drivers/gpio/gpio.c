@@ -16,6 +16,7 @@
  */
 
 #include "cy8c9540a.h"
+#include "drivers/gpio/quark_gpio.h"
 #include "sched/sched.h"
 #include "sched/vcpu.h"
 #include "util/printf.h"
@@ -26,13 +27,21 @@
 #define PWM             3
 #define INTERRUPT_REG   4
 #define INTERRUPT_WAIT  5
+#define FAST_DIG_WRITE 			6
+#define FAST_DIG_READ  			7
 
 #define OUTPUT  0
 #define INPUT   1
+#define FAST_OUTPUT 2
+#define FAST_INPUT 3
 #define HIGH    1
 #define LOW     0
 
+#ifdef DEBUG_GPIO_SYSCALL
 #define DLOG(fmt,...) DLOG_PREFIX("SYSCALL",fmt,##__VA_ARGS__)
+#else
+#define DLOG(fmt,...) ;
+#endif
 
 static int pwm_enabled[14] = {0};
 
@@ -40,6 +49,9 @@ int
 gpio_handler(int operation, int gpio, int val, int extra_arg)
 {
 	int ret;
+  u8 quark_gpio_pin;
+  DLOG("op: %d, gpio: %d, val: %d, extra_arg: %d\n",
+      operation, gpio, val, extra_arg);
 
 	switch(operation) {
 		case PIN_MODE:
@@ -48,14 +60,32 @@ gpio_handler(int operation, int gpio, int val, int extra_arg)
         if (ret < 0)
           return ret;
 				return cy8c9540a_gpio_direction_output(gpio, 0);
-      } else {
+      } else if (val == INPUT) {
 				return cy8c9540a_gpio_direction_input(gpio);
+      } else {
+        /* fast mdoe, select the right multiplex line */
+        cy8c9540a_fast_gpio_mux(gpio);
+        /* set the direction */
+        quark_gpio_pin = (gpio == 16) ? 6 : 7;
+        int out = (val == FAST_OUTPUT) ? 1 : 0;
+        printf("1\n");
+        quark_gpio_direction(quark_gpio_pin, out);
+        break;
       }
 		case DIG_WRITE:
 			cy8c9540a_gpio_set_value(gpio, val);
       break;
 		case DIG_READ:
 			return cy8c9540a_gpio_get_value(gpio);
+    case FAST_DIG_WRITE:
+      printf("syscall: gpio is %d, val is %d\n",
+          gpio, val);
+      quark_gpio_pin = (gpio == 2) ? 6 : 7;
+      quark_gpio_write(quark_gpio_pin, val);
+      break;
+    case FAST_DIG_READ:
+      quark_gpio_pin = (gpio == 2) ? 6 : 7;
+      return quark_gpio_read(quark_gpio_pin);
     case PWM:
       if (pwm_enabled[gpio] == 0) {
         cy8c9540a_pwm_enable(gpio);
@@ -71,7 +101,7 @@ gpio_handler(int operation, int gpio, int val, int extra_arg)
       cy8c9540a_wait_interrupt(gpio);
       break;
 		default:
-			DLOG("Unsupported operation!");
+			printf("Unsupported operation!");
 			return -1;
 	}
 

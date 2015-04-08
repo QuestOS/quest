@@ -13,9 +13,14 @@
 #define PWM 						3
 #define INTERRUPT_REG 	4
 #define INTERRUPT_WAIT 	5
-
+#define FAST_DIG_WRITE 			6
+#define FAST_DIG_READ  			7
+/* pin mode */
 #define OUTPUT  0
 #define INPUT   1
+#define FAST_OUTPUT 2
+#define FAST_INPUT 3
+/* logic level */
 #define HIGH    1
 #define LOW     0
 
@@ -52,8 +57,13 @@ int
 pinMode(int pin, int mode)
 {
   /* XXX: Need pin number error-checking */
-  if (mode != OUTPUT && mode != INPUT)
+	printf("1\n");
+  if (mode != OUTPUT && mode != INPUT && mode != FAST_INPUT && mode != FAST_OUTPUT)
     return -1;
+	if ((mode == FAST_OUTPUT || mode == FAST_INPUT) && (pin != 2 && pin != 3))
+		/* only pin 2 and 3 are allowed in fast mode */
+		return -1;
+	printf("2\n");
   return gpio_syscall(PIN_MODE, arduino2galileo_gpio_mapping[pin], mode, 0);
 }
 
@@ -72,6 +82,22 @@ digitalWrite(int pin, int value)
     return -1;
   gpio_syscall(DIG_WRITE, arduino2galileo_gpio_mapping[pin], value, 0);
 	return 0;
+}
+
+int
+fastDigitalRead(int pin)
+{
+	if (pin != 2 && pin != 3) return -1;
+  return gpio_syscall(FAST_DIG_READ, pin, 0, 0);
+}
+
+int
+fastDigitalWrite(int pin, int value)
+{
+	if (pin != 2 && pin != 3) return -1;
+  if (value != HIGH && value != LOW) return -1;
+	//printf("lib: pin is %d, value is %d", pin, value);
+  return gpio_syscall(FAST_DIG_WRITE, pin, value, 0);
 }
 
 int 
