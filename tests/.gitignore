@@ -29,3 +29,17 @@ pololu
 thread
 thread1
 vshm_linux
+sketches/demo/buggy
+sketches/digital/digital2000
+sketches/interrupt/interrupt_freq
+sketches/interrupt/prime_interrupt
+sketches/multithreading/multi_blink
+sketches/multithreading/prime_digital_multi
+sketches/multithreading/prime_digital_single
+sketches/standard_arduino/blink
+sketches/standard_arduino/fade
+sketches/temporal_isolation/prime_sketch
+sketches/temporal_isolation/progress
+sketches/time/gettimeofday_test
+sketches/time/micros_test
+sketches/time/rdtsc_test
