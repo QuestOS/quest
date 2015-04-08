@@ -333,6 +333,34 @@ AcpiFindRootPointer (
         return_ACPI_STATUS (AE_OK);
     }
 
+		TablePtr = AcpiOsMapMemory (
+                (ACPI_PHYSICAL_ADDRESS) ACPI_HI_HI_RSDP_WINDOW_BASE_1_0_4,
+                ACPI_HI_HI_RSDP_WINDOW_SIZE_1_0_4);
+
+    if (!TablePtr)
+    {
+        ACPI_ERROR ((AE_INFO,
+            "Could not map memory at %8.8X for length %X",
+            ACPI_HI_HI_RSDP_WINDOW_BASE_1_0_4, ACPI_HI_HI_RSDP_WINDOW_SIZE_1_0_4));
+
+        return_ACPI_STATUS (AE_NO_MEMORY);
+    }
+
+    MemRover = AcpiTbScanMemoryForRsdp (TablePtr, ACPI_HI_HI_RSDP_WINDOW_SIZE_1_0_4);
+    AcpiOsUnmapMemory (TablePtr, ACPI_HI_HI_RSDP_WINDOW_SIZE_1_0_4);
+
+    if (MemRover)
+    {
+        /* Return the physical address */
+
+        PhysicalAddress = (UINT32)
+            (ACPI_HI_HI_RSDP_WINDOW_BASE_1_0_4 + ACPI_PTR_DIFF (MemRover, TablePtr));
+
+        *TableAddress = PhysicalAddress;
+        return_ACPI_STATUS (AE_OK);
+    }
+
+
     /* A valid RSDP was not found */
 
     ACPI_ERROR ((AE_INFO, "A valid RSDP was not found"));
