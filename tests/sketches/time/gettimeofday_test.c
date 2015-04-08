@@ -13,7 +13,7 @@ void loop()
 	delay(2000);
 	gettimeofday (&tval_end, NULL);
   ms_end = tval_end.tv_sec * 1000 + tval_end.tv_usec / 1000;
-  printf ("Time: %lld milliseconds\n", ms_end - ms_start);
+  printf ("Time: %ld milliseconds\n", ms_end - ms_start);
 	while (1);
 }
 

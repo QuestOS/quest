@@ -5,7 +5,7 @@
 #define UNIT 0x563A9
 unsigned long counter;
 unsigned int counter_keeper[512];
-int index = 0;
+int ind = 0;
 
 /*
 void
@@ -23,15 +23,15 @@ loop(2,30,300) {
 		rdtsc(&end);
 		if (end - start >= 300 * UNIT) {
 			//printf("%d\n", counter);
-			counter_keeper[index++] = counter;
-			if (index == 512) break;
+			counter_keeper[ind++] = counter;
+			if (ind == 512) break;
 			start = end;
 			counter = 0;
 		}
 	}
 
 	int i;
-	for (i = 0; i < index; i++) 
+	for (i = 0; i < ind; i++) 
 		printf("%d\n", counter_keeper[i]);
 	while(1);
 }
@@ -39,7 +39,7 @@ loop(2,30,300) {
 volatile int s;
 void dummy_func()
 {
-	int local;
+	int local = 0;
 	while (1) {
 		local++;
 		s += local;

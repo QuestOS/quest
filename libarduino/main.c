@@ -43,11 +43,12 @@ extern int loop() __attribute__((weak));
 #define MAX_THREAD_NUM 		32
 pthread_t thread[MAX_THREAD_NUM];
 
-void main()
+int main()
 {
 	int i, res, new_vcpu;
 	struct sched_param s_params = {.type = MAIN_VCPU, .C = 80, .T = 100};
 
+	extern void setup();
 	setup();
 	/* backward compatible */
 	if (loop) {
@@ -104,6 +105,7 @@ void main()
 		/* waiting for threads to finish */
 		for (i = 0; i < MAX_THREAD_NUM; i++) {
 			if (thread[i] != 0) {
+				extern int waitpid(pthread_t);
 				res = waitpid(thread[i]);
 				printf("Return from waitpid %d\n", res);
 			}
@@ -111,4 +113,6 @@ void main()
 		printf("pthread_exit in main!\n");
 		pthread_exit(NULL);
 	}
+
+	return 0;
 }

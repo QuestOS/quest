@@ -123,6 +123,8 @@ static void *isr(void *args)
 		handler();
 	}
 	free(args);
+
+	return NULL;
 }
 
 int
@@ -139,12 +141,13 @@ attachInterrupt_vcpu(int pin, void (*handler)(void), int mode,
 	args->C = C;
 	args->T = T;
 	pthread_create(&isr_thread, NULL, isr, (void *)args);
+	return 0;
 }
 
 int
 attachInterrupt(int pin, void (*handler)(void), int mode)
 {
-	attachInterrupt_vcpu(pin, handler, mode, 10, 100);
+	return attachInterrupt_vcpu(pin, handler, mode, 10, 100);
 }
 
 #endif

@@ -48,5 +48,6 @@ static vcpu_id_t vcpu_create_main(int C, int T)
 
 
 int vcpu_fork(vcpu_id_t vcpu_id);
+int vcpu_bind_task(vcpu_id_t vcpu_id);
 
 #endif _VCPU_H_
