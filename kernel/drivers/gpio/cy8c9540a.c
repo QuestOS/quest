@@ -642,7 +642,7 @@ bool cy8c9540a_setup()
 	i2c_xfer_init(dev.addr);
 
   dev_id = cypress_get_id();
-  logger_printf("dev_id is 0x%x", dev_id);
+  logger_printf("dev_id is 0x%x\n", dev_id);
 
 	/* Disable PWM, set all GPIOs as input.  */
 	for (i = 0; i < NPORTS; i++) {

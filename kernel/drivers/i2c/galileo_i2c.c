@@ -66,6 +66,7 @@
 #define DW_IC_TXFLR		0x74
 #define DW_IC_RXFLR		0x78
 #define DW_IC_TX_ABRT_SOURCE	0x80
+#define DW_IC_ENABLE_STATUS 0x9c
 
 static u32 tx_fifo_depth = 16;
 static u32 rx_fifo_depth = 1;
@@ -82,6 +83,28 @@ static inline u32
 i2c_read_r(u32 reg)
 {
   return *(u32 *)((u32)mmio_base + reg);
+}
+
+static inline void
+i2c_print_regs()
+{
+	printf("i2c regs: --------------------\n");
+	printf("0x%x\n", i2c_read_r(DW_IC_CON));
+	printf("0x%x\n", i2c_read_r(DW_IC_TAR));
+	printf("0x%x\n", i2c_read_r(DW_IC_SS_SCL_HCNT));
+	printf("0x%x\n", i2c_read_r(DW_IC_SS_SCL_LCNT));
+	printf("0x%x\n", i2c_read_r(DW_IC_FS_SCL_HCNT));
+	printf("0x%x\n", i2c_read_r(DW_IC_FS_SCL_LCNT));
+	printf("0x%x\n", i2c_read_r(DW_IC_INTR_STAT));
+	printf("0x%x\n", i2c_read_r(DW_IC_INTR_MASK));
+	printf("0x%x\n", i2c_read_r(DW_IC_RAW_INTR_STAT));
+	printf("0x%x\n", i2c_read_r(DW_IC_RX_TL));
+	printf("0x%x\n", i2c_read_r(DW_IC_TX_TL));
+	printf("0x%x\n", i2c_read_r(DW_IC_ENABLE));
+	printf("0x%x\n", i2c_read_r(DW_IC_STATUS));
+	printf("0x%x\n", i2c_read_r(DW_IC_TXFLR));
+	printf("0x%x\n", i2c_read_r(DW_IC_RXFLR));
+	printf("0x%x\n", i2c_read_r(DW_IC_ENABLE_STATUS));
 }
 
 /* copied from clanton to configure clock */
@@ -240,6 +263,12 @@ static inline u32
 i2c_int_stat()
 {
 	return i2c_read_r(DW_IC_INTR_STAT);
+}
+
+u32
+i2c_int_mask()
+{
+	return i2c_read_r(DW_IC_INTR_MASK);
 }
 
 #define DW_IC_CMD_WRITE 		0x000
@@ -526,5 +555,5 @@ static const struct module_ops mod_ops = {
   .init = i2c_init
 };
 
-DEF_MODULE (galileo_i2c, "Galileo I2C driver", &mod_ops, {"pci"});
+DEF_MODULE (galileo_i2c, "Galileo I2C driver", &mod_ops, {"pci", "galileo_quark_gpio"});
 

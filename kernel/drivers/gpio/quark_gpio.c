@@ -244,6 +244,10 @@ shared_irq_handler(uint8 vec)
 #define	GALILEO_QGPIO_DID		 	0x0934
 
 static pci_device quark_gpio_pci_device;
+#define READ(bus, slot, func, reg, type) \
+  pci_read_##type (pci_addr (bus, slot, func, reg))
+#define WRITE(bus, slot, func, reg, type, val) \
+  pci_write_##type (pci_addr (bus, slot, func, reg), val)
 
 bool
 quark_gpio_init()
@@ -251,6 +255,11 @@ quark_gpio_init()
 	uint device_index, irq_line, irq_pin;
 	uint mem_addr;
 	pci_irq_t irq;
+
+	/* write command register in PCI configuration space
+	 * to enable bus master and memory space */
+	u16 pci_cmd = 6;
+	WRITE(0, 21, 2, 4, word, pci_cmd);
 
 	if (!pci_find_device(GALILEO_QGPIO_VID, GALILEO_QGPIO_DID,
 				0xFF, 0xFF, 0, &device_index))
