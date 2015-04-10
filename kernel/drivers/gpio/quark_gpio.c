@@ -72,8 +72,6 @@ quark_gpio_low(u8 gpio)
 void 
 quark_gpio_write(int gpio, int val)
 {
-	printf("write: gpio is %d, val is %d\n",
-			gpio, val);
 	if (val == 1)
 		quark_gpio_high((u8)gpio);
 	else
@@ -83,14 +81,12 @@ quark_gpio_write(int gpio, int val)
 u32
 quark_gpio_read(u8 gpio)
 {
-	return (1 << gpio) & qgpio_read_r(GPIO_EXT_PORTA);
+	return ((1 << gpio) & qgpio_read_r(GPIO_EXT_PORTA)) >> gpio;
 }
 
 void
 quark_gpio_direction(u8 gpio, int out)
 {
-	printf("direction: gpio is %d, out is %d\n",
-			gpio, out);
 	u32 val = qgpio_read_r(GPIO_SWPORTA_DDR);
 	if (out) 
 		val |= (1 << gpio);

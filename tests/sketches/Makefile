@@ -6,7 +6,8 @@ endif
 
 LIBS   = $(LIB_DEST)/crt0.o -lc
 INCS   = -I../../libarduino/
-CFLAGS = -Os -Wall -Werror
+#CFLAGS = -Os -Wall -Werror
+CFLAGS = -Wall -Werror
 
 SKETCH_MAIN = ../../libarduino/main.c
 MODULES := multithreading time digital standard_arduino interrupt \

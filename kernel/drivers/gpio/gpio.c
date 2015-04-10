@@ -37,6 +37,8 @@
 #define HIGH    1
 #define LOW     0
 
+//#define DEBUG_GPIO_SYSCALL
+
 #ifdef DEBUG_GPIO_SYSCALL
 #define DLOG(fmt,...) DLOG_PREFIX("SYSCALL",fmt,##__VA_ARGS__)
 #else
@@ -50,7 +52,7 @@ gpio_handler(int operation, int gpio, int val, int extra_arg)
 {
 	int ret;
   u8 quark_gpio_pin;
-  DLOG("op: %d, gpio: %d, val: %d, extra_arg: %d\n",
+  DLOG("op: %u, gpio: %u, val: %u, extra_arg: %u",
       operation, gpio, val, extra_arg);
 
 	switch(operation) {
@@ -68,7 +70,6 @@ gpio_handler(int operation, int gpio, int val, int extra_arg)
         /* set the direction */
         quark_gpio_pin = (gpio == 16) ? 6 : 7;
         int out = (val == FAST_OUTPUT) ? 1 : 0;
-        printf("1\n");
         quark_gpio_direction(quark_gpio_pin, out);
         break;
       }
@@ -78,8 +79,6 @@ gpio_handler(int operation, int gpio, int val, int extra_arg)
 		case DIG_READ:
 			return cy8c9540a_gpio_get_value(gpio);
     case FAST_DIG_WRITE:
-      printf("syscall: gpio is %d, val is %d\n",
-          gpio, val);
       quark_gpio_pin = (gpio == 2) ? 6 : 7;
       quark_gpio_write(quark_gpio_pin, val);
       break;
