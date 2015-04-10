@@ -44,3 +44,4 @@ sketches/temporal_isolation/progress
 sketches/time/gettimeofday_test
 sketches/time/micros_test
 sketches/time/rdtsc_test
+sketches/time/urdtsc_test

@@ -9,7 +9,7 @@ const int rightmotorpin1 = 6;
 const int rightmotorpin2 = 7;
 
 const int trigPin = 11;
-const int echoPin = 12;
+const int echoPin = 2;
 
 void setup() {
   // put your setup code here, to run once:
@@ -19,7 +19,7 @@ void setup() {
   //pinMode(rightmotorpin2, OUTPUT);
   //pinMode(13, OUTPUT);
   pinMode(trigPin, OUTPUT);
-  pinMode(echoPin, INPUT);
+  pinMode(echoPin, FAST_INPUT);
 }
 
 /*
