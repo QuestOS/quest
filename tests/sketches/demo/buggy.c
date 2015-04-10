@@ -2,6 +2,7 @@
 #include <stdio.h>
 #include <ardutime.h>
 #include <arduAdvIO.h>
+#include <arduthread.h>
 
 const int leftmotorpin1 = 8; //signal output of Dc motor driven plate
 const int leftmotorpin2 = 9;
@@ -13,31 +14,80 @@ const int echoPin = 2;
 
 void setup() {
   // put your setup code here, to run once:
-  //pinMode(leftmotorpin1, OUTPUT);
-  //pinMode(leftmotorpin2, OUTPUT);
-  //pinMode(rightmotorpin1, OUTPUT);
-  //pinMode(rightmotorpin2, OUTPUT);
+  pinMode(leftmotorpin1, OUTPUT);
+  pinMode(leftmotorpin2, OUTPUT);
+  pinMode(rightmotorpin1, OUTPUT);
+  pinMode(rightmotorpin2, OUTPUT);
   //pinMode(13, OUTPUT);
   pinMode(trigPin, OUTPUT);
   pinMode(echoPin, FAST_INPUT);
 }
 
-/*
-void loop(1, 10, 100) {
-  // put your main code here, to run repeatedly: 
-  //digitalWrite(leftmotorpin1, HIGH);
-  //digitalWrite(leftmotorpin2, LOW);
-  //digitalWrite(rightmotorpin1, HIGH);
-  //digitalWrite(rightmotorpin2, LOW);
+#if 0
+void loop(1, 70, 100) {
   delay(200);
   digitalWrite(13, HIGH);
   delay(200);
   digitalWrite(13, LOW);
 }
-*/
+#endif
 
-void loop() {
-	long duration, distance;
+long distance = 0;
+
+void nodanger() {
+ digitalWrite(leftmotorpin1, HIGH);
+ digitalWrite(leftmotorpin2, LOW);
+ digitalWrite(rightmotorpin1, HIGH);
+ digitalWrite(rightmotorpin2, LOW);
+}
+
+void backup() {
+ digitalWrite(leftmotorpin1, LOW);
+ digitalWrite(leftmotorpin2, HIGH);
+ digitalWrite(rightmotorpin1, LOW);
+ digitalWrite(rightmotorpin2, HIGH);
+ delay(1000);
+}
+
+//turn left
+void body_lturn() {
+ digitalWrite(leftmotorpin1, LOW);
+ digitalWrite(leftmotorpin2, HIGH);
+ digitalWrite(rightmotorpin1, HIGH);
+ digitalWrite(rightmotorpin2, LOW);
+ delay(1500);
+ //totalhalt();
+}
+//turn right
+void body_rturn() {
+ digitalWrite(leftmotorpin1, HIGH);
+ digitalWrite(leftmotorpin2, LOW);
+ digitalWrite(rightmotorpin1, LOW);
+ digitalWrite(rightmotorpin2, HIGH);
+ delay(1500);
+ //totalhalt();
+}
+
+void loop(1, 20, 100){
+  // put your main code here, to run repeatedly: 
+  //digitalWrite(leftmotorpin1, HIGH);
+  //digitalWrite(leftmotorpin2, LOW);
+  //digitalWrite(rightmotorpin1, HIGH);
+  //digitalWrite(rightmotorpin2, LOW);
+	//delay(100);
+  //delay(200);
+  //digitalWrite(13, HIGH);
+  //delay(200);
+  //digitalWrite(13, LOW);
+	if (distance > 50 || distance == 0)
+		nodanger();
+	else
+		backup();
+	delay(100);
+}
+
+void loop(2, 70, 100) {
+	long duration;// distance;
 	digitalWrite(trigPin, LOW);
 	delayMicroseconds(2);
 	digitalWrite(trigPin, HIGH);
@@ -56,3 +106,5 @@ void loop() {
 	printf("%ld\n", dur);
 	*/
 }
+
+

@@ -452,7 +452,7 @@ i2c_irq_handler(uint8 vec)
 
 done:
 	i2c_disable_int();
-	DLOG("about to wakeup");
+	DLOG("about to wakeup %d", i2c_owner);
 	wakeup(i2c_owner);
 	return 0;
 }
