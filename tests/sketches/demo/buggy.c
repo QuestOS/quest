@@ -46,7 +46,7 @@ void backup() {
  digitalWrite(leftmotorpin2, HIGH);
  digitalWrite(rightmotorpin1, LOW);
  digitalWrite(rightmotorpin2, HIGH);
- delay(1000);
+ delay(600);
 }
 
 //turn left
@@ -55,7 +55,7 @@ void body_lturn() {
  digitalWrite(leftmotorpin2, HIGH);
  digitalWrite(rightmotorpin1, HIGH);
  digitalWrite(rightmotorpin2, LOW);
- delay(1500);
+ delay(5000);
  //totalhalt();
 }
 //turn right
@@ -64,7 +64,7 @@ void body_rturn() {
  digitalWrite(leftmotorpin2, LOW);
  digitalWrite(rightmotorpin1, LOW);
  digitalWrite(rightmotorpin2, HIGH);
- delay(1500);
+ delay(1000);
  //totalhalt();
 }
 
@@ -79,10 +79,14 @@ void loop(1, 20, 100){
   //digitalWrite(13, HIGH);
   //delay(200);
   //digitalWrite(13, LOW);
-	if (distance > 50 || distance == 0)
+	if (distance > 100 || distance == 0)
 		nodanger();
-	else
+	else {
 		backup();
+		body_rturn();
+		backup();
+		body_rturn();
+	}
 	delay(100);
 }
 
@@ -96,7 +100,7 @@ void loop(2, 70, 100) {
 	duration = pulseIn(echoPin, HIGH);
 	distance = (duration / 2) / 29.1;
 	printf("%ld cm\n", distance);
-	delay(500);
+	delay(200);
 	/*
 	unsigned long start, end, dur;
 	start = micros();

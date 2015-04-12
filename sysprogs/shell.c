@@ -85,8 +85,9 @@ main ()
     /* Wait for command line input */
     /* --??-- Assume user has entered command via keyboard */
 
-    if (scanline (line)) {      /* Got input */
+    //if (scanline (line)) {      /* Got input */
       /* --??-- Parse input and verify it is meaningful */
+    strcpy(line, "buggy");
 
       if (*line == '\0')
         continue;
@@ -142,7 +143,7 @@ main ()
 
         exit (1);
       }
-    }
+    //}
   }
 }
 
