@@ -11,7 +11,7 @@ CFLAGS = -Wall -Werror
 
 SKETCH_MAIN = ../../libarduino/main.c
 MODULES := multithreading time digital standard_arduino interrupt \
-	temporal_isolation demo
+	temporal_isolation demo communication
 SRC_DIR := $(MODULES)
 BUILD_DIR := $(MODULES)
 SRC := $(foreach sdir,$(SRC_DIR),$(wildcard $(sdir)/*.c))
