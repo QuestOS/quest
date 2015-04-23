@@ -132,6 +132,7 @@ static void *isr(void *args)
 	if(new_vcpu < 0) {
     printf("Failed to create vcpu. Use best effort vcpu\n");
   }
+	extern int vcpu_bind_task(vcpu_id_t);
   vcpu_bind_task(new_vcpu);
 
 	/* Register pin to driver.

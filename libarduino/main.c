@@ -57,6 +57,7 @@ int main()
 		if (new_vcpu < 0) {
 			printf("Failed to create vcpu\n");
 		}
+		extern int vcpu_bind_task(vcpu_id_t);
 		vcpu_bind_task(new_vcpu);
 
 #if 0

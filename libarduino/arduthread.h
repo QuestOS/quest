@@ -17,6 +17,7 @@ extern pthread_t thread[];
 			printf("Failed to create vcpu\n");           											\
 			exit(1);                                    											\
 		}                                          													\
+		extern int vcpu_bind_task(vcpu_id_t);																					\
 		vcpu_bind_task(new_vcpu);                   												\
 		while (1) _loop##i ();                      												\
 	}                                         														\
