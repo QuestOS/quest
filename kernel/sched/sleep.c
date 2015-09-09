@@ -33,7 +33,7 @@
 #define DLOG(fmt,...) ;
 #endif
 
-static task_id sleepqueue = 0;
+static quest_tss * sleepqueue = NULL;
 
 extern uint64 tsc_freq;         /* timestamp counter frequency */
 
@@ -55,18 +55,16 @@ extern void
 sched_usleep (uint32 usec)
 {
   if (mp_enabled) {
-    task_id sel;
     quest_tss *tssp;
     uint64 finish = compute_finish (usec);
 #ifdef DEBUG_SCHED_SLEEP
     u64 now; RDTSC (now);
 #endif
-    sel = str ();
+    tssp = str ();
     DLOG ("task 0x%x sleeping for %d usec (0x%llX -> 0x%llX)",
-          sel, usec, now, finish);
-    tssp = lookup_TSS (sel);
+          tssp->tid, usec, now, finish);
     tssp->time = finish;
-    queue_append (&sleepqueue, sel);
+    queue_append (&sleepqueue, tssp);
 
     schedule ();
   } else
@@ -94,16 +92,16 @@ extern void
 process_sleepqueue (void)
 {
   uint64 now;
-  task_id *q, next;
+  quest_tss **q, *next;
   quest_tss *tssp;
 
   RDTSC (now);
 
-  if (sleepqueue == 0)
+  if (sleepqueue == NULL)
     return;
 
   q = &sleepqueue;
-  tssp = lookup_TSS (sleepqueue);
+  tssp = sleepqueue;
   DLOG ("process_sleepqueue 0x%llX", now);
   for (;;) {
     /* examine finish time of task */
@@ -120,44 +118,45 @@ process_sleepqueue (void)
       q = &tssp->next;
 
     /* move to next sleeper */
-    if (next == 0)
+    if (next == NULL)
       break;
-    tssp = lookup_TSS (*q);
+    tssp = *q;
   }
 }
 
 /* Detach a task from sleep queue. This is used in migration. */
 /* Must hold lock */
 extern bool
-sleepqueue_detach (task_id tid)
+sleepqueue_detach (quest_tss *task)
 {
-  task_id * q = NULL, next = 0;
-  quest_tss *tssp;
+  quest_tss **q = NULL;
+  quest_tss *tssp = NULL, *next = NULL;
+  task_id tid = task->tid;
 
-  if (sleepqueue == 0)
+  if (sleepqueue == NULL)
     return FALSE;
 
   q = &sleepqueue;
-  tssp = lookup_TSS (sleepqueue);
+  tssp = sleepqueue;
 
   for (;;) {
     next = tssp->next;
-    if (*q == tid) {
+    if ((*q)->tid == tid) {
       *q = next;
       return TRUE;
     }
     
-    if (next == 0)
+    if (next == NULL)
       return FALSE;
     q = &tssp->next;
-    tssp = lookup_TSS (*q);
+    tssp = *q;
   }
 
   return FALSE;
 }
 
 extern void
-sleepqueue_append (task_id tid)
+sleepqueue_append (quest_tss *tid)
 {
   queue_append (&sleepqueue, tid);
 }
