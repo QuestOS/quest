@@ -21,6 +21,8 @@
 #include "smp/spinlock.h"
 #include "util/circular-defs.h"
 
+struct _quest_tss;
+
 struct _circular 
 {
   void *buffer, *insert_ptr, *remove_ptr, *buffer_end;
@@ -28,7 +30,7 @@ struct _circular
   sint32 (*insert)(struct _circular *, void *, uint32);
   sint32 (*remove)(struct _circular *, void *, uint32);
   spinlock lock;
-  task_id ins_waitq, rem_waitq;
+  struct _quest_tss *ins_waitq, *rem_waitq;
 };
 
 typedef struct _circular circular;

@@ -71,7 +71,7 @@ uint32 td_phys, qh_phys;
 #define TD_P2V(ty,p) ((ty)((((uint) (p)) - td_phys)+((uint) td)))
 #define QH_P2V(ty,p) ((ty)((((uint) (p)) - qh_phys)+((uint) qh)))
 
-static task_id uhci_waitq = 0;  /* Tasks waiting for IRQ */
+static quest_tss *uhci_waitq = NULL;  /* Tasks waiting for IRQ */
 
 #define TERMINATE 1
 #define SELECT_TD 0

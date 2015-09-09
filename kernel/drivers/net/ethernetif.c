@@ -516,9 +516,9 @@ send:
 bool
 udp_bandwidth_init (void)
 {
-  task_id udpt = start_kernel_thread ((uint32) udp_bandwidth_thread, (uint32) &udp_band_stack,
+  quest_tss *udpt = start_kernel_thread ((uint32) udp_bandwidth_thread, (uint32) &udp_band_stack,
                                       "UDP Bandwidth Test");
-  lookup_TSS (udpt)->cpu = 0;
+  udpt->cpu = 0;
 
   logger_printf ("UDP Bandwidth Test Thread Started on sandbox %d...\n", get_pcpu_id ());
 
@@ -607,12 +607,12 @@ khttpd_accept (void* arg, struct tcp_pcb* pcb, err_t err)
   return ERR_OK;
 }
 
-static task_id khttpd_id;
+static quest_tss *khttpd_id;
 static u32 khttpd_stack[1024] ALIGNED (0x1000);
 static void
 khttpd_thread (void)
 {
-  logger_printf ("khttpd_thread: hello from 0x%x\n", str ());
+  logger_printf ("khttpd_thread: hello from 0x%x\n", str ()->tid);
   for (;;) {
     khttpd_msg_t msg;
     circular_remove (&khttpd_circ, &msg);
@@ -639,7 +639,7 @@ khttpd_init (void)
 
   khttpd_id =
     start_kernel_thread ((u32) khttpd_thread, (u32) &khttpd_stack[1023], "khttpd");
-  lookup_TSS (khttpd_id)->cpu = KHTTPD_CPU;
+  khttpd_id->cpu = KHTTPD_CPU;
   struct tcp_pcb* khttpd_pcb = tcp_new ();
   tcp_bind (khttpd_pcb, IP_ADDR_ANY, 80);
   khttpd_pcb = tcp_listen (khttpd_pcb);
@@ -793,7 +793,7 @@ getDebugChar (void)
 
 /* external init routine */
 
-static task_id net_tmr_pid;
+static quest_tss *net_tmr_pid;
 static uint32 net_tmr_stack[1024] ALIGNED (0x1000);
 
 #define NET_TMR_THREAD_WAIT_MSEC 50
@@ -801,7 +801,7 @@ static uint32 net_tmr_stack[1024] ALIGNED (0x1000);
 static void
 net_tmr_thread (void)
 {
-  DLOG ("net_tmr_thread id=0x%x, cpu=%d", str (), get_pcpu_id ());
+  DLOG ("net_tmr_thread id=0x%x, cpu=%d", str ()->tid, get_pcpu_id ());
   for (;;) {
     void net_tmr_process (void);
     net_tmr_process ();
@@ -823,7 +823,7 @@ net_init(void)
                                      (uint) &net_tmr_stack[1023],
                                      "Network Timer Thread");
   uint select_iovcpu (u32);
-  lookup_TSS (net_tmr_pid)->cpu = select_iovcpu (0);
+  net_tmr_pid->cpu = select_iovcpu (0);
   ethernet_device_count = 0;
 
 #ifdef GDBSTUB_TCP

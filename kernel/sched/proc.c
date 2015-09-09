@@ -73,17 +73,10 @@ tss_add_tail (quest_tss * new_tss)
 }
 
 void
-tss_remove (task_id tid)
+tss_remove (quest_tss *t)
 {
-  quest_tss * t;
-
-  for (t = &init_tss; ((t = t->next_tss) != &init_tss);) {
-    if (t->tid == tid) {
-      (t->prev_tss)->next_tss = t->next_tss;
-      (t->next_tss)->prev_tss = t->prev_tss;
-      return;
-    }
-  }
+  (t->prev_tss)->next_tss = t->next_tss;
+  (t->next_tss)->prev_tss = t->prev_tss;
 
   return;
 }
@@ -138,7 +131,7 @@ lookup_TSS (task_id tid)
   return NULL;
 }
 
-task_id
+quest_tss *
 alloc_thread_TSS (uint32_t child_directory,
                   uint32_t eip,
                   uint32_t child_eip,
@@ -160,8 +153,7 @@ alloc_thread_TSS (uint32_t child_directory,
    */
   if (!(pTSS = alloc_quest_tss ())) {
     com1_printf ("alloc_quest_tss failed!\n");
-    /* task_id = 0 means error since 0 belongs to idle TSS and is statically allocated */
-    return 0;
+    return NULL;
   }
 
   /* Clear virtual page before use. */
@@ -172,7 +164,7 @@ alloc_thread_TSS (uint32_t child_directory,
   virt_pgd = map_virtual_page (child_directory | 0x3);
   if (!virt_pgd) {
     com1_printf ("map_virtual_page failed in alloc_thread_TSS!\n");
-    return 0;
+    return NULL;
   }
 
   pTSS->CR3 = (u32) child_directory;
@@ -183,7 +175,7 @@ alloc_thread_TSS (uint32_t child_directory,
   klStack = find_and_map_kernel_level_stack (virt_pgd);
   if (klStack == -1) {
     com1_printf ("Kernel stack allocation failed!\n");
-    return 0;
+    return NULL;
   }
   //com1_printf ("Found new kernel stack: 0x%X\n", klStack);
   //com1_printf ("Parent ESP=0x%X\n", parent_esp);
@@ -248,12 +240,11 @@ alloc_thread_TSS (uint32_t child_directory,
 
   pTSS->cpu = BEST_EFFORT_VCPU;
   
-  /* Return the index into the GDT for the segment */
-  return pTSS->tid;
+  return pTSS;
 }
 
 /* Duplicate parent TSS -- used with fork */
-task_id
+quest_tss *
 duplicate_TSS (uint32 ebp,
                uint32 *esp,
                uint32 child_eip,
@@ -316,11 +307,10 @@ duplicate_TSS (uint32 ebp,
 
   pTSS->cpu = BEST_EFFORT_VCPU;
   
-  /* Return the index into the GDT for the segment */
-  return pTSS->tid;
+  return pTSS;
 }
 
-task_id
+quest_tss *
 alloc_idle_TSS (int cpu_num)
 {
   quest_tss *pTSS = (quest_tss *) (&idleTSS[cpu_num]);
@@ -351,12 +341,11 @@ alloc_idle_TSS (int cpu_num)
   memcpy (pTSS->name, name, strlen (name));
   pTSS->name[strlen (name)] = '\0';
 
-  /* Return the index into the GDT for the segment */
-  return pTSS->tid;
+  return pTSS;
 }
 
 /* Allocate a basic TSS */
-task_id
+quest_tss *
 alloc_TSS (void *pPageDirectory, void *pEntry, int mod_num)
 {
   quest_tss *pTSS = (quest_tss *) ul_tss[mod_num];
@@ -383,8 +372,7 @@ alloc_TSS (void *pPageDirectory, void *pEntry, int mod_num)
 
   semaphore_init (&pTSS->Msem, 1, 0);
 
-  /* Return the index into the GDT for the segment */
-  return pTSS->tid;
+  return pTSS;
 }
 
 

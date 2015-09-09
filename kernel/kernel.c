@@ -55,7 +55,7 @@ uint32 uls_pg_table[NR_MODS][1024] ALIGNED(0x1000);
 
 /* Each CPU gets an IDLE task -- something to do when nothing else */
 quest_tss idleTSS[MAX_CPUS] ALIGNED(0x1000);
-task_id idleTSS_selector[MAX_CPUS];
+quest_tss *idleTSS_selector[MAX_CPUS];
 
 /* Each CPU gets a CPU TSS for sw task switching */
 tss cpuTSS[MAX_CPUS];
@@ -418,13 +418,12 @@ set_idt_descriptor (uint8 n, idt_descriptor * d)
 }
 
 static bool kernel_threads_running = FALSE;
-static task_id kernel_thread_waitq = 0;
+static quest_tss *kernel_thread_waitq = NULL;
 
-task_id
+quest_tss *
 create_kernel_thread_vcpu_args (uint eip, uint esp, const char * name,
                                 u16 vcpu, bool run, uint n, ...)
 {
-  task_id pid;
   uint32 eflags;
   quest_tss * tss;
   extern u32 *pgd;              /* original page-global dir */
@@ -457,11 +456,10 @@ create_kernel_thread_vcpu_args (uint eip, uint esp, const char * name,
   esp -= sizeof (void *) * (n + 2);
 
   /* start kernel thread */
-  pid = duplicate_TSS (0, NULL,
+  tss = duplicate_TSS (0, NULL,
                        eip, 0, esp,
                        eflags, (uint32) page_dir);
 
-  tss = lookup_TSS (pid);
   tss->priority = 0x1f;
   if (vcpu != 0xFFFF) {
     tss->cpu = vcpu;
@@ -475,15 +473,15 @@ create_kernel_thread_vcpu_args (uint eip, uint esp, const char * name,
 
   if (run) {
     if (kernel_threads_running)
-      wakeup (pid);
+      wakeup (tss);
     else
-      queue_append (&kernel_thread_waitq, pid);
+      queue_append (&kernel_thread_waitq, tss);
   }
 
-  return pid;
+  return tss;
 }
 
-task_id
+quest_tss *
 start_kernel_thread (uint eip, uint esp, const char * name)
 {
   return create_kernel_thread_args (eip, esp, name, TRUE, 0);
@@ -502,25 +500,22 @@ void
 exit_kernel_thread (void)
 {
   uint8 LAPIC_get_physical_ID (void);
-  quest_tss *tss;
-  task_id tid;
-  task_id waiter;
+  quest_tss *tss, *waiter;
 
   //for (;;)
   //  sched_usleep (1000000);
 
-  tid = str ();
-  tss = lookup_TSS (tid);
+  tss = str ();
 
   /* All tasks waiting for us now belong on the runqueue. */
   while ((waiter = queue_remove_head (&tss->waitqueue)))
     wakeup (waiter);
 
-  tss_remove (tid);
+  tss_remove (tss);
   free_quest_tss (tss);
 
   /* clear current task */
-  ltr (0);
+  ltr (NULL);
 
   schedule ();
 
@@ -542,10 +537,9 @@ check_copied_threads (void)
 {
   uint cpu = get_pcpu_id ();
   quest_tss * t;
-  task_id q = 0;
   vcpu * queue = NULL;
   logger_printf ("Checking threads in sandbox %d\n", cpu);
-  logger_printf ("Current Task: 0x%X\n", str ());
+  logger_printf ("Current Task: 0x%X\n", str ()->tid);
 
   /* Check global (per-sandbox) queue headed by init_tss */
   logger_printf ("Checking threads in global queue...\n");
@@ -556,31 +550,29 @@ check_copied_threads (void)
 
   /* Check wait queue headed by kernel_thread_waitq */
   logger_printf ("Checking threads in kernel_thread_waitq...\n");
-  q = kernel_thread_waitq;
-  while (q) {
-    t = lookup_TSS (q);
+  t = kernel_thread_waitq;
+  while (t) {
     logger_printf ("  name: %s, task_id: 0x%X, affinity: %d, vcpu: %d\n",
                    t->name, t->tid, t->sandbox_affinity, t->cpu);
-    q = t->next;
+    t = t->next;
   }
 
   /* Check VCPU queues */
   logger_printf ("Checking VCPU run queues...\n");
   queue = percpu_read (vcpu_queue);
   /* Iterate VCPU queue */
-  while (queue) {
-    q = queue->runqueue;
+  while (queue) { 
     if (queue->tr) {
       logger_printf ("  vcpu 0x%X has current task:\n", queue);
-      t = lookup_TSS (queue->tr);
+      t = queue->tr;
       logger_printf ("    name: %s, task_id: 0x%X, affinity: %d, vcpu: 0x%X (%d)\n",
                      t->name, t->tid, t->sandbox_affinity, queue, t->cpu);
     }
-    while (q) {
-      t = lookup_TSS (q);
+    t = queue->runqueue;
+    while (t) {
       logger_printf ("  name: %s, task_id: 0x%X, affinity: %d, vcpu: 0x%X (%d)\n",
                      t->name, t->tid, t->sandbox_affinity, queue, t->cpu);
-      q = t->next;
+      t = t->next;
     }
     queue = queue->next;
   }

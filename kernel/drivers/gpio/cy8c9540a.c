@@ -370,7 +370,7 @@ int cy8c9540a_pwm_disable(unsigned pwm)
  */
 static uint32 cy8c9540a_interrupt_stack[1024] ALIGNED (0x1000);
 #ifndef NO_GPIO_IOVCPU
-task_id cy8c9540a_interrupt_pid;
+quest_tss * cy8c9540a_interrupt_tss;
 
 static void
 cy8c9540a_interrupt_thread()
@@ -693,11 +693,11 @@ bool cy8c9540a_setup()
 	}
 
 #ifndef NO_GPIO_IOVCPU
-	cy8c9540a_interrupt_pid = start_kernel_thread(
+	cy8c9540a_interrupt_tss = start_kernel_thread(
 			(uint) cy8c9540a_interrupt_thread,
 			(uint)&cy8c9540a_interrupt_stack[1023],
 			"Cy8c9540a Interrupt Thread");
-	lookup_TSS(cy8c9540a_interrupt_pid)->cpu = select_iovcpu(1<<5);
+	cy8c9540a_interrupt_tss->cpu = select_iovcpu(1<<5);
 #endif
 
 	//cy8c9540a_test();

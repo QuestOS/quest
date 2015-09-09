@@ -105,7 +105,7 @@ typedef struct _quest_tss
   struct _semaphore Msem;
   u32 M[NUM_M];
 
-  task_id next;                 /* selector for next TSS in corresponding queue
+  struct _quest_tss *next;      /* selector for next TSS in corresponding queue
                                    (beit the runqueue for the CPU or a waitqueue for
                                    a resource; 0 if task is at end of queue. If a
                                    task is runnable 'next' refers to a TSS selector
@@ -113,7 +113,7 @@ typedef struct _quest_tss
                                    resource, 'next' refers to a TSS selector on the
                                    corresponding waitqueue; for all other cases,
                                    'next' is irrelevant */
-  task_id waitqueue;            /* queue of other tasks waiting for this
+  struct _quest_tss *waitqueue; /* queue of other tasks waiting for this
                                    one -- either attempting to send IPC to it,
                                    or waiting for it to exit */
   bool busy;                    /* mutex for server: when busy, clients must add themselves to
@@ -163,7 +163,7 @@ find_fd (quest_tss *tss)
 
 extern quest_tss init_tss;
 
-extern task_id
+extern quest_tss *
 duplicate_TSS (uint32 ebp,
                uint32 *esp,
                uint32 child_eip,
@@ -172,7 +172,7 @@ duplicate_TSS (uint32 ebp,
                uint32 child_eflags,
                uint32 child_directory);
 
-extern task_id
+extern quest_tss *
 alloc_thread_TSS (uint32_t child_directory,
                   uint32_t eip,
                   uint32_t child_eip,
@@ -183,13 +183,13 @@ alloc_thread_TSS (uint32_t child_directory,
                   quest_tss * mTSS);
 extern quest_tss * alloc_quest_tss (void);
 extern void free_quest_tss (quest_tss *tss);
-extern task_id alloc_idle_TSS (int cpu_num);
-extern task_id alloc_TSS (void *pPageDirectory, void *pEntry, int mod_num);
+extern quest_tss * alloc_idle_TSS (int cpu_num);
+extern quest_tss * alloc_TSS (void *pPageDirectory, void *pEntry, int mod_num);
 extern quest_tss *lookup_TSS (task_id tid);
 extern void tss_add_head (quest_tss * new_tss);
 extern void tss_add_tail (quest_tss * new_tss);
 extern task_id new_task_id (void);
-extern void tss_remove (task_id tid);
+extern void tss_remove (quest_tss *t);
 
 static inline quest_tss *
 parent_TSS (quest_tss *tss)

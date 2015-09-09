@@ -508,10 +508,10 @@ stat_thread_init (void)
   sandbox = get_pcpu_id ();
 #endif
 
-  task_id stat_id = 0;
+  quest_tss *stat_id = NULL;
 
   stat_id = start_kernel_thread ((u32) statistics_thread, (u32) &stat_stack[1023], "Stats");
-  lookup_TSS (stat_id)->cpu = 1;
+  stat_id->cpu = 1;
 
   DLOG ("Statistics Thread Created on Sandbox %d, Thread ID is: 0x%x...\n", sandbox, stat_id);
   return TRUE;
@@ -525,8 +525,9 @@ msgt_init (void)
   sandbox = get_pcpu_id ();
 #endif
 
-  msgt_id = start_kernel_thread ((u32) msg_thread, (u32) &msgt_stack[1023], "MSGT init");
-  lookup_TSS (msgt_id)->cpu = 1;
+  quest_tss *tss = start_kernel_thread ((u32) msg_thread, (u32) &msgt_stack[1023], "MSGT init");
+  msgt_id = tss->tid;
+  tss->cpu = 1;
 
   DLOG ("Communication Thread Created on Sandbox %d, Thread ID is: 0x%x...\n", sandbox, msgt_id);
   return TRUE;

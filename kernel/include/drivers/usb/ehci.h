@@ -701,7 +701,7 @@ typedef struct
   
   uint32_t bh_stack[EHCI_IOC_BH_THREAD_STACK_SIZE];
 
-  task_id master_iovcpu;
+  quest_tss *master_iovcpu;
 #endif
 
 

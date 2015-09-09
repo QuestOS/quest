@@ -852,7 +852,7 @@ static tx_qbuf_t tx_circ_buf[TX_BUF_LEN];
 static void
 tx_thread (void)
 {
-  DLOGTX ("tx: hello from 0x%x", str ());
+  DLOGTX ("tx: hello from 0x%x", str ()->tid);
   for (;;) {
     tx_qbuf_t qb;
     circular_remove (&tx_circ, &qb);
@@ -1225,8 +1225,8 @@ rx_thread (void)
   u32 act_len;
   int i;
 
-  DLOG ("rx: hello from 0x%x", str ());
-  lookup_TSS (str ())->priority = 0;
+  DLOG ("rx: hello from 0x%x", str ()->tid);
+  str ()->priority = 0;
   for (;;) {
     if (usb_bulk_transfer (usbdev, RX_EPT, &buf, sizeof (buf),
                            RX_MAXPKT, USB_DIR_IN, &act_len) == 0) {
@@ -1249,7 +1249,7 @@ rx_thread (void)
 static void
 status_thread (void)
 {
-  DLOG ("status: hello from 0x%x", str ());
+  DLOG ("status: hello from 0x%x", str ()->tid);
   for (;;) {
   }
 }

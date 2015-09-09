@@ -153,7 +153,7 @@ static void
 irq_loop (void)
 {
   uint32 tick = 0;
-  DLOG ("irq_loop pid=0x%x", str ());
+  DLOG ("irq_loop pid=0x%x", str ()->tid);
   for (;;) {
     poll ();
     DLOG ("iteration %d", tick);
@@ -162,7 +162,7 @@ irq_loop (void)
 }
 
 static uint32 irq_stack[1024] ALIGNED(0x1000);
-static task_id irq_pid;
+static quest_tss *irq_pid;
 
 static bool
 probe (USB_DEVICE_INFO *info, USB_CFG_DESC *cfgd, USB_IF_DESC *ifd)

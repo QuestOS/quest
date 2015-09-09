@@ -379,7 +379,7 @@ static void
 irq_loop (void)
 {
   uint32 tick = 0;
-  DLOG ("irq_loop pid=0x%x", str ());
+  DLOG ("irq_loop pid=0x%x", str ()->tid);
   for (;;) {
     poll ();
     DLOG ("iteration %d", tick);
@@ -392,7 +392,7 @@ status_loop (void)
 {
   uint32 tick = 0, act_len;
   uint32 status[2];
-  DLOG ("status_loop pid=0x%x", str ());
+  DLOG ("status_loop pid=0x%x", str ()->tid);
   for (;;) {
     if (usb_bulk_transfer (ethusbdev, status_ept, (uint8 *)&status, 8,
                            status_maxpkt, USB_DIR_IN, &act_len) == 0) {
@@ -414,7 +414,7 @@ status_loop (void)
 
 
 static uint32 irq_stack[1024] ALIGNED(0x1000);
-static task_id irq_pid;
+static quest_tss *irq_pid;
 
 static uint32 status_stack[1024] ALIGNED(0x1000);
 static task_id status_pid;

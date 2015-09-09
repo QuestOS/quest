@@ -86,11 +86,7 @@ static bool populate_hash_dump(fault_detection_hash_dumps_t* hash_dumps,
 static int _syscall_fault_detection(uint action, uint key, uint sink_sandbox)
 {
 #ifdef USE_VMX
-  quest_tss * tss;
-  task_id cur = percpu_read (current_task);
-
-  if (!cur) return -1;
-  tss = lookup_TSS(cur);
+  quest_tss * tss = percpu_read (current_task);
   if(!tss) return -1;
   if(sink_sandbox >= SHM_MAX_SANDBOX) return -1;
   

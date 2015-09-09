@@ -101,8 +101,8 @@ typedef struct _vcpu
       struct _vcpu *next;       /* next vcpu in a queue */
       bool runnable, running;
       u16 cpu;                  /* cpu affinity for vcpu */
-      task_id tr;               /* task register */
-      task_id runqueue;         /* per-VCPU runqueue */
+      quest_tss *tr;               /* task register */
+      quest_tss *runqueue;         /* per-VCPU runqueue */
       u32 quantum;              /* internal VCPU scheduling quantum */
       u64 next_schedule;        /* when to trigger internal schedule */
       u64 prev_tsc;             /* when started running */
@@ -156,8 +156,8 @@ CASSERT (sizeof (vcpu) == VCPU_ALIGNMENT, vcpu);
 
 extern u64 vcpu_current_vtsc (void);
 
-extern void iovcpu_job_wakeup (task_id job, u64 T);
-extern void iovcpu_job_wakeup_for_me (task_id job);
+extern void iovcpu_job_wakeup (quest_tss *job, u64 T);
+extern void iovcpu_job_wakeup_for_me (quest_tss *job);
 extern void iovcpu_job_completion (void);
 
 extern vcpu_id_t create_vcpu(struct sched_param* params, vcpu** vcpu_p);
@@ -166,10 +166,10 @@ extern void vcpu_destroy(vcpu_id_t vcpu_index);
 
 extern vcpu_id_t lowest_priority_vcpu (void);
 extern uint select_iovcpu (iovcpu_class);
-extern void set_iovcpu (task_id, iovcpu_class);
+extern void set_iovcpu (quest_tss *, iovcpu_class);
 extern vcpu * vcpu_lookup (vcpu_id_t);
-extern bool vcpu_in_runqueue (vcpu *, task_id);
-extern void vcpu_remove_from_runqueue (vcpu *, task_id);
+extern bool vcpu_in_runqueue (vcpu *, quest_tss *);
+extern void vcpu_remove_from_runqueue (vcpu *, quest_tss *);
 extern bool vcpu_fix_replenishment (quest_tss*, vcpu*, replenishment[], bool remote_tsc_diff,
                                     uint64 remote_tsc);
 #ifdef USE_VMX

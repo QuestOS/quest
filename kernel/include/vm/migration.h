@@ -33,7 +33,7 @@
  * This physical address will be passed to remote sandox for further
  * migration process.
  */
-extern void * detach_task (task_id tid, bool phys_addr);
+extern void * detach_task (quest_tss *tss, bool phys_addr);
 
 /* attach_task add a (migrated) task into the local sandbox scheduler. This
  * includes adding quest_tss to per-sandbox quest_tss list and vcpu run queue.
@@ -53,7 +53,7 @@ extern int attach_task (quest_tss * new_tss, bool remote_tsc_diff,
  * quest_tss etc.).
  * This is similar to an exit() system call.
  */
-extern void destroy_task (task_id tid);
+extern void destroy_task (quest_tss *tss);
 
 
 #ifdef USE_VMX

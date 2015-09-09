@@ -459,7 +459,7 @@ AcpiOsGetThreadId (void)
 
   /* After whining it defaults to ThreadId=1.  So let's just shut it
    * up here and now. */
-  return str () || 1;
+  return (str ()->tid) || 1;
 }
 
 

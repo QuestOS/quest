@@ -363,7 +363,7 @@ mdi_write (uint8 phy_reg, uint16 val)
 #endif
 
 static uint32 e1000_bh_stack[1024] ALIGNED (0x1000);
-static task_id e1000_bh_id = 0;
+static quest_tss *e1000_bh_id = NULL;
 static void
 e1000_bh_thread (void)
 {

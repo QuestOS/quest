@@ -20,11 +20,13 @@
 #include "types.h"
 #include "smp/spinlock.h"
 
+struct _quest_tss;
+
 struct _semaphore
 {
   int s, max;
   spinlock lock;
-  task_id waitqueue;
+  struct _quest_tss *waitqueue;
 };
 typedef struct _semaphore semaphore;
 

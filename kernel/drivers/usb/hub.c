@@ -348,10 +348,10 @@ extern bool
 usb_hub_driver_init (void)
 {
 #ifdef ENABLE_HOT_PLUG
-  task_id t= start_kernel_thread((u32)hub_hot_plugable_thread,
+  quest_tss *t= start_kernel_thread((u32)hub_hot_plugable_thread,
                        (u32) &usb_hotplug_stack[HUB_HOTPLUG_STACK_SIZE - 1],
                        "USB Hotplug");
-  DLOG("hub task id = 0x%X", t);
+  DLOG("hub task id = 0x%X", t->tid);
 #endif
   return usb_register_driver (&hub_driver);
 }

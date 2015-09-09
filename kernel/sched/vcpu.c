@@ -127,15 +127,15 @@ vcpu_unlock (vcpu *vcpu)
 /* locked functions */
 
 bool
-vcpu_in_runqueue (vcpu *vcpu, task_id task)
+vcpu_in_runqueue (vcpu *vcpu, quest_tss *task)
 {
-  task_id i = vcpu->runqueue;
+  quest_tss *i = vcpu->runqueue;
 
-  while (i != 0) {
+  while (i != NULL) {
     if (task == i) return TRUE;
-    i = lookup_TSS (i)->next;
+    i = i->next;
   }
-  return task == i;
+  return task == NULL;
 }
 
 void vcpu_queue_remove(vcpu** queue, vcpu* vcpu)
@@ -159,15 +159,15 @@ void vcpu_destroy(vcpu_id_t vcpu_index)
 }
 
 void
-vcpu_remove_from_runqueue (vcpu *vcpu, task_id task)
+vcpu_remove_from_runqueue (vcpu *vcpu, quest_tss *task)
 {
-  task_id *q = &vcpu->runqueue;
-  while (*q != 0) {
-    if (*q == task) {
-      *q = lookup_TSS (*q)->next;
+  quest_tss **q = &vcpu->runqueue;
+  while (*q != NULL) {
+    if ((*q) == task) {
+      *q = (*q)->next;
       return;
     }
-    q = &lookup_TSS (*q)->next;
+    q = &(*q)->next;
   }
 }
 
@@ -194,7 +194,7 @@ vcpu_internal_schedule (vcpu *vcpu)
 }
 
 void
-vcpu_runqueue_append (vcpu *vcpu, task_id task)
+vcpu_runqueue_append (vcpu *vcpu, quest_tss *task)
 {
   queue_append (&vcpu->runqueue, task);
 }
@@ -268,9 +268,9 @@ INIT_PER_CPU (vcpu_current) {
   percpu_write (vcpu_current, NULL);
 }
 
-DEF_PER_CPU (task_id, vcpu_idle_task);
+DEF_PER_CPU (quest_tss *, vcpu_idle_task);
 INIT_PER_CPU (vcpu_idle_task) {
-  percpu_write (vcpu_idle_task, 0);
+  percpu_write (vcpu_idle_task, NULL);
 }
 
 /* task accounting */
@@ -323,7 +323,7 @@ vcpu_acnt_begin_timeslice (vcpu *vcpu)
 extern void
 vcpu_rr_schedule (void)
 {
-  task_id next = 0;
+  quest_tss *next = NULL;
   vcpu
     *queue = percpu_read (vcpu_queue),
     *cur   = percpu_read (vcpu_current),
@@ -349,12 +349,12 @@ vcpu_rr_schedule (void)
   if (vcpu)
     /* handle beginning-of-timeslice accounting */
     vcpu_acnt_begin_timeslice (vcpu);
-  if (next == 0) {
+  if (next == NULL) {
     /* no task selected, go idle */
     next = percpu_read (vcpu_idle_task);
     percpu_write (vcpu_current, NULL);
   }
-  if (next == 0) {
+  if (next == NULL) {
     /* workaround: vcpu_idle_task was not initialized yet */
     next = idleTSS_selector[get_pcpu_id ()];
     percpu_write (vcpu_idle_task, next);
@@ -676,7 +676,7 @@ extern bool migration_thread_ready;
 extern void
 vcpu_schedule (void)
 {
-  task_id next = 0;
+  quest_tss *next = NULL;
 
 #ifdef USE_VMX
   vcpu * mvcpu = NULL;
@@ -793,16 +793,16 @@ vcpu_schedule (void)
 #ifdef USE_VMX
   /* Check migration request */
   if (str () != next) {
-    quest_tss * tss = lookup_TSS (str ());
+    quest_tss * tss = str ();
     uint32 * ph_tss = NULL;
-    task_id waiter;
+    quest_tss *waiter;
     uint current_cpu = get_pcpu_id ();
 
     if (tss) {
       if (tss->sandbox_affinity != current_cpu) {
         DLOG ("Migration Request: taskid=0x%X, src=%d, dest=%d, vcpu=%d",
-            str (), current_cpu, tss->sandbox_affinity, tss->cpu);
-        DLOG ("Current task: 0x%X, Next task: 0x%X", str (), next);
+            str ()->tid, current_cpu, tss->sandbox_affinity, tss->cpu);
+        DLOG ("Current task: 0x%X, Next task: 0x%X", str ()->tid, next->tid);
         mvcpu = vcpu_lookup (tss->cpu);
         if (!mvcpu) {
           logger_printf ("No VCPU (%d) associated with Task 0x%X\n", tss->cpu, tss->tid);
@@ -828,7 +828,7 @@ vcpu_schedule (void)
             //  goto resume_schedule;
             //}
             /* Detach the migrating task from local scheduler */
-            ph_tss = detach_task (tss->tid, TRUE);
+            ph_tss = detach_task (tss, TRUE);
             DLOG ("Process quest_tss to be migrated: 0x%X", ph_tss);
             /* Add the migrating process to migration queue of destination sandbox */
             shm->migration_queue[tss->sandbox_affinity] = ph_tss;
@@ -863,14 +863,14 @@ vmx_migration_end:
 #ifdef USB_MIGRATION
   /* Check migration request */
   if (str () != next) {
-    quest_tss * tss = lookup_TSS (str ());
+    quest_tss * tss = str ();
     uint32 * ph_tss = NULL;
-    task_id waiter;
+    quest_tss *waiter;
     if (tss) {
       if (tss->machine_affinity) {
         DLOG ("Migration Request to another machine: taskid=0x%X, vcpu=%d",
-            str (), tss->cpu);
-        DLOG ("Current task: 0x%X, Next task: 0x%X", str (), next);
+            str ()->tid, tss->cpu);
+        DLOG ("Current task: 0x%X, Next task: 0x%X", str ()->tid, next->tid);
         mvcpu = vcpu_lookup (tss->cpu);
         if (!mvcpu) {
           logger_printf ("No VCPU (%d) associated with Task 0x%X\n", tss->cpu, tss->tid);
@@ -882,7 +882,7 @@ vmx_migration_end:
           }
           else {
             /* Detach the migrating task from local scheduler */
-            ph_tss = detach_task (tss->tid, FALSE);
+            ph_tss = detach_task (tss, FALSE);
             if(!ph_tss) {
               DLOG("Failed to detach task for usb migration");
               panic("Failed to detach task for usb migration");
@@ -920,12 +920,12 @@ vmx_migration_end:
 #endif
   } else
     idle_time_acnt_begin ();
-  if (next == 0) {
+  if (next == NULL) {
     /* no task selected, go idle */
     next = percpu_read (vcpu_idle_task);
     percpu_write (vcpu_current, NULL);
   }
-  if (next == 0) {
+  if (next == NULL) {
     /* workaround: vcpu_idle_task was not initialized yet */
     next = idleTSS_selector[get_pcpu_id ()];
     percpu_write (vcpu_idle_task, next);
@@ -950,22 +950,21 @@ vmx_migration_end:
 }
 
 extern void
-vcpu_wakeup (task_id task)
+vcpu_wakeup (quest_tss *tssp)
 {
-  quest_tss *tssp = lookup_TSS (task);
-  extern bool sleepqueue_detach (task_id);
+  extern bool sleepqueue_detach (quest_tss *t);
 
   /* assign to vcpu BEST_EFFORT_VCPU if not already set */
   if (tssp->cpu == 0xFF) {
     tssp->cpu = BEST_EFFORT_VCPU;
   }
 
-  sleepqueue_detach (task);
+  sleepqueue_detach (tssp);
 
   vcpu *v = vcpu_lookup (tssp->cpu);
 
   /* put task on vcpu runqueue (2nd level) */
-  vcpu_runqueue_append (v, task);
+  vcpu_runqueue_append (v, tssp);
 
   /* put vcpu on pcpu queue (1st level) */
   vcpu_queue_append (percpu_pointer (v->cpu, vcpu_queue), v);
@@ -1237,19 +1236,18 @@ io_vcpu_unblock (vcpu *v)
 }
 
 extern void
-iovcpu_job_wakeup (task_id job, u64 T)
+iovcpu_job_wakeup (quest_tss *tssp, u64 T)
 {
-  quest_tss *tssp = lookup_TSS (job);
   vcpu *v = vcpu_lookup (tssp->cpu);
   if (v->type == IO_VCPU) {
     if (T < v->T || !(v->running || v->runnable))
       v->T = T;
   }
-  wakeup (job);
+  wakeup (tssp);
 }
 
 extern void
-iovcpu_job_wakeup_for_me (task_id job)
+iovcpu_job_wakeup_for_me (quest_tss *job)
 {
   vcpu *cur = percpu_read (vcpu_current);
   if (cur)
@@ -1293,14 +1291,14 @@ select_iovcpu (iovcpu_class class)
 }
 
 extern void
-set_iovcpu (task_id task, iovcpu_class class)
+set_iovcpu (quest_tss *task, iovcpu_class class)
 {
   uint i = select_iovcpu (class);
 #if 0
   logger_printf ("iovcpu: task 0x%x requested class 0x%x and got IO-VCPU %d\n",
                  task, class, i);
 #endif
-  lookup_TSS (task)->cpu = i;
+  task->cpu = i;
 }
 
 static vcpu_hooks io_vcpu_hooks = {
@@ -1583,7 +1581,7 @@ vcpu_reset (void)
  
   percpu_write (vcpu_queue, NULL);
   percpu_write (vcpu_current, NULL);
-  percpu_write (vcpu_idle_task, 0);
+  percpu_write (vcpu_idle_task, NULL);
 }
 #endif
 

@@ -127,18 +127,10 @@ static int
 sys_call_open_socket (int domain, int type, int protocol)
 {
   int sockfd = 0;
-  quest_tss * tss;
-  task_id cur = percpu_read (current_task);
+  quest_tss * tss = percpu_read (current_task);
 
-  if (!cur) {
+  if (!tss) {
     logger_printf ("No current task\n");
-    return -1;
-  }
-
-  tss = lookup_TSS (cur);
-
-  if (tss == NULL) {
-    logger_printf ("Task 0x%x does not exist\n", cur);
     return -1;
   }
 
@@ -230,17 +222,10 @@ sys_call_close (int filedes)
 {
   quest_tss * tss;
   err_t err;
-  task_id cur = percpu_read (current_task);
+  tss = percpu_read (current_task);
 
-  if (!cur) {
+  if (!tss) {
     logger_printf ("No current task\n");
-    return -1;
-  }
-
-  tss = lookup_TSS (cur);
-
-  if (tss == NULL) {
-    logger_printf ("Task 0x%x does not exist\n", cur);
     return -1;
   }
 
@@ -287,17 +272,10 @@ sys_call_bind (int sockfd, uint32_t addr, uint16_t port)
   quest_tss * tss;
   err_t err;
   fd_table_entry_t fd_ent;
-  task_id cur = percpu_read (current_task);
+  tss = percpu_read (current_task);
 
-  if (!cur) {
+  if (!tss) {
     logger_printf ("No current task\n");
-    return -1;
-  }
-
-  tss = lookup_TSS (cur);
-
-  if (tss == NULL) {
-    logger_printf ("Task 0x%x does not exist\n", cur);
     return -1;
   }
 
@@ -355,17 +333,10 @@ sys_call_connect (int sockfd, uint32_t addr, uint16_t port)
   quest_tss * tss;
   err_t err;
   fd_table_entry_t fd_ent;
-  task_id cur = percpu_read (current_task);
+  tss = percpu_read (current_task);
 
-  if (!cur) {
+  if (!tss) {
     logger_printf ("No current task\n");
-    return -1;
-  }
-
-  tss = lookup_TSS (cur);
-
-  if (tss == NULL) {
-    logger_printf ("Task 0x%x does not exist\n", cur);
     return -1;
   }
 
@@ -468,18 +439,11 @@ sys_call_listen (int sockfd, int backlog)
 {
   quest_tss * tss;
   fd_table_entry_t fd_ent;
-  task_id cur = percpu_read (current_task);
+  tss = percpu_read (current_task);
   struct tcp_pcb *new_pcb;
 
-  if (!cur) {
+  if (!tss) {
     logger_printf ("No current task\n");
-    return -1;
-  }
-
-  tss = lookup_TSS (cur);
-
-  if (tss == NULL) {
-    logger_printf ("Task 0x%x does not exist\n", cur);
     return -1;
   }
 
@@ -510,19 +474,12 @@ sys_call_accept (int sockfd, void *addr, void *len)
 {
   quest_tss * tss;
   fd_table_entry_t fd_ent;
-  task_id cur = percpu_read (current_task);
+  tss = percpu_read (current_task);
   struct tcp_pcb *new_tpcb;
   int new_sockfd = -1;
 
-  if (!cur) {
+  if (!tss) {
     logger_printf ("No current task\n");
-    return -1;
-  }
-
-  tss = lookup_TSS (cur);
-
-  if (tss == NULL) {
-    logger_printf ("Task 0x%x does not exist\n", cur);
     return -1;
   }
 
@@ -572,7 +529,7 @@ sys_call_write (int filedes, const void *buf, int nbytes)
   err_t err;
   struct pbuf *p = NULL;
   fd_table_entry_t fd_ent;
-  task_id cur = percpu_read (current_task);
+  tss = percpu_read (current_task);
   uint16 sndbuf_len = 0;
   int nbytes_sent = nbytes;
   static bool first = TRUE;
@@ -597,15 +554,8 @@ sys_call_write (int filedes, const void *buf, int nbytes)
   if (first) { splash_screen (); first = FALSE; }
 #endif
 
-  if (!cur) {
+  if (!tss) {
     logger_printf ("No current task\n");
-    return -1;
-  }
-
-  tss = lookup_TSS (cur);
-
-  if (tss == NULL) {
-    logger_printf ("Task 0x%x does not exist\n", cur);
     return -1;
   }
 
@@ -687,17 +637,10 @@ sys_call_sendto (int sockfd, const void *buf, int nbytes, uint32 addr, uint16 po
   err_t err;
   struct pbuf *p = NULL;
   fd_table_entry_t fd_ent;
-  task_id cur = percpu_read (current_task);
+  tss = percpu_read (current_task);
 
-  if (!cur) {
+  if (!tss) {
     logger_printf ("No current task\n");
-    return -1;
-  }
-
-  tss = lookup_TSS (cur);
-
-  if (tss == NULL) {
-    logger_printf ("Task 0x%x does not exist\n", cur);
     return -1;
   }
 
@@ -745,21 +688,14 @@ sys_call_recv (int sockfd, void *buf, int nbytes, void *addr, void *len)
 {
   quest_tss * tss;
   fd_table_entry_t fd_ent;
-  task_id cur = percpu_read (current_task);
+  tss = percpu_read (current_task);
   int nbytes_recvd = 0;
   struct pbuf *q = NULL;
   char *b = buf;
   int buf_index = 0;
 
-  if (!cur) {
+  if (!tss) {
     logger_printf ("No current task\n");
-    return -1;
-  }
-
-  tss = lookup_TSS (cur);
-
-  if (tss == NULL) {
-    logger_printf ("Task 0x%x does not exist\n", cur);
     return -1;
   }
 
@@ -905,8 +841,7 @@ sys_call_select (int maxfdp1, fd_set * readfds, fd_set * writefds,
                  fd_set * exceptfds, struct timeval * tvptr)
 {
   int i = 0, count = 0;
-  quest_tss * tss;
-  task_id cur = percpu_read (current_task);
+  quest_tss * tss = percpu_read (current_task);
   fd_set read_ready;
   bool ready = FALSE;
   int wait_count = 0;
@@ -915,16 +850,8 @@ sys_call_select (int maxfdp1, fd_set * readfds, fd_set * writefds,
 
   lock_kernel ();
 
-  if (!cur) {
+  if (!tss) {
     logger_printf ("No current task\n");
-    count = 0;
-    goto finish;
-  }
-
-  tss = lookup_TSS (cur);
-
-  if (tss == NULL) {
-    logger_printf ("Task 0x%x does not exist\n", cur);
     count = 0;
     goto finish;
   }
@@ -1116,19 +1043,12 @@ sys_call_getsockname (int sockfd, void *addr, void *len)
 {
   quest_tss * tss;
   fd_table_entry_t fd_ent;
-  task_id cur = percpu_read (current_task);
+  tss = percpu_read (current_task);
   struct tcp_pcb *tpcb;
   struct udp_pcb *upcb;
 
-  if (!cur) {
+  if (!tss) {
     logger_printf ("No current task\n");
-    return -1;
-  }
-
-  tss = lookup_TSS (cur);
-
-  if (tss == NULL) {
-    logger_printf ("Task 0x%x does not exist\n", cur);
     return -1;
   }
 
@@ -1237,26 +1157,18 @@ sys_call_recovery (int arg)
 int sys_call_fcntl(int fd, int cmd, void* extra_arg)
 {
   quest_tss * tss;
-  task_id cur;
   int res;
   
   lock_kernel();
 
-  cur = percpu_read (current_task);
+  tss = percpu_read (current_task);
 
-  if (!cur) {
+  if (!tss) {
     logger_printf ("No current task\n");
     unlock_kernel();
     return -1;
   }
 
-  tss = lookup_TSS (cur);
-
-  if (tss == NULL) {
-    logger_printf ("Task 0x%x does not exist\n", cur);
-    unlock_kernel();
-    return -1;
-  }
   if(!tss->fd_table[fd].entry) {
     unlock_kernel();
     return -1;

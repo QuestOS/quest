@@ -121,8 +121,8 @@ void stacktrace (void);
 
 void tsc_delay_usec (uint32 usec);
 
-task_id start_kernel_thread (uint eip, uint esp, const char * name);
-task_id create_kernel_thread_vcpu_args (uint eip, uint esp, const char * name,
+quest_tss * start_kernel_thread (uint eip, uint esp, const char * name);
+quest_tss * create_kernel_thread_vcpu_args (uint eip, uint esp, const char * name,
                                         u16 vcpu, bool run, uint n, ...);
 
 #define create_kernel_thread_args(eip, esp, name, run, n, ...)    \
@@ -159,7 +159,7 @@ extern quest_tss idleTSS[MAX_CPUS];
 
 extern tss cpuTSS[MAX_CPUS];
 
-extern task_id idleTSS_selector[MAX_CPUS];
+extern quest_tss *idleTSS_selector[MAX_CPUS];
 
 extern uint16 cpuTSS_selector[MAX_CPUS];
 

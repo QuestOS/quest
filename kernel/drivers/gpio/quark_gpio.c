@@ -206,15 +206,15 @@ quark_irq_handler(uint8 vec)
 	 * will be allowed to deliver only after bottom half
 	 * unmasks it */
 	quark_gpio_mask_interrupt(CYPRESS_INT_LINE);
-	extern task_id cy8c9540a_interrupt_pid;
+	extern quest_tss * cy8c9540a_interrupt_tss;
 	extern int gpio_handler_T_min_tid;
-	extern void iovcpu_job_wakeup (task_id job, u64 T);
+	extern void iovcpu_job_wakeup (quest_tss *job, u64 T);
 	/* wake up the interrupt handler thread.
 	 * T is the smallest T of main vcpus that
 	 * are using this iovcpu's service */
 	vcpu_id_t vcpu_id = lookup_TSS(gpio_handler_T_min_tid)->cpu;
 	u64 T = vcpu_lookup(vcpu_id)->T;
-	iovcpu_job_wakeup(cy8c9540a_interrupt_pid, T);
+	iovcpu_job_wakeup(cy8c9540a_interrupt_tss, T);
 #else
 	/* if we are not using bottom half thread, there is
 	 * no need to mask gpio interrupt since system interrupt

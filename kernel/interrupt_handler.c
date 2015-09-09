@@ -231,7 +231,7 @@ handle_interrupt (u32 edi, u32 esi, u32 ebp, u32 _esp, u32 ebx, u32 edx, u32 ecx
   _printf ("EFL=%.8X EIP=%.8X\n", eflags, eip);
   _printf ("CR0=%.8X CR2=%.8X\nCR3=%.8X TR=%.4X\n", cr0, cr2, cr3, tr);
   _printf (" CS=%.4X SS=%.4X DS=%.4X FS=%.4X\n", cs, ss, ds, fs);
-  _printf ("CURRENT=0x%X\n", percpu_read (current_task));
+  _printf ("CURRENT=0x%X\n", percpu_read (current_task)->tid);
   stacktrace_frame (esp, ebp);
 
   if(ulInt == 0x10) {
@@ -375,14 +375,12 @@ syscall_usb (u32 eax, u32 ebx, u32 ecx, u32 edx, u32 esi)
 
   /* -- EM -- Need to do error checking of arguments */
   
-  task_id cur = percpu_read (current_task);
+  tss = percpu_read (current_task);
 
-  if (!cur) {
+  if (!tss) {
     logger_printf ("No current task\n");
     return -1;
   }
-
-  tss = lookup_TSS(cur);
   
 #if 0
   com1_printf("In %s called with arguments: (%d, %d, %d, %d, %d)\n", __FUNCTION__,
@@ -422,7 +420,7 @@ syscall_usb (u32 eax, u32 ebx, u32 ecx, u32 edx, u32 esi)
 static int
 syscall_getpid (u32 eax, u32 ebx, u32 ecx, u32 edx, u32 esi)
 {
-  return str();
+  return str()->tid;
 }
 
 static vcpu_id_t syscall_vcpu_create(u32 eax, u32 ebx, u32 ecx, u32 edx, u32 esi)
@@ -432,8 +430,7 @@ static vcpu_id_t syscall_vcpu_create(u32 eax, u32 ebx, u32 ecx, u32 edx, u32 esi
 
 static int syscall_vcpu_bind_task(u32 eax, vcpu_id_t new_vcpu_index, u32 ecx, u32 edx, u32 esi)
 {
-  task_id t_id = str();
-  quest_tss *tssp = lookup_TSS(t_id);
+  quest_tss *tssp = str();
   vcpu* new_vcpu;
   
   if(!tssp) return -1;
@@ -474,7 +471,7 @@ static int syscall_vcpu_destroy(u32 eax, vcpu_id_t vcpu_index, u32 force, u32 ed
 static int syscall_vcpu_getparams(u32 eax, struct sched_param* sched_param,
                                   u32 ecx, u32 edx, u32 esi)
 {
-  quest_tss *tssp = lookup_TSS(str());
+  quest_tss *tssp = str();
   if(!sched_param) return -1;
   if(tssp) {
     vcpu* v = vcpu_lookup(tssp->cpu);
@@ -595,7 +592,7 @@ int syscall_lseek(u32 eax, int file, int ptr, int dir, u32 esi)
 
   fd_table_entry_t* fd_entry;
   fd_table_file_entry_t* file_entry;
-  quest_tss *tssp = lookup_TSS(str());
+  quest_tss *tssp = str();
   if(!tssp) return -1;
 
   if(file >= MAX_FD) return -1;
@@ -689,7 +686,6 @@ handle_syscall0 (u32 eax, u32 ebx, u32 ecx, u32 edx, u32 esi)
 int
 _rfork (int * ctid, void * attr, uint32_t eip, uint32_t * esp, void * arg, int flag)
 {
-  task_id child_tid;
   quest_tss * cur_tss = NULL, * main_tss = NULL;
   uint32 eflags, this_esp, this_ebp;
   vcpu* v;
@@ -782,7 +778,7 @@ _rfork (int * ctid, void * attr, uint32_t eip, uint32_t * esp, void * arg, int f
   pgdir_t parentpgd = { .dir_pa = (frame_t) phys_addr,
                         .dir_va = (pgdir_entry_t *) virt_addr };
 
-  cur_tss = lookup_TSS (str ());
+  cur_tss = str ();
   if ((main_tss = parent_TSS (cur_tss)) == NULL) {
     panic ("_rfork: Cannot find parent TSS");
   }
@@ -826,10 +822,10 @@ _rfork (int * ctid, void * attr, uint32_t eip, uint32_t * esp, void * arg, int f
   }
 
   /* Create child thread TSS. This also allocates and patches kernel stack. */
-  child_tid = alloc_thread_TSS (parentpgd.dir_pa, stub_eip, eip, eflags, usr_stk,
+  cur_tss = alloc_thread_TSS (parentpgd.dir_pa, stub_eip, eip, eflags, usr_stk,
                                 this_esp, this_ebp, main_tss);
 
-  if (!child_tid) {
+  if (!cur_tss) {
     com1_printf ("Cannot allocate thread TSS!\n");
     unlock_kernel ();
     return -1;
@@ -837,18 +833,18 @@ _rfork (int * ctid, void * attr, uint32_t eip, uint32_t * esp, void * arg, int f
 
 #ifdef DEBUG_SYSCALL
   com1_printf ("_rfork: Child thread info: tid=0x%X, ptid=0x%X, num_threads=%d\n",
-               lookup_TSS (child_tid)->tid, lookup_TSS (child_tid)->ptid,
-               lookup_TSS (child_tid)->num_threads, lookup_TSS (child_tid)->ulStack);
+               cur_tss->tid, cur_tss->ptid,
+               cur_tss->num_threads, cur_tss->ulStack);
   com1_printf ("        ulStack=0x%X, klStack=0x%X\n",
-               lookup_TSS (child_tid)->ulStack, lookup_TSS (child_tid)->ESP);
+               cur_tss->ulStack, cur_tss->ESP);
 #endif
 
   /* Fill in ctid in user space */
-  if (ctid) *ctid = child_tid;
+  if (ctid) *ctid = cur_tss->tid;
 
   unmap_virtual_page (parentpgd.dir_va);
 
-  wakeup (child_tid);
+  wakeup (cur_tss);
 
   /* --??-- Duplicate any other parent resources as necessary */
   /* TODO: Share file descriptor table for thread */
@@ -866,8 +862,7 @@ _rfork (int * ctid, void * attr, uint32_t eip, uint32_t * esp, void * arg, int f
 task_id
 _fork (vcpu_id_t vcpu_id, uint32 ebp, uint32 *esp)
 {
-
-  task_id child_tid;
+  quest_tss * tssp;
   void *phys_addr;
   uint32 *virt_addr;
   uint32 eflags, eip, this_esp, this_ebp;
@@ -934,19 +929,19 @@ _fork (vcpu_id_t vcpu_id, uint32 ebp, uint32 *esp)
   /* Create a child task which is the same as this task except that it will
    * begin running at the program point after `call 1f' in the above inline asm. */
 
-  child_tid =
+  tssp =
     duplicate_TSS (ebp, esp, eip, this_ebp, this_esp, eflags, childpgd.dir_pa);
 
   /* Inherit priority from parent */
-  lookup_TSS (child_tid)->priority = lookup_TSS (str ())->priority;
+  tssp->priority = str ()->priority;
 
-  wakeup (child_tid);
+  wakeup (tssp);
 
   /* --??-- Duplicate any other parent resources as necessary */
 
   unlock_kernel ();
 
-  return child_tid;       /* Use this index for child ID for now */
+  return tssp->tid;       /* Use this index for child ID for now */
 }
 
 
@@ -1022,7 +1017,7 @@ _exec (char *filename, char *argv[], uint32 *curr_stack)
   strncpy (filename_bak, filename, 256);
   c = strlen (filename);
   if (c > 31) c = 31;
-  tss = lookup_TSS (str ());
+  tss = str ();
   memcpy (tss->name, filename, c);
   tss->name[c] = '\0';
 
@@ -1380,25 +1375,16 @@ int
 _open (char *pathname, int flags)
 {
   quest_tss * tss;
-  task_id cur;
   int fd;
   fd_table_entry_t* fd_table_entry;
   int res;
 
   lock_kernel ();
   
-  cur = percpu_read (current_task);
+  tss = percpu_read (current_task);
   
-  if (!cur) {
+  if (!tss) {
     com1_printf ("No current task\n");
-    unlock_kernel ();
-    return -1;
-  }
-  
-  tss = lookup_TSS (cur);
-  
-  if (tss == NULL) {
-    com1_printf ("Task 0x%x does not exist\n", cur);
     unlock_kernel ();
     return -1;
   }
@@ -1449,7 +1435,6 @@ _read (int fd, char *buf, int count)
 {
   int i;
   quest_tss * tss;
-  task_id cur;
   fd_table_entry_t* fd_table_entry;
   fd_table_file_entry_t* file_entry;
   int act_len;
@@ -1561,22 +1546,14 @@ start:
     return -1;
   }
   
-  cur = percpu_read (current_task);
+  tss = percpu_read (current_task);
   
-  if (!cur) {
+  if (!tss) {
     com1_printf ("No current task\n");
     unlock_kernel ();
     return -1;
   }
   
-  tss = lookup_TSS (cur);
-  
-  if (tss == NULL) {
-    com1_printf ("Task 0x%x does not exist\n", cur);
-    unlock_kernel ();
-    return -1;
-  }
-
   fd_table_entry = &tss->fd_table[fd];
 
   if(!fd_table_entry->entry) {
@@ -1887,9 +1864,8 @@ __exit (int status)
   uint32 *virt_addr;
   uint32 *tmp_page;
   int i, j;
-  task_id tss;
   quest_tss *ptss;
-  task_id waiter;
+  quest_tss *waiter;
 
   lock_kernel ();
 
@@ -1937,13 +1913,11 @@ __exit (int status)
      NOTE: Here' we shouldn't really release the TSS until the parent has
      been able to check the status of the child... */
 
-  tss = str ();
-  ltr (0);
+  ptss = str ();
+  ltr (NULL);
 
   /* Remove space for tss -- but first we need to construct the linear
      address of where it is in memory from the TSS descriptor */
-  ptss = lookup_TSS (tss);
-
   for (i = 3; i < MAX_FD; i++) {
     if (ptss->fd_table[i].entry) {
       switch (ptss->fd_table[i].type) {
@@ -1966,7 +1940,7 @@ __exit (int status)
     wakeup (waiter);
 
   /* Remove quest_tss */
-  tss_remove (tss);
+  tss_remove (ptss);
   free_quest_tss (ptss);
 
   schedule ();
@@ -1977,15 +1951,13 @@ __exit (int status)
 void
 __thread_exit (void * retval)
 {
-  task_id tss = 0, waiter = 0;
-  quest_tss * pTSS = NULL, * mTSS = NULL;
+  quest_tss *pTSS = NULL, *mTSS = NULL, *waiter = NULL;
   void *phys_addr;
   uint32 *virt_addr;
 
   lock_kernel ();
 
-  tss = str ();
-  pTSS = lookup_TSS (tss);
+  pTSS = str ();
 
   if (pTSS->tid == pTSS->ptid) {
     /* Called from main thread. Let's call __exit for the process. */
@@ -1998,7 +1970,7 @@ __thread_exit (void * retval)
   com1_printf ("Terminating thread 0x%X...\n", pTSS->tid);
 #endif
 
-  ltr (0);
+  ltr (NULL);
 
   /* Decrement thread count in main thread by one */
   mTSS = lookup_TSS (pTSS->ptid);
@@ -2030,7 +2002,7 @@ __thread_exit (void * retval)
   unmap_virtual_page (virt_addr);
 
   /* 3. Remove quest_tss */
-  tss_remove (tss);
+  tss_remove (pTSS);
   free_quest_tss (pTSS);
 
   /* Set reval to 0 (Success) */
@@ -2078,7 +2050,7 @@ _sched_setparam (task_id pid, const struct sched_param *p)
   lock_kernel ();
   
   /* PID is self? */
-  if (pid == -1) pid = str ();
+  if (pid == -1) pid = str ()->tid;
   ptss = lookup_TSS (pid);
 
   if (ptss) {

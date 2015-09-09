@@ -88,9 +88,9 @@ ata_info pata_drives[4];
 /* ata_current_task has exclusive access to ATA.  If an ATA IRQ comes
  * in, we assume that ata_current_task is waiting on it and needs to
  * be woken. */
-static task_id ata_current_task = 0;
+static quest_tss *ata_current_task = NULL;
 /* waitqueue of tasks that want to use ATA. */
-static task_id ata_waitqueue = 0;
+static quest_tss *ata_waitqueue = NULL;
 
 /* technically I think there could be separate queues for each bus,
  * but, whatever. */
@@ -102,7 +102,7 @@ static void
 ata_grab (void)
 {
   DLOG ("ata_grab() ata_current_task=%x ata_waitqueue=%x tr=%x",
-        ata_current_task, ata_waitqueue, str ());
+        ata_current_task->tid, ata_waitqueue->tid, str ()->tid);
   while (ata_current_task) {
     queue_append (&ata_waitqueue, str ());
     schedule ();
@@ -114,10 +114,10 @@ static void
 ata_release (void)
 {
   DLOG ("ata_release() ata_current_task=%x ata_waitqueue=%x tr=%x",
-        ata_current_task, ata_waitqueue, str ());
+        ata_current_task->tid, ata_waitqueue->tid, str ()->tid);
   wakeup_queue (&ata_waitqueue);
-  ata_waitqueue = 0;
-  ata_current_task = 0;
+  ata_waitqueue = NULL;
+  ata_current_task = NULL;
 }
 
 /* ATA specifies a 400ns delay after drive switching -- often
@@ -320,7 +320,7 @@ ata_irq_handler (uint8 vec)
 {
   lock_kernel ();
   DLOG ("ata_irq_handler(%x) ata_current_task=%x", vec,
-        ata_current_task);
+        ata_current_task->tid);
   if (vec == ATA_VECTOR_PRIMARY)
     ata_primary_irq_count++;
   else
@@ -514,10 +514,10 @@ _atapi_drive_read_sector (uint32 bus, uint32 drive, uint32 lba, uint8 *buffer)
   /* Wait for IRQ. */
   if (sched_enabled) {
     /* Switch to IO-VCPU */
-    cpu = lookup_TSS (str ())->cpu;
+    cpu = str ()->cpu;
     set_iovcpu (str (), IOVCPU_CLASS_ATA | IOVCPU_CLASS_CDROM);
     extern vcpu *vcpu_lookup (int);
-    vcpu_lookup (lookup_TSS (str ())->cpu)->T = vcpu_lookup (cpu)->T;
+    vcpu_lookup (str ()->cpu)->T = vcpu_lookup (cpu)->T;
 
 #ifdef FIRST
     ATAPI_MEASURE_START;
@@ -558,7 +558,7 @@ _atapi_drive_read_sector (uint32 bus, uint32 drive, uint32 lba, uint8 *buffer)
    * zero-byte transfer but we must still wait for the IRQ.*/
   if (sched_enabled) {
     /* Return to Main VCPU */
-    lookup_TSS (str ())->cpu = cpu;
+    str ()->cpu = cpu;
 
 #ifdef SECOND
     ATAPI_MEASURE_START;

@@ -25,7 +25,7 @@
 
 static u32 netsetup_stack[1024] ALIGNED (0x1000);
 static u32 netsetup_custom_stack[1024] ALIGNED (0x1000);
-static task_id netsetup_id = 0;
+static quest_tss *netsetup_id = NULL;
 
 static void netsetup_thread (void);
 static void netsetup_custom_thread (struct ip_addr, struct ip_addr, struct ip_addr, int num);

@@ -3603,7 +3603,7 @@ static void net2280_init_thread(struct net2280* net2280_dev)
     create_kernel_thread_args ((u32) net2280_bh_thread,
                                (u32) &net2280_dev->bh_stack[NET2280_IOC_BH_THREAD_STACK_SIZE-1],
                                "Net2280 Bottom Half", FALSE, 1, net2280_dev);
-  DLOG("net2280_dev->iovcpu = 0x%X", net2280_dev->iovcpu);
+  DLOG("net2280_dev->iovcpu = 0x%X", net2280_dev->iovcpu->tid);
 #  ifdef NET2280_IO_VCPU
   set_iovcpu (net2280_dev->iovcpu, IOVCPU_CLASS_USB);
 #  endif

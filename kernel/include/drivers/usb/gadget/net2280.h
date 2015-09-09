@@ -135,7 +135,7 @@ struct net2280 {
 #if defined(NET2280_IO_VCPU) || defined(NET2280_MAIN_VCPU)
   spinlock completion_list_lock;
   list_head_t completion_list;
-  task_id iovcpu;
+  quest_tss *iovcpu;
 #define NET2280_IOC_BH_THREAD_STACK_SIZE 1024
   uint32_t bh_stack[NET2280_IOC_BH_THREAD_STACK_SIZE];
 #endif

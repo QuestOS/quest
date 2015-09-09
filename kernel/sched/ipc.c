@@ -32,14 +32,14 @@
 inline int
 fast_send_m (task_id dst_id, u32 arg1, u32 arg2)
 {
-  quest_tss *src = lookup_TSS (str ());
+  quest_tss *src = str ();
   quest_tss *dst = lookup_TSS (dst_id);
 
   semaphore_wait (&dst->Msem, 1, -1);
   wakeup (str ());
   dst->M[0] = arg1;
   dst->M[1] = arg2;
-  ltr (dst_id);
+  ltr (dst);
   asm volatile ("call _sw_ipc"
                 :
                 :"S" (src), "D" (dst)
@@ -50,14 +50,14 @@ fast_send_m (task_id dst_id, u32 arg1, u32 arg2)
 inline int
 fast_call_m (task_id dst_id, u32 arg1, u32 arg2, u32 *r_arg1, u32 *r_arg2)
 {
-  quest_tss *src = lookup_TSS (str ());
+  quest_tss *src = str ();
   quest_tss *dst = lookup_TSS (dst_id);
 
   semaphore_wait (&dst->Msem, 1, -1);
   dst->M[0] = arg1;
   dst->M[1] = arg2;
   semaphore_signal (&src->Msem, 1);
-  ltr (dst_id);
+  ltr (dst);
   asm volatile ("call _sw_ipc"
                 :"+S" (src), "+D" (dst)
                 :
@@ -72,7 +72,7 @@ inline int
 fast_recv_m (u32 *arg1, u32 *arg2)
 {
   quest_tss *cur;
-  semaphore_signal (&lookup_TSS (str ())->Msem, 1);
+  semaphore_signal (&str ()->Msem, 1);
   asm volatile ("call *%1"
                 :"=D" (cur)
                 :"m" (schedule)
@@ -85,14 +85,14 @@ fast_recv_m (u32 *arg1, u32 *arg2)
 inline int
 fast_sendrecv_m (task_id dst_id, u32 arg1, u32 arg2, u32 *r_arg1, u32 *r_arg2)
 {
-  quest_tss *src = lookup_TSS (str ());
+  quest_tss *src = str ();
   quest_tss *dst = lookup_TSS (dst_id);
 
   semaphore_wait (&dst->Msem, 1, -1);
   dst->M[0] = arg1;
   dst->M[1] = arg2;
   semaphore_signal (&src->Msem, 1);
-  ltr (dst_id);
+  ltr (dst);
   asm volatile ("call _sw_ipc"
                 :"+S" (src), "+D" (dst)
                 :
@@ -143,11 +143,14 @@ testR (void)
 extern bool
 ipc_init (void)
 {
+  quest_tss *tssS, *tssR;
   DLOG ("hello");
-  testS_id = start_kernel_thread ((u32) testS, (u32) &testS_stack[1023], "IPC TestS");
-  testR_id = start_kernel_thread ((u32) testR, (u32) &testR_stack[1023], "IPC TestR");
-  lookup_TSS (testS_id)->cpu = 0;
-  lookup_TSS (testR_id)->cpu = 0;
+  tssS = start_kernel_thread ((u32) testS, (u32) &testS_stack[1023], "IPC TestS");
+  testS_id = tssS->tid;
+  tssR = start_kernel_thread ((u32) testR, (u32) &testR_stack[1023], "IPC TestR");
+  testR_id = tssR->tid;
+  tssS->cpu = 0;
+  tssR->cpu = 0;
   return TRUE;
 }
 

@@ -54,7 +54,7 @@ logger_thread (void)
   unlock_kernel ();
   sti ();
 
-  com1_printf ("logger: hello from 0x%x\n", str ());
+  com1_printf ("logger: hello from 0x%x\n", str ()->tid);
   for (;;) {
     char c = logger_getc ();
     if (c == 0)

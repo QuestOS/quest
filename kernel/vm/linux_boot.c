@@ -195,7 +195,7 @@ load_linux_kernel (uint32 * load_addr, char * pathname, uint32 * initrd_paddr, i
 static u32 boot_thread_stack[1024] ALIGNED (0x1000);
 
 #ifdef DEBUG_LINUX_BOOT
-static task_id boot_thread_id = 0;
+static quest_tss *boot_thread_id = NULL;
 #endif
 
 #if 0

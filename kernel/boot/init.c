@@ -87,7 +87,7 @@ alloc_CPU_TSS (tss *tssp)
 }
 
 /* Create an address space for boot modules */
-static task_id
+static quest_tss *
 load_module (multiboot_module * pmm, int mod_num)
 {
   /* Still have one to one mapping of first 4 megabytes some of the
@@ -222,12 +222,12 @@ load_module (multiboot_module * pmm, int mod_num)
   unmap_virtual_page (stack_virt_addr);
   unmap_virtual_pages (pe, page_count);
 
-  task_id tid = alloc_TSS (plPageDirectory, pEntry, mod_num);
-  com1_printf ("module %d loaded: task_id=0x%x\n", mod_num, tid);
+  quest_tss *ptss = alloc_TSS (plPageDirectory, pEntry, mod_num);
+  com1_printf ("module %d loaded: task_id=0x%x\n", mod_num, ptss->tid);
 #if QUEST_SCHED==vcpu
-  lookup_TSS (tid)->cpu = 0;
+  ptss->cpu = 0;
 #endif
-  return tid;
+  return ptss;
 }
 
 
@@ -332,7 +332,7 @@ int get_ramdisk_index(char *cmdline)
 u32 root_type, boot_device=0;
 int ramdisk_module_index = -1;
 #ifdef USE_VMX
-task_id shell_tss = 0;
+quest_tss *shell_tss = NULL;
 #endif
 
 void
@@ -465,7 +465,7 @@ init (multiboot * pmb)
   memory_map_t *mmap;
   uint32 limit;
   char brandstring[I386_CPUID_BRAND_STRING_LENGTH];
-  uint16 tss[NR_MODS];
+  quest_tss *tss[NR_MODS];
 
   /* Initialize Bochs I/O debugging */
   outw (0x8A00, 0x8A00);
@@ -669,7 +669,7 @@ init (multiboot * pmb)
       }
       else {
         tss[i] = load_module (pmb->mods_addr + i, i);
-        lookup_TSS (tss[i])->priority = MIN_PRIO;
+        tss[i]->priority = MIN_PRIO;
       }
     }
 #else
@@ -681,7 +681,7 @@ init (multiboot * pmb)
     }
     else {
       tss[i] = load_module (pmb->mods_addr + i, i);
-      lookup_TSS (tss[i])->priority = MIN_PRIO;
+      tss[i]->priority = MIN_PRIO;
     }
 #endif
   }
@@ -697,16 +697,16 @@ init (multiboot * pmb)
 
   /* --??-- Assume the first is shell here */
   char * name = "/boot/shell";
-  memcpy (lookup_TSS (tss[0])->name, name, strlen (name));
-  lookup_TSS (tss[0])->name[strlen(name)] = '\0';
+  memcpy (tss[0]->name, name, strlen (name));
+  tss[0]->name[strlen(name)] = '\0';
 
 #ifdef USE_VMX
   /* Back up shell module for sandboxes */
   shell_tss = load_module (pmb->mods_addr, NR_MODS - 1);
-  lookup_TSS (shell_tss)->priority = MIN_PRIO;
-  lookup_TSS (shell_tss)->EFLAGS = F_1 | F_IF | F_IOPL0;
-  memcpy (lookup_TSS (shell_tss)->name, name, strlen (name));
-  lookup_TSS (shell_tss)->name[strlen(name)] = '\0';
+  shell_tss->priority = MIN_PRIO;
+  shell_tss->EFLAGS = F_1 | F_IF | F_IOPL0;
+  memcpy (shell_tss->name, name, strlen (name));
+  shell_tss->name[strlen(name)] = '\0';
 #endif
 
   /* Remove identity mapping of first 4MB */
@@ -815,7 +815,7 @@ init (multiboot * pmb)
   ltr (tss[0]);
   /* task-switch to shell module */
 
-  asm volatile ("jmp _sw_init_user_task"::"D" (lookup_TSS (tss[0])));
+  asm volatile ("jmp _sw_init_user_task"::"D" (tss[0]));
 
   /* never return */
   panic ("BSP: unreachable");

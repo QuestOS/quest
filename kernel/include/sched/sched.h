@@ -23,35 +23,33 @@
 #include "sched/sched-defs.h"
 
 extern void runqueue_append (uint32 prio, task_id selector);
-extern void queue_append (task_id * queue, task_id selector);
-extern task_id queue_remove_head (task_id * queue);
+extern void queue_append (quest_tss **queue, quest_tss *selector);
+extern quest_tss * queue_remove_head (quest_tss **queue);
 extern void (*schedule) (void);
-extern void (*wakeup) (task_id);
-extern void wakeup_queue (task_id *);
+extern void (*wakeup) (quest_tss *);
+extern void wakeup_queue (quest_tss **);
 
 extern void sched_usleep (uint32);
 extern void process_sleepqueue (void);
 
-extern DEF_PER_CPU (task_id, current_task);
-static inline task_id
+extern DEF_PER_CPU (quest_tss *, current_task);
+static inline quest_tss *
 str (void)
 {
   return percpu_read (current_task);
 }
 static inline void
-ltr (task_id id)
+ltr (quest_tss *id)
 {
   percpu_write (current_task, id);
 }
 
 static inline void
-software_context_switch (task_id next)
+software_context_switch (quest_tss *nxt_TSS)
 {
-  task_id tr = percpu_read (current_task);
-  quest_tss *cur_TSS = (tr == 0 ? NULL : lookup_TSS (tr));
-  quest_tss *nxt_TSS = lookup_TSS (next);
+  quest_tss *cur_TSS = percpu_read (current_task);
 
-  percpu_write (current_task, next);
+  percpu_write (current_task, nxt_TSS);
   /* Update kernel stack in per-CPU TSS */
   update_CPU_TSS ((nxt_TSS->ESP & 0xFFFFF000) + 0x1000);
   

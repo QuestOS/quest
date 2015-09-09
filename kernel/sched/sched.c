@@ -37,7 +37,7 @@ uint8 sched_enabled = 0;
 
 /* These functions assume exclusive access to the queue. */
 extern void
-queue_append (task_id * queue, task_id selector)
+queue_append (quest_tss **queue, quest_tss *selector)
 {
 
   quest_tss *tssp;
@@ -46,7 +46,7 @@ queue_append (task_id * queue, task_id selector)
     if (*queue == selector)
       return;                   /* already on queue */
 
-    for (tssp = lookup_TSS (*queue); tssp->next; tssp = lookup_TSS (tssp->next)) {
+    for (tssp = *queue; tssp->next; tssp = tssp->next) {
       if (tssp->next == selector) {
         /* already on queue */
         return;
@@ -62,32 +62,28 @@ queue_append (task_id * queue, task_id selector)
   }
   
 
-  tssp = lookup_TSS (selector);
-  tssp->next = 0;
+  selector->next = NULL;
 
 }
 
-extern task_id
-queue_remove_head (task_id * queue)
+extern quest_tss *
+queue_remove_head (quest_tss **queue)
 {
 
-  quest_tss *tssp;
-  task_id head;
+  quest_tss *head;
 
   if (!(head = *queue))
-    return 0;
+    return NULL;
 
-  tssp = lookup_TSS (head);
-
-  *queue = tssp->next;
+  *queue = head->next;
 
   return head;
 }
 
 extern void
-wakeup_queue (task_id * q)
+wakeup_queue (quest_tss **q)
 {
-  task_id head;
+  quest_tss *head;
 
   while ((head = queue_remove_head (q)))
     wakeup (head);
@@ -95,9 +91,9 @@ wakeup_queue (task_id * q)
 
 /* ************************************************** */
 
-DEF_PER_CPU (task_id, current_task);
+DEF_PER_CPU (quest_tss *, current_task);
 INIT_PER_CPU (current_task) {
-  percpu_write (current_task, 0);
+  percpu_write (current_task, NULL);
 }
 
 /* Hooks for scheduler */
@@ -108,8 +104,8 @@ INIT_PER_CPU (current_task) {
 #define W __glue(QUEST_SCHED,_wakeup)
 extern void S (void);
 void (*schedule) (void) = S;
-extern void W (task_id);
-void (*wakeup) (task_id) = W;
+extern void W (quest_tss *);
+void (*wakeup) (quest_tss *) = W;
 
 /*
  * Local Variables:

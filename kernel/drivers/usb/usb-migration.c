@@ -44,7 +44,7 @@
 /* This sleep queue is used only by the migration thread.  Used when
    the migration thread has nothing to do or when it is in the middle
    of transmitting data and needs to wait */
-static task_id migration_thread_sleep_queue = 0;
+static quest_tss *migration_thread_sleep_queue = NULL;
 
 typedef enum {NO_TASKS, BITMAP, PAGE_LIMIT, TSS_IN_FLIGHT} sleep_reason_t;
 

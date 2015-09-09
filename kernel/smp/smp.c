@@ -361,9 +361,9 @@ ap_init (void)
   //print ("Sandbox ");
   //putx (phys_id);
   //print (" Loading Shell...\n");
-  extern task_id shell_tss;
+  extern quest_tss *shell_tss;
   int mod_num = NR_MODS - 1;
-  quest_tss * usr_mod = lookup_TSS (shell_tss);
+  quest_tss * usr_mod = shell_tss;
   uint32 * plPageDirectory = get_phys_addr (pg_dir[mod_num]);
   uint32 * plPageTable = get_phys_addr (pg_table[mod_num]);
   uint32 * plStackPageTable = get_phys_addr(uls_pg_table[mod_num]);
@@ -441,7 +441,7 @@ ap_init (void)
 
   /* task-switch to IDLE task */
   asm volatile ("jmp _sw_init_task":
-                :"D" (lookup_TSS (idleTSS_selector[phys_id])));
+                :"D" (idleTSS_selector[phys_id]));
 #endif
 
   /* never return */

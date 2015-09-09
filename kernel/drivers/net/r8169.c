@@ -1730,13 +1730,13 @@ tx_int (struct rtl8169_private *tp)
 }
 
 static u32 r8169_bh_stack[MAX_NUM_SHARE][1024] ALIGNED (0x1000);
-static task_id r8169_bh_id[MAX_NUM_SHARE];
+static quest_tss *r8169_bh_id[MAX_NUM_SHARE];
 static void
 r8169_bh_thread (void)
 {
   int cpu;
   cpu = get_pcpu_id ();
-  logger_printf ("r8169: bh: hello from 0x%x, cpu=%d\n", str (), cpu);
+  logger_printf ("r8169: bh: hello from 0x%x, cpu=%d\n", str ()->tid, cpu);
   for (;;) {
     struct rtl8169_private *tp = pci_get_drvdata(&pdev);
     //int handled = 0;
@@ -3688,7 +3688,7 @@ r8169_transmit (u8 *buffer, sint len)
 
 #ifdef TX_TIMING
 static u32 timing_stack[1024] ALIGNED (0x1000);
-static task_id timing_id;
+static quest_tss *timing_id;
 static void timing_thread (void) {
   struct udp_pcb *pcb = udp_new ();
   struct pbuf *p = pbuf_alloc (PBUF_TRANSPORT, 4, PBUF_RAM);
@@ -3697,7 +3697,7 @@ static void timing_thread (void) {
   inet_aton ("192.168.2.123", &inaddr); /* made up address */
   ip.addr = inaddr.s_addr;
   pbuf_take (p, "TEST", 4);
-  logger_printf ("r8169: timing_thread: id=0x%x\n", timing_id);
+  logger_printf ("r8169: timing_thread: id=0x%x\n", timing_id->tid);
   for (;;) {
     sched_usleep (1000000);
     udp_sendto (pcb, p, &ip, 7890);
@@ -3764,7 +3764,7 @@ r8169_init (void)
     goto abort;
   }
 
-  memset (r8169_bh_id, 0, MAX_NUM_SHARE * sizeof (task_id));
+  memset (r8169_bh_id, 0, MAX_NUM_SHARE * sizeof (quest_tss *));
 
   const struct rtl_cfg_info *cfg = &rtl_cfg_infos[compatible_ids[i].cfg];
   const unsigned int region = cfg->region;

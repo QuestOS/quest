@@ -42,8 +42,8 @@
 #endif
 
 
-extern bool sleepqueue_detach (task_id);
-extern void sleepqueue_append (task_id);
+extern bool sleepqueue_detach (quest_tss *);
+extern void sleepqueue_append (quest_tss *);
 
 int
 attach_task (quest_tss * new_tss, bool remote_tsc_diff, uint64 remote_tsc)
@@ -81,12 +81,12 @@ attach_task (quest_tss * new_tss, bool remote_tsc_diff, uint64 remote_tsc)
     /* Not sleeping or sleep expires already. Wake up directly. */
     DLOG ("Waking up task in destination sandbox");
    
-    wakeup (new_tss->tid);
+    wakeup (new_tss);
     new_tss->time = 0;
   } else {
     /* The migrating task is still sleeping */
     DLOG ("Adding task in destination sandbox sleep queue");
-    sleepqueue_append (new_tss->tid);
+    sleepqueue_append (new_tss);
   }
 
 #ifdef DEBUG_MIGRATION
@@ -97,12 +97,11 @@ attach_task (quest_tss * new_tss, bool remote_tsc_diff, uint64 remote_tsc)
 }
 
 void
-destroy_task (task_id tid)
+destroy_task (quest_tss *tss)
 {
-  quest_tss * tss = lookup_TSS (tid);
   uint32 * virt_addr = NULL;
   uint32 * tmp_page = NULL;
-  task_id waiter = 0;
+  quest_tss *waiter = NULL;
   int i, j;
   if (!tss) return;
 
@@ -154,7 +153,7 @@ destroy_task (task_id tid)
 
  abort:
   /* Remove quest_tss */
-  tss_remove (tss->tid);
+  tss_remove (tss);
   free_quest_tss (tss);
 
   return;
@@ -194,50 +193,51 @@ backup_vcpu_replenishment (quest_tss * tss)
   tss->usage_bak = v->usage;
 }
 
+/* must ensure tss exists */
 void *
-detach_task (task_id tid, bool phys_addr)
+detach_task (quest_tss *tss, bool phys_addr)
 {
-  quest_tss * tss = lookup_TSS (tid);
   if (!tss) return NULL;
+  task_id tid = tss->tid;
   vcpu * v = vcpu_lookup (tss->cpu);
   if (!v) return NULL;
-  if (!vcpu_in_runqueue (v, tid)) {
+  if (!vcpu_in_runqueue (v, tss)) {
     DLOG ("task 0x%X not in vcpu %d run queue", tid, tss->cpu);
     /* tid is current task in its VCPU? */
-    if (v->tr == tid) {
+    if (v->tr->tid == tid) {
       /* If yes, we need to check the sleep queue. This is probably the only
        * reason why this case could occur. The task has to be removed from the
        * sleep queue of current sandbox and inserted into the sleep queue of
        * the remote sandbox with the timestamp properly fixed.
        */
       DLOG ("task 0x%X is VCPU %d's current task", tid, tss->cpu);
-      if (v->runqueue == 0) {
+      if (v->runqueue == NULL) {
         v->runnable = FALSE;
       }
       /* Detach the task from local sleep queue if necessary. If task is not
        * in the sleep queue, we set the sleep time to 0 so that the destination
        * sandbox knows it won't need to put it to its sleep queue.
        */
-      if (!sleepqueue_detach (tid)) tss->time = 0;
+      if (!sleepqueue_detach (tss)) tss->time = 0;
       goto success;
     } else {
-      if (v->runqueue == 0) {
+      if (v->runqueue == NULL) {
         v->runnable = FALSE;
       }
       /* Detach the task from local sleep queue if necessary. If task is not
        * in the sleep queue, we set the sleep time to 0 so that the destination
        * sandbox knows it won't need to put it to its sleep queue.
        */
-      if (!sleepqueue_detach (tid)) tss->time = 0;
+      if (!sleepqueue_detach (tss)) tss->time = 0;
 
       goto success;
     }
   } else {
     /* Remove migrating quest_tss from its VCPU run queue */
-    vcpu_remove_from_runqueue (v, tid);
+    vcpu_remove_from_runqueue (v, tss);
     /* Is the VCPU run queue empty? */
-    if (v->runqueue == 0) {
-      if ((v->tr == 0) || (v->tr == tid)) {
+    if (v->runqueue == NULL) {
+      if ((v->tr == NULL) || (v->tr->tid == tid)) {
         v->runnable = FALSE;
       }
     }
@@ -261,7 +261,7 @@ success:
 
 #ifdef USE_VMX
 
-static task_id migration_thread_id = 0;
+static quest_tss *migration_thread_id = NULL;
 static u32 migration_stack[1024] ALIGNED (0x1000);
 static bool mig_working_flag = FALSE;
 
@@ -313,7 +313,7 @@ remote_clone_page_directory (pgdir_t dir, u64 deadline)
   static frame_t new_pgd_pa = 0;
   static pgdir_t new_dir = {-1, 0}, shell_dir = {-1, 0};
   static int i = 0;
-  extern task_id shell_tss;
+  extern quest_tss *shell_tss;
   static quest_tss * stss = NULL;
 
 #ifdef REMOTE_CLONE_PREEMPTIBLE
@@ -484,7 +484,7 @@ receive_migration_request (uint8 vector)
   uint64 cur_tsc = 0, prev_tsc = 0;
 #  ifdef QUESTV_NO_VMX
   int i;
-  extern task_id shell_tss;
+  extern quest_tss *shell_tss;
   quest_tss * stss = NULL;
   pgdir_t dir = {-1, 0}, shell_dir = {-1, 0};
 #  endif
@@ -578,7 +578,7 @@ receive_migration_request (uint8 vector)
       if (!attach_task (new_tss, shm->remote_tsc_diff[cpu], shm->remote_tsc[cpu])) {
         DLOG ("Attaching task failed!");
         /* Destroy task */
-        destroy_task (new_tss->tid);
+        destroy_task (new_tss);
       }
     } else {
       DLOG ("trap_and_migrate failed!");
@@ -612,7 +612,7 @@ migration_thread (void)
 {
   quest_tss * ret_tss = NULL;
   pgdir_t shell_dir = {-1, 0}, dir = {-1, 0};
-  extern task_id shell_tss;
+  extern quest_tss *shell_tss;
   quest_tss * stss = NULL;
   int cpu = 0;
   int i;
@@ -713,9 +713,9 @@ migration_thread (void)
   u64 next_act = 0;
   uint32 quantum = 0, sleep = 0;
 
-  budget = vcpu_lookup (lookup_TSS (str ())->cpu)->C;
-  period = vcpu_lookup (lookup_TSS (str ())->cpu)->T;
-  quantum = vcpu_lookup (lookup_TSS (str ())->cpu)->quantum;
+  budget = vcpu_lookup (str ()->cpu)->C;
+  period = vcpu_lookup (str ()->cpu)->T;
+  quantum = vcpu_lookup (str ()->cpu)->quantum;
 
   if (budget == 0) {
     logger_printf ("No budget for migration thread. Exit!\n");
@@ -847,7 +847,7 @@ resume_attach:
         if (!attach_task (new_tss, shm->remote_tsc_diff[cpu], shm->remote_tsc[cpu])) {
           DLOG ("Attaching task failed!");
           /* Destroy task */
-          destroy_task (new_tss->tid);
+          destroy_task (new_tss);
         }
         /* --YL-- OK, this is not a clean way to avoid contention if we can have a
          * migration queue of multiple tasks. But for now, we assume there is only
@@ -931,7 +931,7 @@ migration_init (void)
   migration_thread_id =
     create_kernel_thread_vcpu_args ((u32) migration_thread, (u32) &migration_stack[1023],
                                     "Migration Thread", vcpu_id, TRUE, 0);
-  DLOG ("Migration thread 0x%X created in sandbox %d", migration_thread_id, cpu);
+  DLOG ("Migration thread 0x%X created in sandbox %d", migration_thread_id->tid, cpu);
 
   DLOG ("Migration subsystem initialized in sandbox kernel %d", cpu);
 

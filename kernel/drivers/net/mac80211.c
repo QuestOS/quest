@@ -340,7 +340,7 @@ tx_beacon (struct ieee80211_local *local)
 static void
 beacon_thread (local_t *local)
 {
-  DLOG ("beacon: hello from 0x%x", str ());
+  DLOG ("beacon: hello from 0x%x", str ()->tid);
   for (;;) {
     sched_usleep (1000000);
     DLOG ("sending beacon timestamp=0x%.08X %.08X",
