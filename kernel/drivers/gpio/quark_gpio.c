@@ -240,10 +240,6 @@ shared_irq_handler(uint8 vec)
 #define	GALILEO_QGPIO_DID		 	0x0934
 
 static pci_device quark_gpio_pci_device;
-#define READ(bus, slot, func, reg, type) \
-  pci_read_##type (pci_addr (bus, slot, func, reg))
-#define WRITE(bus, slot, func, reg, type, val) \
-  pci_write_##type (pci_addr (bus, slot, func, reg), val)
 
 bool
 quark_gpio_init()

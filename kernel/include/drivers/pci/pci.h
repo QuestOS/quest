@@ -66,6 +66,11 @@ typedef struct pci_dev {
 
 /* PCI interface */
 
+#define READ(bus, slot, func, reg, type) \
+  pci_read_##type (pci_addr (bus, slot, func, reg))
+#define WRITE(bus, slot, func, reg, type, val) \
+  pci_write_##type (pci_addr (bus, slot, func, reg), val)
+
 /* Initialize and probe for devices */
 bool pci_init (void);
 

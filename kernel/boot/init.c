@@ -276,7 +276,8 @@ initialize_serial_port (void)
   /*         PORT 1 - Communication Settings         */
 
   outb (0x80, serial_port1 + 3);       /* SET DLAB ON */
-  outb (0x03, serial_port1 + 0);       /* Set Baud rate - Divisor Latch Low Byte */
+  //outb (0x03, serial_port1 + 0);       /* Set Baud rate - Divisor Latch Low Byte */
+  outb (0x01, serial_port1 + 0);       /* Set Baud rate - Divisor Latch Low Byte */
   /* Default 0x03 =  38,400 BPS */
   /*         0x01 = 115,200 BPS */
   /*         0x02 =  57,600 BPS */
@@ -474,6 +475,11 @@ init (multiboot * pmb)
   initialize_serial_mmio32 ();
 #else
   initialize_serial_port ();
+#endif
+
+#ifdef MINNOWMAX
+  /* enable ttyS0 on MinnowMax */
+  WRITE(0, 31, 0, 0x80, dword, 1);
 #endif
 
   pchVideo = (char *)KERN_SCR;

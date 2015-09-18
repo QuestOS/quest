@@ -32,13 +32,6 @@
 #define DLOG(fmt,...) ;
 #endif
 
-
-#define READ(bus, slot, func, reg, type) \
-  pci_read_##type (pci_addr (bus, slot, func, reg))
-#define WRITE(bus, slot, func, reg, type, val) \
-  pci_write_##type (pci_addr (bus, slot, func, reg), val)
-
-
 bool
 pci_search_ven_table (uint32 vendor, PCI_VENTABLE* e)
 {

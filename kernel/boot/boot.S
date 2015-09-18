@@ -166,6 +166,7 @@ real_start:
         loop 1b
         #endif
 
+#ifdef SERIAL_MMIO32
         /* MMIO32 Serial Base */
         movl $MMIO32_MEMBASE, %eax
         andl $0xFFC00000, %eax
@@ -174,6 +175,7 @@ real_start:
         shrl $20, %ebx
         addl $pgd, %ebx
         movl %eax, (%ebx)
+#endif
 
         /* Set 1024th (top) entry in PGD to reference kern_pg_table
          * Here, we have 1 4MB superpage for the entire kernel
