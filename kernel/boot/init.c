@@ -525,6 +525,12 @@ init (multiboot * pmb)
     panic ("Model-specific registers not supported!\n");
   if (!cpuid_tsc_support ())
     panic ("Timestamp counter not supported!");
+  if (!cpuid_pse36_support())
+    logger_printf ("Page Size Extension not supported!\n");
+  else{ 
+    logger_printf ("Page Size Extension supported!\n");
+    logger_printf("Maximum Physcial Address is %d bits!\n", cpuid_max_phys_addr());
+  }
   if (!cpuid_rdtscp_support ())
     logger_printf ("RDTSCP NOT supported.\n");
   else

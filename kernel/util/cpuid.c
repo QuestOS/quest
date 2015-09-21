@@ -79,6 +79,26 @@ cpuid_display_family_model (void)
   return display;
 }
 
+uint32
+cpuid_max_phys_addr (void)
+{
+  u32 maxphysaddr;
+  u32 eax = 0;
+  
+  cpuid (0x80000008, 0, &eax, NULL, NULL, NULL);
+  maxphysaddr = eax & 0xFF;
+
+  return maxphysaddr;
+}
+
+bool
+cpuid_pse36_support (void)
+{
+  uint edx;
+  cpuid (1, 0, NULL, NULL, NULL, &edx);
+  return (edx & (1 << 17));
+}
+
 bool
 cpuid_tsc_support (void)
 {
