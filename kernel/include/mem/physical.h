@@ -29,6 +29,9 @@ extern uint32 alloc_phys_frames_aligned_on (uint32 count, uint32 alignment);
 extern void free_phys_frame (uint32);
 extern void free_phys_frames (uint32, uint32);
 
+#define ROUNDUP(_x, _v)           ((((~(_x)) + 1) & ((_v)-1)) + (_x))
+#define FRAME_SIZE 0x1000
+
 #endif
 
 /* 
