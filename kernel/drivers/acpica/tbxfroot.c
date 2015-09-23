@@ -333,6 +333,7 @@ AcpiFindRootPointer (
         return_ACPI_STATUS (AE_OK);
     }
 
+		/* Hack: Intel Galileo firmware 1.0.4 change the location of RSDP */
 		TablePtr = AcpiOsMapMemory (
                 (ACPI_PHYSICAL_ADDRESS) ACPI_HI_HI_RSDP_WINDOW_BASE_1_0_4,
                 ACPI_HI_HI_RSDP_WINDOW_SIZE_1_0_4);
@@ -360,6 +361,33 @@ AcpiFindRootPointer (
         return_ACPI_STATUS (AE_OK);
     }
 
+		/* Hack: for Intel MinnowBoard Max */
+		TablePtr = AcpiOsMapMemory (
+                (ACPI_PHYSICAL_ADDRESS) ACPI_HI_HI_RSDP_WINDOW_BASE_MINNOWMAX,
+                ACPI_HI_HI_RSDP_WINDOW_SIZE_MINNOWMAX);
+
+    if (!TablePtr)
+    {
+        ACPI_ERROR ((AE_INFO,
+            "Could not map memory at %8.8X for length %X",
+            ACPI_HI_HI_RSDP_WINDOW_BASE_MINNOWMAX, ACPI_HI_HI_RSDP_WINDOW_SIZE_MINNOWMAX));
+
+        return_ACPI_STATUS (AE_NO_MEMORY);
+    }
+
+    MemRover = AcpiTbScanMemoryForRsdp (TablePtr, ACPI_HI_HI_RSDP_WINDOW_SIZE_MINNOWMAX);
+    AcpiOsUnmapMemory (TablePtr, ACPI_HI_HI_RSDP_WINDOW_SIZE_MINNOWMAX);
+
+    if (MemRover)
+    {
+        /* Return the physical address */
+
+        PhysicalAddress = (UINT32)
+            (ACPI_HI_HI_RSDP_WINDOW_BASE_MINNOWMAX + ACPI_PTR_DIFF (MemRover, TablePtr));
+
+        *TableAddress = PhysicalAddress;
+        return_ACPI_STATUS (AE_OK);
+    }
 
     /* A valid RSDP was not found */
 
