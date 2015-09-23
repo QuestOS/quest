@@ -210,7 +210,15 @@ AcpiOsTableOverride (ACPI_TABLE_HEADER * ExistingTable,
   return AE_OK;
 }
 
-
+ACPI_STATUS
+AcpiOsPhysicalTableOverride (ACPI_TABLE_HEADER * ExistingTable,
+                             ACPI_PHYSICAL_ADDRESS * NewAddress,
+                             UINT32 * NewTableLength)
+{
+  NewAddress= NULL;
+  *NewTableLength = 0;
+  return AE_OK;
+}
 
 /*
  * Spinlock primitives
@@ -775,6 +783,8 @@ AcpiOsCloseDirectory (void *DirHandle)
 {
   return;
 }
+
+
 
 /*
  * Local Variables:
