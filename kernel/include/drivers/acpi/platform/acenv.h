@@ -241,8 +241,10 @@
  * by the host files.
  *
  *****************************************************************************/
+#if defined(_QUEST) 
+#include "acquest.h"
 
-#if defined(_LINUX) || defined(__linux__)
+#elif defined(_LINUX) || defined(__linux__)
 #include "aclinux.h"
 
 #elif defined(_APPLE) || defined(__APPLE__)
