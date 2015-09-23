@@ -139,7 +139,7 @@
 #define ACPI_USE_LOCAL_CACHE
 #define ACPI_SPINLOCK               spinlock *
 #define ACPI_CPU_FLAGS              uint32
-#define ACPI_THREAD_ID              uint16
+//#define ACPI_THREAD_ID              uint16
 #define ACPI_SEMAPHORE              semaphore *
 
 // fixme

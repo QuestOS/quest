@@ -234,7 +234,7 @@ process_acpi_tables (void)
     ACPI_TABLE_ASF *asf;
     ACPI_TABLE_MCFG *mcfg;
     ACPI_TABLE_HPET *hpet;
-    ACPI_TABLE_TCPA *tcpa;
+    ACPI_TABLE_TCPA_CLIENT *tcpa;
     ACPI_TABLE_SRAT *srat;
     ACPI_TABLE_DMAR *dmar;
 
@@ -342,7 +342,7 @@ process_acpi_tables (void)
         AE_OK) {
       /* Trusted Computing Platform Alliance table */
       DLOG_COM1 ("TCPA: MaxLog=0x%X Addr: 0x%llX\n",
-              tcpa->MaxLogLength,
+              tcpa->MinimumLogLength,
               tcpa->LogAddress);
     }
     if (AcpiGetTable (ACPI_SIG_HPET, 0, (ACPI_TABLE_HEADER **) & hpet) ==

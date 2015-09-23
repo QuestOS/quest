@@ -472,7 +472,7 @@ AcpiOsExecute (ACPI_EXECUTE_TYPE Type,
 
 
 void
-AcpiOsWaitEventsComplete (void *Context)
+AcpiOsWaitEventsComplete (void)
 {
   return;
 }
@@ -539,7 +539,7 @@ AcpiOsWritePort (ACPI_IO_ADDRESS Address, UINT32 Value, UINT32 Width)
  * Platform and hardware-independent physical memory interfaces
  */
 ACPI_STATUS
-AcpiOsReadMemory (ACPI_PHYSICAL_ADDRESS Address, UINT32 * Value, UINT32 Width)
+AcpiOsReadMemory (ACPI_PHYSICAL_ADDRESS Address, UINT64 * Value, UINT32 Width)
 {
   DLOG ("AcpiOsReadMemory (0x%p, %d)\n", Address, Width);
   if (Width != 8 && Width != 16 && Width != 32)
@@ -550,13 +550,16 @@ AcpiOsReadMemory (ACPI_PHYSICAL_ADDRESS Address, UINT32 * Value, UINT32 Width)
   if (!virt) return AE_NO_MEMORY;
   switch (Width) {
   case 8:
-    *Value = *((u8 *) (&virt[offset]));
+    *Value = (UINT64)*((u8 *) (&virt[offset]));
     break;
   case 16:
-    *Value = *((u16 *) (&virt[offset]));
+    *Value = (UINT64)*((u16 *) (&virt[offset]));
     break;
   case 32:
-    *Value = *((u32 *) (&virt[offset]));
+    *Value = (UINT64)*((u32 *) (&virt[offset]));
+    break;
+  case 64:
+    *Value = *((u64 *) (&virt[offset]));
     break;
   }
   unmap_virtual_page (virt);
@@ -565,7 +568,7 @@ AcpiOsReadMemory (ACPI_PHYSICAL_ADDRESS Address, UINT32 * Value, UINT32 Width)
 
 
 ACPI_STATUS
-AcpiOsWriteMemory (ACPI_PHYSICAL_ADDRESS Address, UINT32 Value, UINT32 Width)
+AcpiOsWriteMemory (ACPI_PHYSICAL_ADDRESS Address, UINT64 Value, UINT32 Width)
 {
   DLOG ("AcpiOsWriteMemory (0x%p, 0x%p, %d)\n", Address, Value, Width);
   if (Width != 8 && Width != 16 && Width != 32)
@@ -584,6 +587,9 @@ AcpiOsWriteMemory (ACPI_PHYSICAL_ADDRESS Address, UINT32 Value, UINT32 Width)
   case 32:
     *((u32 *) (&virt[offset])) = (u32) Value;
     break;
+  case 64:
+    *((u64 *) (&virt[offset])) = Value;
+    break;
   }
   unmap_virtual_page (virt);
   return AE_OK;
@@ -598,7 +604,7 @@ AcpiOsWriteMemory (ACPI_PHYSICAL_ADDRESS Address, UINT32 Value, UINT32 Width)
  */
 ACPI_STATUS
 AcpiOsReadPciConfiguration (ACPI_PCI_ID * PciId,
-                            UINT32 Reg, void *Value, UINT32 Width)
+                            UINT32 Reg, UINT64 *Value, UINT32 Width)
 {
   pci_config_addr a;
   uint8 v8;
@@ -739,10 +745,10 @@ AcpiOsRedirectOutput (void *Destination)
 /*
  * Debug input
  */
-UINT32
-AcpiOsGetLine (char *Buffer)
+ACPI_STATUS
+AcpiOsGetLine (char *Buffer, UINT32 BufferLength, UINT32 *BytesRead)
 {
-  return 0;
+  return AE_NOT_IMPLEMENTED;
 }
 
 
