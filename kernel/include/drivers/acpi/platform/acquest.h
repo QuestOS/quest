@@ -131,7 +131,7 @@
 
 #define ACPI_MACHINE_WIDTH          32
 #define ACPI_EXPORT_SYMBOL(symbol)
-#define strtoul                     simple_strtoul
+//#define strtoul                     simple_strtoul
 
 //struct spinlock { unsigned long lock; };
 //struct cache { unsigned long foo; };

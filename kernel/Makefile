@@ -5,7 +5,7 @@ TFTPDIR=tftp
 
 TAR = tar
 CFLAGS = -fno-builtin -fno-stack-protector -fno-strict-aliasing -fno-delete-null-pointer-checks -nostdinc -g -Wall -Wno-attributes -O$(OPT) $(CFG) $(EXTRA_CFLAGS)
-CPPFLAGS = $(CFG) -D_QUEST -Wa,--32 -MMD -Iinclude -Iinclude/drivers/acpi -I.
+CPPFLAGS = $(CFG) -D_QUEST -DACPI_USE_SYSTEM_CLIBRARY -Wa,--32 -MMD -Iinclude -Iinclude/drivers/acpi -I.
 INDENT = indent
 INDENTFLAGS = -gnu -br -ce --no-tabs
 
@@ -37,7 +37,7 @@ OBJS =  boot/boot.o boot/init.o kernel.o module/loader.o \
 	sched/task.o sched/sched.o sched/sleep.o sched/vcpu.o sched/ipc.o sched/msgt.o sched/proc.o \
 	mem/physical.o mem/virtual.o mem/$(KMALLOC).o mem/malloc.o mem/dma_pool.o \
 	util/cpuid.o util/printf.o util/screen.o util/debug.o util/circular.o \
-	util/crc32.o util/bitrev.o util/logger.o util/perfmon.o util/sort.o \
+	util/crc32.o util/bitrev.o util/logger.o util/perfmon.o util/sort.o util/clib.o \
 	drivers/ata/ata.o drivers/ata/diskio.o \
 	drivers/input/keyboard_8042.o drivers/input/keymap.o \
 	drivers/pci/pci.o drivers/pci/pci_irq.o \

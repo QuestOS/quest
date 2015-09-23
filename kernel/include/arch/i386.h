@@ -18,6 +18,7 @@
 #ifndef __I386_H__
 #define __I386_H__
 #include"types.h"
+#include"util/clib.h"
 
 /* EFLAGS bits */
 #define F_CF 0x01               /* carry */

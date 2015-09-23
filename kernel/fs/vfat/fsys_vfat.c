@@ -150,22 +150,22 @@ tolower (int c)
   return c;
 }
 
-static int
-isspace (int c)
-{
-  switch (c)
-    {
-    case ' ':
-    case '\t':
-    case '\r':
-    case '\n':
-      return 1;
-    default:
-      break;
-    }
-
-  return 0;
-}
+//static int
+//isspace (int c)
+//{
+//  switch (c)
+//    {
+//    case ' ':
+//    case '\t':
+//    case '\r':
+//    case '\n':
+//      return 1;
+//    default:
+//      break;
+//    }
+//
+//  return 0;
+//}
 
 static int
 substring (const char *s1, const char *s2)

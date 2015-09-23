@@ -376,21 +376,21 @@ substring (const char *s1, const char *s2)
   return 1;
 }
 
-int
-isspace (int c)
-{
-  switch (c) {
-  case ' ':
-  case '\t':
-  case '\r':
-  case '\n':
-    return 1;
-  default:
-    break;
-  }
-
-  return 0;
-}
+//int
+//isspace (int c)
+//{
+//  switch (c) {
+//  case ' ':
+//  case '\t':
+//  case '\r':
+//  case '\n':
+//    return 1;
+//  default:
+//    break;
+//  }
+//
+//  return 0;
+//}
 
 void *
 memmove (void *to, const void *from, int len)
