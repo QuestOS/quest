@@ -5,7 +5,7 @@ TFTPDIR=tftp
 
 TAR = tar
 CFLAGS = -fno-builtin -fno-stack-protector -fno-strict-aliasing -fno-delete-null-pointer-checks -nostdinc -g -Wall -Wno-attributes -O$(OPT) $(CFG) $(EXTRA_CFLAGS)
-CPPFLAGS = $(CFG) -D_QUEST -DACPI_USE_SYSTEM_CLIBRARY -Wa,--32 -MMD -Iinclude -Iinclude/drivers/acpi -I.
+CPPFLAGS = $(CFG) -D_QUEST -DACPI_USE_SYSTEM_CLIBRARY -DACPI_32BIT_PHYSICAL_ADDRESS -Wa,--32 -MMD -Iinclude -Iinclude/drivers/acpi -I.
 INDENT = indent
 INDENTFLAGS = -gnu -br -ce --no-tabs
 

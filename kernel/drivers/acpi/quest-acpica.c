@@ -185,9 +185,9 @@ AcpiOsTerminate (void)
 ACPI_PHYSICAL_ADDRESS
 AcpiOsGetRootPointer (void)
 {
-  ACPI_SIZE addr;
+  ACPI_PHYSICAL_ADDRESS addr;
   if (AcpiFindRootPointer (&addr) == AE_OK)
-    return (ACPI_PHYSICAL_ADDRESS) addr;
+    return addr;
   else
     return 0;
 }
