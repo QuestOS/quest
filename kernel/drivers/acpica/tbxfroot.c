@@ -325,6 +325,34 @@ AcpiFindRootPointer (
         return_ACPI_STATUS (AE_OK);
     }
 
+		/* Hack: the proper way to get the RSDP on EFI platfrom is
+		 * to use EFI services. But for now, let's just hardcode it */
+		TablePtr = AcpiOsMapMemory (
+                (ACPI_PHYSICAL_ADDRESS) ACPI_HI_RSDP_WINDOW_BASE_MINNOWMAX,
+                ACPI_HI_RSDP_WINDOW_SIZE_MINNOWMAX);
+
+    if (!TablePtr)
+    {
+        ACPI_ERROR ((AE_INFO,
+            "Could not map memory at 0x%8.8X for length %u",
+            ACPI_HI_RSDP_WINDOW_BASE_MINNOWMAX, ACPI_HI_RSDP_WINDOW_SIZE_MINNOWMAX));
+
+        return_ACPI_STATUS (AE_NO_MEMORY);
+    }
+
+    MemRover = AcpiTbScanMemoryForRsdp (TablePtr, ACPI_HI_RSDP_WINDOW_SIZE_MINNOWMAX);
+    AcpiOsUnmapMemory (TablePtr, ACPI_HI_RSDP_WINDOW_SIZE_MINNOWMAX);
+
+    if (MemRover)
+    {
+        /* Return the physical address */
+
+        PhysicalAddress = (UINT32)
+            (ACPI_HI_RSDP_WINDOW_BASE_MINNOWMAX + ACPI_PTR_DIFF (MemRover, TablePtr));
+
+        *TableAddress = (ACPI_PHYSICAL_ADDRESS) PhysicalAddress;
+        return_ACPI_STATUS (AE_OK);
+    }
     /* A valid RSDP was not found */
 
     ACPI_BIOS_ERROR ((AE_INFO, "A valid RSDP was not found"));
