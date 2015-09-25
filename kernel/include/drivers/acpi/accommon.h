@@ -133,6 +133,8 @@
 #include "acutils.h"            /* Utility interfaces */
 #ifndef ACPI_USE_SYSTEM_CLIBRARY
 #include "acclib.h"             /* C library interfaces */
+#else
+#include "util/clib.h"
 #endif /* !ACPI_USE_SYSTEM_CLIBRARY */
 
 
