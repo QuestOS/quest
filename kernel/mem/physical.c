@@ -94,11 +94,11 @@ alloc_phys_frames_aligned_on (uint32 count, uint32 alignment)
 {
 
   int i, j;
-  int page_alignment = alignment / FRAME_SIZE;
+  int frame_alignment = alignment / FRAME_SIZE;
 
-  for (i = ROUNDUP(mm_begin, alignment);
+  for (i = ROUNDUP(mm_begin, frame_alignment);
        i < mm_limit - count + 1;
-       i = ROUNDUP(i + 1, page_alignment))
+       i = ROUNDUP(i + 1, frame_alignment))
   {
     for (j = 0; j < count; j++) {
       if (!BITMAP_TST (mm_table, i + j)) {      /* Is not free page? */
