@@ -141,14 +141,14 @@ devread_vfat (int sector, int byte_offset, int byte_len, char *buf)
 }
 #endif
 
-static int
-tolower (int c)
-{
-  if (c >= 'A' && c <= 'Z')
-    return (c + ('a' - 'A'));
-
-  return c;
-}
+//static int
+//tolower (int c)
+//{
+//  if (c >= 'A' && c <= 'Z')
+//    return (c + ('a' - 'A'));
+//
+//  return c;
+//}
 
 //static int
 //isspace (int c)

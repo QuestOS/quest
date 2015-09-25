@@ -25,7 +25,7 @@ bool copy_ramdisk_module(multiboot_module *pmm, int mod_num);
 
 bool ramdisk_mount();
 
-int ramdisk__dir (char *pathname);
+int ramdisk_dir (char *pathname);
 int ramdisk_read (char *buf, int len);
 
 typedef enum {

@@ -30,6 +30,7 @@
 #include "mem/malloc.h"
 #include "kernel.h"
 #include "sched/vcpu.h"
+#include "sched/sched.h"
 
 #define __LITTLE_ENDIAN
 
@@ -4532,7 +4533,7 @@ static uint device_index;
 static pci_device pdev;
 
 static sint
-bnx2_transmit (u8 *buf, u32 len)
+bnx2_transmit (u8 *buf, s32 len)
 {
   return -1;
 }

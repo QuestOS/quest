@@ -350,7 +350,7 @@ static int
 syscall_rdtsc(u32 eax, u32 ebx, u32 ecx, u32 edx, u32 esi)
 {
   /* XXX: need to check pointer from user */
-  uint64 *rdtsc_ptr = ebx;
+  uint64 *rdtsc_ptr = (uint64 *)ebx;
   uint64 rdtsc_val;
 
   RDTSC(rdtsc_val);
@@ -943,20 +943,6 @@ _fork (vcpu_id_t vcpu_id, uint32 ebp, uint32 *esp)
 
   return tssp->tid;       /* Use this index for child ID for now */
 }
-
-
-char *
-strncpy (char *s1, const char *s2, int length)
-{
-
-  while ((length--) && (*s1++ = *s2++));
-
-  if (length < 0)
-    *(s1 - 1) = '\0';
-
-  return s1;
-}
-
 
 /* --??-- TODO: Rewrite _exec to create a temporary new address space
  before overwriting the old one in case of errors */

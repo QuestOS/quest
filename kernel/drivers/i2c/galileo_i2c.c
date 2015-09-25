@@ -316,7 +316,7 @@ struct i2c_trans {
 	u32 data_r;
 };
 
-static task_id i2c_owner = 0;
+static quest_tss * i2c_owner = NULL;
 struct i2c_trans i2c_dev_buffer;
 semaphore i2c_dev_mtx;
 #define _mutex_init(mtx) semaphore_init(mtx, 1, 1) 

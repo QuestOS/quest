@@ -72,6 +72,7 @@ void *memscan(void *addr, int c, size_t size)
   return (void *)p;
 }
 
+extern void new_keyboard_code(uint16 code, bool have_kernel_lock);
 
 static void report_key(usb_keyboard_dev_t* dev, uint code, uint press)
 {

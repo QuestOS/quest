@@ -376,6 +376,18 @@ done:
     return (ReturnValue);
 }
 
+char *
+strncpy (char *s1, const char *s2, int length)
+{
+
+  while ((length--) && (*s1++ = *s2++));
+
+  if (length < 0)
+    *(s1 - 1) = '\0';
+
+  return s1;
+}
+
 /*
  * Local Variables:
  * indent-tabs-mode: nil

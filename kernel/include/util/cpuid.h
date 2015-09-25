@@ -51,6 +51,8 @@ bool cpuid_tsc_support (void);
 bool cpuid_rdtscp_support (void);
 bool cpuid_invariant_tsc_support (void);
 bool cpuid_msr_support (void);
+uint32 cpuid_max_phys_addr (void);
+bool cpuid_pse36_support (void);
 
 #endif
 

@@ -241,7 +241,7 @@ make_beacon_pkt (local_t *local,
                  u8 chan,
                  u8 *buf, u32 len)
 {
-  uint8 *bssid = local->vif.bss_conf.bssid;
+  const uint8 *bssid = local->vif.bss_conf.bssid;
   char *ssid = local->ssid;
   struct ieee80211_mgmt *m = (struct ieee80211_mgmt *)buf;
   int i;

@@ -61,6 +61,12 @@ extern const uint8 _Ctypes[];
 #define isprint(c)  (_Ctypes[(unsigned char)(c)] & (_LO | _UP | _DI | _XS | _PU))
 #define isalpha(c)  (_Ctypes[(unsigned char)(c)] & (_LO | _UP))
 
+char * strcat(char *, const char *);
+char * strncpy (char *, const char *, int);
+int toupper(int);
+int tolower(int);
+uint32 strtoul(const char *, char **, uint32);
+
 #endif //_CLIB_H_
 
 /*

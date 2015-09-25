@@ -16,6 +16,7 @@
  */
 
 #include"fs/filesys.h"
+#include"fs/ram_romfs.h"
 #include"kernel.h"
 #include"util/screen.h"
 #include"util/printf.h"

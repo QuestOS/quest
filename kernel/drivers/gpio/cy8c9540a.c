@@ -427,7 +427,7 @@ cy8c9540a_unmask_interrupt(unsigned gpio)
 #define INT_PIN_NUM 14
 
 struct int_pin_data {
-	task_id waitqueue;
+	quest_tss *waitqueue;
 	u8 port;
 	u8 pin;
 } *int_pin_array[INT_PIN_NUM];
@@ -439,7 +439,7 @@ static const unsigned int arduino2galileo_gpio_mapping[] = {
 
 #ifndef NO_GPIO_IOVCPU
 int gpio_handler_T_min = 1000000;
-int gpio_handler_T_min_tid;
+quest_tss * gpio_handler_T_min_tid = NULL;
 #endif
 
 void
