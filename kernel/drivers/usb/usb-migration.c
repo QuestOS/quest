@@ -358,7 +358,7 @@ void usb_migrate_task(quest_tss* task)
     }
   }
 
-  usb_rt_push_data(migration_urb, task, sizeof(*task), sizeof(*task), 0, (void*)2);
+  usb_rt_push_data(migration_urb, (char *)task, sizeof(*task), sizeof(*task), 0, (void*)2);
 
   
   DLOG("About to sleep: line %d", __LINE__);
