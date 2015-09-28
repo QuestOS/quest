@@ -96,7 +96,7 @@ cpuid_pse36_support (void)
 {
   uint edx;
   cpuid (1, 0, NULL, NULL, NULL, &edx);
-  return (edx & (1 << 17));
+  return !!(edx & (1 << 17));
 }
 
 bool
@@ -104,7 +104,7 @@ cpuid_tsc_support (void)
 {
   int edx;
   cpuid (1, 0, NULL, NULL, NULL, &edx);
-  return (edx & (1 << 4));
+  return !!(edx & (1 << 4));
 }
 
 bool
@@ -112,7 +112,7 @@ cpuid_rdtscp_support (void)
 {
   uint edx;
   cpuid (0x80000001, 0, NULL, NULL, NULL, &edx);
-  return (edx & (1 << 27));
+  return !!(edx & (1 << 27));
 }
 
 bool
@@ -120,7 +120,7 @@ cpuid_invariant_tsc_support (void)
 {
   uint edx;
   cpuid (0x80000007, 0, NULL, NULL, NULL, &edx);
-  return (edx & (1 << 8));
+  return !!(edx & (1 << 8));
 }
 
 bool
@@ -128,7 +128,7 @@ cpuid_msr_support (void)
 {
   int edx;
   cpuid (1, 0, NULL, NULL, NULL, &edx);
-  return (edx & (1 << 5));
+  return !!(edx & (1 << 5));
 }
 
 bool
@@ -136,7 +136,7 @@ cpuid_vmx_support (void)
 {
   int ecx;
   cpuid (1, 0, NULL, NULL, &ecx, NULL);
-  return (ecx & (1 << 5));
+  return !!(ecx & (1 << 5));
 }
 
 /*
