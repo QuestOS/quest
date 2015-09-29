@@ -149,13 +149,13 @@
 #define ACPI_DEBUG
 #define ACPI_DEBUG_COM1
 
-#ifdef ACPICA_DEBUG_COM1
+#ifdef ACPI_DEBUG_COM1
 #define DLOG_COM1(fmt, ...) com1_printf(fmt,##__VA_ARGS__)
 #else
 #define DLOG_COM1(fmt,...) ;
 #endif
 
-#ifdef ACPICA_DEBUG
+#ifdef ACPI_DEBUG
 #define DLOG(fmt, ...) logger_printf(fmt,##__VA_ARGS__)
 #else
 #define DLOG(fmt,...) ;
@@ -185,6 +185,12 @@ AcpiOsTerminate (void)
 ACPI_PHYSICAL_ADDRESS
 AcpiOsGetRootPointer (void)
 {
+  /* FIXME: the proper way to find the RSDP on an EFI platform
+   * is to get it from EFI services. 
+   */
+#ifdef MINNOWMAX
+  return 0x796EE014;
+#endif
   ACPI_PHYSICAL_ADDRESS addr;
   if (AcpiFindRootPointer (&addr) == AE_OK)
     return addr;

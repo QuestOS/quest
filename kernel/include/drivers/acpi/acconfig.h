@@ -257,8 +257,6 @@
 #define ACPI_EBDA_WINDOW_SIZE           1024
 #define ACPI_HI_RSDP_WINDOW_BASE        0x000E0000     /* Physical Address */
 #define ACPI_HI_RSDP_WINDOW_SIZE        0x00020000
-#define ACPI_HI_RSDP_WINDOW_BASE_MINNOWMAX        0x796E0000     /* Physical Address */
-#define ACPI_HI_RSDP_WINDOW_SIZE_MINNOWMAX        0x00020000
 #define ACPI_RSDP_SCAN_STEP             16
 
 /* Operation regions */
