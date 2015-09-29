@@ -146,8 +146,8 @@
 #include "sched/sched.h"
 
 
-#define ACPI_DEBUG
-#define ACPI_DEBUG_COM1
+//#define ACPI_DEBUG
+//#define ACPI_DEBUG_COM1
 
 #ifdef ACPI_DEBUG_COM1
 #define DLOG_COM1(fmt, ...) com1_printf(fmt,##__VA_ARGS__)
