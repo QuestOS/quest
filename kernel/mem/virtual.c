@@ -73,10 +73,10 @@ void *
 map_contiguous_virtual_pages (uint32 phys_frame, uint32 count)
 {
   uint32 *page_table = (uint32 *) KERN_PGT;
-  int i, j;
+  uint32 i, j;
   void *va;
 
-  if (count == 0)
+  if (count == 0 || count >= 0x400)
     return NULL;
 
   for (i = 0; i < 0x400 - count + 1; i++) {

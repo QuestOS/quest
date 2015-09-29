@@ -180,6 +180,10 @@ real_start:
         /* Set 1024th (top) entry in PGD to reference kern_pg_table
          * Here, we have 1 4MB superpage for the entire kernel
          */
+        /* --TC-- Seems not true. Here, the kernel is mapped into
+         * high memory using page table. Superpage is only used for
+         * low memory mapping.
+         */
         movl $kern_pg_table+3, %eax /* +3=>present and r/w */
         movl %eax, pgd+0xFFC /* --WARN-- Hardcoded pgd offset */
 
