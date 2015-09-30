@@ -1479,7 +1479,7 @@ start:
     unlock_kernel ();
     return i;
   }
-#elif SERIAL_MMIO32
+#elif (SERIAL_MMIO32 || MINNOWMAX)
   {
     int char_returned;
     i = 0;

@@ -197,7 +197,11 @@ int getc (void)
 #ifdef SERIAL_MMIO32
   return mmio32_getc ();
 #else
+  unlock_kernel();
+  sti();
   while (!(inb (serial_port1 + 5) & 1));
+  cli();
+  lock_kernel();
   return inb (serial_port1);
 #endif
 }
