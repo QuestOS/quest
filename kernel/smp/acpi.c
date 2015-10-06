@@ -28,7 +28,7 @@
 #include "util/printf.h"
 #include "util/cpuid.h"
 
-//#define ACPI_DEBUG
+#define ACPI_DEBUG
 
 #ifdef ACPI_DEBUG
 #define DLOG_COM1(fmt, ...) com1_printf(fmt,##__VA_ARGS__)
@@ -644,16 +644,16 @@ DisplayResource (ACPI_RESOURCE *Resource, void *Context)
   case ACPI_RESOURCE_TYPE_ADDRESS16:
     DLOG_COM1 ("ADDR16 type=%d min=0x%.04X max=0x%.04X gran=0x%.04X trans=0x%.04X\n",
                  Resource->Data.Address16.ResourceType,
-                 Resource->Data.Address16.Minimum,
-                 Resource->Data.Address16.Maximum,
-                 Resource->Data.Address16.Granularity,
-                 Resource->Data.Address16.TranslationOffset);
+                 Resource->Data.Address16.Address.Minimum,
+                 Resource->Data.Address16.Address.Maximum,
+                 Resource->Data.Address16.Address.Granularity,
+                 Resource->Data.Address16.Address.TranslationOffset);
     break;
   case ACPI_RESOURCE_TYPE_ADDRESS32:
     DLOG_COM1 ("ADDR32 type=%d min=0x%.04X max=0x%.04X\n",
                  Resource->Data.Address32.ResourceType,
-                 Resource->Data.Address32.Minimum,
-                 Resource->Data.Address32.Maximum);
+                 Resource->Data.Address32.Address.Minimum,
+                 Resource->Data.Address32.Address.Maximum);
     break;
   default:
     DLOG_COM1 ("unhandled\n");
