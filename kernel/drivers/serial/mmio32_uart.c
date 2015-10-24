@@ -68,7 +68,7 @@ wait_for_rcvrr (uint32_t port)
 }
 
 static void
-serial_putc (uint32_t port, int c)
+_mmio32_putc (uint32_t port, int c)
 {
   wait_for_xmitr (port);
   mmio32_out (port, UART_TX, c);
@@ -77,12 +77,12 @@ serial_putc (uint32_t port, int c)
 void
 mmio32_putc (char c)
 {
-  if (c == '\n') serial_putc (mmio_base, '\r');
-  serial_putc (mmio_base, c);
+  if (c == '\n') _mmio32_putc (mmio_base, '\r');
+  _mmio32_putc (mmio_base, c);
 }
 
 static int 
-serial_getc (uint32_t port)
+_mmio32_getc (uint32_t port)
 {
   wait_for_rcvrr (port);
   return mmio32_in (port, UART_RX);
@@ -91,7 +91,7 @@ serial_getc (uint32_t port)
 int
 mmio32_getc ()
 {
-  return serial_getc(mmio_base);
+  return _mmio32_getc (mmio_base);
 }
 
 unsigned int

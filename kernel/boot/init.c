@@ -268,30 +268,6 @@ init_pit (void)
   outb ((PIT_FREQ / HZ) >> 8, 0x40);    /* counter 0 high byte */
 }
 
-void
-initialize_serial_port (void)
-{
-  outb (0, serial_port1 + 1);          /* Turn off interrupts - Port1 */
-
-  /*         PORT 1 - Communication Settings         */
-
-  outb (0x80, serial_port1 + 3);       /* SET DLAB ON */
-  //outb (0x03, serial_port1 + 0);       /* Set Baud rate - Divisor Latch Low Byte */
-  outb (0x01, serial_port1 + 0);       /* Set Baud rate - Divisor Latch Low Byte */
-  /* Default 0x03 =  38,400 BPS */
-  /*         0x01 = 115,200 BPS */
-  /*         0x02 =  57,600 BPS */
-  /*         0x06 =  19,200 BPS */
-  /*         0x0C =   9,600 BPS */
-  /*         0x18 =   4,800 BPS */
-  /*         0x30 =   2,400 BPS */
-  outb (0x00, serial_port1 + 1);       /* Set Baud rate - Divisor Latch High Byte */
-  outb (0x03, serial_port1 + 3);       /* 8 Bits, No Parity, 1 Stop Bit */
-  outb (0xC7, serial_port1 + 2);       /* FIFO Control Register */
-  outb (0x0B, serial_port1 + 4);       /* Turn on DTR, RTS, and OUT2 */
-  //com1_puts ("COM1 initialized.\n");
-}
-
 char* get_cmdline_arg(char* cmdline, char* key)
 {
   char *p = cmdline;
@@ -475,11 +451,6 @@ init (multiboot * pmb)
   initialize_serial_mmio32 ();
 #else
   initialize_serial_port ();
-#endif
-
-#ifdef MINNOWMAX
-  /* enable ttyS0 on MinnowMax */
-  WRITE(0, 31, 0, 0x80, dword, 1);
 #endif
 
   pchVideo = (char *)KERN_SCR;

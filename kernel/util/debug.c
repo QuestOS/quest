@@ -24,6 +24,7 @@
 #endif
 
 #ifndef GDBSTUB_TCP
+#if 0
 void putDebugChar (int c)
 {
   while (!(inb (serial_port1 + 5) & 0x20));    /* check line status register, empty transmitter bit */
@@ -36,6 +37,7 @@ int getDebugChar (void)
   return inb (serial_port1);
 }
 #endif
+#endif
 
 void
 com1_putc (char c)
@@ -47,15 +49,7 @@ com1_putc (char c)
 #ifdef SERIAL_MMIO32
   mmio32_putc (c);
 #else
-  if (c == '\n') {
-    /* output CR before NL */
-    while (!(inb (serial_port1 + 5) & 0x20));  /* check line status register, empty transmitter bit */
-    outb ('\r', serial_port1);
-  }
-
-
-  while (!(inb (serial_port1 + 5) & 0x20));    /* check line status register, empty transmitter bit */
-  outb (c, serial_port1);
+  serial_putc (c);
 #endif /* SERIAL_MMIO32 */
 
 #ifdef USE_PL2303
@@ -197,12 +191,7 @@ int getc (void)
 #ifdef SERIAL_MMIO32
   return mmio32_getc ();
 #else
-  unlock_kernel();
-  sti();
-  while (!(inb (serial_port1 + 5) & 1));
-  cli();
-  lock_kernel();
-  return inb (serial_port1);
+  return serial_getc ();
 #endif
 }
 

@@ -42,6 +42,7 @@ OBJS =  boot/boot.o boot/init.o kernel.o module/loader.o \
 	drivers/input/keyboard_8042.o drivers/input/keymap.o \
 	drivers/pci/pci.o drivers/pci/pci_irq.o \
 	drivers/i2c/galileo_i2c.o drivers/gpio/cy8c9540a.o drivers/gpio/gpio.o drivers/gpio/quark_gpio.o \
+	drivers/gpio/minnowmax_gpio.o \
 	drivers/net/ethernetif.o drivers/net/pcnet.o \
 	drivers/net/e1000.o drivers/net/e1000e.o \
 	drivers/net/bnx2.o \
@@ -65,9 +66,9 @@ OBJS =  boot/boot.o boot/init.o kernel.o module/loader.o \
 	drivers/usb/hub.o drivers/usb/uvc.o drivers/usb/beagle_gadget.o drivers/usb/beagle_gadget2.o \
 	drivers/usb/ehci_hcd.o drivers/usb/ehci_mem.o drivers/usb/ehci_debug.o \
 	drivers/usb/usb.o drivers/usb/enumeration.o \
-	drivers/serial/mmio32_uart.o \
+	drivers/serial/mmio32_uart.o drivers/serial/serial.o \
 	drivers/serial/pololu.o \
-	kdb/i386-stub.o
+	#kdb/i386-stub.o
 
 CFILES = $(patsubst %.o,%.c,$(OBJS))
 DFILES = $(patsubst %.o,%.d,$(OBJS))

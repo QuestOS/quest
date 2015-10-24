@@ -42,6 +42,10 @@ extern void mmio32_putc (char);
 extern int mmio32_getc (void);
 extern void * remap_serial_mmio32 (void);
 
+extern void serial_putc (char);
+extern void initialize_serial_port (void);
+extern int serial_getc (void);
+
 #endif
 
 /* vi: set et sw=2 sts=2: */

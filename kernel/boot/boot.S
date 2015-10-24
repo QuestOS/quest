@@ -28,7 +28,6 @@
 #include "kernel.h"
 #include "vm/linux_boot.h"
 #include "vm/spow2.h"
-#include "drivers/serial/serial.h"
 
         .globl initial_gdt
 

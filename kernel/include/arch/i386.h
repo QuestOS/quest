@@ -56,8 +56,6 @@
 #define PIC1_BASE_IRQ 0x20
 #define PIC2_BASE_IRQ 0x28
 
-extern uint16 serial_port1;
-
 typedef struct _tss
 {
   /* 80386 hardware data */
