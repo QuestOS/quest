@@ -24,6 +24,7 @@
 #include <mem/mem.h>
 #include <sched/sched.h>
 #include <sched/vcpu.h>
+#include "drivers/i2c/minnowmax_i2c.h"
 
 #define DEBUG_I2C 
 
@@ -321,30 +322,28 @@ u8 i2c_read_byte_data(u8 reg)
 	return (retval & 0xFF);
 }
 
-s32 i2c_write_byte_data(u8 reg, u8 data)
+s32 i2c_write_byte_data(u8 data)
 {
-	u32 val1, val2;
+	u32 val1;
 
-	val1 = reg | DW_IC_CMD_WRITE | DW_IC_CMD_RESTART;
-	val2 = data | DW_IC_CMD_WRITE | DW_IC_CMD_STOP;
-	if (!mp_enabled) {
-		wait_tx();
-		i2c_write_r(val1, DW_IC_DATA_CMD);
-		wait_tx();
-		i2c_write_r(val2, DW_IC_DATA_CMD);
-	} else {
+	val1 = data | DW_IC_CMD_WRITE | DW_IC_CMD_STOP;
+	//if (!mp_enabled) {
+	//	wait_tx();
+	//	i2c_write_r(val1, DW_IC_DATA_CMD);
+	//	DLOG("Wrote %u to the bus", val1);
+	//} else {
 		//lock i2c device
-		_mutex_lock(&i2c_dev_mtx);
+		//_mutex_lock(&i2c_dev_mtx);
 		i2c_dev_buffer.type = WRITE;
 		i2c_dev_buffer.status = WRITE_PENDING,
 		i2c_dev_buffer.data_w[0] = val1;
-		i2c_dev_buffer.data_w[1] = val2;
+		//i2c_dev_buffer.data_w[1] = val2;
 		i2c_owner = str();
 		i2c_write_r(DW_IC_INTR_DEFAULT_MASK, DW_IC_INTR_MASK);
 		DLOG("about to sleep");
 		schedule();
-		_mutex_unlock(&i2c_dev_mtx);
-	}
+		//_mutex_unlock(&i2c_dev_mtx);
+	//}
 	return 0;
 }
 
@@ -361,9 +360,9 @@ i2c_write()
 	i2c_write_r((DW_IC_INTR_DEFAULT_MASK & ~DW_IC_INTR_TX_EMPTY),
 			DW_IC_INTR_MASK);
 	DLOG("data_w[0] is 0x%x", i2c_dev_buffer.data_w[0]);
-	DLOG("data_w[1] is 0x%x", i2c_dev_buffer.data_w[1]);
+	//DLOG("data_w[1] is 0x%x", i2c_dev_buffer.data_w[1]);
 	i2c_write_r(i2c_dev_buffer.data_w[0], DW_IC_DATA_CMD);
-	i2c_write_r(i2c_dev_buffer.data_w[1], DW_IC_DATA_CMD);
+	//i2c_write_r(i2c_dev_buffer.data_w[1], DW_IC_DATA_CMD);
 	i2c_dev_buffer.status = (i2c_dev_buffer.type == READ) ?
 		READ_PENDING : DONE;
 }
@@ -377,14 +376,10 @@ i2c_read()
 	i2c_dev_buffer.status = DONE;
 }
 
-/**
- * Sharing IRQ with GPIO controller.
- * Only called by shared_irq_handler in quark_gpio.c
- */
 uint32
 i2c_irq_handler(uint8 vec)
 {
-#if 0
+	/* in case of sharing irq */
 	u32 int_stat = i2c_int_stat();
 	if (int_stat == 0)
 		/* interrupt is not for me... */
@@ -406,24 +401,21 @@ i2c_irq_handler(uint8 vec)
 		goto done;
 	}
 	else {
+		/* ignore other interrupts for now */
 		i2c_clear_int();
 		return 0;
 	}
 
 done:
 	i2c_disable_int();
-	DLOG("about to wakeup %d", i2c_owner);
+	DLOG("about to wakeup %d", i2c_owner->tid);
 	wakeup(i2c_owner);
-	return 0;
-#endif
-	DLOG("interrupts coming...");
 	return 0;
 }
 
-void i2c_xfer_init(u32 slave_addr, int is10bit)
+void i2c_xfer_init(u32 slave_addr)
 {
-	if (!is10bit)
-		slave_addr &= ~0x800;
+	DLOG("init transferring...");
 	i2c_write_r(slave_addr, DW_IC_TAR);
 	i2c_enable();
 }
@@ -492,10 +484,10 @@ bool i2c_init()
 	i2c_config();
 	i2c_disable_int();
 	i2c_clear_int();
-	i2c_xfer_init(0x8, 0);
-	while (1) {
-		i2c_write_byte_data(0x80, 0xcc);
-	}
+	//i2c_xfer_init(0x8, 0);
+	//while (1) {
+	//	i2c_write_byte_data(0x80, 0xcc);
+	//}
 	//i2c_print_regs();
 	//while(1);
 
