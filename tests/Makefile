@@ -10,7 +10,7 @@ CFLAGS = -g
 
 OTHER_FILES = sample.txt
 
-SUBDIRS = sketches
+SUBDIRS = sketches mraa
 
 PROGS = exec migtest race test1 test2 test3 test4 test5 \
 	test6 test7  float_test \
