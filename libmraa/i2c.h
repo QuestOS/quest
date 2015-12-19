@@ -14,7 +14,7 @@ i2c_init(unsigned int slave_addr)
 static int
 i2c_write_byte(unsigned char data)
 {
-	return make_syscall(I2C_WRITE, data, 0, 0);
+	return make_i2c_syscall(I2C_WRITE, data, 0, 0);
 }
 
 #endif

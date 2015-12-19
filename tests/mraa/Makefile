@@ -6,9 +6,9 @@ endif
 
 LIBS   = $(LIB_DEST)/crt0.o -lc
 INCS   = -I../../libmraa
-CFLAGS = -Wall -Werror
+CFLAGS = -Wall 
 
-PROGS = i2c_test
+PROGS = i2c_test gpio_test
 
 .PHONY: all clean install
 
