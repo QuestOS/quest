@@ -4,7 +4,7 @@
 OPT = 0
 
 # Disable SMP
-# CFG += -DNO_SMP
+CFG += -DNO_SMP
 
 # Disable "logger" thread
 CFG += -DNO_LOGGER
@@ -48,22 +48,19 @@ KMALLOC = tlsf
 # Enable Serial MMIO32 driver
 # This will disable port based RS232
 # Enable this flag for embedded platforms such as Galileo board
-# CFG += -DSERIAL_MMIO32
+CFG += -DSERIAL_MMIO32
 
 # Minnowboard Max
-CFG += -DMINNOWMAX
+# CFG += -DMINNOWMAX
 
 # Galileo
-# CFG += -DGALILEO
+CFG += -DGALILEO
 
 # Disable FPU
 CFG += -DNO_FPU
 
 # No Pololu
 CFG += -DNO_POLOLU
-
-# No CY8C9540A
-CFG += -DNO_CY8C9540A
 
 # Disable attachInterrupt IOVCPU
 # CFG += -DNO_GPIO_IOVCPU

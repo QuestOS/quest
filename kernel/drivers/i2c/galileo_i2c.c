@@ -555,5 +555,7 @@ static const struct module_ops mod_ops = {
   .init = i2c_init
 };
 
-//DEF_MODULE (galileo_i2c, "Galileo I2C driver", &mod_ops, {"pci", "galileo_quark_gpio"});
+#ifdef GALILEO
+DEF_MODULE (galileo_i2c, "Galileo I2C driver", &mod_ops, {"pci", "galileo_quark_gpio"});
+#endif
 

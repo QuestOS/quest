@@ -257,6 +257,12 @@
 #define ACPI_EBDA_WINDOW_SIZE           1024
 #define ACPI_HI_RSDP_WINDOW_BASE        0x000E0000     /* Physical Address */
 #define ACPI_HI_RSDP_WINDOW_SIZE        0x00020000
+#ifdef GALILEO
+#define ACPI_HI_HI_RSDP_WINDOW_BASE     0x0F11E000     /* Physical Address */
+#define ACPI_HI_HI_RSDP_WINDOW_SIZE     0x00020000
+#define ACPI_HI_HI_RSDP_WINDOW_BASE_1_0_4     0x0F01E000     /* Physical Address */
+#define ACPI_HI_HI_RSDP_WINDOW_SIZE_1_0_4     0x00020000
+#endif
 #define ACPI_RSDP_SCAN_STEP             16
 
 /* Operation regions */

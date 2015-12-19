@@ -325,6 +325,69 @@ AcpiFindRootPointer (
         return_ACPI_STATUS (AE_OK);
     }
 
+#ifdef GALILEO
+		/* --------------------------------------------------------------------------------------- */
+		
+		/* Hack: Intel Galileo EFI firmware places RSDP in high memory above 1MB. */
+    /* TODO: We can probably query the firmware for the location? For now, hard-code it... */
+		/* For Galileo Firmware 1.0.0 */
+    TablePtr = AcpiOsMapMemory (
+                (ACPI_PHYSICAL_ADDRESS) ACPI_HI_HI_RSDP_WINDOW_BASE,
+                ACPI_HI_HI_RSDP_WINDOW_SIZE);
+
+    if (!TablePtr)
+    {
+        ACPI_ERROR ((AE_INFO,
+            "Could not map memory at %8.8X for length %X",
+            ACPI_HI_HI_RSDP_WINDOW_BASE, ACPI_HI_HI_RSDP_WINDOW_SIZE));
+
+        return_ACPI_STATUS (AE_NO_MEMORY);
+    }
+
+    MemRover = AcpiTbScanMemoryForRsdp (TablePtr, ACPI_HI_HI_RSDP_WINDOW_SIZE);
+    AcpiOsUnmapMemory (TablePtr, ACPI_HI_HI_RSDP_WINDOW_SIZE);
+
+    if (MemRover)
+    {
+        /* Return the physical address */
+
+        PhysicalAddress = (UINT32)
+            (ACPI_HI_HI_RSDP_WINDOW_BASE + ACPI_PTR_DIFF (MemRover, TablePtr));
+
+        *TableAddress = PhysicalAddress;
+        return_ACPI_STATUS (AE_OK);
+    }
+
+		/* For Galileo Firmware 1.0.4 */
+		TablePtr = AcpiOsMapMemory (
+                (ACPI_PHYSICAL_ADDRESS) ACPI_HI_HI_RSDP_WINDOW_BASE_1_0_4,
+                ACPI_HI_HI_RSDP_WINDOW_SIZE_1_0_4);
+
+    if (!TablePtr)
+    {
+        ACPI_ERROR ((AE_INFO,
+            "Could not map memory at %8.8X for length %X",
+            ACPI_HI_HI_RSDP_WINDOW_BASE_1_0_4, ACPI_HI_HI_RSDP_WINDOW_SIZE_1_0_4));
+
+        return_ACPI_STATUS (AE_NO_MEMORY);
+    }
+
+    MemRover = AcpiTbScanMemoryForRsdp (TablePtr, ACPI_HI_HI_RSDP_WINDOW_SIZE_1_0_4);
+    AcpiOsUnmapMemory (TablePtr, ACPI_HI_HI_RSDP_WINDOW_SIZE_1_0_4);
+
+    if (MemRover)
+    {
+        /* Return the physical address */
+
+        PhysicalAddress = (UINT32)
+            (ACPI_HI_HI_RSDP_WINDOW_BASE_1_0_4 + ACPI_PTR_DIFF (MemRover, TablePtr));
+
+        *TableAddress = PhysicalAddress;
+        return_ACPI_STATUS (AE_OK);
+    }
+		/* --------------------------------------------------------------------------------------- */
+#endif
+
     /* A valid RSDP was not found */
 
     ACPI_BIOS_ERROR ((AE_INFO, "A valid RSDP was not found"));

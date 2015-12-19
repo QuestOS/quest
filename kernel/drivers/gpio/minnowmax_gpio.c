@@ -445,6 +445,9 @@ static const struct module_ops mod_ops = {
   .init = minnowmax_gpio_init
 };
 
+#ifdef MINNOWMAX
 DEF_MODULE (minnowmax_quark_gpio, "MinnowBoard Max GPIO driver", &mod_ops, {"pci"});
+#endif
+
 
 

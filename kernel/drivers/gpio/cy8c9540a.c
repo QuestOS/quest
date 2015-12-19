@@ -644,7 +644,7 @@ bool cy8c9540a_setup()
 	i2c_xfer_init(dev.addr);
 
   dev_id = cypress_get_id();
-  logger_printf("dev_id is 0x%x\n", dev_id);
+  DLOG("dev_id is 0x%x", dev_id);
 
 	/* Disable PWM, set all GPIOs as input.  */
 	for (i = 0; i < NPORTS; i++) {
@@ -719,7 +719,7 @@ static const struct module_ops mod_ops = {
   .init = cy8c9540a_setup
 };
 
-#ifndef NO_CY8C9540A
+#ifdef GALILEO
 DEF_MODULE (galileo_cy8c9540a, "Galileo CY8C9540A driver", &mod_ops, {"galileo_i2c", "galileo_quark_gpio"});
 #endif
 

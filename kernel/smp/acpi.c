@@ -28,7 +28,7 @@
 #include "util/printf.h"
 #include "util/cpuid.h"
 
-#define ACPI_DEBUG
+//#define ACPI_DEBUG
 
 #ifdef ACPI_DEBUG
 #define DLOG_COM1(fmt, ...) com1_printf(fmt,##__VA_ARGS__)

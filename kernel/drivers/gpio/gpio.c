@@ -17,6 +17,7 @@
 
 #include "drivers/gpio/quark_gpio.h"
 #include "drivers/gpio/gpio.h"
+#include "cy8c9540a.h"
 #include "sched/sched.h"
 #include "sched/vcpu.h"
 #include "util/printf.h"
@@ -60,7 +61,7 @@ gpio_handler(int operation, int gpio, int val, int extra_arg)
 		case PIN_MODE:
 			if (val == OUTPUT) {
 #ifdef GALILEO
-        ret = set_drive(gpio, GPIOF_DRIVE_STRONG);
+        ret = gops.set_drive(gpio, GPIOF_DRIVE_STRONG);
         if (ret < 0)
           return ret;
 #endif 
