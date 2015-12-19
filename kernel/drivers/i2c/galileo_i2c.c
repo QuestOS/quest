@@ -473,7 +473,7 @@ void i2c_xfer_init(u32 slave_addr)
 
 static pci_device i2c_pci_device;
 
-bool i2c_init()
+static bool i2c_init()
 {
 	uint device_index, irq_line, irq_pin;
 	uint mem_addr;
@@ -555,5 +555,5 @@ static const struct module_ops mod_ops = {
   .init = i2c_init
 };
 
-DEF_MODULE (galileo_i2c, "Galileo I2C driver", &mod_ops, {"pci", "galileo_quark_gpio"});
+//DEF_MODULE (galileo_i2c, "Galileo I2C driver", &mod_ops, {"pci", "galileo_quark_gpio"});
 

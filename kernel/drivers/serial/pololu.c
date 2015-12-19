@@ -141,7 +141,9 @@ static const struct module_ops mod_ops = {
   .init = pololu_init
 };
 
+#ifndef NO_POLOLU
 DEF_MODULE (pololu, "Pololu Serial Servo Controller Driver", &mod_ops, {});
+#endif
 
 /*
  * Local Variables:

@@ -225,7 +225,7 @@ i2c_int_stat()
 	return i2c_read_r(DW_IC_INTR_STAT);
 }
 
-u32
+static u32
 i2c_int_mask()
 {
 	return i2c_read_r(DW_IC_INTR_MASK);
@@ -284,7 +284,7 @@ semaphore i2c_dev_mtx;
 #define _mutex_lock(mtx) semaphore_wait(mtx, 1, -1) 
 #define _mutex_unlock(mtx) semaphore_signal(mtx, 1) 
 
-u8 i2c_read_byte_data(u8 reg)
+u8 byt_i2c_read_byte_data(u8 reg)
 {
 	u32 val1, val2, retval;
 
@@ -322,7 +322,7 @@ u8 i2c_read_byte_data(u8 reg)
 	return (retval & 0xFF);
 }
 
-s32 i2c_write_byte_data(u8 data)
+s32 byt_i2c_write_byte_data(u8 data)
 {
 	u32 val1;
 
@@ -376,7 +376,7 @@ i2c_read()
 	i2c_dev_buffer.status = DONE;
 }
 
-uint32
+static uint32
 i2c_irq_handler(uint8 vec)
 {
 	/* in case of sharing irq */
@@ -413,7 +413,7 @@ done:
 	return 0;
 }
 
-void i2c_xfer_init(u32 slave_addr)
+void byt_i2c_xfer_init(u32 slave_addr)
 {
 	DLOG("init transferring...");
 	i2c_write_r(slave_addr, DW_IC_TAR);
@@ -425,7 +425,7 @@ void i2c_xfer_init(u32 slave_addr)
 
 static pci_device i2c_pci_device;
 
-bool i2c_init()
+static bool i2c_init()
 {
 	uint device_index, irq_line, irq_pin;
 	uint mem_addr;
@@ -504,5 +504,7 @@ static const struct module_ops mod_ops = {
   .init = i2c_init
 };
 
+#ifdef MINNOWMAX
 DEF_MODULE (minnowmax_i2c, "MinnowMax I2C driver", &mod_ops, {"pci"});
+#endif
 

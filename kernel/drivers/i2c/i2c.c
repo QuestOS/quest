@@ -38,11 +38,11 @@ i2c_handler(enum ops operation, int arg1, int arg2, int arg3)
 	switch(operation) {
     case I2C_INIT: {
       int slave_addr = arg1;
-      i2c_xfer_init(slave_addr);
+      byt_i2c_xfer_init(slave_addr);
     }
 		case I2C_WRITE: {
       unsigned char data = arg1; 
-      return i2c_write_byte_data(data);
+      return byt_i2c_write_byte_data(data);
     }
 		default:
 			printf("Unsupported operation!");

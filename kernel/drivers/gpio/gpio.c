@@ -15,8 +15,8 @@
  *  along with this program.  If not, see <http://www.gnu.org/licenses/>.
  */
 
-#include "cy8c9540a.h"
 #include "drivers/gpio/quark_gpio.h"
+#include "drivers/gpio/gpio.h"
 #include "sched/sched.h"
 #include "sched/vcpu.h"
 #include "util/printf.h"
@@ -46,6 +46,7 @@
 #endif
 
 static int pwm_enabled[14] = {0};
+struct gpio_ops gops;
 
 int
 gpio_handler(int operation, int gpio, int val, int extra_arg)
@@ -58,26 +59,33 @@ gpio_handler(int operation, int gpio, int val, int extra_arg)
 	switch(operation) {
 		case PIN_MODE:
 			if (val == OUTPUT) {
-        ret = cy8c9540a_gpio_set_drive(gpio, GPIOF_DRIVE_STRONG);
+#ifdef GALILEO
+        ret = set_drive(gpio, GPIOF_DRIVE_STRONG);
         if (ret < 0)
           return ret;
-				return cy8c9540a_gpio_direction_output(gpio, 0);
+#endif 
+				return gops.set_output(gpio, 0);
       } else if (val == INPUT) {
-				return cy8c9540a_gpio_direction_input(gpio);
+				return gops.set_input(gpio);
       } else {
+#ifdef GALILEO
         /* fast mdoe, select the right multiplex line */
         cy8c9540a_fast_gpio_mux(gpio);
         /* set the direction */
         quark_gpio_pin = (gpio == 16) ? 6 : 7;
         int out = (val == FAST_OUTPUT) ? 1 : 0;
         quark_gpio_direction(quark_gpio_pin, out);
+#elif MINNOWMAX
+        printf("invalid mode!\n");
+#endif
         break;
       }
 		case DIG_WRITE:
-			cy8c9540a_gpio_set_value(gpio, val);
+      gops.set_value(gpio, val);
       break;
 		case DIG_READ:
-			return cy8c9540a_gpio_get_value(gpio);
+			return gops.get_value(gpio);
+#ifdef GALILEO
     case FAST_DIG_WRITE:
       quark_gpio_pin = (gpio == 2) ? 6 : 7;
       quark_gpio_write(quark_gpio_pin, val);
@@ -99,6 +107,7 @@ gpio_handler(int operation, int gpio, int val, int extra_arg)
     case INTERRUPT_WAIT:
       cy8c9540a_wait_interrupt(gpio);
       break;
+#endif
 		default:
 			printf("Unsupported operation!");
 			return -1;

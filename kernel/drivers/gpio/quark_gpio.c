@@ -320,6 +320,8 @@ static const struct module_ops mod_ops = {
   .init = quark_gpio_init
 };
 
+#ifdef GALILEO
 DEF_MODULE (galileo_quark_gpio, "Galileo Quark GPIO driver", &mod_ops, {"pci"});
+#endif
 
 

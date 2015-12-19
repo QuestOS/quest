@@ -38,8 +38,6 @@
 #include "sched/sched.h"
 #include "sched/vcpu.h"
 #include "drivers/usb/usb.h"
-#include "drivers/gpio/gpio.h"
-#include "drivers/i2c/i2c.h"
 #include "drivers/serial/serial.h"
 #include "lwip/pbuf.h"
 #include "lwip/tcp.h"
@@ -341,6 +339,7 @@ syscall_gpio (u32 eax, u32 ebx, u32 ecx, u32 edx, u32 esi)
   u32 arg2 = edx;
   u32 arg3 = esi;
 
+  extern int gpio_handler(u32, u32, u32, u32);
   return gpio_handler(operation, arg1, arg2, arg3);
 }
 
@@ -352,6 +351,7 @@ syscall_i2c (u32 eax, u32 ebx, u32 ecx, u32 edx, u32 esi)
   u32 arg2 = edx;
   u32 arg3 = esi;
 
+  extern int i2c_handler(u32, u32, u32, u32);
   return i2c_handler(operation, arg1, arg2, arg3);
 }
 

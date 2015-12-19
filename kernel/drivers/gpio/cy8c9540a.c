@@ -18,6 +18,7 @@
 /* cy8c9540 driver */
 
 #include "drivers/i2c/galileo_i2c.h"
+#include "drivers/gpio/gpio.h"
 #include "util/printf.h"
 #include "cy8c9540a.h"
 #include "sched/sched.h"
@@ -119,7 +120,7 @@ static inline u8 cypress_get_offs(unsigned gpio, u8 port)
 }
 
 int
-cy8c9540a_gpio_get_value(unsigned gpio)
+cy8c9540a_gpio_get_value(uint32 gpio)
 {
   s32 ret = 0;
   u8 port = 0, pin = 0, in_reg = 0;
@@ -136,7 +137,7 @@ cy8c9540a_gpio_get_value(unsigned gpio)
 }
 
 void
-cy8c9540a_gpio_set_value(unsigned gpio, int val)
+cy8c9540a_gpio_set_value(uint32 gpio, int val)
 {
   s32 ret = 0;
   u8 port = 0, pin = 0, out_reg = 0;
@@ -158,7 +159,7 @@ cy8c9540a_gpio_set_value(unsigned gpio, int val)
 }
 
 int
-cy8c9540a_gpio_set_drive(unsigned gpio, unsigned mode)
+cy8c9540a_gpio_set_drive(uint32 gpio, uint32 mode)
 {
   s32 ret = 0;
   u8 port = 0, pin = 0, offs = 0, val = 0;
@@ -243,12 +244,12 @@ cy8c9540a_gpio_direction(unsigned gpio, int out, int val)
   return 0;
 }
 
-int cy8c9540a_gpio_direction_output(unsigned gpio, int val)
+int cy8c9540a_gpio_direction_output(uint32 gpio, uint32 val)
 {
   return cy8c9540a_gpio_direction(gpio, 1, val);
 }
 
-int cy8c9540a_gpio_direction_input(unsigned gpio)
+int cy8c9540a_gpio_direction_input(uint32 gpio)
 {
   return cy8c9540a_gpio_direction(gpio, 0, 0);
 }
@@ -692,6 +693,14 @@ bool cy8c9540a_setup()
 		}
 	}
 
+	extern struct gpio_ops gops;
+	/* register functions to gpio framework */
+	gops.set_value = cy8c9540a_gpio_set_value;
+	gops.get_value = cy8c9540a_gpio_get_value;
+	gops.set_drive = cy8c9540a_gpio_set_drive;
+	gops.set_output = cy8c9540a_gpio_direction_output;
+	gops.set_input = cy8c9540a_gpio_direction_input;
+
 #ifndef NO_GPIO_IOVCPU
 	cy8c9540a_interrupt_tss = start_kernel_thread(
 			(uint) cy8c9540a_interrupt_thread,
@@ -710,6 +719,8 @@ static const struct module_ops mod_ops = {
   .init = cy8c9540a_setup
 };
 
+#ifndef NO_CY8C9540A
 DEF_MODULE (galileo_cy8c9540a, "Galileo CY8C9540A driver", &mod_ops, {"galileo_i2c", "galileo_quark_gpio"});
+#endif
 
 
