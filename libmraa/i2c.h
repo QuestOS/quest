@@ -8,7 +8,7 @@ enum {I2C_INIT, I2C_WRITE, I2C_READ};
 static int
 i2c_init(unsigned int slave_addr)
 {
-	return make_syscall(I2C_INIT, slave_addr, 0, 0);
+	return make_i2c_syscall(I2C_INIT, slave_addr, 0, 0);
 }
 
 static int
