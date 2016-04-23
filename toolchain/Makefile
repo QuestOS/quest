@@ -50,7 +50,7 @@ compiler: $(COMPILER_BUILD_DIR)/Makefile
 
 gmp: $(GMP_BUILD_DIR)/Makefile
 	$(MAKE) -C $(GMP_BUILD_DIR)
-	$(MAKE) -C $(GMP_BUILD_DIR) check
+	#$(MAKE) -C $(GMP_BUILD_DIR) check
 	$(MAKE) -C $(GMP_BUILD_DIR) install
 
 $(GMP_BUILD_DIR)/Makefile:
