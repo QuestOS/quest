@@ -1,0 +1,4 @@
+#!/usr/bin/bash
+
+sudo service docker start
+sudo docker run --log-driver=none --privileged=true -v `pwd | xargs realpath`:/quest_src -i -t pre-built-toolchain /bin/bash
